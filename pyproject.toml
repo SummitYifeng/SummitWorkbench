@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "summit-workbench"
+version = "0.0.1"
+description = "外置执行管理层 + 第二大脑（M0-1 工程骨架，尚无业务能力）"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Yifeng" }]
+keywords = ["cli", "obsidian", "feishu", "second-brain"]
+
+# M0-1 只锁定「已确认会用到」的运行时依赖。飞书 / 模型 / 会议链路的依赖
+# 留到对应里程碑开工时再加，避免过早锁定。httpx 属于既定技术栈（首个 ADR），
+# 纳入锁文件以证明其可安装，但本批次不编写任何联网代码。
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+wb = "summit_workbench.cli.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/summit_workbench"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# 保守但有用的一组规则：pyflakes、pycodestyle、isort、pyupgrade、bugbear。
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+# Typer 的装饰器风格在 strict 下会产生噪声，按需局部放宽而非全局关闭。
+
+[[tool.mypy.overrides]]
+# 测试大量使用 pytest fixture（monkeypatch / tmp_path / caplog）作为无注解参数，
+# 对测试放宽「必须注解每个参数」，保留其余严格检查。
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["src"]

@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境（uv 默认在 .venv）
+.venv/
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 运行产物与本机配置（严禁提交凭据、真实转写、本机绝对路径）
+*.log
+.DS_Store
+config.local.toml
