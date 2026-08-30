@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>个人 AI 工作台 · 总控中心架构</title>
+<style>
+  :root{
+    --paper:#EAEEEE;
+    --panel:#F6F8F7;
+    --ink:#16282B;
+    --muted:#5D6E70;
+    --line:#CBD4D3;
+    --teal:#0F6E6A;
+    --teal-deep:#123E3C;
+    --amber:#B26A00;
+    --slate:#476B86;
+    --purple:#6C4AB6;
+    --card:#FFFFFF;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:44px 28px 64px;}
+  .eyebrow{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:11px;letter-spacing:.32em;text-transform:uppercase;
+    color:var(--teal);margin:0 0 12px;
+  }
+  h1{
+    font-size:34px;font-weight:650;letter-spacing:-.01em;margin:0 0 10px;
+    line-height:1.12;
+  }
+  .lede{font-size:15px;color:var(--muted);max-width:640px;margin:0 0 6px;}
+  .lede strong{color:var(--ink);font-weight:600;}
+  .rule{height:1px;background:var(--line);margin:28px 0 30px;border:0;}
+
+  .diagram{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px 10px 6px;
+  }
+  svg.arch{width:100%;height:auto;display:block;}
+
+  /* SVG element styling */
+  .container-rect{fill:none;stroke:var(--line);stroke-width:1.5;stroke-dasharray:2 5;rx:14;}
+  .card{fill:var(--card);stroke:var(--line);stroke-width:1.4;}
+  .keyline-teal{fill:var(--teal);}
+  .keyline-amber{fill:var(--amber);}
+  .keyline-slate{fill:var(--slate);}
+  .keyline-purple{fill:var(--purple);}
+  .plinth{fill:var(--teal-deep);stroke:none;}
+
+  .t-title{font-size:16px;font-weight:650;fill:var(--ink);}
+  .t-title-inv{font-size:16px;font-weight:650;fill:#EAF0EF;}
+  .t-sub{font-size:12px;fill:var(--muted);}
+  .t-sub-inv{font-size:12px;fill:#AEC3C1;}
+  .t-eyebrow{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:10.5px;letter-spacing:.22em;fill:var(--teal);}
+  .t-eyebrow-a{fill:var(--amber);}
+  .t-eyebrow-s{fill:var(--slate);}
+  .t-mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;fill:var(--muted);}
+  .flow-label{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;font-weight:600;}
+  .fl-teal{fill:var(--teal);}
+  .fl-amber{fill:var(--amber);}
+  .fl-slate{fill:var(--slate);}
+
+  .flow-teal{stroke:var(--teal);stroke-width:2;fill:none;}
+  .flow-amber{stroke:var(--amber);stroke-width:2;fill:none;}
+  .flow-slate{stroke:var(--slate);stroke-width:2;fill:none;stroke-dasharray:6 5;}
+  .flow-thin{stroke:var(--teal);stroke-width:1.6;fill:none;}
+
+  .badge-bg{fill:#F1ECFB;stroke:var(--purple);stroke-width:1.2;}
+  .chip-bg{fill:#FFFFFF;stroke:var(--line);stroke-width:1;}
+
+  /* legend */
+  .legend{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:32px;}
+  .loop{border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px;background:var(--card);}
+  .loop .tag{
+    display:inline-flex;align-items:center;gap:7px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;font-weight:600;
+    letter-spacing:.05em;margin-bottom:8px;
+  }
+  .dot{width:10px;height:10px;border-radius:2px;display:inline-block;}
+  .loop h3{font-size:14px;margin:0 0 6px;font-weight:600;}
+  .loop p{font-size:12.5px;color:var(--muted);margin:0;}
+  .path{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--ink);margin:0 0 8px;line-height:1.7;}
+
+  .notes{margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:14px 30px;}
+  .note{font-size:12.5px;color:var(--muted);padding-left:16px;position:relative;}
+  .note::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:1px;background:var(--teal);}
+  .note strong{color:var(--ink);font-weight:600;}
+  .note.amber::before{background:var(--amber);}
+  .note.slate::before{background:var(--slate);}
+  .note.purple::before{background:var(--purple);}
+
+  .foot{margin-top:34px;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;color:var(--muted);letter-spacing:.04em;}
+
+  @media (max-width:760px){
+    h1{font-size:26px;}
+    .legend{grid-template-columns:1fr;}
+    .notes{grid-template-columns:1fr;}
+  }
+  @media print{
+    body{background:#fff;}
+    .diagram{background:#fff;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">个人 AI 工作台 · 架构总览</p>
+  <h1>总控中心架构</h1>
+  <p class="lede"><strong>晨间指挥台</strong> —— 每日编排 + 一键带上下文启动。底层是 Obsidian 记录底座，中间是三层薄结构，两侧是输入源与执行器，三条数据流以 A / B / C 标注。</p>
+  <p class="lede">这是随架构演进而更新的示意图，<strong>不是 PRD</strong>；与 <span style="font-family:ui-monospace,Menlo,monospace">THINKING_DOC.md</span> 中的决策一一对应。</p>
+
+  <hr class="rule">
+
+  <div class="diagram">
+    <svg class="arch" viewBox="0 0 1240 700" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="总控中心架构图">
+      <defs>
+        <marker id="ah-teal" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#0F6E6A"/></marker>
+        <marker id="ah-amber" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#B26A00"/></marker>
+        <marker id="ah-slate" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#476B86"/></marker>
+        <pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse">
+          <circle cx="1.4" cy="1.4" r="1.4" fill="#0F6E6A" opacity="0.06"/>
+        </pattern>
+      </defs>
+
+      <!-- CORE container with faint blueprint dot-grid -->
+      <rect x="392" y="70" width="456" height="560" rx="14" fill="url(#dots)"/>
+      <rect x="392" y="70" width="456" height="560" class="container-rect"/>
+      <text x="412" y="98" class="t-eyebrow">CORE · 三层薄结构</text>
+
+      <!-- Presentation card -->
+      <g>
+        <rect x="448" y="118" width="344" height="86" rx="9" class="card"/>
+        <rect x="448" y="118" width="5" height="86" rx="2.5" class="keyline-teal"/>
+        <text x="470" y="146" class="t-eyebrow">⑤ 呈现层 · PRESENTATION</text>
+        <text x="470" y="170" class="t-title">Obsidian 每日笔记 = 晨间指挥台</text>
+        <text x="470" y="190" class="t-sub">v1 呈现形态 · 定时刷新 + 手动触发</text>
+      </g>
+
+      <!-- Brain card -->
+      <g>
+        <rect x="448" y="240" width="344" height="104" rx="9" class="card"/>
+        <rect x="448" y="240" width="5" height="104" rx="2.5" class="keyline-purple"/>
+        <text x="470" y="268" class="t-eyebrow" style="fill:var(--purple)">④ 编排层 / 大脑 · BRAIN</text>
+        <text x="470" y="292" class="t-title">每日编排 · 分发调度</text>
+        <!-- open decision badge -->
+        <rect x="470" y="304" width="300" height="28" rx="14" class="badge-bg"/>
+        <text x="486" y="322" style="font-size:11.5px;fill:#4A2E8F;font-weight:600">⚠ 开放决策 #1 · 编排层方案待 Claude Code 定</text>
+      </g>
+
+      <!-- Connection card -->
+      <g>
+        <rect x="448" y="380" width="344" height="82" rx="9" class="card"/>
+        <rect x="448" y="380" width="5" height="82" rx="2.5" class="keyline-teal"/>
+        <text x="470" y="408" class="t-eyebrow">③ 连接层 · MCP</text>
+        <text x="470" y="432" class="t-title">飞书 MCP + Obsidian MCP</text>
+        <text x="470" y="451" class="t-sub">标准协议 · 近乎零维护</text>
+      </g>
+
+      <!-- Plinth: record base foundation -->
+      <g>
+        <rect x="410" y="500" width="420" height="98" rx="10" class="plinth"/>
+        <text x="432" y="530" class="t-eyebrow" style="fill:#7FD8CF">①② 记录底座 · FOUNDATION</text>
+        <text x="432" y="556" class="t-title-inv">Obsidian · 全新独立工作 vault</text>
+        <text x="432" y="578" class="t-sub-inv">工作记录 / 决策 / 每日笔记 —— 沉淀，越来越懂我</text>
+      </g>
+
+      <!-- LEFT: inputs -->
+      <g>
+        <rect x="48" y="300" width="300" height="96" rx="10" class="card"/>
+        <rect x="48" y="300" width="5" height="96" rx="2.5" class="keyline-teal"/>
+        <text x="70" y="328" class="t-eyebrow">输入源 · 飞书</text>
+        <text x="70" y="352" class="t-title">Feishu 团队专业版</text>
+        <text x="70" y="372" class="t-sub">日历 · 任务 · 文档 · 多维表 · 消息</text>
+        <text x="70" y="389" class="t-mono">我是管理员 · 可自建应用</text>
+      </g>
+      <g>
+        <rect x="48" y="470" width="300" height="106" rx="10" class="card"/>
+        <rect x="48" y="470" width="5" height="106" rx="2.5" class="keyline-amber"/>
+        <text x="70" y="498" class="t-eyebrow t-eyebrow-a">输入源 · 本地代码</text>
+        <text x="70" y="522" class="t-title">~/Documents/Github</text>
+        <text x="70" y="542" class="t-sub">10+ 项目 · 初期只纳入几个</text>
+        <text x="70" y="560" class="t-mono">每个纳入项目含 AGENTS.md</text>
+      </g>
+
+      <!-- RIGHT: executors -->
+      <g>
+        <rect x="892" y="250" width="300" height="110" rx="10" class="card"/>
+        <rect x="892" y="250" width="5" height="110" rx="2.5" class="keyline-amber"/>
+        <text x="914" y="278" class="t-eyebrow t-eyebrow-a">执行器 · 代码侧</text>
+        <text x="914" y="302" class="t-title">Codex / Claude Code</text>
+        <text x="914" y="322" class="t-sub">读代码 · 拉分支 · 写需求</text>
+        <text x="914" y="342" class="t-mono">codex exec · 可脚本 · 紧耦合</text>
+      </g>
+      <g>
+        <rect x="892" y="470" width="300" height="120" rx="10" class="card"/>
+        <rect x="892" y="470" width="5" height="120" rx="2.5" class="keyline-slate"/>
+        <text x="914" y="498" class="t-eyebrow t-eyebrow-s">执行器 · 飞书办公侧</text>
+        <text x="914" y="522" class="t-title">WorkBuddy</text>
+        <text x="914" y="542" class="t-sub">文档 · 周报 · 表格等杂活</text>
+        <text x="914" y="561" class="t-mono">或 OpenWorkBuddy（本地）</text>
+        <text x="914" y="579" class="t-mono" style="fill:var(--slate)">松耦合 · 只能发消息</text>
+      </g>
+
+      <!-- FLOWS -->
+      <!-- A: Feishu -> Connection layer -->
+      <path class="flow-teal" d="M348,352 C400,360 405,420 446,421" marker-end="url(#ah-teal)"/>
+      <text x="360" y="392" class="flow-label fl-teal">A · MCP</text>
+      <rect x="352" y="400" width="86" height="20" rx="10" class="chip-bg"/>
+      <text x="362" y="414" class="t-mono" style="font-size:10px">数据本地 · L6</text>
+
+      <!-- internal teal: connection -> brain -> presentation -->
+      <path class="flow-thin" d="M620,380 L620,346" marker-end="url(#ah-teal)"/>
+      <path class="flow-thin" d="M620,240 L620,206" marker-end="url(#ah-teal)"/>
+      <text x="628" y="230" class="t-mono" style="font-size:10px;fill:var(--teal)">写入简报</text>
+
+      <!-- B: Github -> Brain -->
+      <path class="flow-amber" d="M348,512 C405,505 405,320 446,306" marker-end="url(#ah-amber)"/>
+      <text x="360" y="470" class="flow-label fl-amber">B · AGENTS.md</text>
+
+      <!-- B: Brain -> Codex -->
+      <path class="flow-amber" d="M792,300 C840,300 855,305 888,305" marker-end="url(#ah-amber)"/>
+      <text x="800" y="290" class="flow-label fl-amber">B · 一键启动</text>
+
+      <!-- C: Brain -> WorkBuddy -->
+      <path class="flow-slate" d="M792,326 C845,340 850,500 888,512" marker-end="url(#ah-slate)"/>
+      <text x="800" y="430" class="flow-label fl-slate">C · 发消息</text>
+      <rect x="800" y="438" width="96" height="20" rx="10" class="chip-bg"/>
+      <text x="810" y="452" class="t-mono" style="font-size:10px">不能直接调用</text>
+    </svg>
+  </div>
+
+  <!-- LEGEND: three loops -->
+  <div class="legend">
+    <div class="loop">
+      <span class="tag" style="color:var(--teal)"><span class="dot" style="background:var(--teal)"></span>环 A · 晨间简报</span>
+      <p class="path">飞书日历/任务 → 大脑 → Obsidian 每日笔记</p>
+      <p>定时把当天的日历与任务经飞书 MCP 拉取、解析，写成一份 brief 落进当天笔记。飞书业务数据尽量留在本地。</p>
+    </div>
+    <div class="loop">
+      <span class="tag" style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>环 B · 一键启动</span>
+      <p class="path">指挥台/大脑 → (带 AGENTS.md) → Codex → 项目</p>
+      <p>点一下就把选定项目的档案作为上下文，把 Codex 拉起来读代码、拉分支、写需求。不再手动选文件夹、口述背景。</p>
+    </div>
+    <div class="loop">
+      <span class="tag" style="color:var(--slate)"><span class="dot" style="background:var(--slate)"></span>环 C · 飞书办公</span>
+      <p class="path">大脑 → 发消息 → WorkBuddy → 交付文件</p>
+      <p>飞书侧的文档/周报/表格杂活，通过消息派给 WorkBuddy 或本地的 OpenWorkBuddy。松耦合：只能发消息，不能被直接编排。</p>
+    </div>
+  </div>
+
+  <!-- NOTES -->
+  <div class="notes">
+    <p class="note purple"><strong>开放决策 #1：</strong>编排层（大脑）的落地方式未定，留给 Claude Code 在 PRD 阶段给方案。</p>
+    <p class="note"><strong>v1 呈现：</strong>先用 Obsidian 每日笔记当指挥台，初期不做独立 App / 网页面板。</p>
+    <p class="note amber"><strong>紧耦合 vs 松耦合：</strong>Codex 可脚本、可深度编排；WorkBuddy 只能被"发消息"驱动。</p>
+    <p class="note slate"><strong>数据边界（L6）：</strong>代码可上云，飞书业务数据尽量本地 / 最小外传。</p>
+    <p class="note"><strong>记录底座是地基：</strong>一切都沉淀进全新独立 vault，让 AI 越来越懂我。</p>
+    <p class="note amber"><strong>项目档案：</strong>每个纳入平台的项目根目录放一份 AGENTS.md，即"AI 可读的项目档案"。</p>
+  </div>
+
+  <p class="foot">个人 AI 工作台 · ARCHITECTURE v0.1 · 与 THINKING_DOC.md 同步演进 · 非 PRD</p>
+
+</div>
+</body>
+</html>
