@@ -112,6 +112,7 @@ def meetings(
 ) -> None:
     """按会议号 + 时间范围列出会议及其 note_id（会议发现，M1-1 前置）。"""
     cfg = _config()
+    meeting_no = meeting_no.replace(" ", "")  # 飞书显示带空格（937 075 886），实际无空格
     tz = ZoneInfo(load_settings().timezone)
     try:
         start = int(datetime.strptime(since, "%Y-%m-%d").replace(tzinfo=tz).timestamp())
