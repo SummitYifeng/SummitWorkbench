@@ -1,6 +1,6 @@
 # ADR 0009 · M1-2 会议发现与原文归档
 
-- 状态：✅ 代码 + 单测完成，质量门全绿（ruff / mypy strict / pytest 140）；飞书主链路待真机冒烟
+- 状态：✅ 代码 + 单测 + **飞书主链路真机冒烟通过**（2026-08-31）；质量门全绿（ruff / mypy strict / pytest 141）
 - 日期：2026-08-31
 - 里程碑：M1-2（会议发现与原文归档）
 - 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-2；PRD §3.1.9 L14/L15/L22；ADR 0007/0008
@@ -51,17 +51,17 @@
 - 3 个新模块 + `workflows/meetings/__init__` 与 `cli/main` 注册；21 项新单测（共 140）。
 - 本地兜底链路已手工冒烟（archive → 幂等 skip → 状态账本 fetched→archived）。
 
-## 真机冒烟（2026-08-31，会议号 493701461）
+## 真机冒烟（2026-08-31）
 
-- ✅ 发现链路对本人租户跑通：`list_by_no` 找到会议「罗艺峰的视频会议」（meeting_id=76788913…）。
-- ⚠ 该会议无智能纪要（`note_id` 空）→ `wb meeting archive` 正确走 **unavailable** 分支：
-  状态账本记 `discovered → unavailable` 留原因，**未写任何逐字稿文件、未冒充结果**（L14 第 7 条真机验证）。
-- ⚠ **发现的路径 bug 已修**：证据层原误写入扁平 `meetings/`，应为 `meetings/transcripts/`
+- ✅ **完整 happy path（会议号 182929017）**：发现「罗艺峰的视频会议」（有 `note_id`）→ 取回 6365 字符
+  真实逐字稿（网课系统配置需求落地会议，8/27）→ 落 `meetings/transcripts/2026-08-27-罗艺峰的视频会议-transcript.md`
+  （frontmatter 合规）→ 状态账本 `discovered → archived` → **重跑 `skipped-existing` 幂等空转、不重复取稿**。
+- ✅ **unavailable 分支（会议号 493701461）**：该场无智能纪要（`note_id` 空）→ 正确记 `discovered → unavailable`
+  留原因，**未写任何逐字稿文件、未冒充结果**（L14 第 7 条真机验证）。
+- ⚠ 真机暴露并已修的**路径 bug**：证据层原误写入扁平 `meetings/`，应为 `meetings/transcripts/`
   （ADR 0003 / PRD 结构）；已改 `transcripts_dir` + `notes_dir`，加单测断言子目录。
 - 📌 **飞书 API 约束**：`list_by_no` 时间跨度过大会 `param error`；实测约 30 天窗口可用，3 个月失败。
   M1-7 历史补导需把日期范围切成 ≤30 天窗口分批查询。
-- 尚缺：**带纪要**会议的完整 happy path（取回逐字稿 → 落 `meetings/transcripts/` → 重跑空转）
-  仍待一场真实「有逐字稿」会议验证。
 - 更广的「自动发现本人参加的全部已结束会议」（L14 第 7 条，不依赖会议号）需确认飞书是否有对应
   列表接口；当前发现仍以 9 位会议号驱动（沿用 ADR 0007），为后续接口/真机跟进项。
 

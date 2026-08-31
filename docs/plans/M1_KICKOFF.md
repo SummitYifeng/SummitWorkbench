@@ -5,8 +5,14 @@
 
 ## 现状（截至 2026-08-31）
 
-M0 地基全部完成并**真机验证**，`main` == `origin/main`（`59be336`）。质量门全绿：
-`uv run ruff check . && uv run mypy && uv run pytest`（93 项）。决策见 `docs/decisions/`（0001–0007）。
+M0 地基全部完成并**真机验证**。M1 已推进两个切片（决策见 `docs/decisions/` 0008–0009）：
+
+- **M1-1 已完成**：稳定 schema 与状态机（`domain/pipeline.py`、`domain/review.py`）。
+- **M1-2 已完成并真机冒烟**：会议发现与原文归档（`repositories/meeting_state.py`、
+  `repositories/meeting_archive.py`、`workflows/meetings/archive.py`、CLI `wb meeting archive|archive-local`）。
+  飞书主链路完整跑通（发现 → 取稿 → 落 `meetings/transcripts/` → 幂等空转）；无纪要会议记 `unavailable`。
+
+质量门全绿：`uv run ruff check . && uv run mypy && uv run pytest`（141 项）。**下一步 M1-3**（云端结构化处理）。
 
 ## M1 可直接复用的已建能力
 
@@ -51,5 +57,7 @@ M1 主要是**把已跑通的两条链路串起来并加审批边界**，而非�
 
 ## 起步建议
 
-先做 **M1-1**（领域 schema + 状态机，纯逻辑可测），再 **M1-2**（把发现+双文件归档接上，复用上表能力）。
-先证据后建议、先归档后写回、逐里程碑封闭验证。
+M1-1、M1-2 已完成（见「现状」）。**下一步 M1-3**（云端结构化处理）：接 `process_transcript`，
+读已归档证据（`meetings/transcripts/`）→ 模型结构化 → 产出 `meeting-note` 落 `meetings/notes/` 并回链逐字稿，
+状态 `archived → processed → pending-review`；失败进错误队列（`archived → failed`）、零半成品（L41）。
+沿用「先证据后建议、先归档后写回、逐里程碑封闭验证」。
