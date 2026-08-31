@@ -1,0 +1,36 @@
+# SummitWorkbench 本机配置示例
+#
+# 复制到 ~/.config/summit_workbench/config.toml（或用 WB_CONFIG_FILE 指向别处）。
+# 本文件只放【非敏感】项；任何 app_secret / token / api key 一律进 macOS Keychain，
+# 绝不写进本文件或任何 git 仓库（见 NFR-4）。
+
+# work_root = "~/Documents/Work"     # 默认即此，可省略
+timezone = "Asia/Shanghai"
+log_level = "INFO"
+
+[feishu]
+# 飞书自建应用的 App ID（非敏感，可放这里）
+app_id = "cli_xxxxxxxxxxxxxxxx"
+# OAuth 回调地址：需与飞书开放平台「安全设置 → 重定向 URL」里登记的一致
+redirect_uri = "http://localhost:8765/callback"
+# 申请的最小权限 scope（省略则用内置默认；vc/minutes 标识请与控制台「应用权限」核对）
+# scopes = [
+#   "calendar:calendar:readonly",
+#   "task:task",
+#   "vc:meeting:readonly",
+#   "minutes:minutes:readonly",
+#   "docx:document:readonly",
+#   "offline_access",              # 必需：授予它才会返回 refresh_token
+# ]
+
+# ── 凭据存进 Keychain（你自己执行，值不要发给任何人）───────────────────────────
+# App Secret：
+#   security add-generic-password -a "cli_xxxxxxxxxxxxxxxx" \
+#     -s summit-workbench-feishu-app-secret -w -U
+#   （-w 不带值会安全交互式提示输入，不落命令历史）
+# refresh_token 由 `wb feishu login` 在授权后自动写入，无需手工存。
+#
+# 授权流程：
+#   wb feishu authorize-url         # 打印授权链接，浏览器打开并同意
+#   wb feishu login --code <code>   # 用回调里的 code 换令牌，存 refresh_token
+#   wb feishu smoke                 # 刷新 token 并调 user_info，验证链路

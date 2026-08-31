@@ -64,6 +64,38 @@ def resolve_credential(ref: CredentialRef) -> SecretStr:
     return SecretStr(completed.stdout.rstrip("\n"))
 
 
+def store_credential(ref: CredentialRef, value: SecretStr) -> None:
+    """把 ``value`` 写入 Keychain 中 ``ref`` 对应的 generic password（存在则更新）。
+
+    供运行时保存 API 返回的凭据使用——典型场景是飞书 refresh_token 每次刷新都会轮换，
+    必须回写新值（见 providers/feishu）。秘密值只经 ``-w`` 传给 security，不进日志、不进异常。
+    """
+    try:
+        completed = subprocess.run(
+            [
+                "security",
+                "add-generic-password",
+                "-a",
+                ref.account,
+                "-s",
+                ref.service,
+                "-w",
+                value.get_secret_value(),
+                "-U",  # 已存在则更新
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise CredentialError(f"无法调用 security CLI 写入 {ref}") from exc
+
+    if completed.returncode != 0:
+        detail = (completed.stderr or "").strip().splitlines()
+        hint = detail[0] if detail else f"returncode={completed.returncode}"
+        raise CredentialError(f"未能写入 {ref}: {hint}")
+
+
 def redact(value: object) -> str:
     """把可能含敏感内容的对象渲染成安全字符串（用于日志 / 诊断输出）。"""
     if isinstance(value, SecretStr):
