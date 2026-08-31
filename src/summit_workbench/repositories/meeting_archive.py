@@ -73,6 +73,7 @@ class MeetingArchiveInput:
     source: SourceKind
     meeting_id: str | None = None
     note_id: str | None = None
+    idem_key: str | None = None
     projects: list[str] = field(default_factory=lambda: [UNRESOLVED])
 
 
@@ -92,6 +93,7 @@ def render_transcript(inp: MeetingArchiveInput) -> str:
         "status": "archived",
         "meeting_id": inp.meeting_id or "",
         "note_id": inp.note_id or "",
+        "idem_key": inp.idem_key or "",
         "source": inp.source.value,
         "projects": list(inp.projects) or [UNRESOLVED],
     }

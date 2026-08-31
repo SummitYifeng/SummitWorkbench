@@ -73,7 +73,7 @@ TranscriptFetch = Callable[[DiscoveredMeeting], str]
 
 
 def _archive_input(
-    meeting: DiscoveredMeeting, text: str, projects: list[str]
+    meeting: DiscoveredMeeting, text: str, projects: list[str], idem_key: str
 ) -> MeetingArchiveInput:
     return MeetingArchiveInput(
         date=meeting.date,
@@ -82,6 +82,7 @@ def _archive_input(
         source=meeting.source,
         meeting_id=meeting.meeting_id,
         note_id=meeting.note_id,
+        idem_key=idem_key,
         projects=projects,
     )
 
@@ -136,7 +137,7 @@ def archive_meeting(
         task = MeetingTask.for_remote(meeting.meeting_id, meeting.note_id)
         record_task(vault_dir, task, now=now)  # discovered
         text = fetch(meeting)  # 取稿失败在此抛出，状态停在 discovered
-        outcome = archive_transcript(vault_dir, _archive_input(meeting, text, projects))
+        outcome = archive_transcript(vault_dir, _archive_input(meeting, text, projects, idem_key))
         task = task.advanced_to(ProcessingState.FETCHED).advanced_to(ProcessingState.ARCHIVED)
         record_task(vault_dir, task, now=now)
         action = "archived" if outcome.written else "skipped-existing"
@@ -156,7 +157,7 @@ def archive_meeting(
         meeting_id=meeting.meeting_id,
     )
     record_task(vault_dir, task, now=now)  # fetched
-    outcome = archive_transcript(vault_dir, _archive_input(meeting, text, projects))
+    outcome = archive_transcript(vault_dir, _archive_input(meeting, text, projects, idem_key))
     task = task.advanced_to(ProcessingState.ARCHIVED)
     record_task(vault_dir, task, now=now)
     action = "archived" if outcome.written else "skipped-existing"
