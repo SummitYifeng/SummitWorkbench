@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> 当前状态：**M0 地基开发中**。已交付可安装的 Python 工程与 `wb` CLI：M0-1 工程骨架、M0-2 项目迁移、M0-3 工作 vault、M0-4 飞书身份与权限、M0-6 云端模型接入均已完成（飞书鉴权与模型结构化已对真实环境冒烟通过）；M0-5 同步脚本与 M0-10 会议纪要拉取待进行。仓库仍不含任何凭据、真实会议内容或本机绝对路径。
+> 当前状态：**M0 地基完成**。可安装的 Python 工程与 `wb` CLI 就绪，M0-1 至 M0-6 及 M0-10 全部完成，飞书身份授权、云端模型结构化、work-sync 与会议纪要逐字稿拉取均已对真实环境冒烟通过。下一步进入 M1（会议进入第二大脑）。仓库仍不含任何凭据、真实会议内容或本机绝对路径。
 
 ## 产品解决的问题
 
@@ -102,9 +102,10 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb feishu authorize-url | login | smoke | import-local`：飞书身份授权、鉴权冒烟与本地逐字稿兜底。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
+- `wb feishu meetings`：按会议号 + 时间范围列出会议及其 `note_id`（会议发现）。
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。质量门：`uv run ruff check . && uv run mypy && uv run pytest`。
 
 ## 下一步
 
-按 [开发计划](docs/plans/DEVELOPMENT_PLAN.md) 推进剩余 M0 工作包：M0-10 飞书会议纪要拉取端点实测（需控制台开通会议纪要权限）。M0 全部通过后进入 M1（会议进入第二大脑）。各批次决策见 [docs/decisions/](docs/decisions/)。
+M0 地基全部通过，进入 **M1（会议进入第二大脑）**：会议自动发现与拉取、双文件归档、云端结构化、集中审批与写回、`wb ask` 问答、历史补导。各批次决策见 [docs/decisions/](docs/decisions/)。

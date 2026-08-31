@@ -1,6 +1,6 @@
 # ADR 0007 · M0-10 飞书会议纪要拉取
 
-- 状态：note → 逐字稿链路已实现（端点官方核实），真机冒烟待用户授权 + 提供 note_id
+- 状态：✅ 真机冒烟通过（2026-08-31，取回 2783 字符真实逐字稿）
 - 日期：2026-08-31
 - 里程碑：M0-10（会议纪要 API 冒烟）
 - 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-4/M0-10；PRD L14/L15；ADR 0004（此处兑现其推迟项）
@@ -45,7 +45,14 @@
 3. `wb feishu meetings --meeting-no <9位会议号> --since <YYYY-MM-DD> --until <YYYY-MM-DD>` 列出会议与 note_id，
    再 `wb feishu note-transcript --note-id <note_id>` 取回逐字稿。无逐字稿产物或 API 不可用时按 L14 走本地兜底。
 
+## 真机验证（2026-08-31）
+
+- `wb feishu meetings --meeting-no 937075886 ...` → 列出会议 + note_id `7680022739336661970`。
+- `wb feishu note-transcript --note-id 7680022739336661970` → 取回 **2783 字符**真实逐字稿
+  （含说话人 + 时间戳）。整条链路用真实数据端到端跑通。
+- 真机踩坑并解决：list_by_no 实际返回 `meeting_briefs`（不含 note_id，须再查会议详情）；
+  docx 正文读取需在飞书控制台单独开通 **应用身份（tenant）** 的 `docx:document:readonly`。
+
 ## 验收对照（M0-10）
 
-- ✅ 会议发现（会议号 → note_id）与 `note_id → 逐字稿文档 → 完整文本` 链路均实现并测试覆盖，端点官方核实。
-- ⏳ 用真实历史会议冒烟：待用户重新授权后运行 `wb feishu meetings` + `note-transcript`。
+- ✅ 会议发现（会议号 → note_id）与 `note_id → 逐字稿文档 → 完整文本` 链路实现、测试覆盖、**真机通过**。
