@@ -15,6 +15,10 @@ from summit_workbench.domain.review import (
 )
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.note_status import update_note_status
+from summit_workbench.repositories.project_registry import (
+    ProjectRegistry,
+    load_project_registry,
+)
 from summit_workbench.repositories.review_audit import (
     ExecutionRecord,
     append_execution,
@@ -128,6 +132,18 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
     raise ValueError(f"非本地 route：{item.route.value}")
 
 
+def _resolve_entry(entry: ReviewEntry, registry: ProjectRegistry) -> ReviewEntry:
+    """把审批页里的项目名/别名升级为规范 ID；解析不到则原样保留。
+
+    只做「向上升级」：别名 → 规范 ID。解析失败时不改写目标，沿用既有的
+    「目标文件不存在 → 留在审批页标 error」安全行为（对齐决策 #2）。
+    """
+    resolved = registry.resolve(entry.candidate.target_project)
+    if resolved is None or resolved == entry.candidate.target_project:
+        return entry
+    return replace(entry, candidate=replace(entry.candidate, target_project=resolved))
+
+
 def _task_key(candidate_id: str) -> str:
     return candidate_id.split("#", 1)[0]
 
@@ -183,7 +199,9 @@ def apply_meeting_review(
     parsed = parse_review_page(page.read_text(encoding="utf-8"))
     if parsed.errors:
         raise ValueError("审批页语法错误：" + "; ".join(parsed.errors))
-    actions = _plan(parsed.entries, vault_dir, work_root)
+    registry = load_project_registry(vault_dir)
+    entries = [_resolve_entry(entry, registry) for entry in parsed.entries]
+    actions = _plan(entries, vault_dir, work_root)
     if not apply:
         return ApplyReport(
             True,
@@ -193,7 +211,7 @@ def apply_meeting_review(
             failed=sum(not action.executable for action in actions),
         )
 
-    by_id = {entry.candidate.candidate_id: entry for entry in parsed.entries}
+    by_id = {entry.candidate.candidate_id: entry for entry in entries}
     handled: list[ReviewEntry] = []
     records: list[ExecutionRecord] = []
     failure_reasons: dict[str, str] = {}
@@ -245,7 +263,7 @@ def apply_meeting_review(
 
     handled_ids = {entry.candidate.candidate_id for entry in handled}
     remaining = []
-    for entry in parsed.entries:
+    for entry in entries:
         stable_id = entry.candidate.candidate_id
         if stable_id in handled_ids:
             continue

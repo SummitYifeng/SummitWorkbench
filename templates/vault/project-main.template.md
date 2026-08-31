@@ -4,6 +4,8 @@ date: {{date}}
 type: project-main
 status: active
 updated: {{date}}
+# aliases: 会议里对本项目的自然语言叫法；审批写回时据此解析回规范 ID（可留空）
+# aliases: [网课系统, 网课]
 ---
 
 # {{project}}

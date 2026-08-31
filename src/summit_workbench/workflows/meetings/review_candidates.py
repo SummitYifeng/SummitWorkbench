@@ -15,6 +15,7 @@ from summit_workbench.domain.review import (
     candidate_id,
     route_candidate,
 )
+from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.vault import ParsedNote, load_note
 
 _DECISION_RE = re.compile(r"^- (.+)（项目：(.+)；证据：(.+)）$")
@@ -98,6 +99,7 @@ def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
     if not idem_key:
         raise ValueError(f"会议笔记缺少 idem_key：{path}")
     extraction = _extraction(note)
+    registry = load_project_registry(vault_dir)
     title = _title(note)
     date = str(note.meta.get("date") or "")
     note_rel = path.relative_to(vault_dir).with_suffix("")
@@ -106,7 +108,7 @@ def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
     entries: list[ReviewEntry] = []
 
     for index, decision in enumerate(extraction.decisions):
-        target = decision.target_project or UNRESOLVED
+        target = registry.resolve(decision.target_project) or decision.target_project or UNRESOLVED
         candidate = ApprovalCandidate(
             candidate_id=candidate_id(idem_key, CandidateKind.DECISION, index),
             kind=CandidateKind.DECISION,
@@ -126,7 +128,7 @@ def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
         )
 
     for index, action in enumerate(extraction.action_items):
-        target = action.target_project or UNRESOLVED
+        target = registry.resolve(action.target_project) or action.target_project or UNRESOLVED
         candidate = ApprovalCandidate(
             candidate_id=candidate_id(idem_key, CandidateKind.ACTION_ITEM, index),
             kind=CandidateKind.ACTION_ITEM,

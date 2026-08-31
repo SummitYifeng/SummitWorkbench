@@ -157,6 +157,37 @@ def test_feishu_creator_and_partial_failure_keep_failed_item(tmp_path):
     assert "不存在" in parsed.entries[0].apply_error
 
 
+def _project_with_alias(vault, project: str, alias: str):
+    path = vault / "projects" / f"{project}.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        f"---\nproject: {project}\ndate: 2026-08-31\ntype: project-main\nstatus: active\n"
+        f"aliases: [{alias}]\n---\n\n# P\n\n## 当前状态\n\n## 下一步\n\n## 阻塞\n\n## 决策记录\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_apply_resolves_natural_language_project_alias_to_canonical(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    project = _project_with_alias(vault, "HIC_WebClass_Chinese_Final", "网课系统")
+    # 审批页里目标写成自然语言别名（模拟人工在审批页填写）
+    entry = _entry(
+        "m:n#decision-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.PROJECT_MAIN,
+        kind=CandidateKind.DECISION,
+        project="网课系统",
+    )
+    refresh_review_page(vault, [entry])
+    _pending(vault)
+    report = apply_meeting_review(vault, work, apply=True)
+    assert report.applied == 1
+    assert report.failed == 0
+    assert "final-m:n#decision-0" in project.read_text(encoding="utf-8")
+
+
 def test_completed_ledger_makes_reintroduced_candidate_idempotent(tmp_path):
     vault = tmp_path / "vault"
     work = tmp_path / "work"
