@@ -50,7 +50,14 @@ class ModelClient:
         self._client = client or httpx.Client(timeout=cfg.timeout_seconds)
         self._sleep = sleep
 
-    def complete(self, system: str, user: str, *, json_mode: bool = True) -> CompletionResult:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = True,
+        max_retries: int = MAX_RETRIES,
+    ) -> CompletionResult:
         payload: dict[str, Any] = {
             "model": self.cfg.model_id,
             "messages": [
@@ -66,11 +73,11 @@ class ModelClient:
         url = f"{self.cfg.base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self._key.get_secret_value()}"}
 
-        for attempt in range(1, MAX_RETRIES + 2):  # 1 次初调 + 最多 3 次重试
+        for attempt in range(1, max_retries + 2):
             try:
                 return self._attempt_once(url, payload, headers, attempt)
             except (LLMTimeoutError, LLMAPIError) as exc:
-                if attempt <= MAX_RETRIES and _is_retryable(exc):
+                if attempt <= max_retries and is_retryable(exc):
                     self._sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
                     continue
                 raise
@@ -101,7 +108,7 @@ class ModelClient:
         return _parse_completion(resp, self.cfg.model_id, attempt)
 
 
-def _is_retryable(exc: Exception | None) -> bool:
+def is_retryable(exc: Exception | None) -> bool:
     if isinstance(exc, LLMTimeoutError):
         return True
     return isinstance(exc, LLMAPIError) and exc.retryable

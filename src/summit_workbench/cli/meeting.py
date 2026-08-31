@@ -1,4 +1,4 @@
-"""``wb meeting`` 子命令：会议发现与原文归档（M1-2）。
+"""``wb meeting`` 子命令：会议归档与云端结构化处理（M1-2/M1-3）。
 
 - ``archive``：飞书主链路。按会议号 + 时间范围发现会议，对有 note_id 者取回完整逐字稿，
   在模型调用之前落盘证据层；幂等防重，重复运行不产生重复归档。
@@ -15,8 +15,10 @@ from zoneinfo import ZoneInfo
 
 import typer
 
+from summit_workbench.config.secrets import CredentialError, resolve_credential
 from summit_workbench.config.settings import load_settings
 from summit_workbench.domain.pipeline import SourceKind
+from summit_workbench.prompts import load_prompt
 from summit_workbench.providers.feishu import (
     FeishuClient,
     FeishuConfig,
@@ -27,15 +29,17 @@ from summit_workbench.providers.feishu import (
     load_feishu_config,
 )
 from summit_workbench.providers.feishu.meetings import MeetingSummary
+from summit_workbench.providers.llm import LLMError, load_model_config
 from summit_workbench.workflows.meetings import (
     ArchiveReport,
     DiscoveredMeeting,
     archive_meeting,
+    process_archived_transcript,
 )
 
 meeting_app = typer.Typer(
     name="meeting",
-    help="会议发现与原文归档（archive / archive-local）。",
+    help="会议归档与结构化处理（archive / archive-local / process）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -166,6 +170,48 @@ def archive_local(
         _vault_dir(), meeting, lambda _m: text, projects=list(project) or None
     )
     _echo_report(title, report)
+
+
+@meeting_app.command("process")
+def process(
+    transcript_file: Path = typer.Argument(..., help="已归档的 meeting-transcript Markdown。"),
+    task_key: str = typer.Option(
+        "", "--task-key", help="可选；旧本地归档缺少 idem_key 时显式指定状态账本键。"
+    ),
+) -> None:
+    """把已归档逐字稿可靠处理为结构化会议笔记；失败进入错误队列。"""
+    if not transcript_file.is_file():
+        typer.echo(f"逐字稿文件不存在：{transcript_file}")
+        raise typer.Exit(code=2)
+    try:
+        cfg = load_model_config("meeting")
+        api_key = resolve_credential(cfg.api_key_ref)
+        prompt = load_prompt("meeting-processor")
+        merger_prompt = load_prompt("meeting-merger")
+        report = process_archived_transcript(
+            _vault_dir(),
+            transcript_file,
+            cfg,
+            api_key,
+            prompt=prompt,
+            merger_prompt=merger_prompt,
+            task_key=task_key or None,
+        )
+    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
+        typer.echo(f"✗ 结构化处理未启动：{exc}")
+        raise typer.Exit(code=2) from exc
+
+    if report.action == "failed":
+        typer.echo(f"✗ 模型处理失败，原文已保留：{report.reason}")
+        typer.echo(f"  错误队列：{report.error_path}")
+        raise typer.Exit(code=1)
+    if report.action == "skipped-existing":
+        typer.echo(f"• 已处理，幂等空转：{report.task_key}（{report.state.value}）")
+        raise typer.Exit(code=0)
+    typer.echo(f"✓ 结构化会议笔记已生成：{report.note_path}")
+    typer.echo(
+        f"  状态={report.state.value}  分段={report.chunks}  成功模型调用={report.model_calls}"
+    )
 
 
 def _to_discovered(summary: MeetingSummary, tz: ZoneInfo) -> DiscoveredMeeting:

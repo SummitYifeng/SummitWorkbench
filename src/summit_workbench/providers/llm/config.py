@@ -44,6 +44,8 @@ class ModelConfig:
     credential_account: str
     timeout_seconds: float = 60.0
     max_output_tokens: int = 4096
+    context_window_tokens: int = 65536
+    context_safety_ratio: float = 0.85
     pricing: ModelPricing = ModelPricing()
 
     @property
@@ -70,6 +72,13 @@ def _model_from_table(
         input_per_mtok=float(price.get("input_per_mtok", 0.0)),
         output_per_mtok=float(price.get("output_per_mtok", 0.0)),
     )
+    context_window_tokens = int(pick("context_window_tokens", 65536))
+    context_safety_ratio = float(pick("context_safety_ratio", 0.85))
+    if context_window_tokens <= 0:
+        raise LLMConfigError("context_window_tokens 必须大于 0")
+    if not 0.5 <= context_safety_ratio < 1.0:
+        raise LLMConfigError("context_safety_ratio 必须在 [0.5, 1.0) 内")
+
     return ModelConfig(
         capability=capability,
         model_id=str(model_id),
@@ -77,6 +86,8 @@ def _model_from_table(
         credential_account=str(pick("credential_account", "shared")),
         timeout_seconds=float(pick("timeout_seconds", 60.0)),
         max_output_tokens=int(pick("max_output_tokens", 4096)),
+        context_window_tokens=context_window_tokens,
+        context_safety_ratio=context_safety_ratio,
         pricing=pricing,
     )
 

@@ -45,6 +45,8 @@ base_url = "https://api.deepseek.com/v1"
 credential_account = "shared"           # 对应 Keychain 里 api key 的 account
 timeout_seconds = 60
 max_output_tokens = 4096
+context_window_tokens = 65536         # 所用模型的上下文窗口
+context_safety_ratio = 0.85           # 输入+预留输出达到窗口 85% 时启用分段
 
 [models.shared.pricing]                 # 单价用于费用估算（每百万 token），按你的实际计费填
 currency = "CNY"

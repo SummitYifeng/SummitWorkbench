@@ -8,8 +8,7 @@ from pydantic import SecretStr
 
 from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.config import ModelConfig, ModelPricing
-from summit_workbench.providers.llm.errors import LLMSchemaError
-from summit_workbench.workflows.meetings import process_transcript
+from summit_workbench.workflows.meetings import ProcessingFailure, process_transcript
 
 CFG = ModelConfig(
     capability="meeting",
@@ -40,7 +39,7 @@ def test_process_valid_json():
     good = json.dumps(
         {
             "one_minute_summary": "ok",
-            "facts": ["a"],
+            "facts": [{"text": "a", "evidence": "张三 00:01"}],
             "decisions": [],
             "action_items": [],
             "open_questions": [],
@@ -57,7 +56,7 @@ def test_process_valid_json():
         sleep=lambda _: None,
     )
     assert processed.extraction.one_minute_summary == "ok"
-    assert processed.extraction.facts == ["a"]
+    assert processed.extraction.facts[0].text == "a"
     assert processed.usage.input_tokens == 5000
     assert processed.usage.output_tokens == 800
     # 费用：5000*1 + 800*2 = 6600 → /1e6
@@ -66,7 +65,7 @@ def test_process_valid_json():
 
 
 def test_process_invalid_json_raises_schema_error():
-    with pytest.raises(LLMSchemaError):
+    with pytest.raises(ProcessingFailure) as error:
         process_transcript(
             CFG,
             SecretStr("sk"),
@@ -76,10 +75,11 @@ def test_process_invalid_json_raises_schema_error():
             client=_client("not json at all"),
             sleep=lambda _: None,
         )
+    assert error.value.attempts == 4
 
 
 def test_process_missing_required_field_raises():
-    with pytest.raises(LLMSchemaError):
+    with pytest.raises(ProcessingFailure) as error:
         process_transcript(
             CFG,
             SecretStr("sk"),
@@ -89,3 +89,4 @@ def test_process_missing_required_field_raises():
             client=_client('{"facts": []}'),  # 缺 one_minute_summary
             sleep=lambda _: None,
         )
+    assert error.value.attempts == 4

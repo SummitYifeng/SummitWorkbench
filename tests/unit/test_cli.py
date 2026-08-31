@@ -30,6 +30,7 @@ def test_meeting_group_registered() -> None:
     assert result.exit_code == 0
     assert "archive" in result.stdout
     assert "archive-local" in result.stdout
+    assert "process" in result.stdout
 
 
 def test_no_args_shows_help() -> None:
