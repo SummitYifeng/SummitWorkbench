@@ -153,6 +153,8 @@ def test_feishu_creator_and_partial_failure_keep_failed_item(tmp_path):
     assert created[0][1] == "2026-09-04"
     parsed = parse_review_page((vault / "review" / "meetings.md").read_text(encoding="utf-8"))
     assert [entry.candidate.candidate_id for entry in parsed.entries] == ["m:n#action-item-1"]
+    assert parsed.entries[0].apply_error is not None
+    assert "不存在" in parsed.entries[0].apply_error
 
 
 def test_completed_ledger_makes_reintroduced_candidate_idempotent(tmp_path):

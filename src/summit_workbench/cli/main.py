@@ -11,6 +11,7 @@ from summit_workbench.cli import diagnostics
 from summit_workbench.cli.feishu import feishu_app
 from summit_workbench.cli.meeting import meeting_app
 from summit_workbench.cli.model import model_app
+from summit_workbench.cli.review import review_app
 from summit_workbench.cli.sync import sync_app
 from summit_workbench.cli.vault import vault_app
 from summit_workbench.config.settings import load_settings
@@ -25,6 +26,7 @@ app.add_typer(vault_app)
 app.add_typer(feishu_app)
 app.add_typer(meeting_app)
 app.add_typer(model_app)
+app.add_typer(review_app)
 app.add_typer(sync_app)
 
 

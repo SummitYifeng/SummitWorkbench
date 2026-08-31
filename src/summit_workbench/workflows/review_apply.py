@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -196,6 +196,7 @@ def apply_meeting_review(
     by_id = {entry.candidate.candidate_id: entry for entry in parsed.entries}
     handled: list[ReviewEntry] = []
     records: list[ExecutionRecord] = []
+    failure_reasons: dict[str, str] = {}
     failures = 0
     applied_count = rejected_count = 0
     for action in actions:
@@ -205,6 +206,7 @@ def apply_meeting_review(
             continue
         if not action.executable:
             failures += 1
+            failure_reasons[action.candidate_id] = action.reason or "校验失败"
             continue
         if action.decision is CandidateDecision.REJECTED:
             record = make_execution_record(
@@ -232,8 +234,9 @@ def apply_meeting_review(
                     external_id=external_id,
                     now=now,
                 )
-            except (ValueError, OSError):
+            except (ValueError, OSError) as exc:
                 failures += 1
+                failure_reasons[action.candidate_id] = str(exc)
                 continue
             applied_count += 1
         append_execution(vault_dir, record)
@@ -241,9 +244,12 @@ def apply_meeting_review(
         handled.append(entry)
 
     handled_ids = {entry.candidate.candidate_id for entry in handled}
-    remaining = [
-        entry for entry in parsed.entries if entry.candidate.candidate_id not in handled_ids
-    ]
+    remaining = []
+    for entry in parsed.entries:
+        stable_id = entry.candidate.candidate_id
+        if stable_id in handled_ids:
+            continue
+        remaining.append(replace(entry, apply_error=failure_reasons.get(stable_id)))
     archive_path = archive_executions(vault_dir, records, now=now) if records else None
     temporary = page.with_suffix(".md.tmp")
     temporary.write_text(render_review_page(remaining), encoding="utf-8")

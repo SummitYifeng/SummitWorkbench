@@ -98,6 +98,7 @@ class ReviewEntry:
     meeting_title: str
     note_link: str
     transcript_link: str
+    apply_error: str | None = None
 
 
 def route_candidate(

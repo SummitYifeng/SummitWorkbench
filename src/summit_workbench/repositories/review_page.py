@@ -80,6 +80,7 @@ def _render_entry(entry: ReviewEntry) -> str:
             f"  - actionable: {actionable}",
             f"  - note: {entry.note_link}",
             f"  - transcript: {entry.transcript_link}",
+            f"  - error: {entry.apply_error or ''}",
             f"  {_ORIGINAL_PREFIX.strip()} {_encode_original(entry)} -->",
         ]
     )
@@ -177,6 +178,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         meeting_title=title,
         note_link=_field(block, "note"),
         transcript_link=_field(block, "transcript"),
+        apply_error=_field(block, "error") or None,
     )
 
 
@@ -191,8 +193,19 @@ def parse_review_page(text: str) -> ParsedReviewPage:
     errors: list[str] = []
     heading = ""
     index = 0
+    in_comment = False
     while index < len(lines):
         line = lines[index]
+        if in_comment:
+            if "-->" in line:
+                in_comment = False
+            index += 1
+            continue
+        if "<!--" in line and not line.startswith(_ORIGINAL_PREFIX):
+            if "-->" not in line:
+                in_comment = True
+            index += 1
+            continue
         if line.startswith("## "):
             heading = line
         if _ITEM_RE.match(line):
