@@ -75,6 +75,12 @@ def test_transcript_stem_matches_filename(tmp_path):
     assert out.path.stem == transcript_stem("2026-08-30", slugify("招生进度会"))
 
 
+def test_transcript_lands_in_meetings_transcripts_subdir(tmp_path):
+    # ADR 0003 / PRD 结构：证据层落 meetings/transcripts/，笔记落 meetings/notes/。
+    out = archive_transcript(tmp_path, _input())
+    assert out.path.parent == tmp_path / "meetings" / "transcripts"
+
+
 def test_explicit_projects_rendered(tmp_path):
     text = render_transcript(_input(projects=["ProjA", "ProjB"]))
     meta, _body, _err = parse_frontmatter(text)

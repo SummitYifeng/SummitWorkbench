@@ -30,6 +30,7 @@ from summit_workbench.repositories.meeting_archive import (
     archive_transcript,
     slugify,
     transcript_stem,
+    transcripts_dir,
 )
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 
@@ -88,7 +89,8 @@ def _archive_input(
 def _skip_report(
     vault_dir: Path, meeting: DiscoveredMeeting, idem_key: str, state: ProcessingState
 ) -> ArchiveReport:
-    path = vault_dir / "meetings" / f"{transcript_stem(meeting.date, slugify(meeting.title))}.md"
+    stem = transcript_stem(meeting.date, slugify(meeting.title))
+    path = transcripts_dir(vault_dir) / f"{stem}.md"
     return ArchiveReport(
         idem_key=idem_key,
         state=state,

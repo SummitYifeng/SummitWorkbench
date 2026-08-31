@@ -21,14 +21,26 @@ from summit_workbench.domain.pipeline import SourceKind
 from summit_workbench.domain.review import UNRESOLVED
 
 MEETINGS_SUBDIR = "meetings"
+TRANSCRIPTS_SUBDIR = "transcripts"  # 证据层
+NOTES_SUBDIR = "notes"  # 理解与行动层（M1-3 结构化笔记）
 
 _SLUG_RE = re.compile(r"[^\w]+", re.UNICODE)
 _SLUG_MAX = 60
 
 
 def meetings_dir(vault_dir: Path) -> Path:
-    """会议档案目录 ``<vault>/meetings/``（首次归档时按需创建）。"""
+    """会议档案根目录 ``<vault>/meetings/``（ADR 0003 / PRD 结构）。"""
     return vault_dir / MEETINGS_SUBDIR
+
+
+def transcripts_dir(vault_dir: Path) -> Path:
+    """逐字稿证据层目录 ``<vault>/meetings/transcripts/``（首次归档按需创建）。"""
+    return meetings_dir(vault_dir) / TRANSCRIPTS_SUBDIR
+
+
+def notes_dir(vault_dir: Path) -> Path:
+    """结构化会议笔记目录 ``<vault>/meetings/notes/``（M1-3 使用）。"""
+    return meetings_dir(vault_dir) / NOTES_SUBDIR
 
 
 def slugify(title: str) -> str:
@@ -95,7 +107,7 @@ def render_transcript(inp: MeetingArchiveInput) -> str:
 
 def transcript_path(vault_dir: Path, inp: MeetingArchiveInput) -> Path:
     """该会议逐字稿证据文件的目标路径（不落盘）。"""
-    return meetings_dir(vault_dir) / f"{transcript_stem(inp.date, slugify(inp.title))}.md"
+    return transcripts_dir(vault_dir) / f"{transcript_stem(inp.date, slugify(inp.title))}.md"
 
 
 def archive_transcript(
