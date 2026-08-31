@@ -69,6 +69,7 @@ def render_meeting_note(inp: MeetingNoteInput) -> str:
         "transcript": f"[[{inp.transcript_stem}]]",
         "model": inp.model_id,
         "prompt_version": inp.prompt_version,
+        "extraction": inp.extraction.model_dump(mode="json"),
     }
     facts = [f"{item.text}（证据：{item.evidence}）" for item in inp.extraction.facts]
     decisions = [

@@ -24,9 +24,11 @@ from summit_workbench.providers.feishu.meetings import (
     verify_identity,
 )
 from summit_workbench.providers.feishu.session import FeishuSession
+from summit_workbench.providers.feishu.tasks import CreatedTask, create_task
 
 __all__ = [
     "DEFAULT_SCOPES",
+    "CreatedTask",
     "FeishuAPIError",
     "FeishuAuthError",
     "FeishuClient",
@@ -38,6 +40,7 @@ __all__ = [
     "MeetingSummary",
     "TranscriptResult",
     "import_local_transcript",
+    "create_task",
     "list_meetings_by_no",
     "load_feishu_config",
     "verify_identity",

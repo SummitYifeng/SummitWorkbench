@@ -33,6 +33,13 @@ def test_meeting_group_registered() -> None:
     assert "process" in result.stdout
 
 
+def test_review_group_registered() -> None:
+    result = runner.invoke(app, ["review", "--help"])
+    assert result.exit_code == 0
+    assert "refresh" in result.stdout
+    assert "apply" in result.stdout
+
+
 def test_no_args_shows_help() -> None:
     result = runner.invoke(app, [])
     # no_args_is_help=True：无参数打印帮助并以 Click 约定退出码 2 结束。
