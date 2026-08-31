@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> 当前状态：**M1 进行中**。M0、M1-1、M1-2、M1-3 均已完成并真机验收。M1-4 集中审批与写回实现完成：真实会议已生成 5 条稳定候选，人工批准、拒绝和原地修改均已被解析；真实 dry-run 进一步发现自然语言项目名仍需解析为规范项目 ID，系统已安全阻止错误目标写入。仓库不含凭据或真实会议内容。
+> 当前状态：**M1 进行中**。M0、M1-1..M1-4 均已完成并真机验收：M1-4 已补齐项目别名解析（自然语言项目名 → 规范 ID，事实源为项目笔记 frontmatter `aliases:`），真实审批批准/拒绝已显式写回项目主笔记并归档审计、重跑幂等空转。M1-5 状态/费用/提醒已实现并真机冒烟（`wb status`）。仓库不含凭据或真实会议内容。
 
 ## 产品解决的问题
 
@@ -103,7 +103,8 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb feishu meetings | note-transcript`：按会议号 + 时间范围列出会议及 `note_id`；按 `note_id` 拉取逐字稿。
 - `wb meeting archive | archive-local`：会议发现 → 取回逐字稿 → **模型调用前**落盘证据层（`meetings/transcripts/`），幂等防重；本地兜底导入。
 - `wb meeting process`：读取已归档原文，生成 `meetings/notes/` 结构化笔记并回链证据；失败进入 `_signals/model-errors/`，不保存半成品。
-- `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计。
+- `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID。
+- `wb status`：汇总会议处理进度、当月 token 与估算费用、软预算与待确认候选积压；`--json` 供脚本消费，`--notify` 按去重规则发出预算/积压阈值通知（供 launchd 定时调用）。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 
@@ -111,4 +112,4 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 
 ## 下一步
 
-**M1（会议进入第二大脑）进行中**：M1-1/M1-2/M1-3 已完成；M1-4 实现与人工审批解析已通过，真实 dry-run 发现并安全拦截了“网课系统”到规范项目 ID 的映射缺口。下一步补齐项目解析并完成显式写回与幂等验收；随后进入 M1-5 状态与费用，再依次推进 M1-6 `wb ask`、M1-7 历史补导。各批次决策见 [docs/decisions/](docs/decisions/)。
+**M1（会议进入第二大脑）进行中**：M1-1..M1-4 已完成（含项目别名解析与真实写回验收）；M1-5 状态/费用/提醒已实现并真机冒烟。下一步 M1-6 `wb ask`（第二大脑问答），再 M1-7 历史补导，随后逐项执行 PRD L44 严格验收。各批次决策见 [docs/decisions/](docs/decisions/)。
