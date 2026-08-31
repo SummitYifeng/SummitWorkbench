@@ -13,14 +13,15 @@ log_level = "INFO"
 app_id = "cli_xxxxxxxxxxxxxxxx"
 # OAuth 回调地址：需与飞书开放平台「安全设置 → 重定向 URL」里登记的一致
 redirect_uri = "http://localhost:8765/callback"
-# 申请的最小权限 scope（省略则用内置默认；vc/minutes 标识请与控制台「应用权限」核对）
+# 申请的最小权限 scope（省略则用内置默认）。
+# 只请求你已在控制台「权限管理」里开通的 scope，否则授权会报 20027 缺权限。
+# 会议相关 scope（视频会议/纪要）的精确标识待 M0-10 在控制台实测确认后再加。
+# 最省事的起步：先只用 offline_access 跑通授权与 smoke，再按需加。
 # scopes = [
-#   "calendar:calendar:readonly",
-#   "task:task",
-#   "vc:meeting:readonly",
-#   "minutes:minutes:readonly",
-#   "docx:document:readonly",
 #   "offline_access",              # 必需：授予它才会返回 refresh_token
+#   "calendar:calendar:readonly",  # 需在控制台开通「日历」只读
+#   "task:task",                   # 需在控制台开通「任务」读写
+#   "docx:document:readonly",      # 需在控制台开通「云文档」只读
 # ]
 
 # ── 凭据存进 Keychain（你自己执行，值不要发给任何人）───────────────────────────

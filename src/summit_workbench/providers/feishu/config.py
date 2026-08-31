@@ -28,11 +28,14 @@ TOKEN_PATH = "/open-apis/authen/v2/oauth/token"  # 授权码换取与刷新共�
 DEFAULT_SCOPES: tuple[str, ...] = (
     "calendar:calendar:readonly",  # 日历只读
     "task:task",  # 任务读写
-    "vc:meeting:readonly",  # 视频会议只读（如控制台标识不同请覆盖）
-    "minutes:minutes:readonly",  # 会议纪要只读（同上）
     "docx:document:readonly",  # 纪要正文文档只读
     "offline_access",  # 换取 refresh_token 必需
 )
+
+# 会议相关 scope（视频会议 / 会议纪要）在当前控制台的精确标识需实测确认——
+# 之前猜测的 vc:meeting:readonly / minutes:minutes:readonly 在租户里不存在（授权报 20027）。
+# 会议纪要读取本就推迟到 M0-10；届时在控制台确认可用标识后，再加入默认或用 [feishu].scopes 覆盖。
+MEETING_SCOPES_PENDING_M0_10: tuple[str, ...] = ()
 
 # Keychain 凭据引用的默认 service 名（account 统一用 app_id）。
 APP_SECRET_SERVICE = "summit-workbench-feishu-app-secret"
