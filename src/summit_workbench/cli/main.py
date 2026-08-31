@@ -8,6 +8,7 @@ import typer
 
 from summit_workbench import __version__
 from summit_workbench.cli import diagnostics
+from summit_workbench.cli.ask import ask_command
 from summit_workbench.cli.feishu import feishu_app
 from summit_workbench.cli.meeting import meeting_app
 from summit_workbench.cli.model import model_app
@@ -19,7 +20,7 @@ from summit_workbench.config.settings import load_settings
 
 app = typer.Typer(
     name="wb",
-    help="SummitWorkbench CLI（version/diagnose/status/vault/feishu/meeting/model/sync）。",
+    help="SummitWorkbench CLI（version/diagnose/status/ask/vault/feishu/meeting/model/sync）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -30,6 +31,7 @@ app.add_typer(model_app)
 app.add_typer(review_app)
 app.add_typer(sync_app)
 app.command("status")(status_command)
+app.command("ask")(ask_command)
 
 
 @app.command()
