@@ -18,5 +18,6 @@
 | [0011](0011-m1-4-review-writeback.md) | M1-4 | 稳定候选、集中审批、dry-run 写回、项目别名解析、审计与双层幂等 |
 | [0012](0012-m1-5-status-budget-backlog.md) | M1-5 | `wb status` 聚合、月度软预算告警、待确认积压阈值与去重通知 |
 | [0013](0013-m1-6-second-brain-qa.md) | M1-6 | `wb ask`：本地召回、只引用进上下文来源、事实/建议分区、冲突并列、qa-insight |
+| [0014](0014-m1-7-historical-backfill.md) | M1-7 | `wb meeting backfill`：本地逐字稿补导、费用预估+跨预算再确认、幂等续跑、historical 候选 |
 
-M0 与 M1-1..M1-6 已完成并真机冒烟；下一步 M1-7 历史补导，随后 PRD L44 严格验收。
+M0 与 M1-1..M1-7 已完成并真机冒烟；剩 PRD L44 严格验收（真实数据显式回归）后进入 M2。

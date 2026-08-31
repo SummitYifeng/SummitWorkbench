@@ -16,8 +16,9 @@ from zoneinfo import ZoneInfo
 import typer
 
 from summit_workbench.config.secrets import CredentialError, resolve_credential
-from summit_workbench.config.settings import load_settings
+from summit_workbench.config.settings import default_config_file, load_settings
 from summit_workbench.domain.pipeline import SourceKind
+from summit_workbench.observability.status import load_budget_settings
 from summit_workbench.prompts import load_prompt
 from summit_workbench.providers.feishu import (
     FeishuClient,
@@ -30,16 +31,22 @@ from summit_workbench.providers.feishu import (
 )
 from summit_workbench.providers.feishu.meetings import MeetingSummary
 from summit_workbench.providers.llm import LLMError, load_model_config
+from summit_workbench.repositories.usage_ledger import monthly_totals
 from summit_workbench.workflows.meetings import (
     ArchiveReport,
     DiscoveredMeeting,
     archive_meeting,
     process_archived_transcript,
 )
+from summit_workbench.workflows.meetings.backfill import (
+    plan_backfill,
+    run_backfill,
+    scan_local_transcripts,
+)
 
 meeting_app = typer.Typer(
     name="meeting",
-    help="会议归档与结构化处理（archive / archive-local / process）。",
+    help="会议归档与结构化处理（archive / archive-local / process / backfill）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -212,6 +219,89 @@ def process(
     typer.echo(
         f"  状态={report.state.value}  分段={report.chunks}  成功模型调用={report.model_calls}"
     )
+
+
+@meeting_app.command("backfill")
+def backfill(
+    source: Path = typer.Argument(..., help="本地逐字稿目录或单个文件。"),
+    since: str = typer.Option(..., "--since", help="补导起始日期 YYYY-MM-DD（含）。"),
+    until: str = typer.Option(..., "--until", help="补导结束日期 YYYY-MM-DD（含）。"),
+    include_actions: bool = typer.Option(
+        False, "--include-actions", help="同时生成带 historical 标记的审批候选（默认只沉淀知识）。"
+    ),
+    yes: bool = typer.Option(False, "--yes", help="跳过开始前的确认。"),
+    force_budget: bool = typer.Option(
+        False, "--force-budget", help="即使预计跨越月度软预算也继续（否则需再次确认）。"
+    ),
+) -> None:
+    """按显式日期范围补导本地逐字稿：先预估费用，确认后逐场处理，可中断续跑。"""
+    for label, value in (("--since", since), ("--until", until)):
+        try:
+            datetime.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            typer.echo(f"{label} 格式应为 YYYY-MM-DD")
+            raise typer.Exit(code=2) from exc
+    if not source.exists():
+        typer.echo(f"来源不存在：{source}")
+        raise typer.Exit(code=2)
+
+    vault_dir = _vault_dir()
+    try:
+        cfg = load_model_config("meeting")
+        api_key = resolve_credential(cfg.api_key_ref)
+        prompt = load_prompt("meeting-processor")
+        merger_prompt = load_prompt("meeting-merger")
+    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
+        typer.echo(f"✗ 补导未启动：{exc}")
+        raise typer.Exit(code=2) from exc
+
+    items = scan_local_transcripts(vault_dir, source, since=since, until=until)
+    if not items:
+        typer.echo(f"区间 [{since}, {until}] 内没有可补导的本地逐字稿。")
+        raise typer.Exit(code=0)
+
+    month = datetime.now(_tz()).strftime("%Y-%m")
+    month_spent = monthly_totals(vault_dir, month).estimated_cost
+    soft_limit, _currency = load_budget_settings(default_config_file())
+    est = plan_backfill(items, cfg, month_spent=month_spent, soft_limit=soft_limit)
+
+    typer.echo(
+        f"待补导 {est.pending} 场（已存在跳过 {est.already_done} 场）；"
+        f"预估输入 {est.est_input_tokens} / 输出 {est.est_output_tokens} token，"
+        f"约 {est.est_cost} {est.currency}。"
+    )
+    if soft_limit is not None:
+        typer.echo(
+            f"本月已用 {est.month_spent} {est.currency}，预计累计 {est.projected_month_cost} "
+            f"/ 软预算 {soft_limit} {est.currency}。"
+        )
+    if est.pending == 0:
+        typer.echo("• 全部已补导，幂等空转。")
+        raise typer.Exit(code=0)
+
+    if not yes:
+        typer.confirm(f"开始补导 {est.pending} 场？", abort=True)
+    if est.crosses_soft_budget and not force_budget:
+        typer.confirm("⚠ 预计将跨越本月软预算，仍继续？", abort=True)
+
+    report = run_backfill(
+        vault_dir,
+        items,
+        cfg,
+        api_key,
+        prompt=prompt,
+        merger_prompt=merger_prompt,
+        include_actions=include_actions,
+    )
+    typer.echo(
+        f"✓ 补导完成：处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}"
+        + (f"、生成候选 {report.candidates}" if include_actions else "")
+    )
+    for result in report.results:
+        if result.action == "failed":
+            typer.echo(f"  ✗ {result.item.date} {result.item.title}：{result.reason}")
+    if report.failed:
+        raise typer.Exit(code=1)
 
 
 def _to_discovered(summary: MeetingSummary, tz: ZoneInfo) -> DiscoveredMeeting:

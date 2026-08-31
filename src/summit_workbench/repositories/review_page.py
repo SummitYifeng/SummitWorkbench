@@ -78,6 +78,7 @@ def _render_entry(entry: ReviewEntry) -> str:
             f"  - due_date: {due}",
             f"  - evidence: {evidence}",
             f"  - actionable: {actionable}",
+            f"  - historical: {'yes' if item.historical else 'no'}",
             f"  - note: {entry.note_link}",
             f"  - transcript: {entry.transcript_link}",
             f"  - error: {entry.apply_error or ''}",
@@ -173,6 +174,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         due_date=due,
         is_next_step=True,
         decision=decision,
+        historical=_field(block, "historical") == "yes",
     )
     return ReviewEntry(
         candidate=candidate,
