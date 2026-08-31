@@ -25,6 +25,13 @@ def test_help_lists_commands() -> None:
     assert "version" in result.stdout
 
 
+def test_meeting_group_registered() -> None:
+    result = runner.invoke(app, ["meeting", "--help"])
+    assert result.exit_code == 0
+    assert "archive" in result.stdout
+    assert "archive-local" in result.stdout
+
+
 def test_no_args_shows_help() -> None:
     result = runner.invoke(app, [])
     # no_args_is_help=True：无参数打印帮助并以 Click 约定退出码 2 结束。
