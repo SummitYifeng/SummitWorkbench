@@ -37,10 +37,9 @@ def default_config_file() -> Path:
 
 
 class Settings(BaseSettings):
-    """M0-1 阶段的最小可用配置。
+    """全局最小配置（work_root / vault / 时区 / 日志级别）。
 
-    仅包含底座需要的项；飞书 / 模型 / 预算等业务配置留到对应里程碑再加，
-    避免在骨架阶段固化尚未验证的字段。
+    飞书与模型的配置各自独立（`[feishu]` / `[models.*]`，见对应 provider），不混入此处。
     """
 
     model_config = SettingsConfigDict(

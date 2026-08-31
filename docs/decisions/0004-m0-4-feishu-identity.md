@@ -1,6 +1,8 @@
 # ADR 0004 · M0-4 飞书身份与权限
 
-- 状态：已执行（骨架与鉴权链路），会议纪要读取端点待 M0-10 实测固定
+- 状态：已执行（鉴权链路真机通过）。**会议 scope 与纪要读取端点以 [ADR 0007](0007-m0-10-meeting-note.md) 为准**——
+  本文中 `vc:meeting:readonly` / `minutes:minutes:readonly` 为当时的猜测，已被 0007 修正为
+  `vc:note:read` + tenant token 通道，并兑现了 `FeishuNoteSource`。
 - 日期：2026-08-31
 - 里程碑：M0-4（飞书身份与权限）
 - 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-4；PRD NFR-4 / L14；PRD §6 M0-8、M0-10

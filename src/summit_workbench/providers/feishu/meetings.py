@@ -2,10 +2,12 @@
 
 - ``verify_identity``：稳定的 user_info 鉴权冒烟（M0-4）。
 - ``import_local_transcript``：本地投递兜底，不依赖任何飞书接口。
-- ``FeishuNoteSource``：主链路（M0-10，端点已对官方文档核实）：
-  note_id → ``vc/v1/notes/{note_id}`` 取产物 → 选逐字稿文档（artifact_type=2）的 doc_token →
-  ``docx/v1/documents/{doc_token}/raw_content`` 读正文。所需 scope：``vc:note:read`` +
-  ``docx:document:readonly``。「会议 → note_id」的自动发现留待 M1-1（此处按 note_id 驱动）。
+- 会议发现（``list_meetings_by_no`` + ``get_meeting_detail``）：会议号 → 会议 → note_id。
+- ``FeishuNoteSource``：note_id → ``vc/v1/notes/{note_id}`` 取产物 → 选逐字稿文档
+  （artifact_type=2）的 doc_token → ``docx/v1/documents/{doc_token}/raw_content`` 读正文。
+
+会议纪要/文档读取用 tenant_access_token（应用身份），所需 scope 在开放平台按应用授予：
+``vc:note:read`` + ``docx:document:readonly`` + vc 会议只读。端点均对官方文档核实并真机验证。
 """
 
 from __future__ import annotations
@@ -32,14 +34,13 @@ MEETING_GET_PATH = "/open-apis/vc/v1/meetings/{meeting_id}"
 
 @dataclass(frozen=True)
 class MeetingSummary:
-    """list_by_no 返回的单场会议摘要。``note_id`` 为空表示该会议没有纪要。"""
+    """一场会议的摘要（list_by_no + 会议详情）。``note_id`` 为空表示该会议没有纪要。"""
 
     meeting_id: str
     meeting_no: str
     topic: str
     note_id: str | None
     start_time: str | None
-    url: str | None
 
 
 @dataclass(frozen=True)
@@ -143,7 +144,6 @@ def list_meetings_by_no(
                 topic=str(brief.get("topic", "")),
                 note_id=(str(detail["note_id"]) if detail.get("note_id") else None),
                 start_time=(str(detail["start_time"]) if detail.get("start_time") else None),
-                url=None,
             )
         )
     return results

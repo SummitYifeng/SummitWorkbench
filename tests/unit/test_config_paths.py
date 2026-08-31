@@ -26,9 +26,8 @@ def test_explicit_argument_wins_over_env(monkeypatch) -> None:
 def test_vault_defaults_to_underscore_vault(monkeypatch) -> None:
     monkeypatch.setenv("WORK_ROOT", "/tmp/custom-work")
     paths = resolve_work_paths()
+    assert paths.work_root == Path("/tmp/custom-work")
     assert paths.vault_dir == Path("/tmp/custom-work/_vault")
-    assert paths.projects_dir == Path("/tmp/custom-work/_vault/projects")
-    assert paths.inbox_file == Path("/tmp/custom-work/_vault/inbox.md")
 
 
 def test_no_hardcoded_username_in_default(monkeypatch) -> None:

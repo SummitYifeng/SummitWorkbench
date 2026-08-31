@@ -30,34 +30,14 @@ def resolve_work_root(explicit: str | os.PathLike[str] | None = None) -> Path:
 
 @dataclass(frozen=True)
 class WorkPaths:
-    """从工作根目录派生的稳定路径集合。"""
+    """工作根目录与其下的 vault 根。
+
+    vault 内部子目录（daily/projects/meetings/...）在各自 workflow 首次使用时按需派生，
+    不在此预置未被使用的路径。
+    """
 
     work_root: Path
     vault_dir: Path
-
-    @property
-    def daily_dir(self) -> Path:
-        return self.vault_dir / "daily"
-
-    @property
-    def projects_dir(self) -> Path:
-        return self.vault_dir / "projects"
-
-    @property
-    def meetings_dir(self) -> Path:
-        return self.vault_dir / "meetings"
-
-    @property
-    def review_dir(self) -> Path:
-        return self.vault_dir / "review"
-
-    @property
-    def signals_dir(self) -> Path:
-        return self.vault_dir / "_signals"
-
-    @property
-    def inbox_file(self) -> Path:
-        return self.vault_dir / "inbox.md"
 
 
 def resolve_work_paths(

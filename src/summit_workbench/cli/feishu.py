@@ -42,6 +42,11 @@ def _config() -> FeishuConfig:
         raise typer.Exit(code=2) from exc
 
 
+def _tenant_client(cfg: FeishuConfig) -> FeishuClient:
+    """构造以应用身份（tenant_access_token）鉴权的客户端，用于会议纪要/文档读取。"""
+    return FeishuClient(cfg, FeishuSession(cfg).tenant_access_token())
+
+
 @feishu_app.command("authorize-url")
 def authorize_url() -> None:
     """打印用户授权 URL。在浏览器打开并同意后，用回调里的 code 运行 wb feishu login。"""
@@ -123,9 +128,7 @@ def meetings(
         raise typer.Exit(code=2) from exc
 
     try:
-        session = FeishuSession(cfg)
-        client = FeishuClient(cfg, session.tenant_access_token())
-        found = list_meetings_by_no(client, meeting_no, start, end)
+        found = list_meetings_by_no(_tenant_client(cfg), meeting_no, start, end)
     except FeishuError as exc:
         typer.echo(f"✗ 列会议失败：{exc}")
         raise typer.Exit(code=1) from exc
@@ -148,9 +151,7 @@ def note_transcript(
     """M0-10 冒烟：按 note_id 拉取完整逐字稿（notes → 逐字稿文档 → 正文）。"""
     cfg = _config()
     try:
-        session = FeishuSession(cfg)
-        client = FeishuClient(cfg, session.tenant_access_token())
-        result = FeishuNoteSource(client).fetch_transcript(note_id)
+        result = FeishuNoteSource(_tenant_client(cfg)).fetch_transcript(note_id)
     except FeishuError as exc:
         typer.echo(f"✗ 拉取逐字稿失败：{exc}")
         raise typer.Exit(code=1) from exc

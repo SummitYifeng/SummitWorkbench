@@ -31,36 +31,33 @@ class CredentialRef:
         return f"CredentialRef(service={self.service!r}, account={self.account!r})"
 
 
-def resolve_credential(ref: CredentialRef) -> SecretStr:
-    """从 Keychain 读取 ``ref`` 对应的秘密值。
-
-    使用 ``security find-generic-password -w`` 只取密码正文。任何失败都抛出
-    :class:`CredentialError`，且异常信息里不包含秘密值。
-    """
+def _run_security(
+    args: list[str], *, action: str, ref: CredentialRef
+) -> subprocess.CompletedProcess[str]:
+    """运行 ``security`` 子命令，失败时抛出不含秘密值的 :class:`CredentialError`。"""
     try:
-        completed = subprocess.run(
-            [
-                "security",
-                "find-generic-password",
-                "-s",
-                ref.service,
-                "-a",
-                ref.account,
-                "-w",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        completed = subprocess.run(["security", *args], capture_output=True, text=True, check=False)
     except FileNotFoundError as exc:  # 非 macOS 或缺少 security CLI
-        raise CredentialError(f"无法调用 security CLI 解析 {ref}") from exc
+        raise CredentialError(f"无法调用 security CLI {action} {ref}") from exc
 
     if completed.returncode != 0:
         # 只回传 stderr 的首行摘要，Keychain 不会把密码写进 stderr。
         detail = (completed.stderr or "").strip().splitlines()
         hint = detail[0] if detail else f"returncode={completed.returncode}"
-        raise CredentialError(f"未能解析 {ref}: {hint}")
+        raise CredentialError(f"未能{action} {ref}: {hint}")
+    return completed
 
+
+def resolve_credential(ref: CredentialRef) -> SecretStr:
+    """从 Keychain 读取 ``ref`` 对应的秘密值（``security find-generic-password -w``）。
+
+    任何失败都抛出 :class:`CredentialError`，异常信息里不含秘密值。
+    """
+    completed = _run_security(
+        ["find-generic-password", "-s", ref.service, "-a", ref.account, "-w"],
+        action="解析",
+        ref=ref,
+    )
     return SecretStr(completed.stdout.rstrip("\n"))
 
 
@@ -70,30 +67,20 @@ def store_credential(ref: CredentialRef, value: SecretStr) -> None:
     供运行时保存 API 返回的凭据使用——典型场景是飞书 refresh_token 每次刷新都会轮换，
     必须回写新值（见 providers/feishu）。秘密值只经 ``-w`` 传给 security，不进日志、不进异常。
     """
-    try:
-        completed = subprocess.run(
-            [
-                "security",
-                "add-generic-password",
-                "-a",
-                ref.account,
-                "-s",
-                ref.service,
-                "-w",
-                value.get_secret_value(),
-                "-U",  # 已存在则更新
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise CredentialError(f"无法调用 security CLI 写入 {ref}") from exc
-
-    if completed.returncode != 0:
-        detail = (completed.stderr or "").strip().splitlines()
-        hint = detail[0] if detail else f"returncode={completed.returncode}"
-        raise CredentialError(f"未能写入 {ref}: {hint}")
+    _run_security(
+        [
+            "add-generic-password",
+            "-a",
+            ref.account,
+            "-s",
+            ref.service,
+            "-w",
+            value.get_secret_value(),
+            "-U",  # 已存在则更新
+        ],
+        action="写入",
+        ref=ref,
+    )
 
 
 def redact(value: object) -> str:

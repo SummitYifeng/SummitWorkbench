@@ -1,7 +1,7 @@
 """SummitWorkbench：外置执行管理层 + 第二大脑。
 
-当前处于 M0-1 工程骨架阶段，只提供可安装、可测试的底座，不含任何飞书 /
-模型 / 会议 / 简报业务能力。
+本地 Python CLI（``wb``）。M0 地基已完成：配置/凭据、工作 vault schema、飞书身份与
+会议纪要拉取、云端模型结构化、work-sync。M1 起构建会议进入第二大脑的端到端链路。
 """
 
 from importlib.metadata import PackageNotFoundError, version

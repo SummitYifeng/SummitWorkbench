@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 
 from summit_workbench.config.settings import Settings, default_config_file
 
-# M0-1 尚未接入飞书 / 模型，这里只探测底座运行必需的系统工具。
+# 只探测底座运行必需的系统工具（飞书/模型的连通性由各自的 smoke 命令验证）。
 _REQUIRED_TOOLS = ("git", "launchctl", "security")
 
 
