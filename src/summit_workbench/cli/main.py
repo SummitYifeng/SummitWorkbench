@@ -9,17 +9,19 @@ import typer
 from summit_workbench import __version__
 from summit_workbench.cli import diagnostics
 from summit_workbench.cli.feishu import feishu_app
+from summit_workbench.cli.model import model_app
 from summit_workbench.cli.vault import vault_app
 from summit_workbench.config.settings import load_settings
 
 app = typer.Typer(
     name="wb",
-    help="SummitWorkbench CLI（M0：version / diagnose / vault / feishu）。",
+    help="SummitWorkbench CLI（M0：version / diagnose / vault / feishu / model）。",
     no_args_is_help=True,
     add_completion=False,
 )
 app.add_typer(vault_app)
 app.add_typer(feishu_app)
+app.add_typer(model_app)
 
 
 @app.command()
