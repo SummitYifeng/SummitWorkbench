@@ -31,6 +31,7 @@ def test_meeting_group_registered() -> None:
     assert "archive" in result.stdout
     assert "archive-local" in result.stdout
     assert "process" in result.stdout
+    assert "backfill" in result.stdout
 
 
 def test_review_group_registered() -> None:

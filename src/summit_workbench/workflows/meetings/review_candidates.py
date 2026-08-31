@@ -90,8 +90,13 @@ def _evidence(value: str) -> EvidenceRef:
     return EvidenceRef(speaker=speaker, anchor=value)
 
 
-def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
-    """只生成决策和明确行动项；普通事实绝不推断成状态变化。"""
+def candidates_from_note(
+    path: Path, vault_dir: Path, *, historical: bool = False
+) -> list[ReviewEntry]:
+    """只生成决策和明确行动项；普通事实绝不推断成状态变化。
+
+    ``historical=True``（历史补导 M1-7）给候选打 ``historical`` 标记，便于审批页区分。
+    """
     note = load_note(path)
     if note.parse_error is not None or note.meta.get("type") != "meeting-note":
         raise ValueError(f"不是有效的 meeting-note：{path}")
@@ -122,6 +127,7 @@ def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
             ),
             evidence=_evidence(decision.evidence),
             is_next_step=True,
+            historical=historical,
         )
         entries.append(
             ReviewEntry(candidate, decision.description, date, title, note_link, transcript_link)
@@ -143,6 +149,7 @@ def candidates_from_note(path: Path, vault_dir: Path) -> list[ReviewEntry]:
             evidence=_evidence(action.evidence),
             due_date=action.due_date,
             is_next_step=True,
+            historical=historical,
         )
         entries.append(
             ReviewEntry(candidate, action.description, date, title, note_link, transcript_link)
