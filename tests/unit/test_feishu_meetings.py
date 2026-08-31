@@ -1,15 +1,11 @@
-"""会议逐字稿来源测试：本地兜底可用，Note 主链路未固定时显式报错。"""
+"""本地逐字稿兜底测试（飞书 Note 主链路的契约测试见 tests/contract/test_feishu_note.py）。"""
 
 from __future__ import annotations
 
 import pytest
 
-from summit_workbench.providers.feishu.client import FeishuClient
-from summit_workbench.providers.feishu.errors import FeishuAPIError, FeishuError
-from summit_workbench.providers.feishu.meetings import (
-    FeishuNoteSource,
-    import_local_transcript,
-)
+from summit_workbench.providers.feishu.errors import FeishuError
+from summit_workbench.providers.feishu.meetings import import_local_transcript
 
 
 def test_import_local_ok(tmp_path):
@@ -32,16 +28,3 @@ def test_import_local_empty_raises(tmp_path):
     f.write_text("   \n", encoding="utf-8")
     with pytest.raises(FeishuError):
         import_local_transcript(f, meeting_id="x")
-
-
-def test_feishu_note_source_not_yet_pinned():
-    # 主链路端点未固定前必须显式报错，绝不返回伪造结果。
-    source = FeishuNoteSource(client=object())  # type: ignore[arg-type]
-    with pytest.raises(FeishuAPIError) as ei:
-        source.fetch_transcript("m1")
-    assert "M0-10" in str(ei.value)
-
-
-def test_feishu_client_type_available():
-    # 保证 client 类型可被 verify_identity 使用（形状检查，不联网）。
-    assert FeishuClient.__name__ == "FeishuClient"

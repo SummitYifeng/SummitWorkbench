@@ -15,6 +15,7 @@ from summit_workbench.providers.feishu import (
     FeishuClient,
     FeishuConfig,
     FeishuError,
+    FeishuNoteSource,
     FeishuSession,
     import_local_transcript,
     load_feishu_config,
@@ -23,7 +24,7 @@ from summit_workbench.providers.feishu import (
 
 feishu_app = typer.Typer(
     name="feishu",
-    help="飞书身份与会议接入（M0-4：authorize-url / login / smoke / import-local）。",
+    help="飞书身份与会议接入（authorize-url / login / smoke / note-transcript / import-local）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -97,3 +98,24 @@ def import_local(
         raise typer.Exit(code=1) from exc
     typer.echo(f"✓ 已读入本地逐字稿（{len(result.text)} 字符）")
     typer.echo(f"  meeting_id={result.meeting_id}  来源={result.origin_path}")
+
+
+@feishu_app.command("note-transcript")
+def note_transcript(
+    note_id: str = typer.Option(..., "--note-id", help="会议纪要 ID（note_id）。"),
+    preview: int = typer.Option(300, "--preview", help="预览逐字稿前 N 个字符。"),
+) -> None:
+    """M0-10 冒烟：按 note_id 拉取完整逐字稿（notes → 逐字稿文档 → 正文）。"""
+    cfg = _config()
+    try:
+        session = FeishuSession(cfg)
+        client = FeishuClient(cfg, session.access_token())
+        result = FeishuNoteSource(client).fetch_transcript(note_id)
+    except FeishuError as exc:
+        typer.echo(f"✗ 拉取逐字稿失败：{exc}")
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"✓ 已取回逐字稿（{len(result.text)} 字符）")
+    typer.echo(f"  note_id={result.note_id}  doc_token={result.doc_token}")
+    if preview > 0:
+        typer.echo(f"--- 前 {preview} 字符 ---")
+        typer.echo(result.text[:preview])

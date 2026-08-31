@@ -1,12 +1,11 @@
 """会议逐字稿来源：飞书 Note 主链路 + 本地文件兜底（PRD L14）。
 
-M0-4 交付：
-- ``verify_identity`` 用稳定的 user_info 接口证明 user_access_token 与最小 scope 生效
-  （可重复、可审计的鉴权冒烟）。
-- ``import_local_transcript`` 是本地投递兜底，完全可用，不依赖任何飞书接口。
-- ``FeishuNoteSource`` 是主链路骨架：端点与响应结构因租户/纪要类型而异，
-  按 PRD L14 需在 M0-10 用真实历史会议实测后固定（见 ADR 0004）。此处不臆造端点，
-  未固定前调用会抛出显式错误并指向本地兜底，绝不返回伪造结果。
+- ``verify_identity``：稳定的 user_info 鉴权冒烟（M0-4）。
+- ``import_local_transcript``：本地投递兜底，不依赖任何飞书接口。
+- ``FeishuNoteSource``：主链路（M0-10，端点已对官方文档核实）：
+  note_id → ``vc/v1/notes/{note_id}`` 取产物 → 选逐字稿文档（artifact_type=2）的 doc_token →
+  ``docx/v1/documents/{doc_token}/raw_content`` 读正文。所需 scope：``vc:note:read`` +
+  ``docx:document:readonly``。「会议 → note_id」的自动发现留待 M1-1（此处按 note_id 驱动）。
 """
 
 from __future__ import annotations
@@ -16,10 +15,14 @@ from pathlib import Path
 from typing import Any
 
 from summit_workbench.providers.feishu.client import FeishuClient
-from summit_workbench.providers.feishu.errors import FeishuAPIError, FeishuError
+from summit_workbench.providers.feishu.errors import FeishuError
 
 # 稳定：证明 user_access_token 可用。
 USER_INFO_PATH = "/open-apis/authen/v1/user_info"
+
+# 会议纪要产物类型（官方文档）。
+ARTIFACT_MINUTES = 1  # 智能纪要文档
+ARTIFACT_TRANSCRIPT = 2  # 逐字稿文档
 
 
 @dataclass(frozen=True)
@@ -27,9 +30,10 @@ class TranscriptResult:
     """一份取得的逐字稿。``source`` 标明来源，便于审计与降级判断。"""
 
     source: str  # "feishu-note" | "local-file"
-    meeting_id: str
     text: str
+    meeting_id: str | None = None
     note_id: str | None = None
+    doc_token: str | None = None
     origin_path: str | None = None
 
 
@@ -60,18 +64,51 @@ def import_local_transcript(source_path: Path, meeting_id: str) -> TranscriptRes
 
 
 class FeishuNoteSource:
-    """飞书会议纪要主链路（骨架）。
-
-    定位已结束会议 → 取 note_id → 读智能纪要 / 逐字稿。普通纪要经 verbatim_doc_token
-    对应文档读取，统一纪要经 Note transcript 接口读取（PRD L14）。这些端点与响应结构
-    需在 M0-10 用本人租户真实会议实测后固定。
-    """
+    """飞书会议纪要主链路：note_id → 逐字稿文档 → 正文（端点已核实，2026-08）。"""
 
     def __init__(self, client: FeishuClient) -> None:
         self.client = client
 
-    def fetch_transcript(self, meeting_id: str) -> TranscriptResult:
-        raise FeishuAPIError(
-            "飞书会议纪要读取端点尚未固定：需 M0-10 用真实历史会议实测确认后实现；"
-            "在此之前请用 wb feishu import-local 走本地兜底"
+    def get_note(self, note_id: str) -> dict[str, Any]:
+        """GET /open-apis/vc/v1/notes/{note_id}，返回 note 实体（含 artifacts）。"""
+        data = self.client.get(f"/open-apis/vc/v1/notes/{note_id}")
+        note = data.get("note")
+        if not isinstance(note, dict):
+            raise FeishuError(f"纪要 {note_id} 响应缺少 note 实体")
+        return note
+
+    def read_doc_text(self, doc_token: str) -> str:
+        """GET /open-apis/docx/v1/documents/{doc_token}/raw_content，返回纯文本正文。"""
+        data = self.client.get(f"/open-apis/docx/v1/documents/{doc_token}/raw_content")
+        content = data.get("content")
+        if not isinstance(content, str):
+            raise FeishuError(f"文档 {doc_token} 未返回 content 正文")
+        return content
+
+    def fetch_transcript(self, note_id: str) -> TranscriptResult:
+        """按 note_id 取回完整逐字稿正文（artifact_type=2）。
+
+        无逐字稿产物时显式报错（不拿智能纪要冒充逐字稿），并可降级到本地兜底。
+        """
+        note = self.get_note(note_id)
+        artifacts = note.get("artifacts") or []
+        doc_token = next(
+            (
+                a.get("doc_token")
+                for a in artifacts
+                if isinstance(a, dict) and a.get("artifact_type") == ARTIFACT_TRANSCRIPT
+            ),
+            None,
+        )
+        if not doc_token:
+            raise FeishuError(
+                f"纪要 {note_id} 没有逐字稿产物（artifact_type=2）；"
+                "可能该会议未生成逐字稿，请改用本地导入兜底"
+            )
+        text = self.read_doc_text(doc_token)
+        return TranscriptResult(
+            source="feishu-note",
+            text=text,
+            note_id=note_id,
+            doc_token=doc_token,
         )
