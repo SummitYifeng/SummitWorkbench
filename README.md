@@ -101,9 +101,10 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb vault check`：vault Markdown schema 校验。
 - `wb feishu authorize-url | login | smoke | import-local`：飞书身份授权、鉴权冒烟与本地逐字稿兜底。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
+- `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。质量门：`uv run ruff check . && uv run mypy && uv run pytest`。
 
 ## 下一步
 
-按 [开发计划](docs/plans/DEVELOPMENT_PLAN.md) 推进剩余 M0 工作包：M0-5 `work-sync` 批量同步脚本、M0-10 飞书会议纪要拉取端点实测（需控制台开通会议纪要权限）。M0 全部通过后进入 M1（会议进入第二大脑）。各批次决策见 [docs/decisions/](docs/decisions/)。
+按 [开发计划](docs/plans/DEVELOPMENT_PLAN.md) 推进剩余 M0 工作包：M0-10 飞书会议纪要拉取端点实测（需控制台开通会议纪要权限）。M0 全部通过后进入 M1（会议进入第二大脑）。各批次决策见 [docs/decisions/](docs/decisions/)。
