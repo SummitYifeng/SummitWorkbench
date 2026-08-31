@@ -47,6 +47,7 @@ def smoke(
         cfg = load_model_config(capability)
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("meeting-processor")
+        merger_prompt = load_prompt("meeting-merger")
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
         typer.echo(f"配置/凭据错误：{exc}")
         raise typer.Exit(code=2) from exc
@@ -55,7 +56,14 @@ def smoke(
     task_key = f"smoke:{capability}:{transcript_file.name}"
 
     try:
-        processed = process_transcript(cfg, api_key, transcript, prompt=prompt, task_key=task_key)
+        processed = process_transcript(
+            cfg,
+            api_key,
+            transcript,
+            prompt=prompt,
+            merger_prompt=merger_prompt,
+            task_key=task_key,
+        )
     except LLMError as exc:
         typer.echo(f"✗ 模型冒烟失败：{exc}")
         raise typer.Exit(code=1) from exc

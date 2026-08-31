@@ -5,14 +5,16 @@
 
 ## 现状（截至 2026-08-31）
 
-M0 地基全部完成并**真机验证**。M1 已推进两个切片（决策见 `docs/decisions/` 0008–0009）：
+M0 地基全部完成并**真机验证**。M1 已推进三个切片（决策见 `docs/decisions/` 0008–0010）：
 
 - **M1-1 已完成**：稳定 schema 与状态机（`domain/pipeline.py`、`domain/review.py`）。
 - **M1-2 已完成并真机冒烟**：会议发现与原文归档（`repositories/meeting_state.py`、
   `repositories/meeting_archive.py`、`workflows/meetings/archive.py`、CLI `wb meeting archive|archive-local`）。
   飞书主链路完整跑通（发现 → 取稿 → 落 `meetings/transcripts/` → 幂等空转）；无纪要会议记 `unavailable`。
+- **M1-3 实现完成，待真机验收**：`wb meeting process` 读取归档原文，按 token 预算单次或分段处理，
+  层级合并并强制证据锚点；成功原子写入 `meetings/notes/`，失败同模型重试后进入错误队列且零半成品。
 
-质量门全绿：`uv run ruff check . && uv run mypy && uv run pytest`（141 项）。**下一步 M1-3**（云端结构化处理）。
+质量门全绿：`uv run ruff check . && uv run mypy && uv run pytest`（152 项）。**下一步：M1-3 真实会议验收，然后 M1-4**。
 
 ## M1 可直接复用的已建能力
 
@@ -34,8 +36,8 @@ M1 主要是**把已跑通的两条链路串起来并加审批边界**，而非�
 - **M1-1** 稳定 schema 与状态机：会议来源/逐字稿/结构化笔记/证据引用/审批候选/执行动作/处理状态；
   `discovered→fetched→archived→processed→pending-review→applied/ignored` 及 `unavailable/failed`；
   幂等键 `meeting_id + note_id`（本地导入用内容哈希）。**建议从这里起步**（纯领域，可测）。
-- **M1-2** 会议发现与原文归档：双文件落盘（逐字稿证据层 + 结构化笔记理解层），模型调用前先可靠保存逐字稿。
-- **M1-3** 云端结构化处理：接 `process_transcript`；接近上下文上限才分段汇总；失败进错误队列不产半成品。
+- **M1-2** 会议发现与原文归档：模型调用前先可靠保存逐字稿证据层。
+- **M1-3** 云端结构化处理：完整原文优先单次；接近上下文上限才分段汇总；失败进错误队列不产半成品。**实现完成，待真机验收。**
 - **M1-4** 集中审批与写回：`_vault/review/meetings.md`（勾选/删除线`#ignore`/原地改）+ 批量应用；
   路由「有期限或涉他→飞书任务；明确下一步→项目主笔记；未成熟→项目 inbox；不明→全局 inbox」；审计归档。
 - **M1-5** `wb status` + 用量账本 + 月度软预算告警 + 待确认积压分级通知（5 条或最老 >3 天）。
@@ -57,7 +59,6 @@ M1 主要是**把已跑通的两条链路串起来并加审批边界**，而非�
 
 ## 起步建议
 
-M1-1、M1-2 已完成（见「现状」）。**下一步 M1-3**（云端结构化处理）：接 `process_transcript`，
-读已归档证据（`meetings/transcripts/`）→ 模型结构化 → 产出 `meeting-note` 落 `meetings/notes/` 并回链逐字稿，
-状态 `archived → processed → pending-review`；失败进错误队列（`archived → failed`）、零半成品（L41）。
-沿用「先证据后建议、先归档后写回、逐里程碑封闭验证」。
+M1-1、M1-2 已完成；M1-3 代码和自动化验收已完成。下一步用真实会议运行 `wb meeting process`，核对
+结构化质量、证据链接、token/费用与幂等空转；通过后进入 M1-4 集中审批与写回。继续沿用“先证据后建议、
+先归档后写回、逐里程碑封闭验证”。

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "summit-workbench"
 version = "0.0.1"
-description = "外置执行管理层 + 第二大脑（M0-1 工程骨架，尚无业务能力）"
+description = "外置执行管理层 + 第二大脑（M1 会议知识链路开发中）"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }

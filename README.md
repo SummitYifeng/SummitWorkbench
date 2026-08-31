@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> 当前状态：**M1 进行中**。M0 地基（M0-1..6、M0-10）全部完成并真机冒烟。M1-1（稳定 schema 与状态机）、M1-2（会议发现与原文归档）已完成：`wb meeting archive` 已对真实会议跑通完整链路——发现 → 取回逐字稿 → 模型调用前落盘证据层（`meetings/transcripts/`）→ 重跑幂等空转；无纪要会议正确记为 `unavailable` 不冒充。仓库仍不含任何凭据、真实会议内容或本机绝对路径。
+> 当前状态：**M1 进行中**。M0 地基、M1-1（schema/状态机）、M1-2（会议发现与原文归档）已完成；M1-3（云端结构化）代码与故障注入测试完成，支持完整原文优先单次处理、按 token 预算分段与层级合并、强制证据锚点、同模型最多 3 次重试、错误队列和零半成品。真实归档链路已真机跑通；M1-3 尚待真实会议云端处理验收。仓库不含凭据或真实会议内容。
 
 ## 产品解决的问题
 
@@ -102,6 +102,7 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb feishu authorize-url | login | smoke | import-local`：飞书身份授权、鉴权冒烟与本地逐字稿兜底。
 - `wb feishu meetings | note-transcript`：按会议号 + 时间范围列出会议及 `note_id`；按 `note_id` 拉取逐字稿。
 - `wb meeting archive | archive-local`：会议发现 → 取回逐字稿 → **模型调用前**落盘证据层（`meetings/transcripts/`），幂等防重；本地兜底导入。
+- `wb meeting process`：读取已归档原文，生成 `meetings/notes/` 结构化笔记并回链证据；失败进入 `_signals/model-errors/`，不保存半成品。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 
@@ -109,4 +110,4 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 
 ## 下一步
 
-**M1（会议进入第二大脑）进行中**：M1-1（稳定 schema 与状态机）、M1-2（会议发现与原文归档，飞书主链路已真机跑通）已完成；接下来 M1-3 云端结构化处理、M1-4 集中审批与写回、M1-5 状态与费用、M1-6 `wb ask` 问答、M1-7 历史补导。各批次决策见 [docs/decisions/](docs/decisions/)。
+**M1（会议进入第二大脑）进行中**：M1-1/M1-2 已完成并真机跑通；M1-3 实现与 152 项自动化测试已完成，下一步用真实会议验收结构化质量、token/费用与错误恢复，随后进入 M1-4 集中审批与写回。之后依次是 M1-5 状态与费用、M1-6 `wb ask`、M1-7 历史补导。各批次决策见 [docs/decisions/](docs/decisions/)。
