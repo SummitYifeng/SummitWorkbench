@@ -18,3 +18,8 @@ dist/
 *.log
 .DS_Store
 config.local.toml
+
+# 真实会议逐字稿/材料禁止入库（NFR-4：不得含未去敏真实会议内容）
+# 冒烟用的真实逐字稿放这个被忽略的目录，或用仓库外路径传给 wb model smoke
+/transcripts-local/
+/招生进度会（8月活满之旅）.md

@@ -52,7 +52,22 @@ def process_transcript(
     try:
         extraction = MeetingExtraction.model_validate_json(result.text)
     except ValidationError as exc:
-        raise LLMSchemaError(f"模型输出不符合会议 schema：{exc.error_count()} 处校验错误") from exc
+        errors = exc.errors()
+        if errors:
+            first = errors[0]
+            loc = ".".join(str(p) for p in first["loc"]) or "<root>"
+            detail = f"{loc}: {first['msg']}"
+        else:
+            detail = "未知校验错误"
+        hint = ""
+        if result.usage.output_tokens >= cfg.max_output_tokens:
+            hint = (
+                f"（输出 token {result.usage.output_tokens} 已达 max_output_tokens="
+                f"{cfg.max_output_tokens}，疑似被截断，请调大该配置）"
+            )
+        raise LLMSchemaError(
+            f"模型输出不符合会议 schema（{exc.error_count()} 处）：{detail}{hint}"
+        ) from exc
 
     usage = record_from_result(cfg, result, task_key=task_key)
     return ProcessedMeeting(extraction=extraction, usage=usage, prompt_version=prompt.version_label)
