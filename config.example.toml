@@ -8,6 +8,13 @@
 timezone = "Asia/Shanghai"
 log_level = "INFO"
 
+# ── 月度软预算（M1-5）─────────────────────────────────────────────────────────
+# 只告警、不阻断新会议。省略 [budget] 或 monthly_soft_limit 则不做预算告警。
+# currency 建议与 [models.*.pricing] 的 currency 一致。
+[budget]
+monthly_soft_limit = 20.0   # 当月估算费用超过此值时，wb status --notify 提示一次
+currency = "CNY"
+
 [feishu]
 # 飞书自建应用的 App ID（非敏感，可放这里）
 app_id = "cli_xxxxxxxxxxxxxxxx"
