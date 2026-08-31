@@ -24,8 +24,10 @@ USER_INFO_PATH = "/open-apis/authen/v1/user_info"
 ARTIFACT_MINUTES = 1  # 智能纪要文档
 ARTIFACT_TRANSCRIPT = 2  # 逐字稿文档
 
-# 按会议号 + 时间范围列会议（返回体直接含 note_id）。
+# 按会议号 + 时间范围列会议（返回 meeting_briefs：id/topic/meeting_no，不含 note_id）。
 LIST_BY_NO_PATH = "/open-apis/vc/v1/meetings/list_by_no"
+# 会议详情（返回体含 note_id / start_time / status 等）。
+MEETING_GET_PATH = "/open-apis/vc/v1/meetings/{meeting_id}"
 
 
 @dataclass(frozen=True)
@@ -78,21 +80,21 @@ def import_local_transcript(source_path: Path, meeting_id: str) -> TranscriptRes
     )
 
 
-def list_meetings_by_no(
+def list_meeting_briefs(
     client: FeishuClient,
     meeting_no: str,
     start_time: int,
     end_time: int,
     *,
     max_items: int = 100,
-) -> list[MeetingSummary]:
-    """按会议号在 [start_time, end_time]（unix 秒）内列出会议，逐页翻取。
+) -> list[dict[str, Any]]:
+    """按会议号在 [start_time, end_time]（unix 秒）内列出会议摘要，逐页翻取。
 
-    返回体每项含 id/meeting_no/topic/url/note_id；note_id 为空表示无纪要。
+    返回原始 ``meeting_briefs``（含 id/meeting_no/topic，不含 note_id）。
     """
-    results: list[MeetingSummary] = []
+    briefs: list[dict[str, Any]] = []
     page_token: str | None = None
-    while len(results) < max_items:
+    while len(briefs) < max_items:
         params: dict[str, Any] = {
             "meeting_no": meeting_no,
             "start_time": str(start_time),
@@ -102,24 +104,49 @@ def list_meetings_by_no(
         if page_token:
             params["page_token"] = page_token
         data = client.get(LIST_BY_NO_PATH, params)
-        items = data.get("meeting_list") or data.get("meetings") or []
-        for m in items:
-            if not isinstance(m, dict):
-                continue
-            results.append(
-                MeetingSummary(
-                    meeting_id=str(m.get("id", "")),
-                    meeting_no=str(m.get("meeting_no", meeting_no)),
-                    topic=str(m.get("topic", "")),
-                    note_id=(str(m["note_id"]) if m.get("note_id") else None),
-                    start_time=(str(m["start_time"]) if m.get("start_time") else None),
-                    url=(str(m["url"]) if m.get("url") else None),
-                )
-            )
+        items = data.get("meeting_briefs") or data.get("meeting_list") or []
+        briefs.extend(m for m in items if isinstance(m, dict))
         if not data.get("has_more") or not data.get("page_token"):
             break
         page_token = str(data["page_token"])
-    return results[:max_items]
+    return briefs[:max_items]
+
+
+def get_meeting_detail(client: FeishuClient, meeting_id: str) -> dict[str, Any]:
+    """GET /open-apis/vc/v1/meetings/{meeting_id}，返回 meeting 实体（含 note_id）。"""
+    data = client.get(
+        MEETING_GET_PATH.format(meeting_id=meeting_id), {"with_participants": "false"}
+    )
+    meeting = data.get("meeting")
+    if not isinstance(meeting, dict):
+        raise FeishuError(f"会议 {meeting_id} 响应缺少 meeting 实体")
+    return meeting
+
+
+def list_meetings_by_no(
+    client: FeishuClient,
+    meeting_no: str,
+    start_time: int,
+    end_time: int,
+    *,
+    max_items: int = 100,
+) -> list[MeetingSummary]:
+    """列出会议并逐个取详情补全 note_id（list_by_no 只给摘要，note_id 在会议详情里）。"""
+    results: list[MeetingSummary] = []
+    for brief in list_meeting_briefs(client, meeting_no, start_time, end_time, max_items=max_items):
+        meeting_id = str(brief.get("id", ""))
+        detail = get_meeting_detail(client, meeting_id) if meeting_id else {}
+        results.append(
+            MeetingSummary(
+                meeting_id=meeting_id,
+                meeting_no=str(brief.get("meeting_no", meeting_no)),
+                topic=str(brief.get("topic", "")),
+                note_id=(str(detail["note_id"]) if detail.get("note_id") else None),
+                start_time=(str(detail["start_time"]) if detail.get("start_time") else None),
+                url=None,
+            )
+        )
+    return results
 
 
 class FeishuNoteSource:
