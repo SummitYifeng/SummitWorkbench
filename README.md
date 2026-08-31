@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> 当前状态：**无代码架构基线**。仓库目前只有产品文档、开发计划和待实现目录，不包含业务代码、依赖配置、凭据或可执行脚本。
+> 当前状态：**M0 地基开发中**。已交付可安装的 Python 工程与 `wb` CLI：M0-1 工程骨架、M0-2 项目迁移、M0-3 工作 vault、M0-4 飞书身份与权限、M0-6 云端模型接入均已完成（飞书鉴权与模型结构化已对真实环境冒烟通过）；M0-5 同步脚本与 M0-10 会议纪要拉取待进行。仓库仍不含任何凭据、真实会议内容或本机绝对路径。
 
 ## 产品解决的问题
 
@@ -85,6 +85,25 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试全�
 - 不建独立 App、服务端、向量库、RAG 或常驻进程。
 - 凭据只进入 macOS Keychain 或运行时环境，禁止进入 Git、vault、日志、fixture 和模型上下文。
 
+## 安装与使用
+
+项目用 [uv](https://docs.astral.sh/uv/) 管理 Python 3.12 环境与依赖：
+
+```bash
+uv sync --extra dev          # 安装运行时与开发依赖
+uv run wb diagnose           # 环境体检（运行时 / 路径 / 系统工具）
+uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区块
+```
+
+已实现的 `wb` 命令组：
+
+- `wb diagnose`、`wb version`：环境诊断与版本。
+- `wb vault check`：vault Markdown schema 校验。
+- `wb feishu authorize-url | login | smoke | import-local`：飞书身份授权、鉴权冒烟与本地逐字稿兜底。
+- `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
+
+本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。质量门：`uv run ruff check . && uv run mypy && uv run pytest`。
+
 ## 下一步
 
-下一次开发从 [开发计划](docs/plans/DEVELOPMENT_PLAN.md) 的“下一开发批次”开始：建立最小可测试的 Python 工程与 CLI 骨架，然后严格按 M0 工作包推进。当前基线不提供安装或运行命令，因为还没有任何实现代码。
+按 [开发计划](docs/plans/DEVELOPMENT_PLAN.md) 推进剩余 M0 工作包：M0-5 `work-sync` 批量同步脚本、M0-10 飞书会议纪要拉取端点实测（需控制台开通会议纪要权限）。M0 全部通过后进入 M1（会议进入第二大脑）。各批次决策见 [docs/decisions/](docs/decisions/)。
