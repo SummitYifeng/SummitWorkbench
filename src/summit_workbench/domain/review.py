@@ -88,6 +88,18 @@ class ApprovalCandidate:
         )
 
 
+@dataclass(frozen=True)
+class ReviewEntry:
+    """审批页中的完整条目：可编辑候选 + AI 原值 + 会议来源。"""
+
+    candidate: ApprovalCandidate
+    ai_original: str
+    meeting_date: str
+    meeting_title: str
+    note_link: str
+    transcript_link: str
+
+
 def route_candidate(
     *,
     target_project: str | None,
