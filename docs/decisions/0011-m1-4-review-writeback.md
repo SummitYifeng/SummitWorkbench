@@ -1,6 +1,6 @@
 # ADR 0011 · M1-4 集中审批与写回
 
-- 状态：✅ 实现与人工审批解析完成；⏳ 待项目 ID 解析与真实写回验收
+- 状态：✅ 实现、人工审批解析与项目名解析完成；⏳ 待真实项目别名录入与显式写回验收
 - 日期：2026-08-31
 - 里程碑：M1-4（集中审批与写回）
 - 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-4；PRD L21/L22/L23
@@ -19,6 +19,16 @@
   支持项目/global inbox。批准与拒绝均归档 AI 原值、用户最终值、目标和结果。
 - **幂等与部分失败**：本地 Markdown 写入候选 marker；飞书请求使用候选 ID 派生 `client_token`；
   审批执行另有 append-only JSONL 账本。成功项立即记账并移出活动页，失败项保留，重跑不重复成功项。
+
+## 项目名解析（补齐缺口）
+
+`repositories/project_registry.py` 扫描 `_vault/projects/*.md`，以每篇 `project-main` 笔记的
+`project` frontmatter 为规范 ID，可选 `aliases: [...]` 登记自然语言别名（如「网课系统」）。
+解析器**只向上升级**别名→规范 ID（大小写/空白不敏感），解析不到时返回 `None`、目标原样保留，
+沿用「目标文件不存在 → 留在审批页标 error」的安全行为，绝不猜错目标或造新项目名。
+接入两处：候选生成（`review_candidates`，页面一开始即显示规范 ID 与正确 route）与
+`wb review apply`（人工在审批页填的别名在应用前解析回规范 ID）。别名事实源在项目笔记
+frontmatter，加别名不改代码。
 
 ## 飞书适配
 

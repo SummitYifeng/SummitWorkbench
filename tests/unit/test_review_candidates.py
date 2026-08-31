@@ -62,6 +62,45 @@ def test_generates_decisions_and_actions_only_with_stable_routes(tmp_path):
     assert entries[3].candidate.is_actionable() is False
 
 
+def _project(vault, project: str, *, aliases: list[str]) -> None:
+    path = vault / "projects" / f"{project}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\nproject: {project}\ndate: 2026-08-31\ntype: project-main\nstatus: active\n"
+        f"aliases: [{', '.join(aliases)}]\n---\n\n# {project}\n\n"
+        "## 当前状态\n\n## 下一步\n\n## 阻塞\n\n## 决策记录\n",
+        encoding="utf-8",
+    )
+
+
+def _note_with_project(tmp_path, target: str):
+    extraction = MeetingExtraction(
+        one_minute_summary="摘要",
+        decisions=[Decision(description="采用 A", target_project=target, evidence="李四 00:02")],
+    )
+    return archive_meeting_note(
+        tmp_path,
+        MeetingNoteInput(
+            date="2026-08-31",
+            title="评审会",
+            idem_key="m:n",
+            extraction=extraction,
+            source=SourceKind.FEISHU_NOTE,
+            transcript_stem="2026-08-31-评审会-transcript",
+            model_id="m",
+            prompt_version="p@v2",
+        ),
+    ).path
+
+
+def test_natural_language_project_resolves_to_canonical_id(tmp_path):
+    _project(tmp_path, "HIC_WebClass_Chinese_Final", aliases=["网课系统"])
+    entries = candidates_from_note(_note_with_project(tmp_path, "网课系统"), tmp_path)
+    assert entries[0].candidate.target_project == "HIC_WebClass_Chinese_Final"
+    assert entries[0].candidate.route == RouteTarget.PROJECT_MAIN
+    assert entries[0].candidate.is_actionable() is True
+
+
 def test_existing_note_without_embedded_extraction_uses_body_fallback(tmp_path):
     path = _note(tmp_path)
     text = path.read_text(encoding="utf-8")

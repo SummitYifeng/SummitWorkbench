@@ -61,6 +61,8 @@ M1 主要是**把已跑通的两条链路串起来并加审批边界**，而非�
 
 ## 起步建议
 
-M1-1、M1-2、M1-3 已完成；M1-4 已生成并完成人工审批。真实 dry-run 正确识别批准、拒绝与修改，
-并因自然语言项目名“网课系统”未解析到规范 ID `HIC_WebClass_Chinese_Final` 而拒绝写入。下一步补齐项目解析，
-复核 dry-run 后运行 `wb review apply --apply`，完成写回与重跑幂等验收；通过后进入 M1-5。
+M1-1、M1-2、M1-3 已完成；M1-4 已生成并完成人工审批。**项目名解析已补齐**
+（`repositories/project_registry.py`，别名事实源在项目笔记 frontmatter `aliases:`，
+接入候选生成与 `wb review apply`；质量门 175 项全绿）。剩余两步：
+1. 在真实 `_vault/projects/*.md` 为四个项目登记 `aliases:`（用户领域知识，私有 vault 写入）。
+2. 复核 dry-run 后运行 `wb review apply --apply`，完成写回与重跑幂等验收；通过后进入 M1-5。
