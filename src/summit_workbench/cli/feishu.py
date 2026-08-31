@@ -123,7 +123,7 @@ def meetings(
 
     try:
         session = FeishuSession(cfg)
-        client = FeishuClient(cfg, session.access_token())
+        client = FeishuClient(cfg, session.tenant_access_token())
         found = list_meetings_by_no(client, meeting_no, start, end)
     except FeishuError as exc:
         typer.echo(f"✗ 列会议失败：{exc}")
@@ -148,7 +148,7 @@ def note_transcript(
     cfg = _config()
     try:
         session = FeishuSession(cfg)
-        client = FeishuClient(cfg, session.access_token())
+        client = FeishuClient(cfg, session.tenant_access_token())
         result = FeishuNoteSource(client).fetch_transcript(note_id)
     except FeishuError as exc:
         typer.echo(f"✗ 拉取逐字稿失败：{exc}")

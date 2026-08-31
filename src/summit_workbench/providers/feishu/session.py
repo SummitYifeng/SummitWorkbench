@@ -47,6 +47,13 @@ class FeishuSession:
         store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
         return tokens
 
+    def tenant_access_token(self, *, client: httpx.Client | None = None) -> SecretStr:
+        """获取应用身份 tenant_access_token（只需 app_secret，无需用户授权）。
+
+        用于读取 tenant 侧授权的会议纪要/文档资源，避开用户态未授予的 scope。
+        """
+        return auth.get_tenant_access_token(self.cfg, self._app_secret(), client=client)
+
     def access_token(self, *, client: httpx.Client | None = None) -> SecretStr:
         """刷新并返回可用的 access_token；同时把轮换出的新 refresh_token 回写 Keychain。"""
         try:

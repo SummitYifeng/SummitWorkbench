@@ -24,18 +24,17 @@ TOKEN_PATH = "/open-apis/authen/v2/oauth/token"  # 授权码换取与刷新共�
 
 # 按 PRD NFR-4 的最小权限申请的 scope。vc/minutes 的精确标识需与开放平台
 # 「应用权限」列表核对后再定；此处给出合理默认，允许在 [feishu].scopes 覆盖。
+# 这些是 **user_access_token 授权** 请求的 scope（用户态可授予项）。
+# 会议纪要/逐字稿/会议列表的读取走 tenant_access_token（应用态），其权限
+# （vc:note:read / docs:document.content:read / vc:meeting.*）在开放平台按应用授予，
+# 不进入这里——避免把仅 tenant 可授予的 scope 混入用户授权导致 20027。
 # offline_access 必需——只有授予它，换取 token 时才会返回 refresh_token。
-# vc:note:read 读会议纪要（含逐字稿产物），docx:document:readonly 读逐字稿文档正文（M0-10 已核实）。
 DEFAULT_SCOPES: tuple[str, ...] = (
     "calendar:calendar:readonly",  # 日历只读
     "task:task",  # 任务读写
-    "vc:note:read",  # 会议纪要只读（notes/{note_id} → 逐字稿产物 doc_token）
-    "docx:document:readonly",  # 逐字稿/纪要文档正文只读
+    "docx:document:readonly",  # 文档只读（用户态）
     "offline_access",  # 换取 refresh_token 必需
 )
-
-# 会议自动发现（会议 → note_id）所需的 vc 会议 scope，待 M1-1 实测确认后加入：
-# vc:meeting.meetingevent:read / vc:meeting.meetingid:read。M0-10 按 note_id 驱动，不需要它们。
 
 # Keychain 凭据引用的默认 service 名（account 统一用 app_id）。
 APP_SECRET_SERVICE = "summit-workbench-feishu-app-secret"

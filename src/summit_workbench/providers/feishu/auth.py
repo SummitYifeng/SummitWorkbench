@@ -113,6 +113,41 @@ def exchange_code(
     return _post_token(cfg, payload, client=client, on_invalid_grant_reauthorize=False)
 
 
+def get_tenant_access_token(
+    cfg: FeishuConfig,
+    app_secret: SecretStr,
+    *,
+    client: httpx.Client | None = None,
+) -> SecretStr:
+    """用 app_id + app_secret 换取 tenant_access_token（应用身份，短期有效，用完即弃）。
+
+    用于读取 tenant 侧授权的资源（会议纪要/逐字稿文档），避开用户态未授予的 scope。
+    """
+    url = f"{cfg.openapi_host}/open-apis/auth/v3/tenant_access_token/internal"
+    payload = {"app_id": cfg.app_id, "app_secret": app_secret.get_secret_value()}
+    owns_client = client is None
+    http = client or _default_client()
+    try:
+        resp = http.post(url, json=payload)
+    except httpx.HTTPError as exc:
+        raise FeishuAuthError(f"tenant_access_token 网络错误：{type(exc).__name__}") from exc
+    finally:
+        if owns_client:
+            http.close()
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise FeishuAuthError(
+            f"tenant_access_token 返回非 JSON（HTTP {resp.status_code}）"
+        ) from exc
+
+    token = data.get("tenant_access_token")
+    if data.get("code") not in (0, None) or not token:
+        raise FeishuAuthError(f"获取 tenant_access_token 失败（code={data.get('code')}）")
+    return SecretStr(str(token))
+
+
 def refresh_token(
     cfg: FeishuConfig,
     app_secret: SecretStr,

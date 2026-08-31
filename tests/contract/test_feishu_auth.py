@@ -12,6 +12,7 @@ import pytest
 from summit_workbench.providers.feishu.auth import (
     build_authorize_url,
     exchange_code,
+    get_tenant_access_token,
     refresh_token,
 )
 from summit_workbench.providers.feishu.config import FeishuConfig
@@ -98,6 +99,28 @@ def test_refresh_invalid_grant_needs_reauthorize():
     with pytest.raises(FeishuAuthError) as ei:
         refresh_token(CFG, _secret("s"), _secret("bad"), client=_client(handler))
     assert ei.value.needs_reauthorize is True
+
+
+def test_tenant_access_token_success():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/open-apis/auth/v3/tenant_access_token/internal"
+        body = json.loads(request.content)
+        assert body["app_id"] == "cli_test123"
+        assert body["app_secret"] == "app-secret"
+        return httpx.Response(
+            200, json={"code": 0, "msg": "ok", "tenant_access_token": "t-abc", "expire": 7200}
+        )
+
+    tok = get_tenant_access_token(CFG, _secret("app-secret"), client=_client(handler))
+    assert tok.get_secret_value() == "t-abc"
+
+
+def test_tenant_access_token_failure_raises():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 10003, "msg": "app secret invalid"})
+
+    with pytest.raises(FeishuAuthError):
+        get_tenant_access_token(CFG, _secret("bad"), client=_client(handler))
 
 
 def test_auth_error_message_has_no_secret():
