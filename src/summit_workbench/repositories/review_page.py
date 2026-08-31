@@ -95,7 +95,7 @@ def render_review_page(entries: list[ReviewEntry], *, today: date | None = None)
     }
     intro = """# 会议提取待确认
 
-> `- [ ]` 待确认，`- [x]` 批准，`~~整条候选~~ #ignore` 拒绝。
+> `- [ ]` 待确认，`- [x]` 批准，`~~整条候选~~`（可选追加 `#ignore`）拒绝。
 > 可修改正文、target_project、route 和 due_date；仅保存不会写回。
 > `wb review apply` 默认只预演，必须显式添加 `--apply` 才执行。
 """
@@ -142,8 +142,11 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         raise ValueError("候选首行格式无效")
     checked, payload = item_match.groups()
     decision = CandidateDecision.APPROVED if checked.lower() == "x" else CandidateDecision.PENDING
-    if payload.startswith("~~") and payload.endswith("~~ #ignore"):
-        payload = payload[2 : -len("~~ #ignore")]
+    if payload.startswith("~~") and (
+        payload.endswith("~~") or payload.endswith("~~ #ignore")
+    ):
+        suffix = "~~ #ignore" if payload.endswith("~~ #ignore") else "~~"
+        payload = payload[2 : -len(suffix)]
         decision = CandidateDecision.REJECTED
     payload_match = _PAYLOAD_RE.match(payload)
     if payload_match is None:

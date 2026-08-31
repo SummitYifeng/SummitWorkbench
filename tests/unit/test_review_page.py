@@ -62,6 +62,16 @@ def test_rejected_syntax_roundtrips():
     assert parsed.entries[0].candidate.decision == CandidateDecision.REJECTED
 
 
+def test_plain_strikethrough_is_also_rejected():
+    text = render_review_page([_entry()]).replace(
+        "- [ ] `id: m:n#action-item-0` [action-item] 提交样章",
+        "- [ ] ~~`id: m:n#action-item-0` [action-item] 提交样章~~",
+    )
+    parsed = parse_review_page(text)
+    assert parsed.errors == []
+    assert parsed.entries[0].candidate.decision == CandidateDecision.REJECTED
+
+
 def test_refresh_preserves_user_edit_and_only_adds_new(tmp_path):
     first = refresh_review_page(tmp_path, [_entry()], today=date(2026, 8, 31))
     text = first.path.read_text(encoding="utf-8").replace("提交样章", "人工改写", 1)
