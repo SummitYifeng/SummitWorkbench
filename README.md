@@ -105,6 +105,7 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb meeting process`：读取已归档原文，生成 `meetings/notes/` 结构化笔记并回链证据；失败进入 `_signals/model-errors/`，不保存半成品。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID。
 - `wb status`：汇总会议处理进度、当月 token 与估算费用、软预算与待确认候选积压；`--json` 供脚本消费，`--notify` 按去重规则发出预算/积压阈值通知（供 launchd 定时调用）。
+- `wb ask "问题" [--save] [--project P] [--limit N]`：本地按路径/frontmatter/全文召回相关笔记，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 
@@ -112,4 +113,4 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 
 ## 下一步
 
-**M1（会议进入第二大脑）进行中**：M1-1..M1-4 已完成（含项目别名解析与真实写回验收）；M1-5 状态/费用/提醒已实现并真机冒烟。下一步 M1-6 `wb ask`（第二大脑问答），再 M1-7 历史补导，随后逐项执行 PRD L44 严格验收。各批次决策见 [docs/decisions/](docs/decisions/)。
+**M1（会议进入第二大脑）进行中**：M1-1..M1-6 已完成并真机冒烟（项目别名解析与真实写回、`wb status` 状态/费用/提醒、`wb ask` 第二大脑问答）。下一步 M1-7 历史补导，随后逐项执行 PRD L44 严格验收。各批次决策见 [docs/decisions/](docs/decisions/)。

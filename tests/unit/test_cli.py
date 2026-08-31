@@ -51,6 +51,13 @@ def test_status_registered_and_json(monkeypatch, tmp_path) -> None:
     assert payload["budget"]["over_soft_limit"] is False
 
 
+def test_ask_registered() -> None:
+    result = runner.invoke(app, ["ask", "--help"])
+    assert result.exit_code == 0
+    assert "--save" in result.stdout
+    assert "--project" in result.stdout
+
+
 def test_no_args_shows_help() -> None:
     result = runner.invoke(app, [])
     # no_args_is_help=True：无参数打印帮助并以 Click 约定退出码 2 结束。
