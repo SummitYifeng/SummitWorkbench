@@ -6,11 +6,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from secrets import token_urlsafe
+from zoneinfo import ZoneInfo
 
 import typer
 
+from summit_workbench.config.settings import load_settings
 from summit_workbench.providers.feishu import (
     FeishuClient,
     FeishuConfig,
@@ -18,6 +21,7 @@ from summit_workbench.providers.feishu import (
     FeishuNoteSource,
     FeishuSession,
     import_local_transcript,
+    list_meetings_by_no,
     load_feishu_config,
     verify_identity,
 )
@@ -98,6 +102,41 @@ def import_local(
         raise typer.Exit(code=1) from exc
     typer.echo(f"✓ 已读入本地逐字稿（{len(result.text)} 字符）")
     typer.echo(f"  meeting_id={result.meeting_id}  来源={result.origin_path}")
+
+
+@feishu_app.command("meetings")
+def meetings(
+    meeting_no: str = typer.Option(..., "--meeting-no", help="9 位会议号（Feishu 会议里可见）。"),
+    since: str = typer.Option(..., "--since", help="起始日期 YYYY-MM-DD。"),
+    until: str = typer.Option(..., "--until", help="结束日期 YYYY-MM-DD（含当天）。"),
+) -> None:
+    """按会议号 + 时间范围列出会议及其 note_id（会议发现，M1-1 前置）。"""
+    cfg = _config()
+    tz = ZoneInfo(load_settings().timezone)
+    try:
+        start = int(datetime.strptime(since, "%Y-%m-%d").replace(tzinfo=tz).timestamp())
+        end_dt = datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=tz) + timedelta(days=1)
+        end = int(end_dt.timestamp()) - 1
+    except ValueError as exc:
+        typer.echo("日期格式应为 YYYY-MM-DD")
+        raise typer.Exit(code=2) from exc
+
+    try:
+        session = FeishuSession(cfg)
+        client = FeishuClient(cfg, session.access_token())
+        found = list_meetings_by_no(client, meeting_no, start, end)
+    except FeishuError as exc:
+        typer.echo(f"✗ 列会议失败：{exc}")
+        raise typer.Exit(code=1) from exc
+
+    if not found:
+        typer.echo(f"会议号 {meeting_no} 在 {since}~{until} 内没有会议")
+        raise typer.Exit(code=0)
+    for m in found:
+        note = m.note_id or "(无纪要)"
+        typer.echo(f"• {m.topic or '(无主题)'}  meeting_id={m.meeting_id}  note_id={note}")
+    typer.echo("")
+    typer.echo("对有 note_id 的会议跑：wb feishu note-transcript --note-id <note_id>")
 
 
 @feishu_app.command("note-transcript")

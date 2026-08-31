@@ -17,8 +17,10 @@ from summit_workbench.providers.feishu.errors import (
 )
 from summit_workbench.providers.feishu.meetings import (
     FeishuNoteSource,
+    MeetingSummary,
     TranscriptResult,
     import_local_transcript,
+    list_meetings_by_no,
     verify_identity,
 )
 from summit_workbench.providers.feishu.session import FeishuSession
@@ -33,8 +35,10 @@ __all__ = [
     "FeishuError",
     "FeishuNoteSource",
     "FeishuSession",
+    "MeetingSummary",
     "TranscriptResult",
     "import_local_transcript",
+    "list_meetings_by_no",
     "load_feishu_config",
     "verify_identity",
 ]

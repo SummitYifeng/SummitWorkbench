@@ -24,6 +24,21 @@ USER_INFO_PATH = "/open-apis/authen/v1/user_info"
 ARTIFACT_MINUTES = 1  # 智能纪要文档
 ARTIFACT_TRANSCRIPT = 2  # 逐字稿文档
 
+# 按会议号 + 时间范围列会议（返回体直接含 note_id）。
+LIST_BY_NO_PATH = "/open-apis/vc/v1/meetings/list_by_no"
+
+
+@dataclass(frozen=True)
+class MeetingSummary:
+    """list_by_no 返回的单场会议摘要。``note_id`` 为空表示该会议没有纪要。"""
+
+    meeting_id: str
+    meeting_no: str
+    topic: str
+    note_id: str | None
+    start_time: str | None
+    url: str | None
+
 
 @dataclass(frozen=True)
 class TranscriptResult:
@@ -61,6 +76,50 @@ def import_local_transcript(source_path: Path, meeting_id: str) -> TranscriptRes
         text=text,
         origin_path=str(source_path),
     )
+
+
+def list_meetings_by_no(
+    client: FeishuClient,
+    meeting_no: str,
+    start_time: int,
+    end_time: int,
+    *,
+    max_items: int = 100,
+) -> list[MeetingSummary]:
+    """按会议号在 [start_time, end_time]（unix 秒）内列出会议，逐页翻取。
+
+    返回体每项含 id/meeting_no/topic/url/note_id；note_id 为空表示无纪要。
+    """
+    results: list[MeetingSummary] = []
+    page_token: str | None = None
+    while len(results) < max_items:
+        params: dict[str, Any] = {
+            "meeting_no": meeting_no,
+            "start_time": str(start_time),
+            "end_time": str(end_time),
+            "page_size": 50,
+        }
+        if page_token:
+            params["page_token"] = page_token
+        data = client.get(LIST_BY_NO_PATH, params)
+        items = data.get("meeting_list") or data.get("meetings") or []
+        for m in items:
+            if not isinstance(m, dict):
+                continue
+            results.append(
+                MeetingSummary(
+                    meeting_id=str(m.get("id", "")),
+                    meeting_no=str(m.get("meeting_no", meeting_no)),
+                    topic=str(m.get("topic", "")),
+                    note_id=(str(m["note_id"]) if m.get("note_id") else None),
+                    start_time=(str(m["start_time"]) if m.get("start_time") else None),
+                    url=(str(m["url"]) if m.get("url") else None),
+                )
+            )
+        if not data.get("has_more") or not data.get("page_token"):
+            break
+        page_token = str(data["page_token"])
+    return results[:max_items]
 
 
 class FeishuNoteSource:
