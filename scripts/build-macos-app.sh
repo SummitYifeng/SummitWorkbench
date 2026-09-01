@@ -24,6 +24,25 @@ fi
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
+# 图标：若有源图 assets/icon-1024.png，用系统自带 sips + iconutil 生成 AppIcon.icns。
+ICON_KEY=""
+SRC_ICON="$REPO_ROOT/assets/icon-1024.png"
+if [[ -f "$SRC_ICON" ]] && command -v iconutil >/dev/null && command -v sips >/dev/null; then
+  ICONSET="$(mktemp -d)/AppIcon.iconset"
+  mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s" "$SRC_ICON" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+    d=$((s * 2))
+    sips -z "$d" "$d" "$SRC_ICON" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  ICON_KEY="  <key>CFBundleIconFile</key><string>AppIcon</string>"
+  echo "✓ 已生成应用图标 AppIcon.icns"
+else
+  echo "ℹ 未找到 assets/icon-1024.png（或缺 sips/iconutil），使用系统默认图标"
+  echo "  可先运行：uv run --with pillow python scripts/make-icon.py assets/icon-1024.png"
+fi
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +54,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleExecutable</key><string>SummitWorkbench</string>
+$ICON_KEY
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSUIElement</key><false/>
 </dict></plist>
