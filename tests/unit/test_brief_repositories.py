@@ -50,6 +50,15 @@ def test_extract_next_step_none_when_empty() -> None:
     assert extract_next_step(body) is None
 
 
+def test_extract_next_step_skips_html_comment_placeholder() -> None:
+    # 模板未填：只有占位注释 → 视为无下一步（不当成真实行动）
+    body = "## 下一步\n<!-- 明确的下一步行动；会议审批通过后写入此处 -->\n\n## 阻塞\n"
+    assert extract_next_step(body) is None
+    # 占位注释后有真实内容 → 取真实内容
+    body2 = "## 下一步\n<!-- 占位 -->\n- 完成第 3 章排版\n## 阻塞\n"
+    assert extract_next_step(body2) == "完成第 3 章排版"
+
+
 # —— 项目扫描（真实临时 git 仓库）——
 
 

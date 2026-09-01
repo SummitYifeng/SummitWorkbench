@@ -42,9 +42,10 @@ def count_inbox_pending(text: str) -> int:
 
 
 def extract_next_step(body: str) -> str | None:
-    """从项目主笔记正文取 ``## 下一步`` 区块下的第一条非空内容行。
+    """从项目主笔记正文取 ``## 下一步`` 区块下的第一条**实质**内容行。
 
-    去掉列表符号/复选框前缀；区块为空或不存在时返回 None。区块以下一个 ``## `` 结束。
+    去掉列表符号/复选框前缀；跳过 HTML 注释占位（``<!-- ... -->``，模板未填时的占位行），
+    避免把模板占位当成真实下一步。区块为空/只有占位/不存在时返回 None，区块以下一个 ``## `` 结束。
     """
     lines = body.splitlines()
     in_section = False
@@ -54,6 +55,8 @@ def extract_next_step(body: str) -> str | None:
             in_section = stripped[3:].strip() == "下一步"
             continue
         if in_section and stripped:
+            if stripped.startswith("<!--"):
+                continue  # 模板占位，非实质内容
             # 去掉 "- [ ] " / "- [x] " / "- " / "* " 前缀
             text = stripped
             for prefix in ("- [ ] ", "- [x] ", "- ", "* "):
