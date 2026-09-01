@@ -1,67 +1,18 @@
 """``wb brief``：手动生成晨间简报（M2-8）。
 
 采集飞书日历/任务 + 本地项目状态 → 模型排序（失败走确定性回退）→ 渲染写入当日笔记。
-飞书或模型不可用时**降级**而非失败：简报照常生成，健康度首行标注降级原因。
+飞书或模型不可用时**降级**而非失败。输入装配与运行复用 :mod:`workflows.brief.runner`。
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import typer
 
-from summit_workbench.config.secrets import CredentialError, resolve_credential
-from summit_workbench.config.settings import default_config_file, load_settings
-from summit_workbench.domain.brief import ActionSignal, fallback_ranking
-from summit_workbench.observability.status import build_status
-from summit_workbench.prompts import load_prompt
-from summit_workbench.providers.feishu import FeishuError
-from summit_workbench.providers.feishu.client import FeishuClient
-from summit_workbench.providers.feishu.config import load_feishu_config
-from summit_workbench.providers.feishu.session import FeishuSession
-from summit_workbench.providers.llm import LLMError, load_model_config
-from summit_workbench.repositories.usage_ledger import append_usage
-from summit_workbench.workflows.brief.brief import generate_brief
-from summit_workbench.workflows.brief.collect import FactsSource
-from summit_workbench.workflows.brief.feishu_facts import FeishuFactsSource
+from summit_workbench.config.settings import load_settings
 from summit_workbench.workflows.brief.publish import PublishResult, publish_brief
-from summit_workbench.workflows.brief.ranking import RankingResult, rank_actions
-
-
-def _today(timezone: str) -> str:
-    return datetime.now(ZoneInfo(timezone)).date().isoformat()
-
-
-def _build_facts_source(day: str, timezone: str) -> tuple[FactsSource | None, str | None]:
-    """尽力构建飞书事实源；不可用时返回 (None, 原因)，由简报降级处理。"""
-    try:
-        cfg = load_feishu_config()
-        access = FeishuSession(cfg).access_token()
-        client = FeishuClient(cfg, access)
-    except (FeishuError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return None, f"{type(exc).__name__}: {exc}"
-    return FeishuFactsSource(client, day=day, timezone=timezone), None
-
-
-def _build_ranker() -> tuple[object, str | None]:
-    """尽力构建模型排序器；不可用时返回一个确定性回退排序闭包。"""
-
-    def fallback(candidates: list[ActionSignal]) -> RankingResult:
-        return RankingResult(order=fallback_ranking(candidates), degraded=True)
-
-    try:
-        cfg = load_model_config("ranking")
-        api_key = resolve_credential(cfg.api_key_ref)
-        prompt = load_prompt("brief-ranker")
-    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return fallback, f"{type(exc).__name__}: {exc}"
-
-    def rank(candidates: list[ActionSignal]) -> RankingResult:
-        return rank_actions(candidates, cfg, api_key, prompt=prompt)
-
-    return rank, None
+from summit_workbench.workflows.brief.runner import run_brief, today_iso
 
 
 def brief_command(
@@ -80,33 +31,17 @@ def brief_command(
     """生成今日晨间简报并幂等写入 ``_vault/daily/YYYY-MM-DD.md``。"""
     settings = load_settings()
     paths = settings.work_paths()
-    timezone = settings.timezone
-    day = date or _today(timezone)
+    day = date or today_iso(settings.timezone)
 
-    facts_source, feishu_note = _build_facts_source(day, timezone)
-    ranker, _ranker_note = _build_ranker()
-
-    try:
-        pending_review = build_status(
-            paths.vault_dir, config_file=default_config_file()
-        ).backlog.count
-    except (OSError, ValueError):
-        pending_review = 0
-
-    result = generate_brief(
-        paths.work_root,
-        paths.vault_dir,
+    run = run_brief(
+        work_root=paths.work_root,
+        vault_dir=paths.vault_dir,
+        timezone=settings.timezone,
         day=day,
-        timezone=timezone,
-        facts_source=facts_source,
-        rank=ranker,  # type: ignore[arg-type]
-        pending_review_count=pending_review,
         write=not dry_run,
         notify=not dry_run,
     )
-
-    if result.ranking.usage is not None:
-        append_usage(paths.vault_dir, result.ranking.usage)
+    result = run.result
 
     published: PublishResult | None = None
     if commit and not dry_run and result.note_path and result.snapshot_path:
@@ -129,7 +64,7 @@ def brief_command(
                     "ranking_degraded": result.ranking.degraded,
                     "note_path": str(result.note_path) if result.note_path else None,
                     "snapshot_path": str(result.snapshot_path) if result.snapshot_path else None,
-                    "feishu_unavailable": feishu_note,
+                    "feishu_unavailable": run.feishu_unavailable,
                     "publish": published.status.value if published else None,
                 },
                 ensure_ascii=False,
@@ -140,8 +75,8 @@ def brief_command(
 
     typer.echo(result.markdown)
     typer.echo("")
-    if feishu_note:
-        typer.echo(f"ℹ 飞书事实源不可用，已降级：{feishu_note}")
+    if run.feishu_unavailable:
+        typer.echo(f"ℹ 飞书事实源不可用，已降级：{run.feishu_unavailable}")
     if result.note_path:
         typer.echo(f"✓ 已写入 {result.note_path}")
         typer.echo(f"✓ 快照 {result.snapshot_path}")

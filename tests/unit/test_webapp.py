@@ -51,11 +51,24 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
     return TestClient(create_app(ctx)), vault
 
 
-def test_root_redirects_to_review(tmp_path: Path) -> None:
-    client, _ = _client(tmp_path)
-    resp = client.get("/", follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/review"
+def test_home_renders_dashboard(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path)
+    # 放一份当日简报进 daily 笔记，看板应渲染其内容
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from summit_workbench.repositories.daily_note import write_brief
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_brief(vault, day, "# 晨间简报\n## 需要行动（1/5）\n- 测试行动项")
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "SummitWorkbench" in resp.text
+    assert "今日简报" in resp.text
+    assert "测试行动项" in resp.text  # markdown 渲染
+    assert "问第二大脑" in resp.text  # ask 表单
+    assert "待确认候选" in resp.text  # 状态 tile
 
 
 def test_review_page_lists_candidate(tmp_path: Path) -> None:
@@ -109,6 +122,33 @@ def test_plan_shows_dry_run(tmp_path: Path) -> None:
     assert resp.status_code == 200
     assert "DRY-RUN" in resp.text
     assert "project-main" in resp.text or "m1#decision-0" in resp.text
+
+
+def test_run_weekly_creates_note(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path)
+    resp = client.post("/run/weekly", follow_redirects=False)
+    assert resp.status_code == 303
+    weekly_dir = vault / "reviews" / "weekly"
+    assert weekly_dir.is_dir() and any(weekly_dir.glob("*.md"))
+
+
+def test_ask_without_model_shows_unavailable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _ = _client(tmp_path)
+    resp = client.post("/ask", data={"question": "最近有什么决策"}, follow_redirects=False)
+    assert resp.status_code == 200
+    assert "问答不可用" in resp.text
+    assert "最近有什么决策" in resp.text  # 问题回填
+
+
+def test_md_to_html_renders_subset() -> None:
+    from summit_workbench.webapp.views import md_to_html
+
+    html = md_to_html("## 标题\n- 项目 **粗** `代码`\n> 引用 [[note.md]]")
+    assert "<h3>标题</h3>" in html
+    assert "<li>项目 <strong>粗</strong> <code>代码</code></li>" in html
+    assert "<blockquote>引用 <span class=\"wikilink\">note.md</span></blockquote>" in html
 
 
 def test_bad_candidate_shows_message(tmp_path: Path) -> None:
