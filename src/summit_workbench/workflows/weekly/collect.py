@@ -48,8 +48,9 @@ def _in_week(day_value: object, start_iso: str, end_iso: str) -> bool:
     return start_iso <= day_iso <= end_iso
 
 
-def _collect_commits(signals: WeeklySignals, work_root: Path, vault_dir: Path,
-                     start_iso: str, end_iso: str) -> list[str]:
+def _collect_commits(
+    signals: WeeklySignals, work_root: Path, vault_dir: Path, start_iso: str, end_iso: str
+) -> list[str]:
     """各项目本周 git 提交 → 完成项；返回本周有提交的项目名（用于判定停滞）。"""
     active: list[str] = []
     for project in scan_projects(work_root, vault_dir):
@@ -93,8 +94,9 @@ def _collect_commits(signals: WeeklySignals, work_root: Path, vault_dir: Path,
     return active
 
 
-def _collect_meeting_decisions(signals: WeeklySignals, vault_dir: Path,
-                               start_iso: str, end_iso: str) -> None:
+def _collect_meeting_decisions(
+    signals: WeeklySignals, vault_dir: Path, start_iso: str, end_iso: str
+) -> None:
     """本周会议笔记的 ``## 已形成决策`` → 关键决策（附来源）。"""
     notes_dir = vault_dir / "meetings" / "notes"
     if not notes_dir.is_dir():

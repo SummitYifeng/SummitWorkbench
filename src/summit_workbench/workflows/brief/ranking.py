@@ -104,9 +104,7 @@ def rank_actions(
     try:
         order, model_groups = _parse_order(result.text, allowed)
     except (ValueError, json.JSONDecodeError):
-        return RankingResult(
-            order=fallback, groups=default_groups, degraded=True, usage=usage
-        )
+        return RankingResult(order=fallback, groups=default_groups, degraded=True, usage=usage)
 
     groups = {**default_groups, **model_groups}
     return RankingResult(

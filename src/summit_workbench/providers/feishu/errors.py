@@ -16,20 +16,43 @@ class FeishuAuthError(FeishuError):
 
     ``needs_reauthorize`` 为真时表示 refresh_token 已失效，需要用户重新走一次授权，
     不应静默重试（对应 R5 / NFR-4 的「失败时显式告警，不静默重试」）。
+
+    ``retryable`` / ``retry_after`` 供退避层判断：仅瞬时基础设施故障（超时 / 429 / 5xx）
+    可重试；``needs_reauthorize`` 一类语义失败绝不重试。
     """
 
-    def __init__(self, message: str, *, needs_reauthorize: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        needs_reauthorize: bool = False,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.needs_reauthorize = needs_reauthorize
+        self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class FeishuAPIError(FeishuError):
     """飞书 API 返回非零 code 或 HTTP 错误。
 
     保留 ``code`` 与 ``status`` 以便审计与降级判断，但不保留响应中可能的敏感正文。
+    ``retryable`` / ``retry_after`` 供退避层判断瞬时故障（超时 / 429 / 5xx）与其等待时长。
     """
 
-    def __init__(self, message: str, *, code: int | None = None, status: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        status: int | None = None,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.status = status
+        self.retryable = retryable
+        self.retry_after = retry_after

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.domain.review import CandidateKind
+from summit_workbench.repositories._atomic import atomic_write_text
 
 _GLOBAL_INBOX_HEADING = "## 待处理条目"
 
@@ -44,9 +45,7 @@ def _append_under_heading(path: Path, heading: str, line: str, candidate_id: str
         end -= 1
     addition = ["", f"- {line}", f"  {marker}", ""]
     updated = [*lines[:end], *addition, *lines[end:]]
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text("\n".join(updated).rstrip() + "\n", encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
     return True
 
 
@@ -62,14 +61,10 @@ def append_project_main(
     return path, _append_under_heading(path, heading, description, candidate_id)
 
 
-def append_global_inbox(
-    vault_dir: Path, description: str, candidate_id: str
-) -> tuple[Path, bool]:
+def append_global_inbox(vault_dir: Path, description: str, candidate_id: str) -> tuple[Path, bool]:
     path = vault_dir / "inbox.md"
     _ensure_global_inbox(path)
-    written = _append_under_heading(
-        path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id
-    )
+    written = _append_under_heading(path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id)
     return path, written
 
 

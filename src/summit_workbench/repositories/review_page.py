@@ -20,6 +20,7 @@ from summit_workbench.domain.review import (
     RouteTarget,
 )
 from summit_workbench.domain.vault import validate_note
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import parse_frontmatter
 
 REVIEW_PATH = ("review", "meetings.md")
@@ -143,9 +144,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         raise ValueError("候选首行格式无效")
     checked, payload = item_match.groups()
     decision = CandidateDecision.APPROVED if checked.lower() == "x" else CandidateDecision.PENDING
-    if payload.startswith("~~") and (
-        payload.endswith("~~") or payload.endswith("~~ #ignore")
-    ):
+    if payload.startswith("~~") and (payload.endswith("~~") or payload.endswith("~~ #ignore")):
         suffix = "~~ #ignore" if payload.endswith("~~ #ignore") else "~~"
         payload = payload[2 : -len(suffix)]
         decision = CandidateDecision.REJECTED
@@ -216,9 +215,11 @@ def parse_review_page(text: str) -> ParsedReviewPage:
         if _ITEM_RE.match(line):
             block: list[str] = []
             cursor = index + 1
-            while cursor < len(lines) and not _ITEM_RE.match(lines[cursor]) and not lines[
-                cursor
-            ].startswith("## "):
+            while (
+                cursor < len(lines)
+                and not _ITEM_RE.match(lines[cursor])
+                and not lines[cursor].startswith("## ")
+            ):
                 if lines[cursor].strip():
                     block.append(lines[cursor])
                 cursor += 1
@@ -255,8 +256,5 @@ def refresh_review_page(
             by_id[stable_id] = entry
             added += 1
     combined = list(by_id.values())
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(render_review_page(combined, today=today), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, render_review_page(combined, today=today), ensure_parents=True)
     return RefreshOutcome(path, added=added, preserved=len(existing))

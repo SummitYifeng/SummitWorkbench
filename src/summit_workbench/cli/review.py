@@ -83,12 +83,9 @@ def apply_review(
         icon = "✓" if action.executable else "✗"
         detail = f"  原因：{action.reason}" if action.reason else ""
         typer.echo(
-            f"{icon} {action.candidate_id}  {action.decision.value} → "
-            f"{action.destination}{detail}"
+            f"{icon} {action.candidate_id}  {action.decision.value} → {action.destination}{detail}"
         )
-    typer.echo(
-        f"结果：批准写回={report.applied}  拒绝归档={report.rejected}  失败={report.failed}"
-    )
+    typer.echo(f"结果：批准写回={report.applied}  拒绝归档={report.rejected}  失败={report.failed}")
     if report.archive_path is not None:
         typer.echo(f"审计：{report.archive_path}")
     if report.failed:

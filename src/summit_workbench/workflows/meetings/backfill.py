@@ -238,9 +238,7 @@ def run_backfill(
         )
         if report.action == "failed":
             failed += 1
-            results.append(
-                BackfillItemResult(item, "failed", reason=report.reason)
-            )
+            results.append(BackfillItemResult(item, "failed", reason=report.reason))
             continue
         count = 0
         if include_actions and report.note_path is not None:

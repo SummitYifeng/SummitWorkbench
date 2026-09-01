@@ -21,9 +21,7 @@ def write_snapshot(vault_dir: Path, day: str, payload: dict[str, object]) -> Pat
     """覆盖写当日快照，返回文件路径。"""
     path = snapshot_path(vault_dir, day)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
 
 

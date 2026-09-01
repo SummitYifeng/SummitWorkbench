@@ -16,6 +16,7 @@ from summit_workbench.domain.review import (
     CandidateDecision,
     RouteTarget,
 )
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.review_page import (
     parse_review_page,
     render_review_page,
@@ -27,8 +28,9 @@ class ReviewEditError(RuntimeError):
     """审批页不可编辑（存在语法错误 / 找不到候选）。"""
 
 
-def _rewrite(vault_dir: Path, candidate_id: str,
-             mutate: Callable[[ApprovalCandidate], ApprovalCandidate]) -> None:
+def _rewrite(
+    vault_dir: Path, candidate_id: str, mutate: Callable[[ApprovalCandidate], ApprovalCandidate]
+) -> None:
     path = review_path(vault_dir)
     if not path.is_file():
         raise ReviewEditError("审批页不存在，先运行 wb review refresh")
@@ -45,9 +47,7 @@ def _rewrite(vault_dir: Path, candidate_id: str,
             new_entries.append(entry)
     if not found:
         raise ReviewEditError(f"找不到候选：{candidate_id}")
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(render_review_page(new_entries), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, render_review_page(new_entries))
 
 
 def set_decision(vault_dir: Path, candidate_id: str, decision: CandidateDecision) -> None:

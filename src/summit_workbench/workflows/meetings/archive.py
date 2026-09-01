@@ -173,6 +173,4 @@ def archive_meetings(
     now: datetime | None = None,
 ) -> list[ArchiveReport]:
     """批量归档；逐场独立，单场取稿失败向上抛由调用方决定是否继续。"""
-    return [
-        archive_meeting(vault_dir, m, fetch, projects=projects, now=now) for m in meetings
-    ]
+    return [archive_meeting(vault_dir, m, fetch, projects=projects, now=now) for m in meetings]

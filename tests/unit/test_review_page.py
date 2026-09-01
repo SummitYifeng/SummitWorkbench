@@ -101,12 +101,15 @@ def test_refresh_refuses_to_overwrite_invalid_page(tmp_path):
 
 
 def test_parser_ignores_template_example_inside_html_comment():
-    text = render_review_page([]) + """
+    text = (
+        render_review_page([])
+        + """
 <!-- 示例：
 ## 2026-08-30 示例会
 - [ ] `id: example` [行动项] 这不是实际候选
 -->
 """
+    )
     parsed = parse_review_page(text)
     assert parsed.errors == []
     assert parsed.entries == []

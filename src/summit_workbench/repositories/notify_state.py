@@ -10,6 +10,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from summit_workbench.repositories._atomic import atomic_write_text
+
 NOTIFY_STATE_SUBDIR = ("_signals", "notifications")
 _STATE_NAME = "state.json"
 
@@ -52,7 +54,5 @@ def save_notify_state(vault_dir: Path, state: NotifyState) -> Path:
         "budget_notified": state.budget_notified,
         "backlog_severity": state.backlog_severity,
     }
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(row, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_text(path, json.dumps(row, ensure_ascii=False, indent=2))
     return path

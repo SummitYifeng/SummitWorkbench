@@ -86,14 +86,14 @@
 - 附带：`LockBusy` / `BUSY` 状态把「为什么两个任务一起跑就出问题」的幽灵故障变成一行
   可见结果。
 
-## 遗留（同批评审识别出的其余低垂果实，未在本 ADR 内实现）
+## 遗留（同批评审识别出的其余低垂果实）
 
-- **LHF #2**：追加型 JSONL 日志（`repositories/meeting_state.py`、`usage_ledger.py`）的
-  容错读 + Pydantic 逐行兜底。当前 `json.loads(line)` 裸调用，一条半截行（进程被 kill /
-  磁盘满 / 断电导致最后一行未闭合）会让 **整本** 读取 `JSONDecodeError` 崩溃；且 `_task_from_row`
-  用 `row["…"]` 硬索引，缺键即 `KeyError`。对策：逐行 `model_validate_json`，坏行跳过 +
-  隔离 + 告警。
-- **LHF #3**：飞书 HTTP 客户端复用 LLM 客户端已有的重试/退避策略并尊重 `Retry-After`。
-  `providers/llm/client.py` 已有指数退避重试（超时/429/5xx），而 `providers/feishu/client.py`
-  与 `auth.py` 仍是 **单发**——一次瞬时抖动即让整趟拉取报废。对策：抽公共 `send_with_retry`
-  两处共用，并给长驻客户端设 `keepalive_expiry` 防复用半开连接。
+- **LHF #2**（✅ 已实现，见 ADR 0017）：追加型 JSONL 日志（`repositories/meeting_state.py`、
+  `usage_ledger.py`）的容错读 + Pydantic 逐行兜底。原 `json.loads(line)` 裸调用，一条半截行
+  （进程被 kill / 磁盘满 / 断电导致最后一行未闭合）会让 **整本** 读取 `JSONDecodeError` 崩溃；
+  且 `_task_from_row` 用 `row["…"]` 硬索引，缺键即 `KeyError`。对策：逐行 `model_validate_json`，
+  坏行跳过 + 隔离 + 告警（`repositories/_jsonl.py`）。
+- **LHF #3**（✅ 已实现，见 ADR 0018）：飞书 HTTP 客户端复用 LLM 客户端已有的重试/退避策略
+  并尊重 `Retry-After`。原 `providers/feishu/client.py` 与 `auth.py` 是 **单发**——一次瞬时抖动
+  即让整趟拉取报废。对策：抽公共 `send_with_retry` 两处共用，并给长驻客户端设
+  `keepalive_expiry` 防复用半开连接（`providers/_resilient.py`）。

@@ -88,9 +88,7 @@ def test_fetch_failure_leaves_discovered_for_retry(tmp_path):
 
 
 def test_local_archive_keys_on_content_hash(tmp_path):
-    meeting = DiscoveredMeeting(
-        title="本地会议", date="2026-08-30", source=SourceKind.LOCAL_FILE
-    )
+    meeting = DiscoveredMeeting(title="本地会议", date="2026-08-30", source=SourceKind.LOCAL_FILE)
     report = archive_meeting(tmp_path, meeting, lambda _m: TRANSCRIPT)
     assert report.action == "archived"
     assert report.idem_key == local_idempotency_key(TRANSCRIPT)

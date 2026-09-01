@@ -63,9 +63,7 @@ def test_collect_isolates_source_failure(tmp_path: Path) -> None:
         open_tasks=[TaskItem("t1", "交周报", "2026-09-02", False)],
         fail={"meetings"},  # 日历失败，任务仍应采集到
     )
-    collected = collect_signals(
-        tmp_path, tmp_path / "_vault", timezone=TZ, facts_source=source
-    )
+    collected = collect_signals(tmp_path, tmp_path / "_vault", timezone=TZ, facts_source=source)
     assert collected.meetings == []
     assert len(collected.tasks) == 1
     assert any("飞书日历" in f for f in collected.source_failures)
@@ -74,9 +72,7 @@ def test_collect_isolates_source_failure(tmp_path: Path) -> None:
 
 
 def test_collect_local_only_when_no_feishu(tmp_path: Path) -> None:
-    collected = collect_signals(
-        tmp_path, tmp_path / "_vault", timezone=TZ, facts_source=None
-    )
+    collected = collect_signals(tmp_path, tmp_path / "_vault", timezone=TZ, facts_source=None)
     assert any("飞书未配置" in f for f in collected.source_failures)
 
 
@@ -87,9 +83,7 @@ class _BadCompleter:
     def complete(self, system: str, user: str, *, json_mode: bool = True):  # noqa: ANN001
         from summit_workbench.providers.llm.client import CompletionResult, Usage
 
-        return CompletionResult(
-            text="not json at all", usage=Usage(1, 1), model_id="m", attempts=1
-        )
+        return CompletionResult(text="not json at all", usage=Usage(1, 1), model_id="m", attempts=1)
 
 
 def test_ranking_degrades_on_bad_json() -> None:
@@ -105,9 +99,7 @@ def test_ranking_degrades_on_bad_json() -> None:
     ]
     from pydantic import SecretStr
 
-    result = rank_actions(
-        candidates, cfg, SecretStr("k"), prompt=prompt, completer=_BadCompleter()
-    )
+    result = rank_actions(candidates, cfg, SecretStr("k"), prompt=prompt, completer=_BadCompleter())
     assert result.degraded is True
     assert result.order == ["a"]  # 回退仍给出确定性顺序
     assert result.usage is not None  # 调用发生了，用量已记录
@@ -157,8 +149,12 @@ def test_generate_brief_writes_and_reruns_idempotent(tmp_path: Path) -> None:
     )
 
     first = generate_brief(
-        work_root, vault, day="2026-09-01", timezone=TZ,
-        facts_source=source, rank=_fallback_rank,
+        work_root,
+        vault,
+        day="2026-09-01",
+        timezone=TZ,
+        facts_source=source,
+        rank=_fallback_rank,
     )
     assert first.note_path == daily_note_path(vault, "2026-09-01")
     assert first.note_path is not None and first.note_path.is_file()
@@ -167,8 +163,12 @@ def test_generate_brief_writes_and_reruns_idempotent(tmp_path: Path) -> None:
 
     # 重跑：内容一致，不重复锚点
     second = generate_brief(
-        work_root, vault, day="2026-09-01", timezone=TZ,
-        facts_source=source, rank=_fallback_rank,
+        work_root,
+        vault,
+        day="2026-09-01",
+        timezone=TZ,
+        facts_source=source,
+        rank=_fallback_rank,
     )
     assert second.note_path is not None
     second_text = second.note_path.read_text(encoding="utf-8")
@@ -182,8 +182,13 @@ def test_generate_brief_dry_run_writes_nothing(tmp_path: Path) -> None:
     vault = work_root / "_vault"
     vault.mkdir(parents=True)
     result = generate_brief(
-        work_root, vault, day="2026-09-01", timezone=TZ,
-        facts_source=None, rank=_fallback_rank, write=False,
+        work_root,
+        vault,
+        day="2026-09-01",
+        timezone=TZ,
+        facts_source=None,
+        rank=_fallback_rank,
+        write=False,
     )
     assert result.note_path is None
     assert result.snapshot_path is None

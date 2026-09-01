@@ -24,6 +24,7 @@ def write_weekly(vault_dir: Path, week: str, start: str, end: str, body_markdown
     """覆盖写周复盘笔记，返回路径。"""
     path = weekly_path(vault_dir, week)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_frontmatter(week, start, end) + "\n" + body_markdown.rstrip() + "\n",
-                    encoding="utf-8")
+    path.write_text(
+        _frontmatter(week, start, end) + "\n" + body_markdown.rstrip() + "\n", encoding="utf-8"
+    )
     return path

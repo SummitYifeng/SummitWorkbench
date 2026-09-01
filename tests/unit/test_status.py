@@ -63,7 +63,7 @@ def _pending_entry(stable_id: str, meeting_date: str) -> ReviewEntry:
 
 def _budget_config(tmp_path, limit: float | None = 20.0):
     path = tmp_path / "config.toml"
-    body = "[budget]\ncurrency = \"CNY\"\n"
+    body = '[budget]\ncurrency = "CNY"\n'
     if limit is not None:
         body += f"monthly_soft_limit = {limit}\n"
     path.write_text(body, encoding="utf-8")
@@ -73,7 +73,7 @@ def _budget_config(tmp_path, limit: float | None = 20.0):
 def test_load_budget_settings_missing_file_or_table(tmp_path):
     assert load_budget_settings(tmp_path / "nope.toml") == (None, "CNY")
     empty = tmp_path / "empty.toml"
-    empty.write_text("timezone = \"Asia/Shanghai\"\n", encoding="utf-8")
+    empty.write_text('timezone = "Asia/Shanghai"\n', encoding="utf-8")
     assert load_budget_settings(empty) == (None, "CNY")
 
 

@@ -277,9 +277,4 @@ class CollectedSignals:
     @property
     def signal_count(self) -> int:
         """当日「有无实质信号」的度量（健康度用）。"""
-        return (
-            len(self.meetings)
-            + len(self.tasks)
-            + len(self.candidates)
-            + len(self.completions)
-        )
+        return len(self.meetings) + len(self.tasks) + len(self.candidates) + len(self.completions)

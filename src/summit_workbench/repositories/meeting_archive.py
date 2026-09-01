@@ -46,7 +46,7 @@ def notes_dir(vault_dir: Path) -> Path:
 def slugify(title: str) -> str:
     """把标题压成文件名安全的 slug（保留中文/字母/数字，其余折成 ``-``）。"""
     slug = _SLUG_RE.sub("-", title.strip()).strip("-")
-    return (slug[:_SLUG_MAX].strip("-") or "untitled")
+    return slug[:_SLUG_MAX].strip("-") or "untitled"
 
 
 def transcript_stem(date: str, slug: str) -> str:
