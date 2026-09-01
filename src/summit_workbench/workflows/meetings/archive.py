@@ -150,12 +150,7 @@ def archive_meeting(
     if prior is not None and prior.state in _ARCHIVED_OR_BEYOND:
         return _skip_report(vault_dir, meeting, idem_key, prior.state)
 
-    task = MeetingTask(
-        idem_key=idem_key,
-        source=SourceKind.LOCAL_FILE,
-        state=ProcessingState.FETCHED,
-        meeting_id=meeting.meeting_id,
-    )
+    task = MeetingTask.for_local(text, meeting_id=meeting.meeting_id)
     record_task(vault_dir, task, now=now)  # fetched
     outcome = archive_transcript(vault_dir, _archive_input(meeting, text, projects, idem_key))
     task = task.advanced_to(ProcessingState.ARCHIVED)

@@ -6,12 +6,12 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | M1 全部完成，PRD L44 严格验收 6/6 真机通过（见 `docs/plans/M1_ACCEPTANCE.md`）；下一步 M2 晨间简报 |
+| 当前阶段 | `v0.1.0` 首发：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6，见 `docs/plans/M1_ACCEPTANCE.md`）+ 三项韧性加固 + 四项正式使用前加固（ADR 0016–0022）；下一步 M3 带上下文启动与收尾 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | `wb` CLI（已就绪）、Obsidian 待确认页与每日笔记 |
+| 交互入口 | `wb` CLI（已就绪）、可选本地 Web 面板 `wb web`、Obsidian 待确认页与每日笔记 |
 | 权威规格 | `docs/product/PRD.md` v1.1 |
 
 ## Mission
@@ -57,15 +57,17 @@
 - `domain`：会议、证据、审批项、项目、信号、模型用量等稳定类型与规则。
 - `providers`：飞书 OpenAPI 和云端模型 API 适配。
 - `repositories`：vault Markdown、幂等状态、错误队列、用量账本。
-- `workflows`：会议、审批、问答、简报、上下文启动与录入。
-- `observability`：`wb status`、结构化日志、macOS 通知、预算和积压告警。
-- `scheduling`：launchd 触发与补跑逻辑，不实现常驻服务。
+- `workflows`：会议、审批、问答、简报、周复盘、同步的编排（上下文启动与录入属 M3/M4 规划）。
+- `observability`：`wb status`、运行心跳与定时任务健康度、macOS 通知、预算和积压告警。
+- `webapp`：可选本地 Web 面板（FastAPI 服务端渲染，复用领域逻辑，无独立前端框架）。
+
+定时触发由 `deploy/launchd/` 的 plist + `scripts/install-launchd.sh` 承担，不实现常驻服务，故无独立 `scheduling` 模块。
 
 具体库与版本在首次代码批次中通过最小技术验证后锁定，不在本次无代码基线中添加依赖。
 
 ## 非目标
 
-- 独立桌面 App 或 Web 面板。
+- 云端服务端、常驻守护进程或多用户部署。（后加入的 `wb web` 本地面板与 macOS 启动器 App 是**纯本地、按需启动**的可选便利层，复用同一套领域逻辑，不引入服务端、不改变数据边界——`.app` 只是双击启动本地面板。）
 - 本地模型、敏感会议分流或多模型自动切换。
 - 向量数据库、Embedding、RAG 或在本项目重建 SummitKnowledge。
 - 下载飞书会议录像。
@@ -81,6 +83,13 @@
 
 不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界
+## 当前交付边界（v0.1.0）
 
-已交付可安装的 Python 工程与 `wb` CLI。M0、M1-1、M1-2、M1-3 已完成并真机跑通。M1-4 已实现稳定候选、集中审批页、编辑保留、dry-run 默认、批准/拒绝审计、本地写回、飞书 Task v2 路由、部分失败隔离与双层幂等；真实会议的批准、拒绝和原地修改均已正确解析。真实 dry-run 安全拦截了自然语言项目名“网课系统”对应主笔记不存在的问题；下一步补齐规范项目 ID 解析，再完成显式写回与重跑幂等验收。
+已交付可安装的 Python 工程、`wb` CLI 与可选本地 Web 面板。M0 / M1 / M2 全部完成并经真实数据/真机验证：
+
+- **M0** 地基：工作目录与 vault、项目档案、飞书身份与最小权限、`wb sync` 非破坏性同步、云端模型与用量账本冒烟。
+- **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb ask` 带来源问答、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
+- **M2** 晨间简报：`wb brief` 全链路（飞书日历/任务 + 项目扫描 → 模型排序/确定性回退 → 幂等写当日笔记）与 `wb weekly` 周复盘，均由 launchd 定时触发。
+- **加固**：工作区跨进程锁、JSONL 容错读、飞书退避重试（ADR 0016–0018）；schema 版本号、运行心跳健康度、`wb doctor` 预检、飞书授权可见性（ADR 0019–0022）；GitHub Actions 质量门（macOS，360 项全绿）。
+
+下一步 M3（带上下文启动与收尾）。变更记录见 `CHANGELOG.md`。

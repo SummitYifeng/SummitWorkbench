@@ -13,6 +13,7 @@ from summit_workbench.domain.review import (
     ReviewEntry,
     RouteTarget,
 )
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.note_status import update_note_status
 from summit_workbench.repositories.project_registry import (
@@ -271,9 +272,7 @@ def apply_meeting_review(
             continue
         remaining.append(replace(entry, apply_error=failure_reasons.get(stable_id)))
     archive_path = archive_executions(vault_dir, records, now=now) if records else None
-    temporary = page.with_suffix(".md.tmp")
-    temporary.write_text(render_review_page(remaining), encoding="utf-8")
-    temporary.replace(page)
+    atomic_write_text(page, render_review_page(remaining))
     _update_meeting_states(vault_dir, handled, remaining, now=now)
     return ApplyReport(
         False,

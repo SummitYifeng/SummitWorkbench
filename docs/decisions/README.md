@@ -23,7 +23,12 @@
 | [0016](0016-workspace-lock.md) | 韧性加固 | 工作区级跨进程锁（`config/locking.py`）：飞书 refresh_token 轮换与 git 写序列互斥（LHF #1）|
 | [0017](0017-jsonl-tolerant-read.md) | 韧性加固 | JSONL 日志容错读 + Pydantic 逐行兜底（`repositories/_jsonl.py`）：半截行/缺键行跳过+隔离，不再整本崩溃（LHF #2）|
 | [0018](0018-feishu-retry.md) | 韧性加固 | 飞书 HTTP 复用公共退避重试 + 尊重 Retry-After（`providers/_resilient.py`）：瞬时抖动自动重试、半开连接防护（LHF #3）|
+| [0019](0019-schema-versioning.md) | 正式使用前加固 | 持久化状态 schema 版本号（`repositories/_schema.py` 中央登记表）：机器状态落盘打 `schema_version`，为未来演进留迁移锚点（加固 #1）|
+| [0020](0020-run-heartbeat-health.md) | 正式使用前加固 | 运行心跳 + 定时任务健康度（`_signals/run-heartbeat/` + `domain/run_health.py`）：连续失败≥3 去重告警，`wb status` 可见（加固 #2）|
+| [0021](0021-doctor-preflight.md) | 正式使用前加固 | 统一预检 `wb doctor`：底座/vault/飞书/模型/launchd 端到端就绪表，默认离线无副作用（加固 #3）|
+| [0022](0022-feishu-reauth-visibility.md) | 正式使用前加固 | 飞书 token 失效降级 + 可见性（`_signals/feishu-auth.json`）：失效醒目提示 `wb feishu login`，简报仍降级照出（加固 #4）|
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
-底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地。
+底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
 配套的写侧原子写归并（`repositories/_atomic.py`）随 LHF #2 一并完成。
+正式使用前再做四项加固（ADR 0019–0022）+ CI 质量门/覆盖率体检，`v0.1.0` 首发。
