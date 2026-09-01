@@ -1,22 +1,27 @@
-"""项目名（含自然语言别名）到规范项目 ID 的解析。
+"""项目名（含自然语言别名）到规范项目 ID 的解析，以及项目主笔记的创建。
 
 事实源是 ``_vault/projects/*.md``：每篇 ``project-main`` 笔记的 ``project`` frontmatter
 是规范 ID，可选的 ``aliases: [...]`` 列出自然语言别名（如「网课系统」）。解析规则：
 
 - 规范 ID 本身、笔记文件名、以及每个别名都能解析回该规范 ID（大小写/多余空白不敏感）；
-- 解析不到时返回 ``None``，调用方据此维持「留在审批页标 error 等人工裁决」的安全行为，
-  **绝不猜错目标、绝不自行造新项目名**（对齐 PRD L22）。
-
-本层只读文件、建映射；不写盘、不生成 Markdown。
+- 解析不到时返回 ``None``。真实场景里多数会议未必对应已建项目：解析不到的候选会路由到
+  全局 inbox 兜底捕获（见 :mod:`summit_workbench.domain.review`），而随着 workbench
+  逐步梳理出新项目，用 :func:`create_project_note` 建档后即可被后续会议解析命中。
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.domain.review import UNRESOLVED
+from summit_workbench.domain.vault import NOTE_TYPES
 from summit_workbench.repositories.vault import load_note
+
+# 规范项目 ID 的安全字符集：字母数字、下划线、连字符（用作文件名，禁空白/路径分隔符）。
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _normalize(name: str) -> str:
@@ -30,6 +35,7 @@ class ProjectRegistry:
 
     canonical: frozenset[str] = frozenset()
     alias_map: dict[str, str] = field(default_factory=dict)
+    aliases_by_project: dict[str, list[str]] = field(default_factory=dict)
 
     def resolve(self, name: str | None) -> str | None:
         """把项目名/别名解析为规范 ID。
@@ -51,6 +57,7 @@ def load_project_registry(vault_dir: Path) -> ProjectRegistry:
         return ProjectRegistry()
     canonical: set[str] = set()
     alias_map: dict[str, str] = {}
+    aliases_by_project: dict[str, list[str]] = {}
     for path in sorted(projects_dir.glob("*.md")):
         note = load_note(path)
         if note.parse_error is not None or note.meta.get("type") != "project-main":
@@ -59,13 +66,48 @@ def load_project_registry(vault_dir: Path) -> ProjectRegistry:
         if not isinstance(project_id, str) or not project_id or project_id == "global":
             continue
         canonical.add(project_id)
-        names = [project_id, path.stem]
         raw_aliases = note.meta.get("aliases")
-        if isinstance(raw_aliases, list):
-            names.extend(alias for alias in raw_aliases if isinstance(alias, str))
-        for name in names:
+        human_aliases = (
+            [alias for alias in raw_aliases if isinstance(alias, str)]
+            if isinstance(raw_aliases, list)
+            else []
+        )
+        aliases_by_project[project_id] = human_aliases
+        for name in [project_id, path.stem, *human_aliases]:
             key = _normalize(name)
             if key:
                 # 同名别名冲突时保留先出现的（按文件名排序，结果稳定）。
                 alias_map.setdefault(key, project_id)
-    return ProjectRegistry(frozenset(canonical), alias_map)
+    return ProjectRegistry(frozenset(canonical), alias_map, aliases_by_project)
+
+
+def create_project_note(
+    vault_dir: Path,
+    project_id: str,
+    *,
+    aliases: list[str] | None = None,
+    now: datetime | None = None,
+) -> Path:
+    """在 ``_vault/projects/`` 新建一篇符合 schema 的 project-main 笔记。
+
+    只建第二大脑侧的项目档案（不碰任何 GitHub 仓库）。已存在则报错，避免覆盖历史。
+    """
+    if not _PROJECT_ID_RE.match(project_id):
+        raise ValueError(
+            f"非法项目 ID {project_id!r}：只允许字母、数字、下划线和连字符（用作文件名）"
+        )
+    path = vault_dir / "projects" / f"{project_id}.md"
+    if path.exists():
+        raise FileExistsError(f"项目已存在：{path}")
+    day = (now or datetime.now(UTC)).date().isoformat()
+    clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
+    alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
+    blocks = NOTE_TYPES["project-main"].required_blocks
+    frontmatter = (
+        f"---\nproject: {project_id}\ndate: {day}\ntype: project-main\n"
+        f"status: active\nupdated: {day}\n{alias_line}---\n"
+    )
+    body = f"\n# {project_id}\n\n" + "\n\n".join(blocks) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(frontmatter + body, encoding="utf-8")
+    return path

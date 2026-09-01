@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState
 from summit_workbench.domain.review import (
+    UNRESOLVED,
     ApprovalCandidate,
     CandidateDecision,
     CandidateKind,
@@ -186,6 +187,41 @@ def test_apply_resolves_natural_language_project_alias_to_canonical(tmp_path):
     assert report.applied == 1
     assert report.failed == 0
     assert "final-m:n#decision-0" in project.read_text(encoding="utf-8")
+
+
+def test_unresolved_project_applies_to_autocreated_global_inbox(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    # 未匹配项目：目标 unresolved、route 全局 inbox，vault 尚无 inbox.md。
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.GLOBAL_INBOX,
+        project=UNRESOLVED,
+    )
+    refresh_review_page(vault, [entry])
+    _pending(vault)
+    report = apply_meeting_review(vault, work, apply=True)
+    assert report.applied == 1
+    assert report.failed == 0
+    inbox = vault / "inbox.md"
+    assert inbox.is_file()  # 兜底落点按需自建
+    assert "final-m:n#action-item-0" in inbox.read_text(encoding="utf-8")
+
+
+def test_missing_project_target_stays_with_actionable_hint(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.PROJECT_MAIN,
+        project="HIC_NotCreatedYet",
+    )
+    refresh_review_page(vault, [entry])
+    report = apply_meeting_review(vault, work)  # dry-run
+    assert report.actions[0].executable is False
+    assert "wb project new" in (report.actions[0].reason or "")
 
 
 def test_completed_ledger_makes_reintroduced_candidate_idempotent(tmp_path):

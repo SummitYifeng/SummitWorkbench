@@ -46,6 +46,9 @@ def _note(tmp_path):
 
 
 def test_generates_decisions_and_actions_only_with_stable_routes(tmp_path):
+    # 路由测试需要 P1/P2 是已建项目才能解析命中（否则按新默认走全局 inbox）。
+    _project(tmp_path, "P1", aliases=[])
+    _project(tmp_path, "P2", aliases=[])
     entries = candidates_from_note(_note(tmp_path), tmp_path)
     assert len(entries) == 4
     assert [entry.candidate.kind for entry in entries] == [
@@ -59,7 +62,8 @@ def test_generates_decisions_and_actions_only_with_stable_routes(tmp_path):
     assert entries[1].candidate.route == RouteTarget.PROJECT_MAIN
     assert entries[2].candidate.route == RouteTarget.FEISHU_TASK
     assert entries[3].candidate.route == RouteTarget.GLOBAL_INBOX
-    assert entries[3].candidate.is_actionable() is False
+    # 未匹配项目 → 全局 inbox 兜底捕获，可写回（不再 dead-end 为 error）。
+    assert entries[3].candidate.is_actionable() is True
 
 
 def _project(vault, project: str, *, aliases: list[str]) -> None:
@@ -98,6 +102,14 @@ def test_natural_language_project_resolves_to_canonical_id(tmp_path):
     entries = candidates_from_note(_note_with_project(tmp_path, "网课系统"), tmp_path)
     assert entries[0].candidate.target_project == "HIC_WebClass_Chinese_Final"
     assert entries[0].candidate.route == RouteTarget.PROJECT_MAIN
+    assert entries[0].candidate.is_actionable() is True
+
+
+def test_unmatched_project_captures_to_global_inbox(tmp_path):
+    # 无 projects 目录 → 模型给的项目名无法解析 → unresolved → 全局 inbox 兜底、可写回。
+    entries = candidates_from_note(_note_with_project(tmp_path, "某个还没建的项目"), tmp_path)
+    assert entries[0].candidate.target_project == "unresolved"
+    assert entries[0].candidate.route == RouteTarget.GLOBAL_INBOX
     assert entries[0].candidate.is_actionable() is True
 
 

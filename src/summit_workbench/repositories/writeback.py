@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.domain.review import CandidateKind
+
+_GLOBAL_INBOX_HEADING = "## 待处理条目"
+
+
+def _ensure_global_inbox(path: Path) -> None:
+    """全局 inbox 是「目标项目不明」的兜底落点，缺失时按 vault schema 创建。"""
+    if path.is_file():
+        return
+    today = datetime.now(UTC).date().isoformat()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\ndate: {today}\ntype: inbox\nstatus: active\nproject: global\n---\n\n"
+        f"# 全局收件箱（inbox）\n\n{_GLOBAL_INBOX_HEADING}\n",
+        encoding="utf-8",
+    )
 
 
 def _append_under_heading(path: Path, heading: str, line: str, candidate_id: str) -> bool:
@@ -50,7 +66,11 @@ def append_global_inbox(
     vault_dir: Path, description: str, candidate_id: str
 ) -> tuple[Path, bool]:
     path = vault_dir / "inbox.md"
-    return path, _append_under_heading(path, "## 待处理条目", f"[ ] {description}", candidate_id)
+    _ensure_global_inbox(path)
+    written = _append_under_heading(
+        path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id
+    )
+    return path, written
 
 
 def append_project_inbox(
