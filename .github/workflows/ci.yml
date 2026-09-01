@@ -1,0 +1,43 @@
+name: CI
+
+# 质量门（与本地 `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
+# 一致）在每次推送 main 与 PR 时自动跑，作为无人值守/定时任务上线后的回归护栏。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同一分支的新推送取消仍在跑的旧任务，省算力。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    # macOS runner：本工具依赖 macOS 专属能力（Keychain 的 security、launchd、osascript），
+    # 诊断/预检会检查这些系统工具存在，故必须在 macOS 上跑质量门。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies (dev extra)
+        run: uv sync --extra dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy (strict)
+        run: uv run mypy
+
+      - name: pytest
+        run: uv run pytest -q

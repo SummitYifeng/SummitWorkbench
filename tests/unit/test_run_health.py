@@ -101,6 +101,23 @@ def test_corrupt_tail_line_does_not_break_read(tmp_path):
     assert len(events) == 1 and events[0].job == "brief"
 
 
+# —— 心跳记录的最佳努力：绝不反噬任务 ——
+
+
+def test_record_run_safely_swallows_errors(monkeypatch, tmp_path):
+    """记录心跳失败（如落盘异常）被吞，绝不反过来令任务失败。"""
+    from summit_workbench.observability import heartbeat
+
+    def boom(*_a, **_k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(heartbeat, "record_run", boom)
+    # 不应抛出。
+    heartbeat.record_run_safely(
+        tmp_path / "_vault", job="brief", status=RunStatus.FAILED, day="2026-09-02"
+    )
+
+
 # —— 告警：连续失败去重 ——
 
 
