@@ -1,6 +1,7 @@
 # launchd 定时（M2-7）
 
-Mac Studio 上的自动调度。晨间简报每日 08:00，周复盘每周一 07:30（后者随 M2-10 交付）。
+Mac Studio 上的自动调度。晨间简报每日 08:00（`com.summitworkbench.brief`），
+周复盘每周一 07:30（`com.summitworkbench.weekly`，复盘上一自然周，赶在当日 08:00 简报前提交）。
 
 ## 安装
 
@@ -28,7 +29,8 @@ tail -n 40 ~/Library/Logs/summitworkbench-brief.log
 
 ```bash
 launchctl bootout gui/$(id -u)/com.summitworkbench.brief
-rm ~/Library/LaunchAgents/com.summitworkbench.brief.plist
+launchctl bootout gui/$(id -u)/com.summitworkbench.weekly
+rm ~/Library/LaunchAgents/com.summitworkbench.brief.plist ~/Library/LaunchAgents/com.summitworkbench.weekly.plist
 ```
 
 ## 说明

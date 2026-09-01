@@ -93,6 +93,18 @@ def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
     assert "晨间简报 2026-09-01" in log
 
 
+def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    (tmp_path / "work" / "_vault").mkdir(parents=True)
+    result = runner.invoke(app, ["weekly", "--date", "2026-09-01", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["week"] == "2026-W35"  # 2026-09-01 的上一周
+    assert payload["range"] == "2026-08-24~2026-08-30"
+    assert (tmp_path / "work" / "_vault" / "reviews" / "weekly" / "2026-W35.md").is_file()
+
+
 def test_ask_registered() -> None:
     result = runner.invoke(app, ["ask", "--help"])
     assert result.exit_code == 0

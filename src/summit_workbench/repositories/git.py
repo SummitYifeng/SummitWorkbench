@@ -101,3 +101,24 @@ class GitRepo:
         cp = self._run("commit", "-m", message)
         if cp.returncode != 0:
             raise GitError("git commit 失败", stderr=cp.stderr)
+
+    def commits_between(self, since_iso: str, until_iso: str) -> list[tuple[str, str]]:
+        """列出 [since, until] 内本地提交的 (短 hash, 主题)。只读，不联网。
+
+        ``since_iso`` / ``until_iso`` 为 ISO 日期（``git log`` 的 --since/--until 语义，
+        含边界当天）。仓库无提交或范围为空时返回空列表。
+        """
+        cp = self._run(
+            "log",
+            f"--since={since_iso} 00:00",
+            f"--until={until_iso} 23:59",
+            "--pretty=%h\t%s",
+        )
+        if cp.returncode != 0:
+            raise GitError("git log 失败", stderr=cp.stderr)
+        commits: list[tuple[str, str]] = []
+        for line in cp.stdout.splitlines():
+            if "\t" in line:
+                sha, subject = line.split("\t", 1)
+                commits.append((sha, subject))
+        return commits

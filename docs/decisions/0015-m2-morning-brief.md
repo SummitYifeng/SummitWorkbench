@@ -1,7 +1,7 @@
 # ADR 0015 · M2 晨间简报（手动全链路切片）
 
-- 状态：🚧 实现中（手动 `wb brief` 全链路 + 离线测试）；⏳ 飞书日历/任务端点待真机冒烟；
-  ⏳ launchd 定时（M2-7）与周复盘（M2-10）留待下一轮
+- 状态：✅ M2-1~M2-10 全部实现，离线全绿（ruff+mypy strict+pytest 277 项）；日历/任务端点已真机核实；
+  ⏳ 用户需重新授权任务细粒度 scope 后 `wb feishu tasks` 才通；⏳ launchd 连续 7 天真机验收待跑
 - 日期：2026-09-01
 - 里程碑：M2 · 晨间简报与周复盘（环 A）
 - 依据：`docs/plans/DEVELOPMENT_PLAN.md` §7；PRD §「M2 晨间简报」、L12/L26/L28/L43、G1/G2、
@@ -54,9 +54,24 @@
 - `wb brief --dry-run` 对隔离 vault 生成一份结构完整的简报（事实区/提议区/健康度/最近完成/行动≤5）。
 - 飞书日历/任务真机冒烟、launchd 与连续 7 天验收、周复盘留待后续。
 
+## 追加实现（同一里程碑内完成）
+
+- **真机冒烟修正（merge f2fa52c）**：日历改用 `instance_view` 展开循环取当天实例（普通 events 列表返回
+  循环主体原始 start_time）；任务需用户态细粒度 `task:task:read/write`（粗粒度 `task:task` 报 99991679），
+  DEFAULT_SCOPES 已改，**用户需重新 `wb feishu authorize-url`→`login`**。新增 `wb feishu calendar/tasks` 冒烟命令。
+- **M2-7 launchd + 提交（merge 564fe3f）**：`wb brief --commit --push`；`repositories/git.py` 加非破坏性
+  `add(指定路径)/commit`（绝不 add -A，只暂存简报文件，尊重 vault 由用户/wb sync 提交的约定）；
+  `workflows/brief/publish.py` 幂等提交、落后不推；`deploy/launchd/` 每日 08:00 plist + `scripts/install-launchd.sh`。
+- **M2-10 周复盘**：`wb weekly`（`--date/--dry-run/--commit/--push/--json`）复盘上一自然周（周一 07:30 语义，L27）；
+  `domain/weekly.py`（ISO 周 math、去重分区、确定性下周建议）、`workflows/weekly/{collect,render,weekly}.py`、
+  `repositories/weekly_review.py`（幂等按周覆盖 `reviews/weekly/YYYY-Www.md`）。offline-first 从 git 提交 +
+  会议笔记 `## 已形成决策` + inbox + 停滞项目重新汇总去重，事实附来源、下周建议(E3)单列提议区；
+  周一 07:30 plist 已加。
+
 ## 遗留
 
-- 飞书日历/任务确切端点、scope（`calendar:calendar:readonly` 已开通、`task:task` 已开通）待真机核实固定。
-- 健康度的「连续 7 天无信号 / 连续 3 天生成失败」判定依赖快照历史，本轮先落当日快照并做单日健康度，
-  跨日 streak 判定随 launchd 一同补齐。
-- 周复盘（M2-10）与其调度（L27，周一 07:30）、周建议进入提议候选池（L28）下一轮。
+- 用户重新授权任务细粒度 scope（日历已真机可用）。
+- launchd「连续 7 天简报 + 1 份周报」真机验收待在 Mac Studio 上实跑。
+- 健康度「连续 7 天无信号 / 连续 3 天失败」跨日 streak 判定依赖快照历史（当前为单日健康度）。
+- L28「周建议自动进入下周简报提议候选池」的读取侧接线（周复盘已产出 `proposal` 项，简报侧读取待接）。
+- 周复盘「模型化跨项目综合」（当前下周建议为确定性启发式，不调模型）。

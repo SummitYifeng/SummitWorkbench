@@ -35,9 +35,12 @@ install_one() {
 }
 
 install_one "com.summitworkbench.brief" "$REPO_ROOT/deploy/launchd/com.summitworkbench.brief.plist"
+install_one "com.summitworkbench.weekly" "$REPO_ROOT/deploy/launchd/com.summitworkbench.weekly.plist"
 
 echo ""
 echo "wb 路径：$WB_BIN"
 echo "WORK_ROOT：$WORK_ROOT"
-echo "日志：$HOME/Library/Logs/summitworkbench-brief.log"
-echo "手动触发验证：launchctl kickstart -k gui/$(id -u)/com.summitworkbench.brief"
+echo "日志：$HOME/Library/Logs/summitworkbench-{brief,weekly}.log"
+echo "手动触发验证："
+echo "  launchctl kickstart -k gui/$(id -u)/com.summitworkbench.brief"
+echo "  launchctl kickstart -k gui/$(id -u)/com.summitworkbench.weekly"
