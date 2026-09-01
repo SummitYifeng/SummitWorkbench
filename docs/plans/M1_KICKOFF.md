@@ -1,5 +1,9 @@
 # M1 开发交接（会议进入第二大脑）
 
+> ⚠️ **历史文档（留档追溯用）。M1 已全部完成，PRD L44 严格验收 6/6 真机通过——
+> 现状见 [`M1_ACCEPTANCE.md`](M1_ACCEPTANCE.md)，下一步是 M2（`DEVELOPMENT_PLAN.md` §7）。**
+> 本文是 M1 启动期的交接快照，下文内容停留在当时状态，不再更新。
+
 > 面向下一个开发对话。权威规格仍是 `docs/product/PRD.md`（§3.1.9、L13–L44）与
 > `docs/plans/DEVELOPMENT_PLAN.md` §6；本文只做「从哪接手、有什么可复用、怎么起步」的交接。
 
