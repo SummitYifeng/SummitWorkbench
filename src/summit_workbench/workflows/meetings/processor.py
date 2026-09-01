@@ -159,7 +159,8 @@ def _call_validated(
         if attempt <= MAX_RETRIES:
             sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
 
-    message = str(last_error) if last_error is not None else "未知模型错误"
+    detail = str(last_error) if last_error is not None else "未知模型错误"
+    message = f"初调+{MAX_RETRIES} 次重试（共 {MAX_RETRIES + 1} 次调用）后仍失败：{detail}"
     raise ProcessingFailure(message, attempts=MAX_RETRIES + 1, stage=stage) from last_error
 
 
