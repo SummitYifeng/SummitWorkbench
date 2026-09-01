@@ -18,6 +18,7 @@ from summit_workbench.cli.review import review_app
 from summit_workbench.cli.status import status_command
 from summit_workbench.cli.sync import sync_app
 from summit_workbench.cli.vault import vault_app
+from summit_workbench.cli.web import web_command
 from summit_workbench.cli.weekly import weekly_command
 from summit_workbench.config.settings import load_settings
 
@@ -38,6 +39,7 @@ app.command("status")(status_command)
 app.command("ask")(ask_command)
 app.command("brief")(brief_command)
 app.command("weekly")(weekly_command)
+app.command("web")(web_command)
 
 
 @app.command()

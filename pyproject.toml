@@ -27,11 +27,20 @@ dependencies = [
 wb = "summit_workbench.cli.main:main"
 
 [project.optional-dependencies]
+# 本地 Web 面板（可选）：审批可点选 + 简报/状态只读视图。CLI 用户不装 web 也能全功能使用。
+web = [
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
+]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
+    "python-multipart>=0.0.9",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -45,6 +54,10 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 # 保守但有用的一组规则：pyflakes、pycodestyle、isort、pyupgrade、bugbear。
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Web 面板的 HTML 模板是内联字符串，长行不可避免且拆行反而损害可读性。
+"src/summit_workbench/webapp/views.py" = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 # Typer 依赖在参数默认值里调用 Argument/Option，属其惯用法，豁免 B008。
