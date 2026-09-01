@@ -1,0 +1,36 @@
+"""当日信号快照持久化（M2-3）：``_vault/_signals/YYYY-MM-DD.json``。
+
+每次生成简报落一份当日快照，用于北极星指标基线（信号从出现到消失的中位天数，PRD 2.4）
+与幂等核对。按日期覆盖写：同一天重跑得到确定性的最新快照，不产生重复文件。
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+SIGNALS_SUBDIR = "_signals"
+
+
+def snapshot_path(vault_dir: Path, day: str) -> Path:
+    """当日快照文件路径（``day`` 为 ISO ``YYYY-MM-DD``）。"""
+    return vault_dir / SIGNALS_SUBDIR / f"{day}.json"
+
+
+def write_snapshot(vault_dir: Path, day: str, payload: dict[str, object]) -> Path:
+    """覆盖写当日快照，返回文件路径。"""
+    path = snapshot_path(vault_dir, day)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return path
+
+
+def read_snapshot(vault_dir: Path, day: str) -> dict[str, object] | None:
+    """读回当日快照；不存在返回 None。"""
+    path = snapshot_path(vault_dir, day)
+    if not path.is_file():
+        return None
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else None
