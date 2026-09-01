@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from summit_workbench.repositories.project_registry import load_project_registry
+import pytest
+
+from summit_workbench.domain.vault import validate_note
+from summit_workbench.repositories.project_registry import (
+    create_project_note,
+    load_project_registry,
+)
+from summit_workbench.repositories.vault import load_note
 
 
 def _project(vault: Path, project: str, *, aliases: list[str] | None = None) -> None:
@@ -59,6 +66,24 @@ def test_global_and_non_project_notes_are_ignored(tmp_path):
     registry = load_project_registry(tmp_path)
     assert registry.canonical == frozenset({"P1"})
     assert registry.resolve("global") is None
+
+
+def test_create_project_note_is_schema_valid_and_resolvable(tmp_path):
+    path = create_project_note(tmp_path, "HIC_NewThing", aliases=["新东西", "new thing"])
+    note = load_note(path)
+    assert note.parse_error is None
+    assert validate_note(note.meta, note.body) == []  # 符合 vault schema
+    registry = load_project_registry(tmp_path)
+    assert registry.resolve("新东西") == "HIC_NewThing"
+    assert registry.aliases_by_project["HIC_NewThing"] == ["新东西", "new thing"]
+
+
+def test_create_project_note_rejects_bad_id_and_duplicates(tmp_path):
+    with pytest.raises(ValueError):
+        create_project_note(tmp_path, "有空格 的名字")
+    create_project_note(tmp_path, "P1")
+    with pytest.raises(FileExistsError):
+        create_project_note(tmp_path, "P1")
 
 
 def test_first_project_wins_on_alias_conflict(tmp_path):

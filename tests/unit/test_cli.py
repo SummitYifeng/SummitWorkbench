@@ -59,6 +59,18 @@ def test_ask_registered() -> None:
     assert "--project" in result.stdout
 
 
+def test_project_new_and_list(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    created = runner.invoke(app, ["project", "new", "HIC_Fresh", "--alias", "新项目"])
+    assert created.exit_code == 0
+    assert (tmp_path / "work" / "_vault" / "projects" / "HIC_Fresh.md").is_file()
+    listed = runner.invoke(app, ["project", "list"])
+    assert listed.exit_code == 0
+    assert "HIC_Fresh" in listed.stdout
+    assert "新项目" in listed.stdout
+
+
 def test_no_args_shows_help() -> None:
     result = runner.invoke(app, [])
     # no_args_is_help=True：无参数打印帮助并以 Click 约定退出码 2 结束。

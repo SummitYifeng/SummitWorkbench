@@ -112,8 +112,10 @@ def candidates_from_note(
     transcript_link = str(note.meta.get("transcript") or "")
     entries: list[ReviewEntry] = []
 
+    # 只有解析到已建项目才作为写回目标；未匹配的（含模型对未建项目的猜测）一律
+    # 记为 unresolved → 路由到全局 inbox 零摩擦捕获，绝不 dead-end 在不存在的项目文件。
     for index, decision in enumerate(extraction.decisions):
-        target = registry.resolve(decision.target_project) or decision.target_project or UNRESOLVED
+        target = registry.resolve(decision.target_project) or UNRESOLVED
         candidate = ApprovalCandidate(
             candidate_id=candidate_id(idem_key, CandidateKind.DECISION, index),
             kind=CandidateKind.DECISION,
@@ -134,7 +136,7 @@ def candidates_from_note(
         )
 
     for index, action in enumerate(extraction.action_items):
-        target = registry.resolve(action.target_project) or action.target_project or UNRESOLVED
+        target = registry.resolve(action.target_project) or UNRESOLVED
         candidate = ApprovalCandidate(
             candidate_id=candidate_id(idem_key, CandidateKind.ACTION_ITEM, index),
             kind=CandidateKind.ACTION_ITEM,

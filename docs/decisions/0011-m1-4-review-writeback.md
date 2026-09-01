@@ -30,6 +30,20 @@
 `wb review apply`（人工在审批页填的别名在应用前解析回规范 ID）。别名事实源在项目笔记
 frontmatter，加别名不改代码。
 
+## 补充决策（2026-09-01）：未匹配项目 = 零摩擦捕获，而非报错
+
+真实场景是「多数会议未必对应已导入项目；workbench 会持续梳理出新项目，新项目才匹配后续会议」。
+因此把「解析不到项目」从**阻塞错误**改为**兜底捕获**：
+
+- 候选生成时未匹配到已建项目的（含模型对未建项目的猜测）一律记 `unresolved`，路由到全局
+  inbox，不再 dead-end 在不存在的项目文件上。
+- `ApprovalCandidate.is_actionable` 改为 route 感知：全局 inbox 落点不要求已解析项目即可写回；
+  项目主笔记/项目 inbox 仍要求已建项目。
+- 全局 inbox（`_vault/inbox.md`）作为主兜底落点，缺失时按 schema 自建。
+- 新增 `wb project new/list`（`repositories/project_registry.create_project_note`）：在第二大脑侧
+  快速为新项目建档（**不碰任何 GitHub 仓库**），建档后即可被后续会议审批解析命中。审批页里
+  批准一条指向未建项目的候选时，错误提示引导先 `wb project new`。
+
 ## 飞书适配
 
 依据飞书官方服务端 SDK 的 Task v2 类型定义：创建接口 `POST /open-apis/task/v2/tasks`，请求使用

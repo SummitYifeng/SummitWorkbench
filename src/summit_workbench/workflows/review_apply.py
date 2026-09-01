@@ -96,8 +96,12 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
             reason = "缺少已解析 target_project 或有效 evidence"
         elif item.route is None:
             reason = "缺少 route"
-        elif item.route is not RouteTarget.FEISHU_TASK and not Path(destination).is_file():
-            reason = f"写回目标不存在：{destination}"
+        elif (
+            item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_INBOX)
+            and not Path(destination).is_file()
+        ):
+            # 项目落点必须已存在（用 `wb project new` 创建）；全局 inbox 会按需自建。
+            reason = f"写回目标不存在：{destination}（可用 wb project new 创建后再批准）"
         actions.append(
             ApplyAction(item.candidate_id, item.decision, destination, reason is None, reason)
         )

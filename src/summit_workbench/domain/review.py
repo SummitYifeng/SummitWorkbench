@@ -80,12 +80,17 @@ class ApprovalCandidate:
     historical: bool = False  # 历史补导产生的候选（L14 第 10 条）
 
     def is_actionable(self) -> bool:
-        """是否可进入可勾选状态：必须有已解析目标项目且有有效来源依据。"""
-        return (
-            _has_project(self.target_project)
-            and self.evidence is not None
-            and self.evidence.is_valid()
-        )
+        """是否可进入可勾选状态：必须有有效来源依据，且目标可写。
+
+        目标可写的判定按 route 区分（贴合真实场景：多数会议未必对应已建项目）：
+        - 全局 inbox 正是「目标项目不明」的兜底，不需要已解析项目即可捕获；
+        - 其余落点（项目主笔记 / 项目 inbox / 飞书任务 / 未定 route）需已解析目标项目。
+        """
+        if self.evidence is None or not self.evidence.is_valid():
+            return False
+        if self.route is RouteTarget.GLOBAL_INBOX:
+            return True
+        return _has_project(self.target_project)
 
 
 @dataclass(frozen=True)
