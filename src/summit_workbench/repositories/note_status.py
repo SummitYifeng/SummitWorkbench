@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from summit_workbench.domain.vault import STATUS_VOCAB
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import parse_frontmatter
 
 
@@ -20,6 +21,4 @@ def update_note_status(path: Path, status: str) -> None:
         raise ValueError(f"无法更新无效笔记：{path}：{error}")
     meta["status"] = status
     fm = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(f"---\n{fm}\n---\n\n{body}", encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, f"---\n{fm}\n---\n\n{body}")

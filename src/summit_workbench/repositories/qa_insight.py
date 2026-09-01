@@ -13,6 +13,7 @@ from pathlib import Path
 
 from summit_workbench.domain.qa import QaAnswer
 from summit_workbench.domain.vault import validate_note
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.meeting_archive import slugify
 from summit_workbench.repositories.vault import parse_frontmatter
 
@@ -113,10 +114,7 @@ def save_qa_insight(vault_dir: Path, inp: QaInsightInput) -> QaInsightOutcome:
     if path.exists():
         return QaInsightOutcome(path=path, written=False)
     rendered = render_qa_insight(inp)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(rendered, encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, rendered, ensure_parents=True)
     return QaInsightOutcome(path=path, written=True)
 
 

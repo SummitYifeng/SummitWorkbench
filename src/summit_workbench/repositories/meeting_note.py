@@ -11,6 +11,7 @@ from summit_workbench.domain.meeting import MeetingExtraction
 from summit_workbench.domain.pipeline import SourceKind
 from summit_workbench.domain.review import UNRESOLVED
 from summit_workbench.domain.vault import validate_note
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.meeting_archive import note_stem, notes_dir, slugify
 from summit_workbench.repositories.vault import parse_frontmatter
 
@@ -146,8 +147,5 @@ def archive_meeting_note(
     if path.exists() and not overwrite:
         return NoteOutcome(path=path, written=False)
     rendered = render_meeting_note(inp)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(rendered, encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, rendered, ensure_parents=True)
     return NoteOutcome(path=path, written=True)

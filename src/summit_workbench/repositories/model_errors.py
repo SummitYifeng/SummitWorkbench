@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from summit_workbench.repositories._atomic import atomic_write_text
+
 MODEL_ERRORS_SUBDIR = ("_signals", "model-errors")
 
 
@@ -52,9 +54,7 @@ def record_model_error(
         reason=reason,
         transcript_path=str(transcript_path),
     )
-    temporary = path.with_suffix(".json.tmp")
-    temporary.write_text(json.dumps(asdict(record), ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, json.dumps(asdict(record), ensure_ascii=False, indent=2))
     return path
 
 

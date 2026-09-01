@@ -16,6 +16,7 @@ from summit_workbench.domain.review import (
     CandidateDecision,
     RouteTarget,
 )
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.review_page import (
     parse_review_page,
     render_review_page,
@@ -46,9 +47,7 @@ def _rewrite(
             new_entries.append(entry)
     if not found:
         raise ReviewEditError(f"找不到候选：{candidate_id}")
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(render_review_page(new_entries), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, render_review_page(new_entries))
 
 
 def set_decision(vault_dir: Path, candidate_id: str, decision: CandidateDecision) -> None:

@@ -20,6 +20,7 @@ from summit_workbench.domain.review import (
     RouteTarget,
 )
 from summit_workbench.domain.vault import validate_note
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import parse_frontmatter
 
 REVIEW_PATH = ("review", "meetings.md")
@@ -255,8 +256,5 @@ def refresh_review_page(
             by_id[stable_id] = entry
             added += 1
     combined = list(by_id.values())
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".md.tmp")
-    temporary.write_text(render_review_page(combined, today=today), encoding="utf-8")
-    temporary.replace(path)
+    atomic_write_text(path, render_review_page(combined, today=today), ensure_parents=True)
     return RefreshOutcome(path, added=added, preserved=len(existing))
