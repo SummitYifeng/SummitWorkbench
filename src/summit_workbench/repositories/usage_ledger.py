@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict
 
 from summit_workbench.providers.llm.usage import UsageRecord
 from summit_workbench.repositories._jsonl import append_row, read_models
+from summit_workbench.repositories._schema import (
+    SCHEMA_VERSION_FIELD,
+    USAGE_LEDGER_VERSION,
+)
 
 MODEL_USAGE_SUBDIR = ("_signals", "model-usage")
 
@@ -25,6 +29,7 @@ class UsageRow(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    schema_version: int = 1  # 引入版本机制前写的旧行不含此字段，缺失即视为 v1
     input_tokens: int = 0
     output_tokens: int = 0
     estimated_cost: float = 0.0
@@ -42,7 +47,8 @@ def _ledger(vault_dir: Path, year_month: str) -> Path:
 def append_usage(vault_dir: Path, record: UsageRecord) -> Path:
     """把一条用量记录追加到当月账本，返回账本文件路径。"""
     month = record.timestamp[:7]  # YYYY-MM
-    return append_row(_ledger(vault_dir, month), record.as_dict())
+    row = {SCHEMA_VERSION_FIELD: USAGE_LEDGER_VERSION, **record.as_dict()}
+    return append_row(_ledger(vault_dir, month), row)
 
 
 @dataclass(frozen=True)

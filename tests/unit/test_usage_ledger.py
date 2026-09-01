@@ -49,6 +49,21 @@ def test_ledger_append_and_totals(tmp_path):
     assert totals.output_tokens == 600
 
 
+def test_written_usage_row_carries_schema_version(tmp_path):
+    """用量行落盘时打上 schema_version，便于将来账本格式迁移（正式使用前加固）。"""
+    import json
+
+    from summit_workbench.repositories._schema import USAGE_LEDGER_VERSION
+
+    vault = tmp_path / "_vault"
+    now = datetime(2026, 8, 31, 9, 0, tzinfo=UTC)
+    ledger = append_usage(vault, record_from_result(CFG, _result(1000, 200), task_key="a", now=now))
+    row = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    assert row["schema_version"] == USAGE_LEDGER_VERSION
+    # 版本字段不干扰既有汇总。
+    assert monthly_totals(vault, "2026-08").calls == 1
+
+
 def test_totals_empty_month(tmp_path):
     totals = monthly_totals(tmp_path / "_vault", "2026-01")
     assert totals.calls == 0

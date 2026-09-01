@@ -104,7 +104,10 @@ def test_snapshot_roundtrip_overwrites(tmp_path: Path) -> None:
     write_snapshot(vault, "2026-09-01", {"actions": 3})
     write_snapshot(vault, "2026-09-01", {"actions": 5})  # 覆盖
     got = read_snapshot(vault, "2026-09-01")
-    assert got == {"actions": 5}
+    assert got is not None
+    assert got["actions"] == 5
+    # 快照顶层打上 schema_version，便于将来格式演进的兼容读。
+    assert got["schema_version"] == 1
     assert read_snapshot(vault, "2026-08-31") is None
 
 
