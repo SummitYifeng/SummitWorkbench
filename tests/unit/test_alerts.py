@@ -4,13 +4,23 @@ from __future__ import annotations
 
 from summit_workbench.domain.backlog import BacklogState
 from summit_workbench.domain.budget import evaluate_budget
+from summit_workbench.domain.run_health import JobHealth
 from summit_workbench.observability.alerts import check_and_update, evaluate_notifications
 from summit_workbench.observability.status import StatusReport
+from summit_workbench.repositories.feishu_auth_state import FeishuAuthState
 from summit_workbench.repositories.notify_state import NotifyState, load_notify_state
 from summit_workbench.repositories.usage_ledger import UsageTotals
 
 
-def _report(*, month="2026-08", spent=25.0, limit=20.0, count=5, oldest=10) -> StatusReport:
+def _report(
+    *,
+    month="2026-08",
+    spent=25.0,
+    limit=20.0,
+    count=5,
+    oldest=10,
+    runs: dict[str, JobHealth] | None = None,
+) -> StatusReport:
     return StatusReport(
         month=month,
         total_meetings=1,
@@ -18,6 +28,8 @@ def _report(*, month="2026-08", spent=25.0, limit=20.0, count=5, oldest=10) -> S
         usage=UsageTotals(1, 1000, 500, spent, "CNY"),
         budget=evaluate_budget(spent, limit, "CNY"),
         backlog=BacklogState(count=count, oldest_age_days=oldest),
+        runs=runs or {},
+        feishu_auth=FeishuAuthState(),
     )
 
 

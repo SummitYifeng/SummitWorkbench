@@ -9,6 +9,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.repositories._schema import (
+    SCHEMA_VERSION_FIELD,
+    SIGNAL_SNAPSHOT_VERSION,
+)
+
 SIGNALS_SUBDIR = "_signals"
 
 
@@ -18,10 +24,18 @@ def snapshot_path(vault_dir: Path, day: str) -> Path:
 
 
 def write_snapshot(vault_dir: Path, day: str, payload: dict[str, object]) -> Path:
-    """覆盖写当日快照，返回文件路径。"""
+    """覆盖写当日快照，返回文件路径。
+
+    快照顶层打上 ``schema_version`` 便于将来格式演进的兼容读；落盘走原子写
+    （写 ``.tmp`` 再换名），断电/被 kill 不会留下半截 JSON 污染当日快照。
+    """
     path = snapshot_path(vault_dir, day)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    versioned = {SCHEMA_VERSION_FIELD: SIGNAL_SNAPSHOT_VERSION, **payload}
+    atomic_write_text(
+        path,
+        json.dumps(versioned, ensure_ascii=False, indent=2) + "\n",
+        ensure_parents=True,
+    )
     return path
 
 

@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 import typer
 
 from summit_workbench.config.settings import default_config_file, load_settings
+from summit_workbench.domain.run_health import RunStatus
+from summit_workbench.observability.heartbeat import record_run_safely
 from summit_workbench.observability.status import build_status
 from summit_workbench.workflows.brief.publish import publish_brief
 from summit_workbench.workflows.weekly.weekly import generate_weekly
@@ -43,13 +45,30 @@ def weekly_command(
     except (OSError, ValueError):
         pending = 0
 
-    result = generate_weekly(
-        paths.work_root,
-        paths.vault_dir,
-        today=today,
-        pending_review_count=pending,
-        write=not dry_run,
-    )
+    # 无人值守可见性：真实运行（非 --dry-run）在 CLI 边界记一条心跳，崩溃也记。
+    try:
+        result = generate_weekly(
+            paths.work_root,
+            paths.vault_dir,
+            today=today,
+            pending_review_count=pending,
+            write=not dry_run,
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_run_safely(
+                paths.vault_dir,
+                job="weekly",
+                status=RunStatus.FAILED,
+                day=today.isoformat(),
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+        raise
+
+    if not dry_run:
+        record_run_safely(
+            paths.vault_dir, job="weekly", status=RunStatus.SUCCESS, day=today.isoformat()
+        )
 
     publish_status: str | None = None
     if commit and not dry_run and result.note_path:

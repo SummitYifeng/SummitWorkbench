@@ -11,6 +11,8 @@ import json
 import typer
 
 from summit_workbench.config.settings import load_settings
+from summit_workbench.domain.run_health import RunStatus
+from summit_workbench.observability.heartbeat import record_run_safely
 from summit_workbench.workflows.brief.publish import PublishResult, publish_brief
 from summit_workbench.workflows.brief.runner import run_brief, today_iso
 
@@ -31,15 +33,37 @@ def brief_command(
     paths = settings.work_paths()
     day = date or today_iso(settings.timezone)
 
-    run = run_brief(
-        work_root=paths.work_root,
-        vault_dir=paths.vault_dir,
-        timezone=settings.timezone,
-        day=day,
-        write=not dry_run,
-        notify=not dry_run,
-    )
+    # 无人值守可见性：真实运行（非 --dry-run）在 CLI 边界记一条心跳，崩溃也记。
+    try:
+        run = run_brief(
+            work_root=paths.work_root,
+            vault_dir=paths.vault_dir,
+            timezone=settings.timezone,
+            day=day,
+            write=not dry_run,
+            notify=not dry_run,
+        )
+    except Exception as exc:
+        if not dry_run:
+            record_run_safely(
+                paths.vault_dir,
+                job="brief",
+                status=RunStatus.FAILED,
+                day=day,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+        raise
     result = run.result
+
+    if not dry_run:
+        degraded = bool(run.feishu_unavailable) or result.ranking.degraded
+        record_run_safely(
+            paths.vault_dir,
+            job="brief",
+            status=RunStatus.DEGRADED if degraded else RunStatus.SUCCESS,
+            day=day,
+            detail=run.feishu_unavailable,
+        )
 
     published: PublishResult | None = None
     if commit and not dry_run and result.note_path and result.snapshot_path:
@@ -63,6 +87,7 @@ def brief_command(
                     "note_path": str(result.note_path) if result.note_path else None,
                     "snapshot_path": str(result.snapshot_path) if result.snapshot_path else None,
                     "feishu_unavailable": run.feishu_unavailable,
+                    "feishu_needs_reauthorize": run.feishu_needs_reauthorize,
                     "publish": published.status.value if published else None,
                 },
                 ensure_ascii=False,
@@ -73,7 +98,10 @@ def brief_command(
 
     typer.echo(result.markdown)
     typer.echo("")
-    if run.feishu_unavailable:
+    if run.feishu_needs_reauthorize:
+        typer.echo(f"⚠ 飞书授权已失效，简报已降级：{run.feishu_unavailable}")
+        typer.echo("  → 请运行 wb feishu authorize-url 重新授权，再 wb feishu login")
+    elif run.feishu_unavailable:
         typer.echo(f"ℹ 飞书事实源不可用，已降级：{run.feishu_unavailable}")
     if result.note_path:
         typer.echo(f"✓ 已写入 {result.note_path}")

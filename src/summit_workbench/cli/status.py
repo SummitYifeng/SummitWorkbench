@@ -8,8 +8,12 @@ import typer
 
 from summit_workbench.config.settings import default_config_file, load_settings
 from summit_workbench.domain.pipeline import ProcessingState
+from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.alerts import Notification, check_and_update
 from summit_workbench.observability.status import StatusReport, build_status
+
+# 定时任务的面向用户标签。
+_JOB_LABELS: dict[str, str] = {"brief": "晨间简报", "weekly": "周复盘"}
 
 # 面向用户的状态标签（保持稳定，脚本可读性用 --json）。
 _STATE_LABELS: list[tuple[ProcessingState, str]] = [
@@ -74,8 +78,37 @@ def _print_human(report: StatusReport, notifications: list[Notification]) -> Non
     tag = "⚠ 需处理" if backlog.active else "正常"
     typer.echo(f"待确认候选积压：{backlog.count} 条候选，最老 {oldest} — {tag}")
 
+    _print_runs(report)
+
+    auth = report.feishu_auth
+    if auth.needs_reauthorize:
+        typer.echo("")
+        since = f"（自 {auth.since_day}）" if auth.since_day else ""
+        typer.echo(f"⚠ 飞书授权已失效{since}：简报的飞书事实源已降级。")
+        typer.echo("  → 请运行 wb feishu authorize-url 重新授权，再 wb feishu login")
+
     if notifications:
         typer.echo("")
         typer.echo("本次新通知：")
         for note in notifications:
             typer.echo(f"  • [{note.kind}] {note.message}")
+
+
+def _print_runs(report: StatusReport) -> None:
+    """定时任务健康度：上次何时跑、成没跑出、是否连续失败（无人值守可见性）。"""
+    if not report.runs:
+        return
+    typer.echo("")
+    typer.echo("定时任务健康度：")
+    for job, health in report.runs.items():
+        label = _JOB_LABELS.get(job, job)
+        if not health.ever_ran:
+            typer.echo(f"  {label:<5} 尚未运行")
+            continue
+        if health.last_status is RunStatus.SUCCESS:
+            icon, tail = "✅", ""
+        elif health.last_status is RunStatus.DEGRADED:
+            icon, tail = "⚠️", "（降级：事实源/排序回退）"
+        else:
+            icon, tail = "❌", f"（连续失败 {health.consecutive_failures} 次）"
+        typer.echo(f"  {label:<5} {icon} 最近 {health.last_day}{tail}")

@@ -20,6 +20,10 @@ from pydantic import BaseModel, ConfigDict
 
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState, SourceKind
 from summit_workbench.repositories._jsonl import append_row, read_models
+from summit_workbench.repositories._schema import (
+    MEETING_STATE_VERSION,
+    SCHEMA_VERSION_FIELD,
+)
 
 MEETING_STATE_SUBDIR = ("_signals", "meeting-state")
 _LOG_NAME = "log.jsonl"
@@ -34,6 +38,7 @@ class MeetingStateRow(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    schema_version: int = 1  # 引入版本机制前写的旧行不含此字段，缺失即视为 v1
     idem_key: str
     source: SourceKind
     state: ProcessingState
@@ -61,6 +66,7 @@ def record_task(vault_dir: Path, task: MeetingTask, *, now: datetime | None = No
     return append_row(
         _state_log(vault_dir),
         {
+            SCHEMA_VERSION_FIELD: MEETING_STATE_VERSION,
             "timestamp": (now or datetime.now(UTC)).isoformat(),
             "idem_key": task.idem_key,
             "source": task.source.value,

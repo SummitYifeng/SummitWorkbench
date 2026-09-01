@@ -10,6 +10,7 @@ from summit_workbench import __version__
 from summit_workbench.cli import diagnostics
 from summit_workbench.cli.ask import ask_command
 from summit_workbench.cli.brief import brief_command
+from summit_workbench.cli.doctor import doctor_command
 from summit_workbench.cli.feishu import feishu_app
 from summit_workbench.cli.meeting import meeting_app
 from summit_workbench.cli.model import model_app
@@ -36,6 +37,7 @@ app.add_typer(project_app)
 app.add_typer(review_app)
 app.add_typer(sync_app)
 app.command("status")(status_command)
+app.command("doctor")(doctor_command)
 app.command("ask")(ask_command)
 app.command("brief")(brief_command)
 app.command("weekly")(weekly_command)
