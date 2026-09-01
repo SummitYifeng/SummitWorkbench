@@ -15,9 +15,9 @@
 | [0008](0008-m1-1-schema-state-machine.md) | M1-1 | 会议链路稳定 schema、处理状态机、幂等键、审批候选与路由 |
 | [0009](0009-m1-2-discovery-archive.md) | M1-2 | 会议发现与原文归档：状态账本、证据层落盘、幂等编排、`wb meeting` |
 | [0010](0010-m1-3-structured-processing.md) | M1-3 | token 预算分段、证据约束、结构化笔记、错误队列与失败恢复 |
-| [0011](0011-m1-4-review-writeback.md) | M1-4 | 稳定候选、集中审批、dry-run 写回、项目别名解析、审计与双层幂等 |
+| [0011](0011-m1-4-review-writeback.md) | M1-4 | 稳定候选、集中审批、dry-run 写回、项目别名解析、未匹配零摩擦捕获（`wb project`/`wb meeting import`）、审计与双层幂等 |
 | [0012](0012-m1-5-status-budget-backlog.md) | M1-5 | `wb status` 聚合、月度软预算告警、待确认积压阈值与去重通知 |
 | [0013](0013-m1-6-second-brain-qa.md) | M1-6 | `wb ask`：本地召回、只引用进上下文来源、事实/建议分区、冲突并列、qa-insight |
 | [0014](0014-m1-7-historical-backfill.md) | M1-7 | `wb meeting backfill`：本地逐字稿补导、费用预估+跨预算再确认、幂等续跑、historical 候选 |
 
-M0 与 M1-1..M1-7 已完成并真机冒烟；剩 PRD L44 严格验收（真实数据显式回归）后进入 M2。
+M0 与 M1 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。下一步 M2 晨间简报。

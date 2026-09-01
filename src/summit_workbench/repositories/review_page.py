@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -260,8 +260,3 @@ def refresh_review_page(
     temporary.write_text(render_review_page(combined, today=today), encoding="utf-8")
     temporary.replace(path)
     return RefreshOutcome(path, added=added, preserved=len(existing))
-
-
-def replace_decision(entry: ReviewEntry, decision: CandidateDecision) -> ReviewEntry:
-    """测试和调用方可用的不可变审批状态更新辅助。"""
-    return replace(entry, candidate=replace(entry.candidate, decision=decision))

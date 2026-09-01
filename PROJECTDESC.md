@@ -6,12 +6,12 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | M1 进行中：M1-1/M1-2/M1-3 已完成；M1-4 人工审批已验证，待补项目 ID 解析并完成写回验收 |
+| 当前阶段 | M1 全部完成，PRD L44 严格验收 6/6 真机通过（见 `docs/plans/M1_ACCEPTANCE.md`）；下一步 M2 晨间简报 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | 规划中的 `wb` CLI、Obsidian 待确认页与每日笔记 |
+| 交互入口 | `wb` CLI（已就绪）、Obsidian 待确认页与每日笔记 |
 | 权威规格 | `docs/product/PRD.md` v1.1 |
 
 ## Mission

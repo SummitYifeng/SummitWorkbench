@@ -103,6 +103,7 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb feishu meetings | note-transcript`：按会议号 + 时间范围列出会议及 `note_id`；按 `note_id` 拉取逐字稿。
 - `wb meeting archive | archive-local`：会议发现 → 取回逐字稿 → **模型调用前**落盘证据层（`meetings/transcripts/`），幂等防重；本地兜底导入。
 - `wb meeting process`：读取已归档原文，生成 `meetings/notes/` 结构化笔记并回链证据；失败进入 `_signals/model-errors/`，不保存半成品。
+- `wb meeting import <目录|文件>`：混合取稿策略的手动入口——把手动下载的逐字稿（`.md`/`.txt`，带讲话人+时间戳）一条命令归档+结构化，无需日期区间、幂等可续跑（飞书妙记按需，其余会议手动兜底）。
 - `wb project new | list`：在第二大脑侧为新项目建档（不碰 GitHub 仓库）并查看已建项目及别名；随着 workbench 梳理出新项目，后续会议即可解析命中。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID，未匹配项目的候选零摩擦落入全局 inbox。
 - `wb status`：汇总会议处理进度、当月 token 与估算费用、软预算与待确认候选积压；`--json` 供脚本消费，`--notify` 按去重规则发出预算/积压阈值通知（供 launchd 定时调用）。
