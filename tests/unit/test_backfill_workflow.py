@@ -20,6 +20,7 @@ from summit_workbench.repositories.meeting_state import record_task
 from summit_workbench.repositories.review_page import parse_review_page, review_path
 from summit_workbench.workflows.meetings.backfill import (
     run_backfill,
+    scan_for_import,
     scan_local_transcripts,
 )
 
@@ -34,6 +35,21 @@ def _src(tmp_path: Path) -> Path:
     (src / "2026-08-20-会议A.md").write_text("张三 00:01 讨论了网课账户。", encoding="utf-8")
     (src / "2026-09-05-会议B.md").write_text("李四 00:02 讨论了后勤。", encoding="utf-8")
     return src
+
+
+def test_scan_for_import_accepts_txt_and_no_date_range(tmp_path):
+    src = tmp_path / "drop"
+    src.mkdir()
+    # .txt、无 frontmatter、文件名带日期前缀
+    (src / "2026-08-31-财务对齐.txt").write_text("张三 00:01 讨论预算。", encoding="utf-8")
+    # .txt、文件名无日期 → 回退文件 mtime，仍应被收录
+    (src / "随手记.txt").write_text("李四 00:02 讨论排期。", encoding="utf-8")
+    items = scan_for_import(tmp_path / "vault", src)
+    assert len(items) == 2
+    by_title = {item.title: item for item in items}
+    assert by_title["财务对齐"].date == "2026-08-31"
+    assert "随手记" in by_title  # 无日期名也不丢
+    assert all(len(item.date) == 10 for item in items)  # 都得到了 YYYY-MM-DD
 
 
 def _ok_client(*, with_decision: bool = False) -> httpx.Client:

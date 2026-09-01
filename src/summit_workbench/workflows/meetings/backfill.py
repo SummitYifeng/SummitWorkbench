@@ -93,12 +93,50 @@ def _derive_title(body: str, path: Path) -> str:
     return _DATE_PREFIX_RE.sub("", path.stem).strip("-") or path.stem
 
 
+_TRANSCRIPT_SUFFIXES = frozenset({".md", ".txt"})
+
+
 def _transcript_files(source: Path) -> list[Path]:
     if source.is_file():
         return [source]
     if source.is_dir():
-        return sorted(p for p in source.glob("*.md") if p.is_file())
+        return sorted(
+            p for p in source.iterdir() if p.is_file() and p.suffix.lower() in _TRANSCRIPT_SUFFIXES
+        )
     return []
+
+
+def _mtime_date(path: Path) -> str:
+    return date.fromtimestamp(path.stat().st_mtime).isoformat()
+
+
+def scan_for_import(vault_dir: Path, source: Path) -> list[BackfillItem]:
+    """扫描本地逐字稿用于按需导入：不做日期区间过滤，缺日期回退文件修改日期。
+
+    面向「妙记按需 + 手动兜底」的常态工作流：把手动下载的逐字稿丢进一个文件夹，一条命令
+    归档 + 结构化。``.md``/``.txt`` 均可；日期取 frontmatter/文件名前缀，缺失回退 mtime。
+    """
+    items: list[BackfillItem] = []
+    for path in _transcript_files(source):
+        text = path.read_text(encoding="utf-8")
+        if not text.strip():
+            continue
+        meta, body, _error = _parsed(path, text)
+        meeting_date = _derive_date(meta, path) or _mtime_date(path)
+        idem_key = local_idempotency_key(text)
+        prior = latest_task(vault_dir, idem_key)
+        done = prior is not None and prior.state in _DONE_STATES
+        items.append(
+            BackfillItem(
+                path=path,
+                title=_derive_title(body, path),
+                date=meeting_date,
+                idem_key=idem_key,
+                input_tokens=estimate_tokens(text),
+                done=done,
+            )
+        )
+    return items
 
 
 def scan_local_transcripts(
