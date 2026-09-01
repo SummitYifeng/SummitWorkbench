@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.repositories.git import GitError, GitRepo
 
 
@@ -28,6 +29,7 @@ class SyncStatus(StrEnum):
     DIVERGED = "diverged"  # 与 upstream 分叉，需人工处理，不 force
     FETCH_FAILED = "fetch-failed"
     PUSH_FAILED = "push-failed"
+    BUSY = "busy-locked"  # 工作区被另一 wb 任务占用，本次跳过（LHF #1）
 
     @property
     def is_problem(self) -> bool:
@@ -37,6 +39,7 @@ class SyncStatus(StrEnum):
             SyncStatus.DIVERGED,
             SyncStatus.FETCH_FAILED,
             SyncStatus.PUSH_FAILED,
+            SyncStatus.BUSY,
         }
 
 
@@ -124,4 +127,13 @@ def iter_sync(work_root: Path) -> Iterator[RepoSyncResult]:
 
 
 def sync_work_root(work_root: Path) -> list[RepoSyncResult]:
-    return list(iter_sync(work_root))
+    """在工作区锁内整批同步，与 brief/weekly 的提交-推送互斥（LHF #1）。
+
+    锁被其它 wb 任务占用时不干等，返回单条 :attr:`SyncStatus.BUSY` 让调用方可见，
+    等下一次触发再同步（幂等，无副作用）。
+    """
+    try:
+        with workspace_lock(work_root):
+            return list(iter_sync(work_root))
+    except LockBusy as exc:
+        return [RepoSyncResult("(work-sync)", SyncStatus.BUSY, str(exc))]
