@@ -99,6 +99,7 @@ def process_archived_transcript(
         raise ValueError(f"任务状态 {task.state.value} 不能开始结构化处理")
 
     try:
+
         def save_usage(usage: UsageRecord) -> None:
             append_usage(vault_dir, usage)
 

@@ -20,9 +20,7 @@ from summit_workbench.workflows.ask.ask import AskResult, answer_question
 def ask_command(
     question: str = typer.Argument(..., help="要向第二大脑提出的问题。"),
     save: bool = typer.Option(False, "--save", help="把回答存为 qa-insight（默认不保存）。"),
-    project: str | None = typer.Option(
-        None, "--project", help="仅在指定项目相关的笔记中召回。"
-    ),
+    project: str | None = typer.Option(None, "--project", help="仅在指定项目相关的笔记中召回。"),
     limit: int = typer.Option(6, "--limit", min=1, max=20, help="最多召回的来源笔记数。"),
 ) -> None:
     """带来源地回答问题；模型只能引用实际召回进上下文的本地 Markdown。"""
@@ -86,8 +84,6 @@ def _print(result: AskResult, saved_path: object) -> None:
     if result.sources:
         typer.echo("\n召回来源：" + "、".join(f"[[{c.source_id}]]" for c in result.sources))
     if result.dropped_sources:
-        typer.echo(
-            "⚠ 已剔除越界引用（未进入上下文的来源）：" + "、".join(result.dropped_sources)
-        )
+        typer.echo("⚠ 已剔除越界引用（未进入上下文的来源）：" + "、".join(result.dropped_sources))
     if saved_path is not None:
         typer.echo(f"\n✓ 已保存 qa-insight：{saved_path}")

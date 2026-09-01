@@ -18,10 +18,7 @@ def daily_note_path(vault_dir: Path, day: str) -> Path:
 
 
 def _frontmatter(day: str) -> str:
-    return (
-        f"---\ndate: {day}\ntype: daily\nstatus: active\nproject: global\n"
-        f"updated: {day}\n---\n"
-    )
+    return f"---\ndate: {day}\ntype: daily\nstatus: active\nproject: global\nupdated: {day}\n---\n"
 
 
 def _brief_block(brief_markdown: str) -> str:

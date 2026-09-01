@@ -115,7 +115,7 @@ def md_to_html(md: str) -> str:
             out.append(f"<h2>{_inline_md(line[2:])}</h2>")
         elif line.startswith("> "):
             close_list()
-            out.append(f'<blockquote>{_inline_md(line[2:])}</blockquote>')
+            out.append(f"<blockquote>{_inline_md(line[2:])}</blockquote>")
         elif line.lstrip().startswith("- "):
             if not in_list:
                 out.append("<ul>")
@@ -142,8 +142,16 @@ def _card(entry: ReviewEntry) -> str:
     cid = escape(c.candidate_id)
     desc = escape(c.description)
     actionable = c.is_actionable()
-    warn = "" if actionable else '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>'
-    err = f'<div class="not-actionable">应用出错：{escape(entry.apply_error)}</div>' if entry.apply_error else ""
+    warn = (
+        ""
+        if actionable
+        else '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>'
+    )
+    err = (
+        f'<div class="not-actionable">应用出错：{escape(entry.apply_error)}</div>'
+        if entry.apply_error
+        else ""
+    )
     note = escape(entry.note_link)
     return f"""
     <div class="card {cls}" id="c-{cid}">
@@ -187,14 +195,19 @@ def render_review(
     if message:
         blocks.append(f'<div class="msg">{escape(message)}</div>')
     if errors:
-        blocks.append('<div class="msg err">审批页解析错误：<br>' +
-                      "<br>".join(escape(e) for e in errors) + "</div>")
+        blocks.append(
+            '<div class="msg err">审批页解析错误：<br>'
+            + "<br>".join(escape(e) for e in errors)
+            + "</div>"
+        )
 
     groups: dict[tuple[str, str], list[ReviewEntry]] = {}
     for entry in entries:
         groups.setdefault((entry.meeting_date, entry.meeting_title), []).append(entry)
     if not entries:
-        blocks.append('<div class="msg">暂无待确认候选。运行 <code>wb review refresh</code> 生成。</div>')
+        blocks.append(
+            '<div class="msg">暂无待确认候选。运行 <code>wb review refresh</code> 生成。</div>'
+        )
     for (mdate, title), grouped in sorted(groups.items()):
         blocks.append(f'<div class="meeting">{escape(mdate)} · {escape(title)}</div>')
         blocks.extend(_card(e) for e in grouped)
@@ -213,9 +226,8 @@ def _nav(active: str) -> str:
     def link(href: str, label: str, key: str) -> str:
         mark = "→ " if key == active else ""
         return f'<a href="{href}">{mark}{label}</a>'
-    return (
-        '<nav>' + link("/", "看板", "home") + link("/review", "审批", "review") + "</nav>"
-    )
+
+    return "<nav>" + link("/", "看板", "home") + link("/review", "审批", "review") + "</nav>"
 
 
 def _status_tiles(status: StatusReport) -> str:
@@ -228,9 +240,11 @@ def _status_tiles(status: StatusReport) -> str:
         ("待确认候选", str(status.backlog.count), "warn" if status.backlog.count else ""),
         (f"本月费用（{status.month}）", cost, "bad" if over else ""),
         ("已入第二大脑", str(status.succeeded), ""),
-        ("失败/不可用",
-         f"{status.count(ProcessingState.FAILED)}/{status.count(ProcessingState.UNAVAILABLE)}",
-         "bad" if status.count(ProcessingState.FAILED) else ""),
+        (
+            "失败/不可用",
+            f"{status.count(ProcessingState.FAILED)}/{status.count(ProcessingState.UNAVAILABLE)}",
+            "bad" if status.count(ProcessingState.FAILED) else "",
+        ),
     ]
     cells = "".join(
         f'<div class="tile {cls}"><div class="k">{escape(k)}</div>'
@@ -284,9 +298,13 @@ def render_dashboard(
 def render_plan(plan_text: str, executed: bool) -> str:
     """渲染 dry-run 计划或已应用结果页。"""
     title = "已应用" if executed else "预演计划（未写入）"
-    action = "" if executed else """
+    action = (
+        ""
+        if executed
+        else """
       <form method="post" action="/review/apply">
         <button class="primary" type="submit">确认应用（写回项目/建任务/归档拒绝项）</button></form>"""
+    )
     return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} · SummitWorkbench</title><style>{_STYLE}</style></head><body>

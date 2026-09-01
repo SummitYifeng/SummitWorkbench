@@ -116,8 +116,14 @@ def test_run_processes_pending_and_skips_done(tmp_path):
     src = _src(tmp_path)
     items = scan_local_transcripts(vault, src, since="2026-01-01", until="2026-12-31")
     report = run_backfill(
-        vault, items, CFG, SecretStr("k"), prompt=PROCESSOR, merger_prompt=MERGER,
-        client=_ok_client(), sleep=lambda _: None,
+        vault,
+        items,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_ok_client(),
+        sleep=lambda _: None,
     )
     assert report.processed == 2
     assert report.failed == 0
@@ -126,8 +132,14 @@ def test_run_processes_pending_and_skips_done(tmp_path):
     items2 = scan_local_transcripts(vault, src, since="2026-01-01", until="2026-12-31")
     assert all(i.done for i in items2)
     report2 = run_backfill(
-        vault, items2, CFG, SecretStr("k"), prompt=PROCESSOR, merger_prompt=MERGER,
-        client=_ok_client(), sleep=lambda _: None,
+        vault,
+        items2,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_ok_client(),
+        sleep=lambda _: None,
     )
     assert report2.processed == 0
     assert report2.skipped == 2
@@ -137,8 +149,15 @@ def test_include_actions_generates_historical_candidates(tmp_path):
     vault = tmp_path / "vault"
     items = scan_local_transcripts(vault, _src(tmp_path), since="2026-08-01", until="2026-08-31")
     report = run_backfill(
-        vault, items, CFG, SecretStr("k"), prompt=PROCESSOR, merger_prompt=MERGER,
-        include_actions=True, client=_ok_client(with_decision=True), sleep=lambda _: None,
+        vault,
+        items,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        include_actions=True,
+        client=_ok_client(with_decision=True),
+        sleep=lambda _: None,
     )
     assert report.processed == 1
     assert report.candidates == 1
@@ -150,8 +169,14 @@ def test_failed_processing_is_reported(tmp_path):
     vault = tmp_path / "vault"
     items = scan_local_transcripts(vault, _src(tmp_path), since="2026-08-01", until="2026-08-31")
     report = run_backfill(
-        vault, items, CFG, SecretStr("k"), prompt=PROCESSOR, merger_prompt=MERGER,
-        client=_bad_client(), sleep=lambda _: None,
+        vault,
+        items,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_bad_client(),
+        sleep=lambda _: None,
     )
     assert report.failed == 1
     assert report.processed == 0

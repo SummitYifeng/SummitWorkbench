@@ -91,7 +91,7 @@ def render_qa_insight(inp: QaInsightInput) -> str:
 
 ## 来源
 
-{_bullets([f'[[{sid}]]' for sid in inp.source_ids])}
+{_bullets([f"[[{sid}]]" for sid in inp.source_ids])}
 """
     rendered = f"---\n{fm}\n---\n\n{body}"
     meta, parsed_body, error = parse_frontmatter(rendered)

@@ -39,9 +39,7 @@ class NoteOutcome:
 def _projects(inp: MeetingNoteInput) -> list[str]:
     values = [project for project in inp.projects if project and project != UNRESOLVED]
     values.extend(
-        decision.target_project
-        for decision in inp.extraction.decisions
-        if decision.target_project
+        decision.target_project for decision in inp.extraction.decisions if decision.target_project
     )
     values.extend(
         action.target_project for action in inp.extraction.action_items if action.target_project
@@ -81,9 +79,7 @@ def render_meeting_note(inp: MeetingNoteInput) -> str:
         f"截止：{item.due_date or '无'}；证据：{item.evidence}）"
         for item in inp.extraction.action_items
     ]
-    questions = [
-        f"{item.text}（证据：{item.evidence}）" for item in inp.extraction.open_questions
-    ]
+    questions = [f"{item.text}（证据：{item.evidence}）" for item in inp.extraction.open_questions]
     evidence = list(
         dict.fromkeys(
             [item.evidence for item in inp.extraction.facts]
@@ -131,7 +127,7 @@ def render_meeting_note(inp: MeetingNoteInput) -> str:
 
 ## 证据索引
 
-{_bullets([f'[[{inp.transcript_stem}]] · {item}' for item in evidence])}
+{_bullets([f"[[{inp.transcript_stem}]] · {item}" for item in evidence])}
 """
     rendered = f"---\n{fm}\n---\n\n{body}"
     meta, parsed_body, error = parse_frontmatter(rendered)

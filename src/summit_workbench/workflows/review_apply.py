@@ -129,9 +129,7 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
         )
         return str(path), None
     if item.route is RouteTarget.GLOBAL_INBOX:
-        path, _written = append_global_inbox(
-            vault_dir, item.description, item.candidate_id
-        )
+        path, _written = append_global_inbox(vault_dir, item.description, item.candidate_id)
         return str(path), None
     raise ValueError(f"非本地 route：{item.route.value}")
 

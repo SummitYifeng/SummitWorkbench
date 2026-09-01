@@ -174,9 +174,7 @@ def archive_local(
         source=SourceKind.LOCAL_FILE,
         meeting_id=meeting_id or None,
     )
-    report = archive_meeting(
-        _vault_dir(), meeting, lambda _m: text, projects=list(project) or None
-    )
+    report = archive_meeting(_vault_dir(), meeting, lambda _m: text, projects=list(project) or None)
     _echo_report(title, report)
 
 

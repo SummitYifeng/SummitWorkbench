@@ -48,9 +48,7 @@ def _backlog(vault_dir: Path, today: date) -> BacklogState:
         return BacklogState(count=0, oldest_age_days=None)
     parsed = parse_review_page(page.read_text(encoding="utf-8"))
     pending = [
-        entry
-        for entry in parsed.entries
-        if entry.candidate.decision is CandidateDecision.PENDING
+        entry for entry in parsed.entries if entry.candidate.decision is CandidateDecision.PENDING
     ]
     if not pending:
         return BacklogState(count=0, oldest_age_days=None)
@@ -132,9 +130,7 @@ def build_status(
     total = sum(counts.values())
     usage = monthly_totals(vault_dir, month)
     soft_limit, budget_currency = load_budget_settings(config_file)
-    budget = evaluate_budget(
-        usage.estimated_cost, soft_limit, budget_currency or usage.currency
-    )
+    budget = evaluate_budget(usage.estimated_cost, soft_limit, budget_currency or usage.currency)
     backlog = _backlog(vault_dir, moment.date())
     return StatusReport(
         month=month,

@@ -51,10 +51,7 @@ def format_event_time(event: CalendarEvent, timezone: str) -> str:
 
 
 def _meeting_facts(events: list[CalendarEvent], timezone: str) -> list[MeetingFact]:
-    return [
-        MeetingFact(title=e.title, start_time=format_event_time(e, timezone))
-        for e in events
-    ]
+    return [MeetingFact(title=e.title, start_time=format_event_time(e, timezone)) for e in events]
 
 
 def _task_facts(tasks: list[TaskItem]) -> list[TaskFact]:
@@ -82,10 +79,7 @@ def _commitment_signals(tasks: list[TaskItem]) -> list[ActionSignal]:
 
 def _completion_items(tasks: list[TaskItem]) -> list[CompletionItem]:
     """已完成任务 → 最近完成（E1，机器可验证闭合）。"""
-    return [
-        CompletionItem(text=t.summary, source_ref=f"feishu-task:{t.guid}")
-        for t in tasks
-    ]
+    return [CompletionItem(text=t.summary, source_ref=f"feishu-task:{t.guid}") for t in tasks]
 
 
 def _project_signals(project: ProjectState) -> list[ActionSignal]:

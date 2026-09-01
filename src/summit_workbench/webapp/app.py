@@ -85,7 +85,11 @@ def _build_task_creator(ctx: WebContext) -> TaskCreator:
 
     def create(summary: str, due_date: str | None, candidate_id: str) -> str:
         return create_task(
-            client(), summary, due_date, candidate_id, timezone=ctx.timezone  # type: ignore[arg-type]
+            client(),  # type: ignore[arg-type]
+            summary,
+            due_date,
+            candidate_id,
+            timezone=ctx.timezone,
         ).guid
 
     return create
@@ -128,15 +132,20 @@ def _ask_html(vault_dir: Path, question: str) -> str:
 def create_app(ctx: WebContext) -> FastAPI:
     app = FastAPI(title="SummitWorkbench 面板")
 
-    def _dashboard(msg: str | None = None, ask_q: str = "", ask_html: str | None = None
-                   ) -> HTMLResponse:
+    def _dashboard(
+        msg: str | None = None, ask_q: str = "", ask_html: str | None = None
+    ) -> HTMLResponse:
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=default_config_file())
         brief_md = read_brief_block(ctx.vault_dir, day)
         return HTMLResponse(
             render_dashboard(
-                status, day, brief_md, ask_question=ask_q,
-                ask_answer_html=ask_html, message=msg,
+                status,
+                day,
+                brief_md,
+                ask_question=ask_q,
+                ask_answer_html=ask_html,
+                message=msg,
             )
         )
 
@@ -150,8 +159,12 @@ def create_app(ctx: WebContext) -> FastAPI:
 
         try:
             run = run_brief(
-                work_root=ctx.work_root, vault_dir=ctx.vault_dir, timezone=ctx.timezone,
-                day=ctx.today(), write=True, notify=False,
+                work_root=ctx.work_root,
+                vault_dir=ctx.vault_dir,
+                timezone=ctx.timezone,
+                day=ctx.today(),
+                write=True,
+                notify=False,
             )
             msg = f"已生成今日简报（健康度 {run.result.brief.health.level}）"
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
@@ -164,8 +177,10 @@ def create_app(ctx: WebContext) -> FastAPI:
 
         try:
             result = generate_weekly(
-                ctx.work_root, ctx.vault_dir,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date(), write=True,
+                ctx.work_root,
+                ctx.vault_dir,
+                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
+                write=True,
             )
             msg = f"已生成周复盘 {result.review.week}"
         except Exception as exc:  # noqa: BLE001

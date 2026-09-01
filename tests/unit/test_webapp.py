@@ -148,7 +148,7 @@ def test_md_to_html_renders_subset() -> None:
     html = md_to_html("## 标题\n- 项目 **粗** `代码`\n> 引用 [[note.md]]")
     assert "<h3>标题</h3>" in html
     assert "<li>项目 <strong>粗</strong> <code>代码</code></li>" in html
-    assert "<blockquote>引用 <span class=\"wikilink\">note.md</span></blockquote>" in html
+    assert '<blockquote>引用 <span class="wikilink">note.md</span></blockquote>' in html
 
 
 def test_bad_candidate_shows_message(tmp_path: Path) -> None:

@@ -143,9 +143,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         raise ValueError("候选首行格式无效")
     checked, payload = item_match.groups()
     decision = CandidateDecision.APPROVED if checked.lower() == "x" else CandidateDecision.PENDING
-    if payload.startswith("~~") and (
-        payload.endswith("~~") or payload.endswith("~~ #ignore")
-    ):
+    if payload.startswith("~~") and (payload.endswith("~~") or payload.endswith("~~ #ignore")):
         suffix = "~~ #ignore" if payload.endswith("~~ #ignore") else "~~"
         payload = payload[2 : -len(suffix)]
         decision = CandidateDecision.REJECTED
@@ -216,9 +214,11 @@ def parse_review_page(text: str) -> ParsedReviewPage:
         if _ITEM_RE.match(line):
             block: list[str] = []
             cursor = index + 1
-            while cursor < len(lines) and not _ITEM_RE.match(lines[cursor]) and not lines[
-                cursor
-            ].startswith("## "):
+            while (
+                cursor < len(lines)
+                and not _ITEM_RE.match(lines[cursor])
+                and not lines[cursor].startswith("## ")
+            ):
                 if lines[cursor].strip():
                     block.append(lines[cursor])
                 cursor += 1

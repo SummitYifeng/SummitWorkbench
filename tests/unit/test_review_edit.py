@@ -72,8 +72,10 @@ def test_set_decision_reject_then_pending(tmp_path: Path) -> None:
 def test_update_fields_changes_target_and_due(tmp_path: Path) -> None:
     _seed_page(tmp_path, [_entry()])
     update_fields(
-        tmp_path, "m1#decision-0",
-        target_project="HIC_Logistics", due_date="2026-09-10",
+        tmp_path,
+        "m1#decision-0",
+        target_project="HIC_Logistics",
+        due_date="2026-09-10",
     )
     entry = parse_review_page(review_path(tmp_path).read_text(encoding="utf-8")).entries[0]
     assert entry.candidate.target_project == "HIC_Logistics"

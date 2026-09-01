@@ -17,10 +17,7 @@ def web_command(
 
         from summit_workbench.webapp.app import WebContext, create_app
     except ModuleNotFoundError as exc:
-        typer.echo(
-            "✗ 未安装 Web 组件。请先运行：uv sync --extra web"
-            f"（缺少 {exc.name}）"
-        )
+        typer.echo(f"✗ 未安装 Web 组件。请先运行：uv sync --extra web（缺少 {exc.name}）")
         raise typer.Exit(code=2) from exc
 
     settings = load_settings()

@@ -33,9 +33,7 @@ class PublishResult:
     detail: str = ""
 
 
-def publish_brief(
-    vault_dir: Path, paths: list[Path], *, message: str, push: bool
-) -> PublishResult:
+def publish_brief(vault_dir: Path, paths: list[Path], *, message: str, push: bool) -> PublishResult:
     """提交（可选推送）简报文件。任何 git 失败转成可见状态，不抛出。
 
     整个 ``add → commit → (push)`` 序列在工作区锁内进行，与 ``wb sync`` 的

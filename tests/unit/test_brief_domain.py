@@ -122,9 +122,7 @@ def test_health_degraded_on_ranking_fallback() -> None:
 
 
 def test_health_degraded_on_source_failure_and_zero_signals() -> None:
-    health = evaluate_health(
-        signal_count=0, ranking_degraded=False, source_failures=("飞书日历",)
-    )
+    health = evaluate_health(signal_count=0, ranking_degraded=False, source_failures=("飞书日历",))
     assert health.level == "degraded"
     assert any("飞书日历" in r for r in health.reasons)
     assert any("无任何" in r for r in health.reasons)

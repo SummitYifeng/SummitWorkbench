@@ -17,9 +17,7 @@ from summit_workbench.workflows.brief.runner import run_brief, today_iso
 
 def brief_command(
     date: str | None = typer.Option(None, "--date", help="指定日期 YYYY-MM-DD（默认今天）。"),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="只渲染打印，不写笔记/快照、不发通知。"
-    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="只渲染打印，不写笔记/快照、不发通知。"),
     commit: bool = typer.Option(
         False, "--commit", help="把当日笔记+快照提交到 vault（只暂存简报文件，供 launchd）。"
     ),

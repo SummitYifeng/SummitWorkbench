@@ -62,14 +62,10 @@ def append_project_main(
     return path, _append_under_heading(path, heading, description, candidate_id)
 
 
-def append_global_inbox(
-    vault_dir: Path, description: str, candidate_id: str
-) -> tuple[Path, bool]:
+def append_global_inbox(vault_dir: Path, description: str, candidate_id: str) -> tuple[Path, bool]:
     path = vault_dir / "inbox.md"
     _ensure_global_inbox(path)
-    written = _append_under_heading(
-        path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id
-    )
+    written = _append_under_heading(path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id)
     return path, written
 
 

@@ -27,8 +27,9 @@ class ReviewEditError(RuntimeError):
     """审批页不可编辑（存在语法错误 / 找不到候选）。"""
 
 
-def _rewrite(vault_dir: Path, candidate_id: str,
-             mutate: Callable[[ApprovalCandidate], ApprovalCandidate]) -> None:
+def _rewrite(
+    vault_dir: Path, candidate_id: str, mutate: Callable[[ApprovalCandidate], ApprovalCandidate]
+) -> None:
     path = review_path(vault_dir)
     if not path.is_file():
         raise ReviewEditError("审批页不存在，先运行 wb review refresh")
