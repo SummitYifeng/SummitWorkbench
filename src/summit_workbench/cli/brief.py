@@ -26,6 +26,7 @@ from summit_workbench.repositories.usage_ledger import append_usage
 from summit_workbench.workflows.brief.brief import generate_brief
 from summit_workbench.workflows.brief.collect import FactsSource
 from summit_workbench.workflows.brief.feishu_facts import FeishuFactsSource
+from summit_workbench.workflows.brief.publish import PublishResult, publish_brief
 from summit_workbench.workflows.brief.ranking import RankingResult, rank_actions
 
 
@@ -68,6 +69,12 @@ def brief_command(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="只渲染打印，不写笔记/快照、不发通知。"
     ),
+    commit: bool = typer.Option(
+        False, "--commit", help="把当日笔记+快照提交到 vault（只暂存简报文件，供 launchd）。"
+    ),
+    push: bool = typer.Option(
+        False, "--push", help="提交后推送到远端（需 --commit；落后 upstream 时不推）。"
+    ),
     as_json: bool = typer.Option(False, "--json", help="以 JSON 输出结构化结果（便于脚本）。"),
 ) -> None:
     """生成今日晨间简报并幂等写入 ``_vault/daily/YYYY-MM-DD.md``。"""
@@ -101,6 +108,15 @@ def brief_command(
     if result.ranking.usage is not None:
         append_usage(paths.vault_dir, result.ranking.usage)
 
+    published: PublishResult | None = None
+    if commit and not dry_run and result.note_path and result.snapshot_path:
+        published = publish_brief(
+            paths.vault_dir,
+            [result.note_path, result.snapshot_path],
+            message=f"chore(brief): 晨间简报 {day}",
+            push=push,
+        )
+
     if as_json:
         typer.echo(
             json.dumps(
@@ -114,6 +130,7 @@ def brief_command(
                     "note_path": str(result.note_path) if result.note_path else None,
                     "snapshot_path": str(result.snapshot_path) if result.snapshot_path else None,
                     "feishu_unavailable": feishu_note,
+                    "publish": published.status.value if published else None,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -130,3 +147,7 @@ def brief_command(
         typer.echo(f"✓ 快照 {result.snapshot_path}")
     else:
         typer.echo("（--dry-run：未写入任何文件）")
+    if published is not None:
+        mark = "✓" if published.status.value.startswith("committed") else "ℹ"
+        detail = f"（{published.detail}）" if published.detail else ""
+        typer.echo(f"{mark} git：{published.status.value}{detail}")

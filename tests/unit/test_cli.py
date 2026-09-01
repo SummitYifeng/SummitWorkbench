@@ -70,6 +70,27 @@ def test_brief_registered_help() -> None:
     assert result.exit_code == 0
     assert "--dry-run" in result.stdout
     assert "--date" in result.stdout
+    assert "--commit" in result.stdout
+
+
+def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
+    import subprocess
+
+    work = tmp_path / "work"
+    vault = work / "_vault"
+    vault.mkdir(parents=True)
+    for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(work))
+    result = runner.invoke(app, ["brief", "--date", "2026-09-01", "--commit", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["publish"] == "committed"  # 无 upstream 下仅提交
+    log = subprocess.run(
+        ["git", "-C", str(vault), "log", "--oneline"], capture_output=True, text=True
+    ).stdout
+    assert "晨间简报 2026-09-01" in log
 
 
 def test_ask_registered() -> None:
