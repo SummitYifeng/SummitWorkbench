@@ -12,6 +12,14 @@ uv sync --extra web           # 确保 web 依赖已装
 scripts/build-macos-app.sh    # 产物在 dist/SummitWorkbench.app（可选：PORT 作第 1 参数）
 ```
 
+构建时若 `assets/icon-1024.png` 存在，会用系统自带 `sips + iconutil` 生成 `AppIcon.icns`
+并写入 bundle（Dock/访达显示雪山图标）。源图已随仓库提供；如需改图重跑：
+
+```bash
+uv run --with pillow python scripts/make-icon.py assets/icon-1024.png
+scripts/build-macos-app.sh
+```
+
 `wb` 路径与 `WORK_ROOT` 在构建时烘焙进 App（同 launchd 安装方式）。仓库迁移后重跑脚本即可。
 
 ## 安装 / 打开
@@ -32,6 +40,7 @@ xattr -dr com.apple.quarantine dist/SummitWorkbench.app
 - App 前台运行 uvicorn，**App 存活 = 服务存活**；Cmd-Q / Dock 退出即停服务。
 - 端口已被占用（例如已在别处 `wb web`）时，App 只打开窗口、不重复起服务。
 - 日志：`~/Library/Logs/summitworkbench-panel.log`。
-- 图标暂用系统默认；如需自定义 `.icns` 放进 `Contents/Resources` 并在 Info.plist 加
-  `CFBundleIconFile` 即可（后续可加）。
+- 图标：雪山主题，源图 `assets/icon-1024.png`（由 `scripts/make-icon.py` 用 Pillow 生成），
+  构建时转 `.icns` 注入 bundle。换新图后 Dock 若仍显旧图标，是系统图标缓存，重登录或
+  `killall Dock` 可刷新。
 - 想要真正的原生窗口壳（非浏览器）可后续上 Tauri，但需安装 Rust 工具链；当前方案零额外依赖。
