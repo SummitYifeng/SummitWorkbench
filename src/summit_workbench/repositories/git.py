@@ -1,8 +1,9 @@
 """单个 Git 仓库的只读/安全写操作封装（subprocess）。
 
-只暴露 work-sync 需要的原子操作，且**绝不做破坏性动作**：没有 reset/stash/force/
-rebase；写操作仅限 ``fetch``、``merge --ff-only`` 和 ``push``。任何失败都抛
-:class:`GitError`，由上层聚合为可见状态（NFR-6）。
+**绝不做破坏性动作**：没有 reset/stash/force/rebase；写操作仅限 ``fetch``、
+``merge --ff-only``、``add <指定路径>``、``commit`` 和 ``push``。``add`` 只暂存**显式列出**
+的路径（绝不 ``add -A``），因此提交简报生成物不会波及用户在 vault 里的其它改动。
+任何失败都抛 :class:`GitError`，由上层聚合为可见状态（NFR-6）。
 """
 
 from __future__ import annotations
@@ -82,3 +83,42 @@ class GitRepo:
         cp = self._run("push", remote, "HEAD")
         if cp.returncode != 0:
             raise GitError(f"push {remote} 失败", stderr=cp.stderr)
+
+    def add(self, paths: list[str]) -> None:
+        """只暂存显式列出的路径（相对仓库根）。绝不 ``add -A``，避免波及用户其它改动。"""
+        if not paths:
+            return
+        cp = self._run("add", "--", *paths)
+        if cp.returncode != 0:
+            raise GitError("git add 失败", stderr=cp.stderr)
+
+    def has_staged_changes(self) -> bool:
+        """暂存区是否有待提交内容（``diff --cached --quiet`` 返回 1 表示有）。"""
+        return self._run("diff", "--cached", "--quiet").returncode != 0
+
+    def commit(self, message: str) -> None:
+        """提交暂存区。无暂存内容时应由调用方先判 :meth:`has_staged_changes`（幂等）。"""
+        cp = self._run("commit", "-m", message)
+        if cp.returncode != 0:
+            raise GitError("git commit 失败", stderr=cp.stderr)
+
+    def commits_between(self, since_iso: str, until_iso: str) -> list[tuple[str, str]]:
+        """列出 [since, until] 内本地提交的 (短 hash, 主题)。只读，不联网。
+
+        ``since_iso`` / ``until_iso`` 为 ISO 日期（``git log`` 的 --since/--until 语义，
+        含边界当天）。仓库无提交或范围为空时返回空列表。
+        """
+        cp = self._run(
+            "log",
+            f"--since={since_iso} 00:00",
+            f"--until={until_iso} 23:59",
+            "--pretty=%h\t%s",
+        )
+        if cp.returncode != 0:
+            raise GitError("git log 失败", stderr=cp.stderr)
+        commits: list[tuple[str, str]] = []
+        for line in cp.stdout.splitlines():
+            if "\t" in line:
+                sha, subject = line.split("\t", 1)
+                commits.append((sha, subject))
+        return commits

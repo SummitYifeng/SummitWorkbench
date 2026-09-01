@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  晨间简报每日定时（M2-7）。这是**模板**：把 __WB_BIN__ / __WORK_ROOT__ / __USER_HOME__
+  替换为真实值后放到 ~/Library/LaunchAgents/ 并 launchctl load（见 deploy/launchd/README.md）。
+  每日 08:00（本机时区）生成简报、只暂存并提交简报文件、推送。主机休眠错过时，
+  launchd 在下次唤醒补跑一次（StartCalendarInterval 的既有语义）。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.summitworkbench.brief</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__WB_BIN__</string>
+        <string>brief</string>
+        <string>--commit</string>
+        <string>--push</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WORK_ROOT</key>
+        <string>__WORK_ROOT__</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__USER_HOME__/Library/Logs/summitworkbench-brief.log</string>
+    <key>StandardErrorPath</key>
+    <string>__USER_HOME__/Library/Logs/summitworkbench-brief.err.log</string>
+</dict>
+</plist>

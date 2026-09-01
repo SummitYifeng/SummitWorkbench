@@ -53,6 +53,58 @@ def test_status_registered_and_json(monkeypatch, tmp_path) -> None:
     assert payload["budget"]["over_soft_limit"] is False
 
 
+def test_brief_dry_run_degrades_without_feishu_or_model(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    result = runner.invoke(app, ["brief", "--date", "2026-09-01", "--dry-run", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["date"] == "2026-09-01"
+    assert payload["health"] == "degraded"  # 无飞书 + 无信号
+    assert payload["ranking_degraded"] is True
+    assert payload["note_path"] is None  # dry-run 不写
+
+
+def test_brief_registered_help() -> None:
+    result = runner.invoke(app, ["brief", "--help"])
+    assert result.exit_code == 0
+    assert "--dry-run" in result.stdout
+    assert "--date" in result.stdout
+    assert "--commit" in result.stdout
+
+
+def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
+    import subprocess
+
+    work = tmp_path / "work"
+    vault = work / "_vault"
+    vault.mkdir(parents=True)
+    for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(work))
+    result = runner.invoke(app, ["brief", "--date", "2026-09-01", "--commit", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["publish"] == "committed"  # 无 upstream 下仅提交
+    log = subprocess.run(
+        ["git", "-C", str(vault), "log", "--oneline"], capture_output=True, text=True
+    ).stdout
+    assert "晨间简报 2026-09-01" in log
+
+
+def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    (tmp_path / "work" / "_vault").mkdir(parents=True)
+    result = runner.invoke(app, ["weekly", "--date", "2026-09-01", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["week"] == "2026-W35"  # 2026-09-01 的上一周
+    assert payload["range"] == "2026-08-24~2026-08-30"
+    assert (tmp_path / "work" / "_vault" / "reviews" / "weekly" / "2026-W35.md").is_file()
+
+
 def test_ask_registered() -> None:
     result = runner.invoke(app, ["ask", "--help"])
     assert result.exit_code == 0

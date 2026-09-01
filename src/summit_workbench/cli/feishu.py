@@ -47,6 +47,11 @@ def _tenant_client(cfg: FeishuConfig) -> FeishuClient:
     return FeishuClient(cfg, FeishuSession(cfg).tenant_access_token())
 
 
+def _user_client(cfg: FeishuConfig) -> FeishuClient:
+    """构造以用户身份（user_access_token）鉴权的客户端，用于日历/任务读取（M2-1）。"""
+    return FeishuClient(cfg, FeishuSession(cfg).access_token())
+
+
 @feishu_app.command("authorize-url")
 def authorize_url() -> None:
     """打印用户授权 URL。在浏览器打开并同意后，用回调里的 code 运行 wb feishu login。"""
@@ -160,3 +165,57 @@ def note_transcript(
     if preview > 0:
         typer.echo(f"--- 前 {preview} 字符 ---")
         typer.echo(result.text[:preview])
+
+
+@feishu_app.command("calendar")
+def calendar(
+    date: str = typer.Option(..., "--date", help="查询日期 YYYY-MM-DD（当天全天窗）。"),
+) -> None:
+    """M2-1 冒烟：列出指定日期主日历的事件（user_access_token）。"""
+    from summit_workbench.providers.feishu.calendar import list_events_between
+
+    cfg = _config()
+    tz = ZoneInfo(load_settings().timezone)
+    try:
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tz)
+    except ValueError as exc:
+        typer.echo("日期格式应为 YYYY-MM-DD")
+        raise typer.Exit(code=2) from exc
+    start = int(day.timestamp())
+    end = int((day + timedelta(days=1)).timestamp()) - 1
+    try:
+        events = list_events_between(_user_client(cfg), start, end)
+    except FeishuError as exc:
+        typer.echo(f"✗ 列日历失败：{exc}")
+        raise typer.Exit(code=1) from exc
+    if not events:
+        typer.echo(f"{date} 主日历无事件")
+        raise typer.Exit(code=0)
+    typer.echo(f"✓ {date} 主日历 {len(events)} 个事件：")
+    for e in events:
+        when = f"全天 {e.start_time}" if e.is_all_day else e.start_time
+        typer.echo(f"• {e.title}  start={when}  event_id={e.event_id}")
+
+
+@feishu_app.command("tasks")
+def tasks(
+    completed: bool = typer.Option(False, "--completed", help="只列已完成（默认列未完成）。"),
+) -> None:
+    """M2-1 冒烟：列出当前用户任务及截止/完成状态（user_access_token）。"""
+    from summit_workbench.providers.feishu.tasks import list_tasks
+
+    cfg = _config()
+    tz = load_settings().timezone
+    try:
+        items = list_tasks(_user_client(cfg), timezone=tz, completed=completed)
+    except FeishuError as exc:
+        typer.echo(f"✗ 列任务失败：{exc}")
+        raise typer.Exit(code=1) from exc
+    label = "已完成" if completed else "未完成"
+    if not items:
+        typer.echo(f"无{label}任务")
+        raise typer.Exit(code=0)
+    typer.echo(f"✓ {label}任务 {len(items)} 条：")
+    for t in items:
+        due = f"截止 {t.due_date}" if t.due_date else "无截止"
+        typer.echo(f"• {t.summary}  {due}  guid={t.guid}")

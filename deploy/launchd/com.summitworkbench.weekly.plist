@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  周复盘定时（M2-10 / L27）。**模板**，占位符同 brief plist，由 install-launchd.sh 填充。
+  每周一 07:30（本机时区）复盘上一自然周，并在 08:00 晨间简报前提交到 vault。
+  主机休眠错过时，launchd 在下次唤醒补跑一次。
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.summitworkbench.weekly</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__WB_BIN__</string>
+        <string>weekly</string>
+        <string>--commit</string>
+        <string>--push</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WORK_ROOT</key>
+        <string>__WORK_ROOT__</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>7</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__USER_HOME__/Library/Logs/summitworkbench-weekly.log</string>
+    <key>StandardErrorPath</key>
+    <string>__USER_HOME__/Library/Logs/summitworkbench-weekly.err.log</string>
+</dict>
+</plist>
