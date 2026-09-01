@@ -41,12 +41,13 @@ from summit_workbench.workflows.meetings import (
 from summit_workbench.workflows.meetings.backfill import (
     plan_backfill,
     run_backfill,
+    scan_for_import,
     scan_local_transcripts,
 )
 
 meeting_app = typer.Typer(
     name="meeting",
-    help="会议归档与结构化处理（archive / archive-local / process / backfill）。",
+    help="会议归档与结构化处理（archive / archive-local / import / process / backfill）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -177,6 +178,78 @@ def archive_local(
         _vault_dir(), meeting, lambda _m: text, projects=list(project) or None
     )
     _echo_report(title, report)
+
+
+@meeting_app.command("import")
+def import_transcripts(
+    source: Path = typer.Argument(..., help="本地逐字稿文件或目录（.md/.txt，带讲话人+时间戳）。"),
+    include_actions: bool = typer.Option(
+        False, "--include-actions", help="同时生成审批候选（默认只沉淀知识）。"
+    ),
+    yes: bool = typer.Option(False, "--yes", help="跳过开始前的费用确认。"),
+    force_budget: bool = typer.Option(
+        False, "--force-budget", help="即使预计跨越月度软预算也继续。"
+    ),
+) -> None:
+    """「妙记按需 + 手动兜底」常态入口：把手动下载的逐字稿一条命令归档+结构化。
+
+    无需日期区间；日期取 frontmatter/文件名前缀，缺失回退文件修改日期。幂等可续跑。
+    文件名建议 ``YYYY-MM-DD-会议标题.txt``（标题用于笔记标题与去重展示）。
+    """
+    if not source.exists():
+        typer.echo(f"来源不存在：{source}")
+        raise typer.Exit(code=2)
+    vault_dir = _vault_dir()
+    try:
+        cfg = load_model_config("meeting")
+        api_key = resolve_credential(cfg.api_key_ref)
+        prompt = load_prompt("meeting-processor")
+        merger_prompt = load_prompt("meeting-merger")
+    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
+        typer.echo(f"✗ 导入未启动：{exc}")
+        raise typer.Exit(code=2) from exc
+
+    items = scan_for_import(vault_dir, source)
+    if not items:
+        typer.echo(f"未发现可导入的逐字稿（.md/.txt）：{source}")
+        raise typer.Exit(code=0)
+
+    month = datetime.now(_tz()).strftime("%Y-%m")
+    month_spent = monthly_totals(vault_dir, month).estimated_cost
+    soft_limit, _currency = load_budget_settings(default_config_file())
+    est = plan_backfill(items, cfg, month_spent=month_spent, soft_limit=soft_limit)
+    typer.echo(
+        f"待导入 {est.pending} 场（已存在跳过 {est.already_done} 场）；"
+        f"预估输入 {est.est_input_tokens} / 输出 {est.est_output_tokens} token，"
+        f"约 {est.est_cost} {est.currency}。"
+    )
+    if est.pending == 0:
+        typer.echo("• 全部已导入，幂等空转。")
+        raise typer.Exit(code=0)
+    if not yes:
+        typer.confirm(f"开始导入 {est.pending} 场？", abort=True)
+    if est.crosses_soft_budget and not force_budget:
+        typer.confirm("⚠ 预计将跨越本月软预算，仍继续？", abort=True)
+
+    report = run_backfill(
+        vault_dir,
+        items,
+        cfg,
+        api_key,
+        prompt=prompt,
+        merger_prompt=merger_prompt,
+        include_actions=include_actions,
+    )
+    typer.echo(
+        f"✓ 导入完成：处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}"
+        + (f"、生成候选 {report.candidates}" if include_actions else "")
+    )
+    for result in report.results:
+        prefix = "✗" if result.action == "failed" else "•"
+        detail = f"：{result.reason}" if result.reason else ""
+        typer.echo(f"  {prefix} {result.item.date} {result.item.title}{detail}")
+    if report.failed:
+        raise typer.Exit(code=1)
 
 
 @meeting_app.command("process")
