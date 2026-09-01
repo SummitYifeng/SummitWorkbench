@@ -6,9 +6,18 @@ import json
 
 from typer.testing import CliRunner
 
-from summit_workbench.cli.doctor import CheckStatus, run_checks
+from summit_workbench.cli import doctor
+from summit_workbench.cli.doctor import (
+    CheckStatus,
+    _credential_check,
+    _feishu_online_check,
+    run_checks,
+)
 from summit_workbench.cli.main import app
+from summit_workbench.config.secrets import CredentialError, CredentialRef
 from summit_workbench.config.settings import load_settings
+from summit_workbench.providers.feishu.config import FeishuConfig
+from summit_workbench.providers.feishu.errors import FeishuAuthError
 
 runner = CliRunner()
 
@@ -46,3 +55,35 @@ def test_doctor_command_human(monkeypatch, tmp_path):
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0
     assert "预检通过" in result.stdout
+
+
+# —— 失败分支 ——
+
+
+def test_credential_check_fails_when_unresolvable(monkeypatch):
+    """凭据解析失败 → FAIL，且不打印秘密值（只报能否解析）。"""
+
+    def boom(_ref):
+        raise CredentialError("item could not be found")
+
+    monkeypatch.setattr(doctor, "resolve_credential", boom)
+    check = _credential_check("测试凭据", CredentialRef(service="s", account="a"))
+    assert check.status is CheckStatus.FAIL
+    assert "无法解析" in check.detail
+
+
+def test_feishu_online_check_reports_reauthorize(monkeypatch):
+    """在线检查遇 token 失效 → FAIL 且提示 wb feishu login。"""
+
+    class FakeSession:
+        def __init__(self, _cfg):
+            pass
+
+        def access_token(self):
+            raise FeishuAuthError("invalid_grant", needs_reauthorize=True)
+
+    monkeypatch.setattr(doctor, "FeishuSession", FakeSession)
+    cfg = FeishuConfig(app_id="x", redirect_uri="http://localhost/cb")
+    check = _feishu_online_check(cfg)
+    assert check.status is CheckStatus.FAIL
+    assert "wb feishu login" in check.detail
