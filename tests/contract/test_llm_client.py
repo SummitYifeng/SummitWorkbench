@@ -102,6 +102,23 @@ def test_timeout_is_retried_then_raised():
     assert calls["n"] == 4
 
 
+def test_retry_after_header_is_honored():
+    """429 带 Retry-After：按服务端指定秒数等待（LHF #3）。"""
+    calls = {"n": 0}
+    slept: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "9"}, json={"error": "rate"})
+        return httpx.Response(200, json=OK_BODY)
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = ModelClient(CFG, SecretStr("sk-test"), client=http, sleep=slept.append)
+    client.complete("s", "u")
+    assert slept == [9.0]
+
+
 def test_api_key_not_in_error(capfd):
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "bad"})

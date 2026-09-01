@@ -15,6 +15,11 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from summit_workbench.providers._resilient import (
+    build_client,
+    parse_retry_after,
+    send_with_retry,
+)
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMAPIError, LLMTimeoutError
 
@@ -47,7 +52,7 @@ class ModelClient:
     ) -> None:
         self.cfg = cfg
         self._key = api_key
-        self._client = client or httpx.Client(timeout=cfg.timeout_seconds)
+        self._client = client or build_client(cfg.timeout_seconds)
         self._sleep = sleep
 
     def complete(
@@ -73,15 +78,15 @@ class ModelClient:
         url = f"{self.cfg.base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self._key.get_secret_value()}"}
 
-        for attempt in range(1, max_retries + 2):
-            try:
-                return self._attempt_once(url, payload, headers, attempt)
-            except (LLMTimeoutError, LLMAPIError) as exc:
-                if attempt <= max_retries and is_retryable(exc):
-                    self._sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
-                    continue
-                raise
-        raise AssertionError("unreachable")  # 循环要么 return 要么 raise
+        return send_with_retry(
+            lambda attempt: self._attempt_once(url, payload, headers, attempt),
+            retry_on=(LLMTimeoutError, LLMAPIError),
+            is_retryable=is_retryable,
+            retry_after=lambda exc: getattr(exc, "retry_after", None),
+            max_retries=max_retries,
+            base_backoff=_BACKOFF_BASE,
+            sleep=self._sleep,
+        )
 
     def _attempt_once(
         self, url: str, payload: dict[str, Any], headers: dict[str, str], attempt: int
@@ -98,6 +103,7 @@ class ModelClient:
                 f"{self.cfg.model_id} 服务暂时不可用（HTTP {resp.status_code}，第 {attempt} 次）",
                 status=resp.status_code,
                 retryable=True,
+                retry_after=parse_retry_after(resp),
             )
         if resp.status_code >= 400:
             raise LLMAPIError(

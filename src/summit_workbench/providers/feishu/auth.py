@@ -13,16 +13,25 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 from pydantic import SecretStr
 
+from summit_workbench.providers._resilient import (
+    build_client,
+    parse_retry_after,
+    send_with_retry,
+)
 from summit_workbench.providers.feishu.config import AUTHORIZE_PATH, TOKEN_PATH, FeishuConfig
 from summit_workbench.providers.feishu.errors import FeishuAuthError
 
 _DEFAULT_TIMEOUT = 15.0
+_MAX_RETRIES = 3  # 初次失败后最多再重试 3 次（仅瞬时基础设施故障）
 
 
 @dataclass(frozen=True)
@@ -49,7 +58,46 @@ def build_authorize_url(cfg: FeishuConfig, state: str) -> str:
 
 
 def _default_client() -> httpx.Client:
-    return httpx.Client(timeout=_DEFAULT_TIMEOUT)
+    return build_client(_DEFAULT_TIMEOUT)
+
+
+def _post_json(
+    http: httpx.Client,
+    url: str,
+    payload: dict[str, Any],
+    what: str,
+    *,
+    sleep: Callable[[float], None],
+) -> httpx.Response:
+    """POST 一次 token 端点并带瞬时故障重试；返回 HTTP 2xx/4xx 响应交由调用方解析信封。
+
+    只把「超时 / 网络抖动 / 429 / 5xx」当作可重试的瞬时故障（尊重 ``Retry-After``）；
+    其余（含 4xx 语义失败）作为普通响应返回，语义判定留给调用方。
+    """
+
+    def attempt(_n: int) -> httpx.Response:
+        try:
+            resp = http.post(url, json=payload)
+        except httpx.TimeoutException as exc:
+            raise FeishuAuthError(f"{what}请求超时", retryable=True) from exc
+        except httpx.HTTPError as exc:
+            raise FeishuAuthError(f"{what}网络错误：{type(exc).__name__}", retryable=True) from exc
+        if resp.status_code == 429 or resp.status_code >= 500:
+            raise FeishuAuthError(
+                f"{what}服务暂时不可用（HTTP {resp.status_code}）",
+                retryable=True,
+                retry_after=parse_retry_after(resp),
+            )
+        return resp
+
+    return send_with_retry(
+        attempt,
+        retry_on=(FeishuAuthError,),
+        is_retryable=lambda exc: isinstance(exc, FeishuAuthError) and exc.retryable,
+        retry_after=lambda exc: getattr(exc, "retry_after", None),
+        max_retries=_MAX_RETRIES,
+        sleep=sleep,
+    )
 
 
 def _post_token(
@@ -58,14 +106,13 @@ def _post_token(
     *,
     client: httpx.Client | None,
     on_invalid_grant_reauthorize: bool,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> TokenSet:
     url = f"{cfg.openapi_host}{TOKEN_PATH}"
     owns_client = client is None
     http = client or _default_client()
     try:
-        resp = http.post(url, json=payload)
-    except httpx.HTTPError as exc:
-        raise FeishuAuthError(f"令牌端点网络错误：{type(exc).__name__}") from exc
+        resp = _post_json(http, url, payload, "令牌端点", sleep=sleep)
     finally:
         if owns_client:
             http.close()
@@ -128,9 +175,7 @@ def get_tenant_access_token(
     owns_client = client is None
     http = client or _default_client()
     try:
-        resp = http.post(url, json=payload)
-    except httpx.HTTPError as exc:
-        raise FeishuAuthError(f"tenant_access_token 网络错误：{type(exc).__name__}") from exc
+        resp = _post_json(http, url, payload, "tenant_access_token", sleep=time.sleep)
     finally:
         if owns_client:
             http.close()

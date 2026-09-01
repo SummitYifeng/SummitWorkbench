@@ -16,12 +16,24 @@ class LLMTimeoutError(LLMError):
 
 
 class LLMAPIError(LLMError):
-    """模型服务返回 HTTP 错误或异常响应。``status`` 便于审计与重试判断。"""
+    """模型服务返回 HTTP 错误或异常响应。``status`` 便于审计与重试判断。
 
-    def __init__(self, message: str, *, status: int | None = None, retryable: bool = False) -> None:
+    ``retry_after`` 承载 429/503 响应的 ``Retry-After`` 头（秒数），供退避层按服务端指定
+    时长等待而非盲目指数退避；未指定则为 ``None``。
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        retryable: bool = False,
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.retryable = retryable
+        self.retry_after = retry_after
 
 
 class LLMSchemaError(LLMError):
