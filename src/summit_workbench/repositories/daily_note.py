@@ -28,6 +28,20 @@ def _brief_block(brief_markdown: str) -> str:
     return f"{BRIEF_START}\n{brief_markdown.rstrip()}\n{BRIEF_END}\n"
 
 
+def read_brief_block(vault_dir: Path, day: str) -> str | None:
+    """读回当日笔记锚点区块内的简报正文；文件或区块不存在时返回 None。"""
+    path = daily_note_path(vault_dir, day)
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    start = text.find(BRIEF_START)
+    end = text.find(BRIEF_END)
+    if start == -1 or end == -1 or end <= start:
+        return None
+    inner = text[start + len(BRIEF_START) : end]
+    return inner.strip() or None
+
+
 def write_brief(vault_dir: Path, day: str, brief_markdown: str) -> Path:
     """把简报正文幂等写入当日笔记的锚点区块，返回文件路径。"""
     path = daily_note_path(vault_dir, day)

@@ -1,14 +1,17 @@
-"""审批面板的 HTML 渲染（纯函数，无 IO；便于快照测试）。"""
+"""面板的 HTML 渲染（纯函数，无 IO；便于快照测试）。"""
 
 from __future__ import annotations
 
+import re
 from html import escape
 
+from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
     CandidateDecision,
     ReviewEntry,
     RouteTarget,
 )
+from summit_workbench.observability.status import StatusReport
 
 _ROUTE_LABELS = {
     RouteTarget.FEISHU_TASK: "飞书任务",
@@ -58,7 +61,71 @@ summary { cursor:pointer; color:var(--accent); font-size:13px; }
 a { color:var(--accent); } .not-actionable { color:var(--warn); font-size:12px; }
 pre { white-space:pre-wrap; background:var(--bg); border:1px solid var(--border); border-radius:8px;
   padding:12px; font-size:13px; overflow-x:auto; }
+nav a { margin-right:14px; text-decoration:none; font-size:14px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:8px 0 20px; }
+.tile { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+.tile .k { font-size:12px; color:var(--muted); } .tile .v { font-size:20px; font-weight:600; margin-top:2px; }
+.tile.ok .v { color:var(--ok); } .tile.warn .v { color:var(--warn); } .tile.bad .v { color:var(--bad); }
+.brief { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:4px 18px 16px; }
+.brief h2 { font-size:18px; } .brief h3 { font-size:15px; color:var(--accent); margin-bottom:4px; }
+.brief h4 { font-size:13px; color:var(--muted); margin:10px 0 2px; }
+.brief ul { margin:4px 0; padding-left:20px; } .brief li { margin:2px 0; }
+.brief blockquote { border-left:3px solid var(--warn); margin:8px 0; padding:2px 12px; color:var(--muted); }
+.wikilink { color:var(--accent); } code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:.9em; }
+.actions { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+.ask textarea { min-height:44px; } .answer { background:var(--card); border:1px solid var(--border);
+  border-radius:10px; padding:12px 16px; margin-top:12px; } .section-title { font-size:14px; color:var(--muted);
+  margin:24px 0 6px; border-bottom:1px solid var(--border); padding-bottom:6px; }
 """
+
+
+def _inline_md(text: str) -> str:
+    """行内 Markdown → HTML（先转义，再处理 **粗体** / `代码` / [[wiki 链接]]）。"""
+    html = escape(text)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"`([^`]+?)`", r"<code>\1</code>", html)
+    html = re.sub(r"\[\[([^\]]+?)\]\]", r'<span class="wikilink">\1</span>', html)
+    return html
+
+
+def md_to_html(md: str) -> str:
+    """把简报使用的 Markdown 子集渲染成 HTML（标题/列表/引用/行内）。"""
+    out: list[str] = []
+    in_list = False
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            out.append("</ul>")
+            in_list = False
+
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            close_list()
+            continue
+        if line.startswith("### "):
+            close_list()
+            out.append(f"<h4>{_inline_md(line[4:])}</h4>")
+        elif line.startswith("## "):
+            close_list()
+            out.append(f"<h3>{_inline_md(line[3:])}</h3>")
+        elif line.startswith("# "):
+            close_list()
+            out.append(f"<h2>{_inline_md(line[2:])}</h2>")
+        elif line.startswith("> "):
+            close_list()
+            out.append(f'<blockquote>{_inline_md(line[2:])}</blockquote>')
+        elif line.lstrip().startswith("- "):
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f"<li>{_inline_md(line.lstrip()[2:])}</li>")
+        else:
+            close_list()
+            out.append(f"<p>{_inline_md(line)}</p>")
+    close_list()
+    return "\n".join(out)
 
 
 def _route_options(current: RouteTarget | None) -> str:
@@ -136,10 +203,82 @@ def render_review(
     return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>会议审批 · SummitWorkbench</title><style>{_STYLE}</style></head><body>
-<header><h1>会议提取待确认</h1><span class="badge pending">{pending} 条待确认</span>
+<header><h1>会议审批</h1>{_nav("review")}<span class="badge pending">{pending} 条待确认</span>
 <span class="spacer"></span>
 <form method="get" action="/review/plan"><button type="submit">预演应用</button></form>
 </header><main>{body}</main></body></html>"""
+
+
+def _nav(active: str) -> str:
+    def link(href: str, label: str, key: str) -> str:
+        mark = "→ " if key == active else ""
+        return f'<a href="{href}">{mark}{label}</a>'
+    return (
+        '<nav>' + link("/", "看板", "home") + link("/review", "审批", "review") + "</nav>"
+    )
+
+
+def _status_tiles(status: StatusReport) -> str:
+    health = "🟡 有积压" if status.backlog.active else "🟢 正常"
+    hcls = "warn" if status.backlog.active else "ok"
+    cost = f"{status.usage.estimated_cost:.4f} {status.usage.currency}"
+    over = status.budget.over_soft_limit
+    tiles = [
+        ("健康度", health, hcls),
+        ("待确认候选", str(status.backlog.count), "warn" if status.backlog.count else ""),
+        (f"本月费用（{status.month}）", cost, "bad" if over else ""),
+        ("已入第二大脑", str(status.succeeded), ""),
+        ("失败/不可用",
+         f"{status.count(ProcessingState.FAILED)}/{status.count(ProcessingState.UNAVAILABLE)}",
+         "bad" if status.count(ProcessingState.FAILED) else ""),
+    ]
+    cells = "".join(
+        f'<div class="tile {cls}"><div class="k">{escape(k)}</div>'
+        f'<div class="v">{escape(v)}</div></div>'
+        for k, v, cls in tiles
+    )
+    return f'<div class="tiles">{cells}</div>'
+
+
+def render_dashboard(
+    status: StatusReport,
+    day: str,
+    brief_md: str | None,
+    *,
+    ask_question: str = "",
+    ask_answer_html: str | None = None,
+    message: str | None = None,
+) -> str:
+    """看板首页：状态速览 + 今日简报 + 一键触发 + 问答。"""
+    msg = f'<div class="msg">{escape(message)}</div>' if message else ""
+    if brief_md:
+        brief_html = f'<div class="brief">{md_to_html(brief_md)}</div>'
+    else:
+        brief_html = (
+            '<div class="msg">今日简报尚未生成。点下方「生成今日简报」或等 08:00 自动生成。</div>'
+        )
+    answer = f'<div class="answer">{ask_answer_html}</div>' if ask_answer_html else ""
+    return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>看板 · SummitWorkbench</title><style>{_STYLE}</style></head><body>
+<header><h1>SummitWorkbench</h1>{_nav("home")}<span class="spacer"></span>
+<span class="badge">{escape(day)}</span></header>
+<main>
+{msg}
+{_status_tiles(status)}
+<div class="actions">
+  <form method="post" action="/run/brief"><button class="primary" type="submit">↻ 生成今日简报</button></form>
+  <form method="post" action="/run/weekly"><button type="submit">生成上周复盘</button></form>
+</div>
+<div class="section-title">今日简报</div>
+{brief_html}
+<div class="section-title">问第二大脑</div>
+<form class="ask" method="post" action="/ask">
+  <textarea name="question" placeholder="例如：网课项目最近的决策是什么？">{escape(ask_question)}</textarea>
+  <div class="actions"><button class="primary" type="submit">提问</button></div>
+</form>
+{answer}
+</main></body></html>"""
 
 
 def render_plan(plan_text: str, executed: bool) -> str:
