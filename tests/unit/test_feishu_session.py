@@ -22,7 +22,8 @@ def _mock_client(payload) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def test_access_token_refreshes_and_persists_rotated_rt(monkeypatch):
+def test_access_token_refreshes_and_persists_rotated_rt(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))  # 工作区锁隔离到 tmp，勿触真实 home
     stored: dict[str, str] = {}
 
     def fake_resolve(ref: CredentialRef) -> SecretStr:
@@ -45,7 +46,9 @@ def test_access_token_refreshes_and_persists_rotated_rt(monkeypatch):
     assert stored["summit-workbench-feishu-refresh-token"] == "rotated-rt"
 
 
-def test_access_token_without_stored_rt_asks_reauthorize(monkeypatch):
+def test_access_token_without_stored_rt_asks_reauthorize(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+
     def fake_resolve(ref: CredentialRef) -> SecretStr:
         if "refresh-token" in ref.service:
             raise CredentialError("not found")
@@ -58,7 +61,8 @@ def test_access_token_without_stored_rt_asks_reauthorize(monkeypatch):
     assert ei.value.needs_reauthorize is True
 
 
-def test_complete_authorization_requires_offline_access(monkeypatch):
+def test_complete_authorization_requires_offline_access(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
     monkeypatch.setattr(session_mod, "resolve_credential", lambda ref: SecretStr("app-secret"))
     monkeypatch.setattr(session_mod, "store_credential", lambda ref, value: None)
 
@@ -69,7 +73,8 @@ def test_complete_authorization_requires_offline_access(monkeypatch):
     assert "offline_access" in str(ei.value)
 
 
-def test_complete_authorization_stores_refresh_token(monkeypatch):
+def test_complete_authorization_stores_refresh_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
     stored: dict[str, str] = {}
     monkeypatch.setattr(session_mod, "resolve_credential", lambda ref: SecretStr("app-secret"))
     monkeypatch.setattr(

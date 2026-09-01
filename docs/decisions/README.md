@@ -19,5 +19,8 @@
 | [0012](0012-m1-5-status-budget-backlog.md) | M1-5 | `wb status` 聚合、月度软预算告警、待确认积压阈值与去重通知 |
 | [0013](0013-m1-6-second-brain-qa.md) | M1-6 | `wb ask`：本地召回、只引用进上下文来源、事实/建议分区、冲突并列、qa-insight |
 | [0014](0014-m1-7-historical-backfill.md) | M1-7 | `wb meeting backfill`：本地逐字稿补导、费用预估+跨预算再确认、幂等续跑、historical 候选 |
+| [0015](0015-m2-morning-brief.md) | M2 | 晨间简报全链路 + launchd 定时提交 + 周复盘 |
+| [0016](0016-workspace-lock.md) | 韧性加固 | 工作区级跨进程锁（`config/locking.py`）：飞书 refresh_token 轮换与 git 写序列互斥（LHF #1）|
 
-M0 与 M1 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。下一步 M2 晨间简报。
+M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
+底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）已落地，LHF #2/#3 见 0016 遗留段。

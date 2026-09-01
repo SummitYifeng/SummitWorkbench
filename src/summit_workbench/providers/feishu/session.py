@@ -9,6 +9,7 @@ from __future__ import annotations
 import httpx
 from pydantic import SecretStr
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.config.secrets import (
     CredentialError,
     resolve_credential,
@@ -44,7 +45,9 @@ class FeishuSession:
             raise FeishuAuthError(
                 "换取成功但未返回 refresh_token：请确认授权 scope 含 offline_access"
             )
-        store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
+        # 与 access_token() 的轮换共用工作区锁：授权写回与并发刷新互斥，避免覆盖竞态。
+        with workspace_lock():
+            store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
         return tokens
 
     def tenant_access_token(self, *, client: httpx.Client | None = None) -> SecretStr:
@@ -55,17 +58,23 @@ class FeishuSession:
         return auth.get_tenant_access_token(self.cfg, self._app_secret(), client=client)
 
     def access_token(self, *, client: httpx.Client | None = None) -> SecretStr:
-        """刷新并返回可用的 access_token；同时把轮换出的新 refresh_token 回写 Keychain。"""
-        try:
-            current_rt = resolve_credential(self.cfg.refresh_token_ref)
-        except CredentialError as exc:
-            raise FeishuAuthError(
-                f"未在 Keychain 找到 refresh_token（{self.cfg.refresh_token_ref}）；"
-                "请先运行 wb feishu login 完成一次授权",
-                needs_reauthorize=True,
-            ) from exc
+        """刷新并返回可用的 access_token；同时把轮换出的新 refresh_token 回写 Keychain。
 
-        tokens = auth.refresh_token(self.cfg, self._app_secret(), current_rt, client=client)
-        if tokens.refresh_token is not None:
-            store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
-        return tokens.access_token
+        飞书 refresh_token 单次轮换：``读 RT → 刷新 → 写回新 RT`` 必须作为一个整体
+        对并发进程互斥，否则两个触发源会互相作废对方的 token，把 Keychain 存成死
+        token（LHF #1）。这里用工作区锁把整段 read-modify-write 圈成临界区。
+        """
+        with workspace_lock():
+            try:
+                current_rt = resolve_credential(self.cfg.refresh_token_ref)
+            except CredentialError as exc:
+                raise FeishuAuthError(
+                    f"未在 Keychain 找到 refresh_token（{self.cfg.refresh_token_ref}）；"
+                    "请先运行 wb feishu login 完成一次授权",
+                    needs_reauthorize=True,
+                ) from exc
+
+            tokens = auth.refresh_token(self.cfg, self._app_secret(), current_rt, client=client)
+            if tokens.refresh_token is not None:
+                store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
+            return tokens.access_token
