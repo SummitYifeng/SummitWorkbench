@@ -53,6 +53,7 @@
 
 计划中的主要模块：
 
+- `config`：分层配置、路径解析、Keychain 凭据引用，以及工作区级跨进程锁（`locking.py`，序列化并发触发源的 git 写序列与飞书 token 轮换，见 ADR 0016）。
 - `domain`：会议、证据、审批项、项目、信号、模型用量等稳定类型与规则。
 - `providers`：飞书 OpenAPI 和云端模型 API 适配。
 - `repositories`：vault Markdown、幂等状态、错误队列、用量账本。
