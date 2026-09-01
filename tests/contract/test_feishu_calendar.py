@@ -6,6 +6,7 @@ import httpx
 from pydantic import SecretStr
 
 from summit_workbench.providers.feishu.calendar import (
+    list_event_instances,
     list_events,
     list_events_between,
     primary_calendar_id,
@@ -54,6 +55,30 @@ def _handler(request: httpx.Request) -> httpx.Response:
                 },
             },
         )
+    if path == "/open-apis/calendar/v4/calendars/cal_main/events/instance_view":
+        # instance_view 展开循环为实例；含一条已取消的应被过滤。
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "items": [
+                        {
+                            "event_id": "inst-b",
+                            "summary": "钻石三角双周例会",
+                            "start_time": {"timestamp": "1788247800"},
+                        },
+                        {
+                            "event_id": "inst-cancelled",
+                            "summary": "已取消例会",
+                            "status": "cancelled",
+                            "start_time": {"timestamp": "1788200000"},
+                        },
+                    ],
+                    "has_more": False,
+                },
+            },
+        )
     return httpx.Response(404, json={"code": 1, "msg": "not found"})
 
 
@@ -74,6 +99,13 @@ def test_list_events_takes_raw_fields_and_sorts() -> None:
     assert timed.start_time == "1756~700"  # 原文直取，不改写
 
 
-def test_list_events_between_resolves_primary_then_lists() -> None:
+def test_list_event_instances_expands_and_filters_cancelled() -> None:
+    events = list_event_instances(_client(_handler), "cal_main", 1, 2)
+    assert [e.event_id for e in events] == ["inst-b"]  # 已取消实例被过滤
+    assert events[0].title == "钻石三角双周例会"
+
+
+def test_list_events_between_uses_instance_view() -> None:
+    # 便捷入口解析主日历后应走 instance_view（今日会议的正确来源）。
     events = list_events_between(_client(_handler), 1, 2)
-    assert len(events) == 2
+    assert [e.event_id for e in events] == ["inst-b"]

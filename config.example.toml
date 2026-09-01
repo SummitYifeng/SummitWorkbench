@@ -26,9 +26,10 @@ redirect_uri = "http://localhost:8765/callback"
 # 最省事的起步：先只用 offline_access 跑通授权与 smoke，再按需加。
 # scopes = [
 #   "offline_access",              # 必需：授予它才会返回 refresh_token
-#   "calendar:calendar:readonly",  # 需在控制台开通「日历」只读
-#   "task:task",                   # 需在控制台开通「任务」读写
-#   "docx:document:readonly",      # 需在控制台开通「云文档」只读
+#   "calendar:calendar:readonly",  # 「日历」只读（M2-1 今日会议，真机可用）
+#   "task:task:read",              # 「任务」读（M2-1；真机核实粗粒度 task:task 不足，需细粒度）
+#   "task:task:write",             # 「任务」写（M1-4 审批建任务 / M4 wb task）
+#   "docx:document:readonly",      # 「云文档」只读
 # ]
 
 # ── 凭据存进 Keychain（你自己执行，值不要发给任何人）───────────────────────────

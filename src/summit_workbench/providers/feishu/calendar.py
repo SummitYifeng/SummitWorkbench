@@ -19,6 +19,9 @@ from summit_workbench.providers.feishu.errors import FeishuError
 
 PRIMARY_CALENDAR_PATH = "/open-apis/calendar/v4/calendars/primary"
 EVENTS_PATH = "/open-apis/calendar/v4/calendars/{calendar_id}/events"
+# instance_view 会**展开循环事件**为窗口内的实例（真机核实：普通 events 列表返回循环主体的
+# 原始 start_time，不是当天实例；「今日会议」必须用 instance_view）。
+INSTANCES_PATH = "/open-apis/calendar/v4/calendars/{calendar_id}/events/instance_view"
 
 
 @dataclass(frozen=True)
@@ -101,9 +104,63 @@ def list_events(
     return events[:max_items]
 
 
+def list_event_instances(
+    client: FeishuClient,
+    calendar_id: str,
+    start_unix: int,
+    end_unix: int,
+    *,
+    max_items: int = 100,
+) -> list[CalendarEvent]:
+    """列出 [start_unix, end_unix] 内的**事件实例**（展开循环），按起始时间排序。
+
+    这是「今日会议」的正确来源：instance_view 返回窗口内实际发生的实例，而非循环主体。
+    已取消的实例（status=cancelled）被过滤。
+    """
+    events: list[CalendarEvent] = []
+    page_token: str | None = None
+    path = INSTANCES_PATH.format(calendar_id=calendar_id)
+    while len(events) < max_items:
+        params: dict[str, Any] = {
+            "start_time": str(start_unix),
+            "end_time": str(end_unix),
+            "page_size": 50,
+        }
+        if page_token:
+            params["page_token"] = page_token
+        data = client.get(path, params)
+        for raw in data.get("items") or []:
+            if not isinstance(raw, dict) or raw.get("status") == "cancelled":
+                continue
+            parsed = _parse_instance(raw)
+            if parsed is not None:
+                events.append(parsed)
+        if not data.get("has_more") or not data.get("page_token"):
+            break
+        page_token = str(data["page_token"])
+    events.sort(key=lambda e: e.start_time)
+    return events[:max_items]
+
+
+def _parse_instance(raw: dict[str, Any]) -> CalendarEvent | None:
+    """instance_view 项：start_time/end_time 直接是 {timestamp} 或 {date}（无 dict 包裹时兜底）。"""
+    start = raw.get("start_time")
+    if isinstance(start, dict):
+        return _parse_event(raw)
+    # 部分响应把实例时间放平铺字段。
+    start_repr = str(start or raw.get("start_timestamp") or "")
+    if not start_repr:
+        return None
+    return CalendarEvent(
+        event_id=str(raw.get("event_id", "")),
+        title=str(raw.get("summary", "") or "(无标题)"),
+        start_time=start_repr,
+    )
+
+
 def list_events_between(
     client: FeishuClient, start_unix: int, end_unix: int, *, max_items: int = 100
 ) -> list[CalendarEvent]:
-    """便捷入口：解析主日历后列出时间窗内事件。"""
+    """便捷入口：解析主日历后列出时间窗内**实例**（今日会议）。"""
     calendar_id = primary_calendar_id(client)
-    return list_events(client, calendar_id, start_unix, end_unix, max_items=max_items)
+    return list_event_instances(client, calendar_id, start_unix, end_unix, max_items=max_items)
