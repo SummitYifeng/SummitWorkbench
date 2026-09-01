@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from summit_workbench.domain.backlog import should_notify_backlog
+from summit_workbench.domain.run_health import (
+    CONSECUTIVE_FAILURE_ALERT_THRESHOLD,
+    JobHealth,
+)
 from summit_workbench.observability.status import StatusReport
 from summit_workbench.repositories.notify_state import (
     NotifyState,
@@ -16,11 +20,35 @@ from summit_workbench.repositories.notify_state import (
     save_notify_state,
 )
 
+_JOB_LABELS: dict[str, str] = {"brief": "晨间简报", "weekly": "周复盘"}
+
 
 @dataclass(frozen=True)
 class Notification:
-    kind: str  # "budget" | "backlog"
+    kind: str  # "budget" | "backlog" | "run"
     message: str
+
+
+def _run_failure_notifications(
+    runs: dict[str, JobHealth], alerted: dict[str, int]
+) -> tuple[list[Notification], dict[str, int]]:
+    """连续失败跨阈值即告警一次；失败连击继续增长才再告警，成功后清零可重新告警。"""
+    notifications: list[Notification] = []
+    updated = dict(alerted)
+    for job, health in runs.items():
+        streak = health.consecutive_failures
+        if streak >= CONSECUTIVE_FAILURE_ALERT_THRESHOLD and streak > alerted.get(job, 0):
+            label = _JOB_LABELS.get(job, job)
+            notifications.append(
+                Notification(
+                    "run",
+                    f"{label}已连续失败 {streak} 次（最近 {health.last_day}）——"
+                    "定时任务可能持续未产出，请检查（如飞书重新授权 / 模型可用性 / 磁盘）。",
+                )
+            )
+        # 无论是否达阈值都同步「已告警到的失败数」：连击继续增长记新高、成功清零。
+        updated[job] = streak
+    return notifications, updated
 
 
 def evaluate_notifications(
@@ -49,10 +77,16 @@ def evaluate_notifications(
             Notification("backlog", f"待确认积压需要处理：{report.backlog.reason()}。")
         )
 
+    run_notifications, run_alerted = _run_failure_notifications(
+        report.runs, state.run_failures_alerted
+    )
+    notifications.extend(run_notifications)
+
     new_state = NotifyState(
         month=report.month,
         budget_notified=budget_notified,
         backlog_severity=current_severity,
+        run_failures_alerted=run_alerted,
     )
     return notifications, new_state
 

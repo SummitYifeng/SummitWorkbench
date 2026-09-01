@@ -14,8 +14,11 @@ from summit_workbench.domain.backlog import BacklogState
 from summit_workbench.domain.budget import BudgetEvaluation, evaluate_budget
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import CandidateDecision
+from summit_workbench.domain.run_health import JobHealth, evaluate_runs
+from summit_workbench.repositories.feishu_auth_state import FeishuAuthState, read_auth_state
 from summit_workbench.repositories.meeting_state import all_latest
 from summit_workbench.repositories.review_page import parse_review_page, review_path
+from summit_workbench.repositories.run_heartbeat import read_events
 from summit_workbench.repositories.usage_ledger import UsageTotals, monthly_totals
 
 
@@ -71,6 +74,8 @@ class StatusReport:
     usage: UsageTotals
     budget: BudgetEvaluation
     backlog: BacklogState
+    runs: dict[str, JobHealth]
+    feishu_auth: FeishuAuthState
 
     def count(self, state: ProcessingState) -> int:
         return self.state_counts.get(state.value, 0)
@@ -114,6 +119,12 @@ class StatusReport:
                 "severity": self.backlog.severity,
                 "active": self.backlog.active,
             },
+            "runs": {job: health.as_dict() for job, health in self.runs.items()},
+            "feishu_auth": {
+                "needs_reauthorize": self.feishu_auth.needs_reauthorize,
+                "since_day": self.feishu_auth.since_day,
+                "detail": self.feishu_auth.detail,
+            },
         }
 
 
@@ -132,6 +143,7 @@ def build_status(
     soft_limit, budget_currency = load_budget_settings(config_file)
     budget = evaluate_budget(usage.estimated_cost, soft_limit, budget_currency or usage.currency)
     backlog = _backlog(vault_dir, moment.date())
+    runs = evaluate_runs(read_events(vault_dir))
     return StatusReport(
         month=month,
         total_meetings=total,
@@ -139,4 +151,6 @@ def build_status(
         usage=usage,
         budget=budget,
         backlog=backlog,
+        runs=runs,
+        feishu_auth=read_auth_state(vault_dir),
     )

@@ -65,6 +65,29 @@ def test_brief_dry_run_degrades_without_feishu_or_model(monkeypatch, tmp_path) -
     assert payload["note_path"] is None  # dry-run 不写
 
 
+def test_brief_run_records_heartbeat_surfaced_in_status(monkeypatch, tmp_path) -> None:
+    """真实运行（非 --dry-run）记一条心跳，且 wb status 呈现该运行健康度（#2 端到端）。"""
+    work = tmp_path / "work"
+    (work / "_vault").mkdir(parents=True)
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(work))
+
+    brief = runner.invoke(app, ["brief", "--date", "2026-09-01", "--json"])
+    assert brief.exit_code == 0
+
+    status = runner.invoke(app, ["status", "--json"])
+    assert status.exit_code == 0
+    runs = json.loads(status.stdout)["runs"]
+    # 无飞书/模型 → 降级，但确实产出了（心跳记 degraded，最近运行日为该日）。
+    assert runs["brief"]["last_status"] == "degraded"
+    assert runs["brief"]["last_day"] == "2026-09-01"
+    assert runs["weekly"]["last_status"] is None  # 未跑过
+
+    human = runner.invoke(app, ["status"])
+    assert human.exit_code == 0
+    assert "定时任务健康度" in human.stdout
+
+
 def test_brief_registered_help() -> None:
     result = runner.invoke(app, ["brief", "--help"])
     assert result.exit_code == 0
