@@ -53,3 +53,21 @@ def test_totals_empty_month(tmp_path):
     totals = monthly_totals(tmp_path / "_vault", "2026-01")
     assert totals.calls == 0
     assert totals.estimated_cost == 0.0
+
+
+def test_corrupt_tail_line_does_not_break_totals(tmp_path):
+    """半截末行不再让整月费用汇总崩溃：好行照常计入（LHF #2）。"""
+    import warnings
+
+    from summit_workbench.repositories._jsonl import CorruptLogLine
+
+    vault = tmp_path / "_vault"
+    now = datetime(2026, 8, 31, 9, 0, tzinfo=UTC)
+    ledger = append_usage(vault, record_from_result(CFG, _result(1000, 200), task_key="a", now=now))
+    with ledger.open("a", encoding="utf-8") as fh:
+        fh.write('{"input_tokens": 5, "estimated')  # 半截行
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", CorruptLogLine)
+        totals = monthly_totals(vault, "2026-08")
+    assert totals.calls == 1
+    assert totals.input_tokens == 1000

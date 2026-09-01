@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState, SourceKind
+from summit_workbench.repositories._jsonl import CorruptLogLine
 from summit_workbench.repositories.meeting_state import (
+    _state_log,
     all_latest,
     latest_task,
     record_task,
@@ -59,3 +63,15 @@ def test_all_latest_keeps_one_per_key(tmp_path):
     assert set(latest) == {"m1:n1", local_task.idem_key}  # 同一 key 只留最新
     assert latest["m1:n1"].state == ProcessingState.FETCHED
     assert latest[local_task.idem_key].source == SourceKind.LOCAL_FILE
+
+
+def test_corrupt_tail_line_does_not_break_lookup(tmp_path):
+    """半截末行（被 kill/断电）不再让整本崩溃：前面的状态仍可查（LHF #2）。"""
+    record_task(tmp_path, MeetingTask.for_remote("m1", "n1"))
+    with _state_log(tmp_path).open("a", encoding="utf-8") as fh:
+        fh.write('{"idem_key": "m9", "sour')  # 半截行
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", CorruptLogLine)
+        got = latest_task(tmp_path, "m1:n1")
+        assert got is not None and got.state == ProcessingState.DISCOVERED
+        assert set(all_latest(tmp_path)) == {"m1:n1"}
