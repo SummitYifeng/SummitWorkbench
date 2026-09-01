@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from typer.testing import CliRunner
 
@@ -10,6 +11,19 @@ from summit_workbench import __version__
 from summit_workbench.cli.main import app
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _help_text(*args: str) -> str:
+    """渲染子命令 --help 并返回去除 ANSI 的纯文本。
+
+    固定宽终端渲染：Typer/Rich 的选项面板在窄终端（如 CI runner）会把选项名截断成
+    ``--dry-…``，导致按选项名做子串断言不稳定。强制 COLUMNS 宽 + 去 ANSI 让断言稳定。
+    """
+    result = runner.invoke(app, [*args, "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    return _ANSI.sub("", result.stdout)
 
 
 def test_version() -> None:
@@ -89,11 +103,10 @@ def test_brief_run_records_heartbeat_surfaced_in_status(monkeypatch, tmp_path) -
 
 
 def test_brief_registered_help() -> None:
-    result = runner.invoke(app, ["brief", "--help"])
-    assert result.exit_code == 0
-    assert "--dry-run" in result.stdout
-    assert "--date" in result.stdout
-    assert "--commit" in result.stdout
+    text = _help_text("brief")
+    assert "--dry-run" in text
+    assert "--date" in text
+    assert "--commit" in text
 
 
 def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
@@ -129,10 +142,9 @@ def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
 
 
 def test_ask_registered() -> None:
-    result = runner.invoke(app, ["ask", "--help"])
-    assert result.exit_code == 0
-    assert "--save" in result.stdout
-    assert "--project" in result.stdout
+    text = _help_text("ask")
+    assert "--save" in text
+    assert "--project" in text
 
 
 def test_project_new_and_list(monkeypatch, tmp_path) -> None:
