@@ -153,6 +153,9 @@ def _card(entry: ReviewEntry) -> str:
         else ""
     )
     note = escape(entry.note_link)
+    route_label = _ROUTE_LABELS[c.route] if c.route else ""
+    approve_label = f"✓ 批准 → {escape(route_label)}" if route_label else "✓ 批准（先在「修改」里选落点）"
+    approve_disabled = "" if c.route else " disabled"
     return f"""
     <div class="card {cls}" id="c-{cid}">
       <p class="desc">{desc}</p>
@@ -165,7 +168,7 @@ def _card(entry: ReviewEntry) -> str:
       <div class="meta">来源：{note}</div>
       <div class="row">
         <form method="post" action="/review/decide"><input type="hidden" name="candidate_id" value="{cid}">
-          <input type="hidden" name="decision" value="approved"><button class="ok" type="submit">✓ 批准</button></form>
+          <input type="hidden" name="decision" value="approved"><button class="ok" type="submit"{approve_disabled}>{approve_label}</button></form>
         <form method="post" action="/review/decide"><input type="hidden" name="candidate_id" value="{cid}">
           <input type="hidden" name="decision" value="rejected"><button class="bad" type="submit">✗ 拒绝</button></form>
         <form method="post" action="/review/decide"><input type="hidden" name="candidate_id" value="{cid}">

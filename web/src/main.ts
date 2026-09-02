@@ -101,6 +101,7 @@ let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
 let tab: Tab = 'today';
 let importing = false;
+let lastAnswerHtml: string | null = null;
 
 const app = document.getElementById('app') as HTMLElement;
 const toasts = document.getElementById('toasts') as HTMLElement;
@@ -249,7 +250,7 @@ function renderToday(view: HTMLElement): void {
     '<textarea id="ask-input" rows="2" placeholder="问第二大脑：例如「网课项目最近的决策是什么？」">' + esc(askValue) + '</textarea>' +
     '<div class="form-row"><button class="primary" type="submit">提问</button></div>' +
     '</form>' +
-    '<div class="answer" id="answer"></div>';
+    '<div class="answer" id="answer">' + (lastAnswerHtml ?? '') + '</div>';
 
   view.innerHTML =
     '<section class="hero">' +
@@ -373,22 +374,25 @@ function bindAsk(): void {
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
     const input = document.getElementById('ask-input') as HTMLTextAreaElement;
-    const answer = document.getElementById('answer') as HTMLElement;
     const q = input.value.trim();
     if (!q) return;
-    answer.innerHTML = '<div class="loading">思考中…</div>';
+    // 答案写入必须同时持久化到 lastAnswerHtml 并写入「当前」的 #answer 节点：
+    // renderToday() 每 60 秒会整体重建 DOM，若请求期间发生重绘，响应若落到
+    // 已脱离文档的旧节点上，可见区域会一直停留在思考中/旧答案——即「问完突然空白」的同一根因。
+    const show = (html: string): void => {
+      lastAnswerHtml = html;
+      const box = document.getElementById('answer');
+      if (box) box.innerHTML = html;
+    };
+    show('<div class="loading">思考中…</div>');
     void api<{ ok: boolean; message: string; answer_html?: string }>('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q }),
     }).then((r) => {
-      if (r.ok && r.answer_html) {
-        answer.innerHTML = r.answer_html;
-      } else {
-        answer.innerHTML = '<p class="err-text">' + esc(r.message) + '</p>';
-      }
+      show(r.ok && r.answer_html ? r.answer_html : '<p class="err-text">' + esc(r.message) + '</p>');
     }).catch((err: unknown) => {
-      answer.innerHTML = '<p class="err-text">' + esc(String(err)) + '</p>';
+      show('<p class="err-text">' + esc(String(err)) + '</p>');
     });
   });
 }
@@ -418,10 +422,17 @@ function renderReview(view: HTMLElement): void {
       }).join('')
     : '<div class="empty"><p>暂无待确认候选。</p>' +
       '<p class="hint">导入会议逐字稿后，提取结果会出现在这里。</p></div>';
+  const approvedPending = review.groups.reduce(
+    (n, g) => n + g.entries.filter((e) => e.decision === 'approved' && !e.apply_error).length,
+    0,
+  );
+  const applyNudge = approvedPending > 0
+    ? '<p class="apply-nudge">' + approvedPending + ' 条已批准、尚未写回 —— 点「应用（写回）」后才会真正写入项目/创建飞书任务</p>'
+    : '';
   view.innerHTML =
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
-    '<p class="hint">' + pending + ' 条待确认 · 批准后才写回项目/飞书 · 截止早于今天的可用「一键拒绝过期项」清理</p></div>' +
+    '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
     '<div class="form-row">' +
     '<button class="ghost" data-action="reject-expired" title="把截止日期早于今天的待确认条目批量置为拒绝">一键拒绝过期项</button>' +
     '<button class="ghost" data-action="plan">预演应用</button>' +
@@ -483,6 +494,9 @@ function entryCard(e: ReviewEntry): string {
   const warn = e.actionable ? '' : '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>';
   const err = e.apply_error ? '<div class="not-actionable">应用出错：' + esc(e.apply_error) + '</div>' : '';
   const note = e.note_link ? '<span class="wikilink">' + esc(e.note_link) + '</span>' : '';
+  const routeLabel = e.route ? (ROUTE_LABELS[e.route] ?? e.route) : '';
+  const approveLabel = routeLabel ? '✓ 批准 → ' + esc(routeLabel) : '✓ 批准（先在「修改」里选落点）';
+  const approveDisabled = e.route ? '' : ' disabled title="落点未定，请点「修改」设置后再批准"';
   return (
     '<div class="card entry ' + e.decision + '" data-id="' + esc(e.candidate_id) + '">' +
     '<div class="entry-top"><span class="kind">' + esc(kind) + '</span>' +
@@ -492,7 +506,7 @@ function entryCard(e: ReviewEntry): string {
     '<div class="meta">' + meta + '</div>' +
     '<div class="meta">来源：' + note + '</div>' +
     '<div class="row">' +
-    '<button class="ok" data-action="decide" data-decision="approved">✓ 批准</button>' +
+    '<button class="ok" data-action="decide" data-decision="approved"' + approveDisabled + '>' + approveLabel + '</button>' +
     '<button class="bad" data-action="decide" data-decision="rejected">✗ 拒绝</button>' +
     (e.decision === 'pending' ? '' : '<button class="ghost" data-action="decide" data-decision="pending">↺ 改回待确认</button>') +
     '<button class="ghost" data-action="toggle-edit">修改</button>' +
@@ -506,7 +520,12 @@ function entryCard(e: ReviewEntry): string {
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
     '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
     '</div>' +
-    '<div class="row"><button class="primary" type="submit">保存修改</button></div>' +
+    '<div class="row">' +
+    (e.decision === 'pending'
+      ? '<button class="primary" type="submit" data-action="save-approve" title="保存修改并标记批准（仍需点「应用（写回）」才真正写回）">保存并批准</button>'
+      : '') +
+    '<button class="ghost" type="submit">仅保存</button>' +
+    '</div>' +
     '</form></div>' +
     '</div>'
   );
@@ -581,13 +600,43 @@ document.addEventListener('submit', (ev) => {
   const data = new FormData(form);
   const body: Record<string, string> = {};
   data.forEach((v, k) => { body[k] = String(v); });
+  const saveAndApprove = (ev.submitter as HTMLElement | null)?.dataset?.action === 'save-approve';
   void api<{ ok: boolean; message: string }>('/api/review/edit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  }).then((r) => {
-    toast(r.message, r.ok ? 'ok' : 'err');
-    if (r.ok) void refreshReview();
+  }).then(async (r) => {
+    if (!r.ok) {
+      toast(r.message, 'err');
+      return;
+    }
+    if (!saveAndApprove) {
+      toast(r.message, 'ok');
+      void refreshReview();
+      return;
+    }
+    // 保存并批准：落点未定与后端 apply 的「缺少 route」守卫一致，禁止直接批准。
+    if (!body.route) {
+      toast('已保存。落点未定无法批准——请选好落点后再批准', 'info');
+      void refreshReview();
+      return;
+    }
+    try {
+      const d = await api<{ ok: boolean; message: string }>('/api/review/decide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidate_id: String(body.candidate_id ?? ''), decision: 'approved' }),
+      });
+      if (d.ok) {
+        toast('✓ 已保存并批准 —— 仅标记，点「应用（写回）」才真正写回/建任务', 'ok');
+      } else {
+        toast(d.message, 'err');
+      }
+    } catch (err) {
+      toast(String(err), 'err');
+    }
+    void refreshReview();
+    void refreshState();
   }).catch((err: unknown) => toast(String(err), 'err'));
 });
 
@@ -598,7 +647,13 @@ async function decide(candidateId: string, decision: string): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ candidate_id: candidateId, decision }),
     });
-    toast(r.message, r.ok ? 'ok' : 'err');
+    if (r.ok) {
+      const verb = decision === 'approved' ? '已批准' : decision === 'rejected' ? '已拒绝' : '已改回待确认';
+      const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
+      toast('✓ ' + verb + tip, 'ok');
+    } else {
+      toast(r.message, 'err');
+    }
   } catch (err) {
     toast(String(err), 'err');
   }
@@ -617,7 +672,13 @@ async function batchDecide(candidateIds: string[], decision: string): Promise<vo
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ candidate_ids: candidateIds, decision }),
     });
-    toast(r.message, r.ok ? 'ok' : 'err');
+    if (r.ok) {
+      const verb = decision === 'approved' ? '批准' : decision === 'rejected' ? '拒绝' : '改回待确认';
+      const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
+      toast('✓ 已批量' + verb + ' ' + (r.updated ?? '') + ' 条' + tip, 'ok');
+    } else {
+      toast(r.message, 'err');
+    }
   } catch (err) {
     toast(String(err), 'err');
   }

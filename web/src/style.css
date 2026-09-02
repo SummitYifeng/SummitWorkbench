@@ -131,6 +131,7 @@ main { max-width: 880px; margin: 0 auto; padding: 18px 20px 80px; }
 }
 #capture-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .hint { font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+.apply-nudge { font-size: 12px; font-weight: 600; color: var(--ok); margin: 4px 2px 0; }
 
 /* ---- 按钮 ---- */
 button {
