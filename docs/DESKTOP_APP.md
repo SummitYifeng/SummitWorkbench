@@ -42,6 +42,19 @@ open dist/SummitWorkbench.app           # 直接打开
 xattr -dr com.apple.quarantine dist/SummitWorkbench.app
 ```
 
+## 更新（换新版本 / 改了前端没生效？）
+
+- **用户日常只打开 App / 浏览器面板，不用 CLI**（见 README 与 WEB_WORKBENCH §7）。App 只是
+  Swift 启动器：烘焙 `$REPO_ROOT/.venv/bin/wb`（uv sync **editable** 安装），服务运行时直接
+  读仓库 `src/summit_workbench/webapp/static/` 下的前端产物。
+- **Web 界面更新 = `cd web && npm run build` + 重启面板服务**，**不需要重打 .app**（只有
+  `wb` 路径 / `WORK_ROOT` / 端口变了才重跑 `scripts/build-macos-app.sh`）。重启方式：退出
+  正在运行的面板（网页顶栏「退出」），再双击 App 重新拉起；或直接重跑 `wb web`。
+- 改了版本仍看到旧界面，按序排查：① 服务是否在构建后重启过；② 浏览器缓存了旧 `index.html`
+  （引用的旧哈希资源已删）→ **⌘⇧R 强刷**；③ 打开的是不是本仓库构建的 App——`/Applications`
+  里的 `SummitKnowledge.app` / `SummitServerAI.app` 是**历史遗留旧产品**（内嵌冻结的旧前端
+  runtime），不是本仓库产物；请使用 `dist/SummitWorkbench.app` 或桌面副本。
+
 ## 说明
 
 - 启动器拉起 `wb web` 子进程并打开面板窗口，**App 进程存活 = 服务存活**；启动器周期

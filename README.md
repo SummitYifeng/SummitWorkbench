@@ -15,7 +15,14 @@ SummitWorkbench 将这套工作方式收敛为两层能力：
 
 ## 预期的日常图景
 
-Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文和结构化笔记自动归档，可能改变项目或任务状态的内容进入集中待确认页。用户只需勾选、忽略或原地修改候选项，再批量应用——命令行 `wb review` 或本地 Web 面板 `wb web` 皆可。
+Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文和结构化笔记自动归档，可能改变项目或任务状态的内容进入集中待确认页。用户只需勾选、忽略或原地修改候选项，再批量应用。
+
+> **用户日常入口 = Web 面板，不用 CLI。** 真人用户只打开桌面 App（或浏览器访问
+> `http://127.0.0.1:8787`）完成全部日常工作（捕捉/审批/导入/项目/问答，见
+> [WEB_USAGE_GUIDE](docs/product/WEB_USAGE_GUIDE.md)）；CLI 保留给自动化（launchd、脚本、
+> `wb review sweep` 等）与深度操作。因此**开发任何用户可见功能都以 Web 面板为默认交付面**，
+> 改动后必须重建前端产物并重启面板服务才生效（见
+> [WEB_WORKBENCH §8](docs/product/WEB_WORKBENCH.md) 与 [DESKTOP_APP](docs/DESKTOP_APP.md)）。
 
 每天 08:00 前，`wb brief`（由 launchd 定时触发）把 Obsidian 当日笔记写成晨间指挥台：显示会议、最近完成、项目状态和最多 5 个建议行动。每周一 `wb weekly` 生成跨项目复盘，帮助重新分配注意力。
 
@@ -38,7 +45,7 @@ SummitWorkbench/
 ├── docs/
 │   ├── product/          # 权威 PRD
 │   ├── plans/            # 开发计划与验收记录
-│   ├── decisions/        # 架构决策记录（ADR 0001–0022）
+│   ├── decisions/        # 架构决策记录（ADR 0001–0023）
 │   ├── architecture/     # 架构资料；当前 HTML 为历史版本
 │   ├── background/       # 非权威需求背景
 │   └── DESKTOP_APP.md    # macOS .app 打包说明
