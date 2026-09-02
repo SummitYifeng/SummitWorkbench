@@ -2,6 +2,7 @@
 
 ### 新增
 
+- **项目推进精选（ADR 0023）**：首页「项目推进」不再平铺 `work_root` 全部文件夹，只显示已建档（`_vault/projects/*.md`）且 `status: active` 的项目；未建档的新文件夹在项目区顶部以邀请横幅出现（逐条「加入工作台 / 归档」）；新增第 4 页签「项目」= 全部项目视图（搜索 + 排序 + 行内加入/归档/恢复）。`/api/state` projects 增 `registered/status` 字段；新增 `POST /api/projects/activate`、`POST /api/projects/archive`（写 `_vault` 档案 status，幂等，校验必须是 work_root 直接子目录）。归档/恢复只动 frontmatter，文件夹与 git 历史零触碰。
 - **Web 工作台（SPA）**：`wb web` 由服务端渲染面板升级为「今日工作台」单页应用（Vite + 原生 TypeScript，无组件库；FastAPI 新增 `/api/*` JSON 端点；构建产物存在时 `/` 服务 SPA，否则回退 SSR，旧路由与 CLI 语义完全保留）。
   - 「今日」页：顶部快速捕捉（回车记入全局 inbox）、待确认审批卡片（积压置顶 + 一键跳转）、会议逐字稿拖拽导入区、项目推进卡（未提交/落后/下一步/inbox 积压）、今日简报（未生成时给出空状态引导）、问第二大脑。
   - 「审批」页：即时批准/拒绝/改回 + 原地修改 + 预演/应用弹窗，不再整页刷新；状态 60s 自动刷新。
@@ -23,6 +24,7 @@
 
 ### 质量
 
+- 项目精选（ADR 0023）补齐单测：建档状态读写与幂等、`ProjectState` 分类（新/归档）、`/api/state` 字段、activate/archive 端点（含非法名/越界/幂等），全套 **374 项全绿**；ruff + format + mypy strict 通过（新增 Web API / SPA 测试见 `tests/unit/test_webapi.py`、`test_project_registry.py`、`test_brief_repositories.py`）。
 - 新增 14 项 Web API / SPA 测试（`tests/unit/test_webapi.py`）与 2 项 `/api/shutdown` 测试，全套 389 项全绿；ruff + format + mypy strict 通过。
 - 批量裁决（`set_decisions`）、`/api/review/batch`、`wb review sweep` 补齐单测，全套 397 项全绿；ruff + format + mypy strict 通过。
 

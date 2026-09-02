@@ -27,6 +27,7 @@
 | [0020](0020-run-heartbeat-health.md) | 正式使用前加固 | 运行心跳 + 定时任务健康度（`_signals/run-heartbeat/` + `domain/run_health.py`）：连续失败≥3 去重告警，`wb status` 可见（加固 #2）|
 | [0021](0021-doctor-preflight.md) | 正式使用前加固 | 统一预检 `wb doctor`：底座/vault/飞书/模型/launchd 端到端就绪表，默认离线无副作用（加固 #3）|
 | [0022](0022-feishu-reauth-visibility.md) | 正式使用前加固 | 飞书 token 失效降级 + 可见性（`_signals/feishu-auth.json`）：失效醒目提示 `wb feishu login`，简报仍降级照出（加固 #4）|
+| [0023](0023-workbench-project-curation.md) | v0.2.0 Web 工作台 | 首页「项目推进」精选清单 + 「全部项目」页（`_vault/projects/*.md` 建档 status 驱动，解决百级文件夹平铺）|
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

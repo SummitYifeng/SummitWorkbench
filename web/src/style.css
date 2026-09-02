@@ -324,6 +324,41 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 .step-text { color: var(--fg); }
 .muted-step .step-text { color: var(--muted); }
 
+/* ---- 项目精选（ADR 0023：新文件夹横幅 + 全部项目页） ---- */
+.badge.is-home { color: var(--ok); background: var(--ok-soft); border-color: transparent; }
+.badge.is-new { color: var(--warn); background: var(--warn-soft); border-color: transparent; }
+.badge.is-archived { color: var(--muted); background: var(--bg); border-color: var(--border); }
+.new-projects {
+  background: var(--card); border: 1px dashed var(--warn); border-radius: var(--radius);
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.new-projects-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.new-projects-head strong { font-size: 13px; }
+.new-project-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.new-project-row:last-child { border-bottom: none; }
+.new-project-row .project-name { font-weight: 600; }
+.row-actions { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.row-actions button { font-size: 12px; padding: 2px 10px; }
+.project-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; margin-bottom: 8px;
+}
+.project-row-main { min-width: 0; flex: 1; }
+.project-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.project-row-title .project-name { font-size: 14px; }
+.project-row .chips { margin-left: 0; margin-top: 6px; }
+.project-row .project-step { margin-top: 6px; font-size: 12.5px; }
+.project-row-actions { flex-shrink: 0; }
+.project-toolbar { margin-bottom: 10px; }
+.project-toolbar input {
+  font: inherit; font-size: 13.5px; width: 100%; max-width: 320px;
+  padding: 7px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--fg);
+}
+
 /* ---- 消息 / 弹窗 / Toast ---- */
 .msg {
   border: 1px solid var(--border); border-left: 4px solid var(--accent);

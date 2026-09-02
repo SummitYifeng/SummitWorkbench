@@ -35,6 +35,12 @@ class CapturePayload(BaseModel):
     text: str
 
 
+class ProjectPayload(BaseModel):
+    """工作台精选（ADR 0023）：按文件夹名加入/归档项目。"""
+
+    name: str
+
+
 class AskHistoryTurn(BaseModel):
     """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
 

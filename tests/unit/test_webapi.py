@@ -28,6 +28,7 @@ from summit_workbench.repositories.review_page import (
     render_review_page,
     review_path,
 )
+from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
 
 
@@ -418,3 +419,53 @@ def test_api_state_includes_projects(tmp_path: Path, monkeypatch) -> None:
     assert proj["inbox_pending"] == 1
     assert proj["next_step"] == "推进样章"
     assert proj["dirty"] is False
+    # ADR 0023：/api/state 暴露建档状态
+    assert proj["registered"] is True
+    assert proj["status"] == "active"
+
+
+# ---------- /api/projects 工作台精选（ADR 0023） ----------
+
+
+def _mk_project_dir(work_root: Path, name: str) -> Path:
+    path = work_root / name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def test_api_project_activate_creates_registration(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    _mk_project_dir(tmp_path, "BrandNew")
+    resp = client.post("/api/projects/activate", json={"name": "BrandNew"})
+    assert resp.json()["ok"] is True
+    note = load_note(vault / "projects" / "BrandNew.md")
+    assert note.meta["status"] == "active"
+    # 幂等：重复激活仍是 ok
+    assert client.post("/api/projects/activate", json={"name": "BrandNew"}).json()["ok"] is True
+    # 归档后再激活 = 恢复
+    assert client.post("/api/projects/archive", json={"name": "BrandNew"}).json()["ok"] is True
+    assert load_note(vault / "projects" / "BrandNew.md").meta["status"] == "archived"
+    assert client.post("/api/projects/activate", json={"name": "BrandNew"}).json()["ok"] is True
+    assert load_note(vault / "projects" / "BrandNew.md").meta["status"] == "active"
+
+
+def test_api_project_archive_unregistered_creates_archived(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    _mk_project_dir(tmp_path, "FreshFolder")
+    resp = client.post("/api/projects/archive", json={"name": "FreshFolder"})
+    assert resp.json()["ok"] is True
+    note = load_note(vault / "projects" / "FreshFolder.md")
+    assert note.meta["status"] == "archived"
+    # 幂等
+    assert client.post("/api/projects/archive", json={"name": "FreshFolder"}).json()["ok"] is True
+
+
+def test_api_projects_reject_invalid_targets(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _vault = _client(tmp_path, seed_review=False)
+    for endpoint in ("/api/projects/activate", "/api/projects/archive"):
+        for name in ("不存在", "../outside", "a/b", "", "_vault"):
+            data = client.post(endpoint, json={"name": name}).json()
+            assert data["ok"] is False, f"{endpoint} name={name!r} 应被拒绝"

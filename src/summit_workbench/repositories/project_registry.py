@@ -7,6 +7,10 @@
 - 解析不到时返回 ``None``。真实场景里多数会议未必对应已建项目：解析不到的候选会路由到
   全局 inbox 兜底捕获（见 :mod:`summit_workbench.domain.review`），而随着 workbench
   逐步梳理出新项目，用 :func:`create_project_note` 建档后即可被后续会议解析命中。
+
+工作台精选语义（ADR 0023）：同一份 ``project-main`` 档案的 ``status`` 还驱动 Web 工作台
+首页的「项目推进」显示——``active`` = 在工作台上；``archived`` = 已归档（不在首页但可在
+「全部项目」页恢复）。本模块提供幂等的建档/激活/归档助手供 Web 端点与 CLI 共用。
 """
 
 from __future__ import annotations
@@ -18,10 +22,14 @@ from pathlib import Path
 
 from summit_workbench.domain.review import UNRESOLVED
 from summit_workbench.domain.vault import NOTE_TYPES
+from summit_workbench.repositories.note_status import update_note_status
 from summit_workbench.repositories.vault import load_note
 
 # 规范项目 ID 的安全字符集：字母数字、下划线、连字符（用作文件名，禁空白/路径分隔符）。
 _PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+# 档案目录名：_vault/projects/。
+_PROJECTS_DIRNAME = "projects"
 
 
 def _normalize(name: str) -> str:
@@ -111,3 +119,68 @@ def create_project_note(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(frontmatter + body, encoding="utf-8")
     return path
+
+
+def project_note_path(vault_dir: Path, project_id: str) -> Path:
+    """``_vault/projects/<project_id>.md`` 的路径（不保证存在）。"""
+    return vault_dir / _PROJECTS_DIRNAME / f"{project_id}.md"
+
+
+def read_project_registration(vault_dir: Path, project_id: str) -> tuple[bool, str | None]:
+    """读取一个项目的档案状态，返回 ``(registered, status)``。
+
+    - ``registered``：``_vault/projects/<id>.md`` 存在且是**有效 project-main 档案**
+      （与 :func:`load_project_registry` 同一过滤口径：无解析错误、``type: project-main``）；
+    - ``status``：档案 frontmatter 的 ``status``（合法时），无档案/档案无效时为 ``None``。
+    """
+    path = project_note_path(vault_dir, project_id)
+    if not path.is_file():
+        return False, None
+    note = load_note(path)
+    if note.parse_error is not None or note.meta.get("type") != "project-main":
+        return False, None
+    status = note.meta.get("status")
+    return True, status if isinstance(status, str) else None
+
+
+def _set_status(vault_dir: Path, project_id: str, status: str, now: datetime | None) -> Path:
+    """把已有档案的 status 与 updated 一并改写（保留正文，原子写）。"""
+    path = project_note_path(vault_dir, project_id)
+    day = (now or datetime.now(UTC)).date().isoformat()
+    update_note_status(path, status, extra={"updated": day})
+    return path
+
+
+def ensure_project_active(vault_dir: Path, project_id: str, *, now: datetime | None = None) -> Path:
+    """把项目置为「在工作台」（幂等）：无档案则建档（active），archived 则改回 active。
+
+    - 同名文件存在但不是有效 project-main 档案时抛 :class:`ValueError`（不覆盖、不臆造）；
+    - 已 active 时 no-op（不改文件，不刷新 updated）。
+    """
+    path = project_note_path(vault_dir, project_id)
+    if path.is_file():
+        registered, status = read_project_registration(vault_dir, project_id)
+        if not registered:
+            raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
+        if status == "active":
+            return path
+        return _set_status(vault_dir, project_id, "active", now)
+    return create_project_note(vault_dir, project_id, now=now)
+
+
+def archive_project(vault_dir: Path, project_id: str, *, now: datetime | None = None) -> Path:
+    """把项目归档（幂等）：置 ``status: archived``，不在首页显示；可随时恢复。
+
+    未建档的项目也会建一份档案再归档（处置「新文件夹」时落盘可循、不再重复提示）；
+    同名文件存在但不是有效 project-main 档案时抛 :class:`ValueError`。
+    """
+    path = project_note_path(vault_dir, project_id)
+    if path.is_file():
+        registered, status = read_project_registration(vault_dir, project_id)
+        if not registered:
+            raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
+        if status == "archived":
+            return path
+        return _set_status(vault_dir, project_id, "archived", now)
+    create_project_note(vault_dir, project_id, now=now)
+    return _set_status(vault_dir, project_id, "archived", now)

@@ -35,6 +35,10 @@ from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.daily_note import read_brief_block
+from summit_workbench.repositories.project_registry import (
+    archive_project,
+    ensure_project_active,
+)
 from summit_workbench.repositories.project_scan import count_inbox_pending, scan_projects
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
@@ -49,6 +53,7 @@ from summit_workbench.webapp.api import (
     CapturePayload,
     DecidePayload,
     EditPayload,
+    ProjectPayload,
     review_payload,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
@@ -290,6 +295,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 "inbox_pending": p.inbox_pending,
                 "next_step": p.next_step,
                 "git_error": p.git_error,
+                "registered": p.registered,
+                "status": p.status,
             }
             for p in scan_projects(ctx.work_root, ctx.vault_dir)
         ]
@@ -301,6 +308,39 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "inbox_pending": inbox_pending,
             "projects": projects,
         }
+
+    def _project_dir(name: str) -> Path | None:
+        """校验工作台精选的目标：必须是 ``work_root`` 的直接子目录（非 _vault、无路径分隔符）。"""
+        if not name or name in (".", "..") or "/" in name or "\\" in name:
+            return None
+        path = ctx.work_root / name
+        if path.parent != ctx.work_root or path.name == "_vault" or not path.is_dir():
+            return None
+        return path
+
+    @app.post("/api/projects/activate")
+    def api_project_activate(payload: ProjectPayload) -> dict[str, object]:
+        """把项目加入工作台（幂等）：无档案则建档；archived 则恢复为 active。"""
+        name = payload.name.strip()
+        if _project_dir(name) is None:
+            return {"ok": False, "message": f"work_root 下没有该项目文件夹：{name}"}
+        try:
+            path = ensure_project_active(ctx.vault_dir, name)
+        except (ValueError, FileExistsError) as exc:
+            return {"ok": False, "message": f"加入工作台失败：{exc}"}
+        return {"ok": True, "message": f"已加入工作台：{name}", "path": str(path)}
+
+    @app.post("/api/projects/archive")
+    def api_project_archive(payload: ProjectPayload) -> dict[str, object]:
+        """把项目归档（幂等）：置 status: archived，不在首页显示；可随时恢复。"""
+        name = payload.name.strip()
+        if _project_dir(name) is None:
+            return {"ok": False, "message": f"work_root 下没有该项目文件夹：{name}"}
+        try:
+            path = archive_project(ctx.vault_dir, name)
+        except (ValueError, FileExistsError) as exc:
+            return {"ok": False, "message": f"归档失败：{exc}"}
+        return {"ok": True, "message": f"已归档：{name}", "path": str(path)}
 
     @app.get("/api/review")
     def api_review() -> dict[str, object]:

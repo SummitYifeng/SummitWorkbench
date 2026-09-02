@@ -34,6 +34,10 @@ class ProjectState:
     next_step: str | None
     next_step_ref: str | None
     git_error: str | None = None
+    # ADR 0023：是否已建档（有效 project-main 档案）及其 status——
+    # active = 在工作台（首页显示）；archived = 已归档；None/未建档 = 新文件夹。
+    registered: bool = False
+    status: str | None = None
 
 
 def count_inbox_pending(text: str) -> int:
@@ -75,17 +79,25 @@ def _project_inbox_pending(project_path: Path) -> int:
     return 0
 
 
-def _next_step_for(vault_dir: Path, name: str) -> tuple[str | None, str | None]:
-    """从 ``_vault/projects/<name>.md`` 主笔记取「下一步」及其来源引用。"""
+def _project_registry_state(
+    vault_dir: Path, name: str
+) -> tuple[bool, str | None, str | None, str | None]:
+    """一次读取项目档案，返回 ``(registered, status, next_step, next_step_ref)``。
+
+    档案口径与 ``project_registry`` 一致（ADR 0023）：``_vault/projects/<name>.md``
+    存在、无解析错误、``type: project-main`` 才算已建档；否则一律视为「新文件夹」
+    （registered=False）。「下一步」只从有效档案正文取。
+    """
     note_path = vault_dir / "projects" / f"{name}.md"
     if not note_path.is_file():
-        return None, None
+        return False, None, None, None
     note = load_note(note_path)
-    if note.parse_error is not None:
-        return None, None
+    if note.parse_error is not None or note.meta.get("type") != "project-main":
+        return False, None, None, None
+    status = note.meta.get("status")
     step = extract_next_step(note.body)
     ref = f"projects/{name}.md#下一步" if step else None
-    return step, ref
+    return True, status if isinstance(status, str) else None, step, ref
 
 
 def _git_state(path: Path) -> tuple[bool, bool, int, int, bool, str | None]:
@@ -108,7 +120,7 @@ def scan_project(path: Path, vault_dir: Path) -> ProjectState:
     """采集单个项目目录的离线状态。"""
     name = path.name
     is_git, dirty, ahead, behind, has_upstream, git_error = _git_state(path)
-    next_step, next_step_ref = _next_step_for(vault_dir, name)
+    registered, status, next_step, next_step_ref = _project_registry_state(vault_dir, name)
     return ProjectState(
         name=name,
         path=path,
@@ -121,6 +133,8 @@ def scan_project(path: Path, vault_dir: Path) -> ProjectState:
         next_step=next_step,
         next_step_ref=next_step_ref,
         git_error=git_error,
+        registered=registered,
+        status=status,
     )
 
 

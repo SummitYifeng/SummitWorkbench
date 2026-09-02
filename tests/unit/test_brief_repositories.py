@@ -86,6 +86,28 @@ def test_scan_projects_reports_dirty_and_inbox_and_next_step(tmp_path: Path) -> 
     assert s.next_step == "发布 v2"
     assert s.next_step_ref == "projects/ProjA.md#下一步"
     assert s.git_error is None
+    # ADR 0023：有 active 档案 → registered，首页可见
+    assert s.registered is True
+    assert s.status == "active"
+
+
+def test_scan_projects_classifies_new_and_archived_folders(tmp_path: Path) -> None:
+    work_root = tmp_path / "Work"
+    vault = work_root / "_vault"
+    (vault / "projects").mkdir(parents=True)
+    # 未建档文件夹（新）与已归档档案
+    (work_root / "BrandNew").mkdir(parents=True)
+    (work_root / "Done").mkdir(parents=True)
+    (vault / "projects" / "Done.md").write_text(
+        "---\nproject: Done\ndate: 2026-09-01\ntype: project-main\nstatus: archived\n---\n"
+        "## 当前状态\n收尾\n## 下一步\n\n## 阻塞\n无\n## 决策记录\n无\n",
+        encoding="utf-8",
+    )
+    states = {s.name: s for s in scan_projects(work_root, vault)}
+    assert states["BrandNew"].registered is False
+    assert states["BrandNew"].status is None
+    assert states["Done"].registered is True
+    assert states["Done"].status == "archived"
 
 
 def test_scan_projects_handles_non_git_dir(tmp_path: Path) -> None:

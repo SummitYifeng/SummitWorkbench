@@ -2,7 +2,7 @@ import './style.css';
 
 import { esc, mdToHtml } from './md';
 
-type Tab = 'today' | 'review' | 'ask';
+type Tab = 'today' | 'review' | 'ask' | 'projects';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -42,6 +42,9 @@ interface ProjectState {
   inbox_pending: number;
   next_step: string | null;
   git_error: string | null;
+  /** ADR 0023：已建档（有效 project-main 档案）与否及其 status */
+  registered: boolean;
+  status: string | null;
 }
 interface StatePayload {
   day: string;
@@ -188,13 +191,17 @@ function render(): void {
   const todayView = document.getElementById('view-today') as HTMLElement;
   const reviewView = document.getElementById('view-review') as HTMLElement;
   const askView = document.getElementById('view-ask') as HTMLElement;
+  const projectsView = document.getElementById('view-projects') as HTMLElement;
   todayView.style.display = tab === 'today' ? '' : 'none';
   reviewView.style.display = tab === 'review' ? '' : 'none';
   askView.style.display = tab === 'ask' ? '' : 'none';
+  projectsView.style.display = tab === 'projects' ? '' : 'none';
   if (tab === 'today') {
     renderToday(todayView);
   } else if (tab === 'review') {
     renderReview(reviewView);
+  } else if (tab === 'projects') {
+    renderProjects(projectsView);
   } else {
     renderAsk(askView);
   }
@@ -214,18 +221,20 @@ function renderShell(): void {
     '<button class="tab" data-tab="today" role="tab">今日</button>' +
     '<button class="tab" data-tab="review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
     '<button class="tab" data-tab="ask" role="tab">第二大脑</button>' +
+    '<button class="tab" data-tab="projects" role="tab">项目</button>' +
     '</nav>' +
     '<main>' +
     '<section id="view-today" class="view"></section>' +
     '<section id="view-review" class="view"></section>' +
     '<section id="view-ask" class="view"></section>' +
+    '<section id="view-projects" class="view"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     b.addEventListener('click', () => {
       const next = b.dataset.tab;
-      tab = next === 'review' || next === 'ask' ? next : 'today';
+      tab = next === 'review' || next === 'ask' || next === 'projects' ? next : 'today';
       render();
     });
   });
@@ -724,14 +733,116 @@ function projectCard(p: ProjectState): string {
   );
 }
 
+// ---------- 项目推进（ADR 0023：工作台精选） ----------
+
+/** 是否在工作台上：已建档且 status = active（首页推进卡只显示这些）。 */
+function isOnHome(p: ProjectState): boolean {
+  return p.registered && p.status === 'active';
+}
+
+/** 是否新文件夹：还没建立 project-main 档案。 */
+function isNewProject(p: ProjectState): boolean {
+  return !p.registered;
+}
+
+function projectStatusBadge(p: ProjectState): string {
+  if (!p.registered) return '<span class="badge is-new">新</span>';
+  if (p.status === 'active') return '<span class="badge is-home">在工作台</span>';
+  if (p.status === 'archived') return '<span class="badge is-archived">已归档</span>';
+  return '<span class="badge is-archived">' + esc(p.status ?? '未知') + '</span>';
+}
+
 function projectsHtml(): string {
-  if (!state || state.projects.length === 0) return '';
+  if (!state) return '';
+  const onHome = state.projects.filter(isOnHome);
+  const fresh = state.projects.filter(isNewProject);
+  if (onHome.length === 0 && fresh.length === 0) return '';
+  const banner = fresh.length
+    ? '<div class="new-projects"><div class="new-projects-head">' +
+      '<strong>新文件夹</strong>' +
+      '<span class="hint">尚未建立项目档案 · 加入工作台后才会出现在上方推进卡</span></div>' +
+      fresh.map((p) =>
+        '<div class="new-project-row"><span class="project-name">' + esc(p.name) + '</span>' +
+        '<span class="row-actions">' +
+        '<button class="ok" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>' +
+        '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>' +
+        '</span></div>'
+      ).join('') +
+      '</div>'
+    : '';
+  const emptyNote = onHome.length === 0
+    ? '<div class="empty"><p>工作台上还没有项目——加入上方新文件夹，或在「项目」页管理。</p></div>'
+    : '';
   return (
     '<section class="block">' +
-    '<h3 class="section-title">项目推进</h3>' +
-    state.projects.map(projectCard).join('') +
+    '<div class="section-head"><h3 class="section-title">项目推进</h3>' +
+    '<button class="ghost" data-action="goto-projects">管理全部 →</button></div>' +
+    banner +
+    onHome.map(projectCard).join('') +
+    emptyNote +
     '</section>'
   );
+}
+
+function projectRow(p: ProjectState): string {
+  const chips = projectChips(p);
+  const chipsHtml = chips.length
+    ? '<div class="chips">' + chips.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>'
+    : '';
+  const step = p.next_step
+    ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + esc(p.next_step) + '</span></div>'
+    : '';
+  const action = isOnHome(p)
+    ? '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>'
+    : '<button class="ghost" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>';
+  return (
+    '<div class="card project-row">' +
+    '<div class="project-row-main">' +
+    '<div class="project-row-title"><strong class="project-name">' + esc(p.name) + '</strong>' + projectStatusBadge(p) + '</div>' +
+    chipsHtml +
+    step +
+    '</div>' +
+    '<div class="project-row-actions">' + action + '</div>' +
+    '</div>'
+  );
+}
+
+function projectsListHtml(query: string): string {
+  if (!state) return '<div class="loading">加载中…</div>';
+  const q = query.trim().toLowerCase();
+  const matched = state.projects.filter((p) => !q || p.name.toLowerCase().includes(q));
+  if (matched.length === 0) {
+    return '<div class="empty"><p>' + (q ? '没有匹配「' + esc(q) + '」的项目' : '暂无项目文件夹') + '</p></div>';
+  }
+  const rank = (p: ProjectState): number => (isOnHome(p) ? 0 : isNewProject(p) ? 1 : 2);
+  const sorted = [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  return sorted.map(projectRow).join('');
+}
+
+function renderProjects(view: HTMLElement): void {
+  if (!state) {
+    view.innerHTML = '<div class="loading">加载中…</div>';
+    return;
+  }
+  const query = (view.querySelector<HTMLInputElement>('#project-search'))?.value ?? '';
+  const total = state.projects.length;
+  const onHome = state.projects.filter(isOnHome).length;
+  const fresh = state.projects.filter(isNewProject).length;
+  const archived = state.projects.filter((p) => p.status === 'archived').length;
+  view.innerHTML =
+    '<div class="section-head"><h3 class="section-title">全部项目</h3>' +
+    '<span class="hint">共 ' + total + ' · 在工作台 ' + onHome + ' · 新 ' + fresh + ' · 已归档 ' + archived + '</span></div>' +
+    '<div class="project-toolbar">' +
+    '<input id="project-search" type="search" placeholder="搜索项目名…" value="' + esc(query) + '">' +
+    '</div>' +
+    '<div id="projects-list"></div>';
+  const listEl = document.getElementById('projects-list') as HTMLElement;
+  listEl.innerHTML = projectsListHtml(query);
+  const search = view.querySelector<HTMLInputElement>('#project-search');
+  search?.addEventListener('input', () => {
+    const el = document.getElementById('projects-list');
+    if (el) el.innerHTML = projectsListHtml(search.value);
+  });
 }
 
 function entryCard(e: ReviewEntry): string {
@@ -803,6 +914,19 @@ document.addEventListener('click', (ev) => {
   if (action === 'go-review') {
     tab = 'review';
     render();
+    return;
+  }
+  if (action === 'goto-projects') {
+    tab = 'projects';
+    render();
+    return;
+  }
+  if (action === 'project-activate') {
+    void setProjectState('activate', btn.dataset.name ?? '');
+    return;
+  }
+  if (action === 'project-archive') {
+    void setProjectState('archive', btn.dataset.name ?? '');
     return;
   }
   if (action === 'run-brief') {
@@ -964,6 +1088,21 @@ async function batchDecide(candidateIds: string[], decision: string): Promise<vo
   void refreshState();
 }
 
+async function setProjectState(action: 'activate' | 'archive', name: string): Promise<void> {
+  if (!name) return;
+  try {
+    const r = await api<{ ok: boolean; message: string }>('/api/projects/' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    toast(r.message, r.ok ? 'ok' : 'err');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+  void refreshAll();
+}
+
 async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
   try {
@@ -1038,6 +1177,9 @@ async function refreshState(): Promise<void> {
   const badge = document.getElementById('tab-badge-review');
   if (badge) badge.textContent = state.status.pending_review > 0 ? String(state.status.pending_review) : '';
   if (tab === 'today') renderToday(document.getElementById('view-today') as HTMLElement);
+  else if (tab === 'projects') {
+    renderProjects(document.getElementById('view-projects') as HTMLElement);
+  }
 }
 
 async function refreshReview(): Promise<void> {

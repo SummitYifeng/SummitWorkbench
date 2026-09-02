@@ -1,15 +1,19 @@
-"""M1-4：项目名/别名 → 规范 ID 的解析器。"""
+"""M1-4：项目名/别名 → 规范 ID 的解析器；ADR 0023：工作台精选的建档状态助手。"""
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from summit_workbench.domain.vault import validate_note
 from summit_workbench.repositories.project_registry import (
+    archive_project,
     create_project_note,
+    ensure_project_active,
     load_project_registry,
+    read_project_registration,
 )
 from summit_workbench.repositories.vault import load_note
 
@@ -92,3 +96,76 @@ def test_first_project_wins_on_alias_conflict(tmp_path):
     registry = load_project_registry(tmp_path)
     # 按文件名排序，AProject 先出现，结果稳定
     assert registry.resolve("共享别名") == "AProject"
+
+
+# —— ADR 0023：工作台精选（建档 status 驱动首页显示） ——
+
+
+def _note_meta(vault: Path, project: str) -> dict[str, object] | None:
+    path = vault / "projects" / f"{project}.md"
+    if not path.is_file():
+        return None
+    note = load_note(path)
+    assert note.parse_error is None
+    return note.meta
+
+
+def test_read_registration_missing_invalid_and_valid(tmp_path):
+    assert read_project_registration(tmp_path, "Nope") == (False, None)
+    _project(tmp_path, "P1")
+    assert read_project_registration(tmp_path, "P1") == (True, "active")
+    # 同名但非 project-main 笔记：不算已建档（与 load_project_registry 同口径）
+    (tmp_path / "projects" / "Other.md").write_text(
+        "---\nproject: Other\ndate: 2026-08-31\ntype: inbox\nstatus: active\n---\n\n# x\n",
+        encoding="utf-8",
+    )
+    assert read_project_registration(tmp_path, "Other") == (False, None)
+
+
+def test_ensure_project_active_creates_schema_valid_note(tmp_path):
+    path = ensure_project_active(tmp_path, "BrandNew", now=datetime(2026, 9, 3, tzinfo=UTC))
+    note = load_note(path)
+    assert note.parse_error is None
+    assert note.meta["status"] == "active"
+    assert validate_note(note.meta, note.body) == []
+
+
+def test_archive_restore_roundtrip_refreshes_updated(tmp_path):
+    _project(tmp_path, "P1")
+    archive_project(tmp_path, "P1", now=datetime(2026, 9, 3, tzinfo=UTC))
+    assert _note_meta(tmp_path, "P1")["status"] == "archived"
+    assert _note_meta(tmp_path, "P1")["updated"] == "2026-09-03"
+    ensure_project_active(tmp_path, "P1", now=datetime(2026, 9, 4, tzinfo=UTC))
+    meta = _note_meta(tmp_path, "P1")
+    assert meta["status"] == "active"
+    assert meta["updated"] == "2026-09-04"
+
+
+def test_curation_helpers_are_idempotent_noop(tmp_path):
+    _project(tmp_path, "P1")
+    ensure_project_active(tmp_path, "P1")
+    path = tmp_path / "projects" / "P1.md"
+    before = path.read_text(encoding="utf-8")
+    ensure_project_active(tmp_path, "P1")  # 已 active：no-op，不改文件
+    assert path.read_text(encoding="utf-8") == before
+    archive_project(tmp_path, "P1")
+    archived_text = path.read_text(encoding="utf-8")
+    archive_project(tmp_path, "P1")  # 已 archived：no-op
+    assert path.read_text(encoding="utf-8") == archived_text
+
+
+def test_archive_creates_note_for_unregistered_folder(tmp_path):
+    archive_project(tmp_path, "FreshFolder", now=datetime(2026, 9, 3, tzinfo=UTC))
+    meta = _note_meta(tmp_path, "FreshFolder")
+    assert meta is not None and meta["status"] == "archived"
+    ensure_project_active(tmp_path, "FreshFolder")
+    assert _note_meta(tmp_path, "FreshFolder")["status"] == "active"
+
+
+def test_curation_helpers_reject_invalid_same_name_file(tmp_path):
+    (tmp_path / "projects").mkdir(parents=True)
+    (tmp_path / "projects" / "Broken.md").write_text("不是一篇笔记", encoding="utf-8")
+    with pytest.raises(ValueError):
+        ensure_project_active(tmp_path, "Broken")
+    with pytest.raises(ValueError):
+        archive_project(tmp_path, "Broken")
