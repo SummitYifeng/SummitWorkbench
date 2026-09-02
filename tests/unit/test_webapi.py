@@ -139,6 +139,28 @@ def test_api_decide_unknown_candidate(tmp_path: Path) -> None:
     assert "找不到候选" in data["message"]
 
 
+def test_api_batch_decide_rejects(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path)
+    resp = client.post(
+        "/api/review/batch",
+        json={"candidate_ids": ["m1#decision-0", "ghost"], "decision": "rejected"},
+    )
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["updated"] == 1
+    parsed = parse_review_page(review_path(vault).read_text(encoding="utf-8"))
+    assert parsed.entries[0].candidate.decision is CandidateDecision.REJECTED
+
+
+def test_api_batch_decide_invalid_decision(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    resp = client.post(
+        "/api/review/batch",
+        json={"candidate_ids": ["m1#decision-0"], "decision": "bogus"},
+    )
+    assert resp.json()["ok"] is False
+
+
 def test_api_edit_updates_fields(tmp_path: Path) -> None:
     client, vault = _client(tmp_path)
     resp = client.post(

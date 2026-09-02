@@ -65,7 +65,7 @@ def test_load_meeting_processor_prompt():
     assert prompt.version >= 1
     assert prompt.capability == "meeting"
     assert "JSON" in prompt.body
-    assert prompt.version_label == "meeting-processor@v2"
+    assert prompt.version_label == "meeting-processor@v3"
 
 
 def test_load_meeting_merger_prompt():

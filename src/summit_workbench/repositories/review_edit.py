@@ -55,6 +55,36 @@ def set_decision(vault_dir: Path, candidate_id: str, decision: CandidateDecision
     _rewrite(vault_dir, candidate_id, lambda c: replace(c, decision=decision))
 
 
+def set_decisions(vault_dir: Path, candidate_ids: list[str], decision: CandidateDecision) -> int:
+    """批量把多条候选置为同一裁决，单次解析 + 单次原子重写。
+
+    找不到的 ID 静默跳过（幂等，允许前端传整组 ID）；全部落空才报错。
+    返回实际更新的条数。
+    """
+    wanted = set(candidate_ids)
+    if not wanted:
+        return 0
+    path = review_path(vault_dir)
+    if not path.is_file():
+        raise ReviewEditError("审批页不存在，先运行 wb review refresh")
+    parsed = parse_review_page(path.read_text(encoding="utf-8"))
+    if parsed.errors:
+        raise ReviewEditError("审批页存在语法错误，拒绝改写：" + "; ".join(parsed.errors))
+    hit = 0
+    new_entries = []
+    for entry in parsed.entries:
+        if entry.candidate.candidate_id in wanted:
+            updated = replace(entry.candidate, decision=decision)
+            new_entries.append(replace(entry, candidate=updated))
+            hit += 1
+        else:
+            new_entries.append(entry)
+    if hit == 0:
+        raise ReviewEditError("找不到任何匹配候选")
+    atomic_write_text(path, render_review_page(new_entries))
+    return hit
+
+
 def update_fields(
     vault_dir: Path,
     candidate_id: str,

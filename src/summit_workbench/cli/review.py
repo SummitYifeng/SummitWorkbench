@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 
 import typer
@@ -14,12 +15,14 @@ from summit_workbench.providers.feishu import (
     create_task,
     load_feishu_config,
 )
+from summit_workbench.repositories.review_edit import ReviewEditError
 from summit_workbench.workflows.review import refresh_meeting_review
 from summit_workbench.workflows.review_apply import apply_meeting_review
+from summit_workbench.workflows.review_sweep import sweep_meeting_review
 
 review_app = typer.Typer(
     name="review",
-    help="会议提取集中审批（refresh / apply；apply 默认只预演）。",
+    help="会议提取集中审批（refresh / apply / sweep；apply 与 sweep 默认只预演）。",
     no_args_is_help=True,
     add_completion=False,
 )
@@ -90,3 +93,35 @@ def apply_review(
         typer.echo(f"审计：{report.archive_path}")
     if report.failed:
         raise typer.Exit(code=1)
+
+
+@review_app.command("sweep")
+def sweep_review(
+    execute: bool = typer.Option(
+        False,
+        "--apply",
+        help="实际退役笔记（置 ignored）并批量拒绝其候选；省略时只显示计划。",
+    ),
+    before: str | None = typer.Option(
+        None,
+        "--before",
+        help="只清理会议日期早于该日（YYYY-MM-DD）的笔记，用于一次性清掉测试会议。",
+    ),
+) -> None:
+    """一键清理测试/旧会议：笔记正文保留、状态置 ignored，其候选批量拒绝归档。"""
+    paths = load_settings().work_paths()
+    try:
+        report = sweep_meeting_review(
+            paths.vault_dir,
+            apply=execute,
+            before=date.fromisoformat(before) if before else None,
+        )
+    except (ValueError, ReviewEditError) as exc:
+        typer.echo(f"✗ 清扫失败：{exc}")
+        raise typer.Exit(code=1) from exc
+    typer.echo("DRY-RUN（零写入）" if report.dry_run else "已清扫（正文原文保留）")
+    for path in report.notes:
+        typer.echo(f"  {path.name}")
+    typer.echo(f"结果：会议笔记={len(report.notes)}  涉及候选={report.candidates}")
+    if report.dry_run and report.notes:
+        typer.echo("确认无误后加 --apply 执行。")

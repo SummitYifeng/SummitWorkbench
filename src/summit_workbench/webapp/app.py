@@ -12,8 +12,11 @@ review_edit、应用用 apply_meeting_review；看板状态用 build_status、�
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -21,7 +24,7 @@ from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -33,11 +36,13 @@ from summit_workbench.repositories.project_scan import count_inbox_pending, scan
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
+    set_decisions,
     update_fields,
 )
 from summit_workbench.repositories.review_page import parse_review_page, review_path
 from summit_workbench.webapp.api import (
     AskPayload,
+    BatchDecidePayload,
     CapturePayload,
     DecidePayload,
     EditPayload,
@@ -301,6 +306,20 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return {"ok": False, "message": f"操作失败：{exc}"}
         return {"ok": True, "message": f"已更新 → {payload.decision}"}
 
+    @app.post("/api/review/batch")
+    def api_batch_decide(payload: BatchDecidePayload) -> dict[str, object]:
+        try:
+            updated = set_decisions(
+                ctx.vault_dir, payload.candidate_ids, CandidateDecision(payload.decision)
+            )
+        except (ReviewEditError, ValueError) as exc:
+            return {"ok": False, "message": f"操作失败：{exc}"}
+        return {
+            "ok": True,
+            "message": f"已批量更新 {updated} 条 → {payload.decision}",
+            "updated": updated,
+        }
+
     @app.post("/api/review/edit")
     def api_edit(payload: EditPayload) -> dict[str, object]:
         try:
@@ -448,6 +467,26 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return _run_web_import(ctx, target)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    @app.post("/api/shutdown")
+    def api_shutdown(
+        x_wb_shutdown: Annotated[str | None, Header()] = None,
+    ) -> dict[str, object]:
+        """关闭本地面板（网页「退出」按钮调用）。
+
+        只允许面板页面自身触发：自定义头 ``X-WB-Shutdown`` 会强制浏览器先发 CORS
+        预检，而本应用未开启跨域，外部网页无法直发——杜绝任意网页把本地服务关掉。
+        收到请求后延迟片刻让响应先返回，再从独立线程退出进程。
+        """
+        if x_wb_shutdown != "1":
+            return {"ok": False, "message": "缺少关闭令牌"}
+
+        def _stop() -> None:
+            time.sleep(0.3)
+            os._exit(0)
+
+        threading.Thread(target=_stop, daemon=True).start()
+        return {"ok": True, "message": "工作台正在关闭…"}
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 

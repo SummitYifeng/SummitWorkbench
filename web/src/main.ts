@@ -165,6 +165,7 @@ function renderShell(): void {
     '<div class="header-right">' +
     '<span class="day-pill" id="day-pill">—</span>' +
     '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
+    '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
     '<nav class="tabs" role="tablist">' +
     '<button class="tab" data-tab="today" role="tab">今日</button>' +
@@ -184,6 +185,20 @@ function renderShell(): void {
   });
   (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
     void refreshAll().then(() => toast('已刷新', 'ok'));
+  });
+  (document.getElementById('btn-quit') as HTMLButtonElement).addEventListener('click', () => {
+    if (!window.confirm('确定退出工作台并停止本地服务？')) return;
+    void api<{ ok: boolean; message: string }>('/api/shutdown', {
+      method: 'POST',
+      headers: { 'X-WB-Shutdown': '1' },
+    }).then((r) => {
+      toast(r.message, r.ok ? 'ok' : 'err');
+      window.setTimeout(() => window.close(), 800);
+    }).catch((err: unknown) => {
+      // 服务已关闭时请求可能直接失败；仍尝试关窗
+      toast(String(err), 'err');
+      window.setTimeout(() => window.close(), 800);
+    });
   });
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
   backdrop.addEventListener('click', (ev) => {
@@ -388,18 +403,27 @@ function renderReview(view: HTMLElement): void {
     ? '<div class="msg err">审批页解析错误：<br>' + review.errors.map(esc).join('<br>') + '</div>'
     : '';
   const groupsHtml = review.groups.length
-    ? review.groups.map((g) => {
+    ? review.groups.map((g, gi) => {
         const cards = g.entries.map(entryCard).join('');
-        return '<div class="meeting-head"><span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
-          '<span class="meeting-title">' + esc(g.meeting_title) + '</span></div>' + cards;
+        const groupPending = g.entries.filter((e) => e.decision === 'pending').length;
+        return '<div class="meeting-head">' +
+          '<span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
+          '<span class="meeting-title">' + esc(g.meeting_title) + '</span>' +
+          '<span class="group-actions">' +
+          '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + gi + '"' +
+          (groupPending === 0 ? ' disabled' : '') + '>✓ 全批(' + groupPending + ')</button>' +
+          '<button class="ghost" data-action="group-decide" data-decision="rejected" data-group="' + gi + '"' +
+          (groupPending === 0 ? ' disabled' : '') + '>✗ 全拒</button>' +
+          '</span></div>' + cards;
       }).join('')
     : '<div class="empty"><p>暂无待确认候选。</p>' +
       '<p class="hint">导入会议逐字稿后，提取结果会出现在这里。</p></div>';
   view.innerHTML =
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
-    '<p class="hint">' + pending + ' 条待确认 · 批准后才写回项目/飞书</p></div>' +
+    '<p class="hint">' + pending + ' 条待确认 · 批准后才写回项目/飞书 · 截止早于今天的可用「一键拒绝过期项」清理</p></div>' +
     '<div class="form-row">' +
+    '<button class="ghost" data-action="reject-expired" title="把截止日期早于今天的待确认条目批量置为拒绝">一键拒绝过期项</button>' +
     '<button class="ghost" data-action="plan">预演应用</button>' +
     '<button class="primary" data-action="apply">应用（写回）</button>' +
     '</div></div>' +
@@ -447,10 +471,12 @@ function projectsHtml(): string {
 function entryCard(e: ReviewEntry): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
+  const today = state?.day ?? '';
+  const expired = e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today;
   const meta = [
     e.target_project ? '目标：' + esc(e.target_project) : '目标：unresolved',
     e.route ? '落点：' + (ROUTE_LABELS[e.route] ?? e.route) : '落点：未定',
-    e.due_date ? '截止：' + esc(e.due_date) : '',
+    e.due_date ? '截止：' + esc(e.due_date) + (expired ? '（已过期）' : '') : '',
     e.evidence ? '依据：' + esc(e.evidence) : '',
     e.historical ? '历史补导' : '',
   ].filter(Boolean).join(' · ');
@@ -523,6 +549,25 @@ document.addEventListener('click', (ev) => {
     void decide(card.dataset.id ?? '', btn.dataset.decision ?? 'pending');
     return;
   }
+  if (action === 'group-decide') {
+    const gi = Number(btn.dataset.group ?? '-1');
+    const group = review?.groups[gi];
+    if (!group) return;
+    const ids = group.entries
+      .filter((e) => e.decision === 'pending')
+      .map((e) => e.candidate_id);
+    void batchDecide(ids, btn.dataset.decision ?? 'pending');
+    return;
+  }
+  if (action === 'reject-expired') {
+    const today = state?.day ?? '';
+    const ids = (review?.groups ?? [])
+      .flatMap((g) => g.entries)
+      .filter((e) => e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today)
+      .map((e) => e.candidate_id);
+    void batchDecide(ids, 'rejected');
+    return;
+  }
   if (action === 'toggle-edit') {
     const box = btn.closest<HTMLElement>('.entry')?.querySelector<HTMLElement>('.edit-box');
     if (box) box.hidden = !box.hidden;
@@ -552,6 +597,25 @@ async function decide(candidateId: string, decision: string): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ candidate_id: candidateId, decision }),
+    });
+    toast(r.message, r.ok ? 'ok' : 'err');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+  void refreshReview();
+  void refreshState();
+}
+
+async function batchDecide(candidateIds: string[], decision: string): Promise<void> {
+  if (candidateIds.length === 0) {
+    toast('没有可操作的条目', 'info');
+    return;
+  }
+  try {
+    const r = await api<{ ok: boolean; message: string; updated?: number }>('/api/review/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_ids: candidateIds, decision }),
     });
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {

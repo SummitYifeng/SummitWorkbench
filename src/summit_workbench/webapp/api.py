@@ -18,6 +18,11 @@ class DecidePayload(BaseModel):
     decision: str  # pending | approved | rejected
 
 
+class BatchDecidePayload(BaseModel):
+    candidate_ids: list[str]
+    decision: str  # pending | approved | rejected
+
+
 class EditPayload(BaseModel):
     candidate_id: str
     description: str | None = None

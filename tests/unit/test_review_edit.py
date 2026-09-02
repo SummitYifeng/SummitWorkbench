@@ -17,6 +17,7 @@ from summit_workbench.domain.review import (
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
+    set_decisions,
     update_fields,
 )
 from summit_workbench.repositories.review_page import (
@@ -101,3 +102,44 @@ def test_missing_candidate_raises(tmp_path: Path) -> None:
 def test_missing_page_raises(tmp_path: Path) -> None:
     with pytest.raises(ReviewEditError, match="不存在"):
         set_decision(tmp_path, "m1#decision-0", CandidateDecision.APPROVED)
+
+
+# ---- 批量裁决 ----
+
+
+def test_set_decisions_batch_rejects(tmp_path: Path) -> None:
+    _seed_page(
+        tmp_path,
+        [_entry("m1#decision-0"), _entry("m1#action-item-1"), _entry("m2#decision-0")],
+    )
+    updated = set_decisions(
+        tmp_path, ["m1#decision-0", "m1#action-item-1"], CandidateDecision.REJECTED
+    )
+    assert updated == 2
+    parsed = parse_review_page(review_path(tmp_path).read_text(encoding="utf-8"))
+    by_id = {e.candidate.candidate_id: e.candidate.decision for e in parsed.entries}
+    assert by_id["m1#decision-0"] is CandidateDecision.REJECTED
+    assert by_id["m1#action-item-1"] is CandidateDecision.REJECTED
+    assert by_id["m2#decision-0"] is CandidateDecision.PENDING
+    assert "#ignore" in review_path(tmp_path).read_text(encoding="utf-8")
+
+
+def test_set_decisions_skips_unknown_ids(tmp_path: Path) -> None:
+    _seed_page(tmp_path, [_entry()])
+    updated = set_decisions(tmp_path, ["m1#decision-0", "nonexistent"], CandidateDecision.APPROVED)
+    assert updated == 1
+    parsed = parse_review_page(review_path(tmp_path).read_text(encoding="utf-8"))
+    assert parsed.entries[0].candidate.decision is CandidateDecision.APPROVED
+
+
+def test_set_decisions_empty_list_is_noop(tmp_path: Path) -> None:
+    _seed_page(tmp_path, [_entry()])
+    assert set_decisions(tmp_path, [], CandidateDecision.APPROVED) == 0
+    parsed = parse_review_page(review_path(tmp_path).read_text(encoding="utf-8"))
+    assert parsed.entries[0].candidate.decision is CandidateDecision.PENDING
+
+
+def test_set_decisions_no_match_raises(tmp_path: Path) -> None:
+    _seed_page(tmp_path, [_entry()])
+    with pytest.raises(ReviewEditError, match="找不到任何匹配候选"):
+        set_decisions(tmp_path, ["nonexistent"], CandidateDecision.APPROVED)

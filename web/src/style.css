@@ -35,6 +35,9 @@
   }
 }
 * { box-sizing: border-box; }
+/* hidden 属性必须永远生效：UA 的 [hidden]{display:none} 会被任意显式 display 覆盖
+   （例：.modal-backdrop 的 display:grid 会让未打开的弹窗遮罩常驻屏幕）。 */
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -228,6 +231,9 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
   display: flex; align-items: baseline; gap: 10px;
   border-bottom: 1px solid var(--border); padding: 14px 2px 6px; margin-top: 8px;
 }
+.meeting-head .group-actions { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+.meeting-head .group-actions button { font-size: 12px; padding: 2px 8px; }
+.meeting-head .group-actions button[disabled] { opacity: .45; cursor: not-allowed; }
 .meeting-date { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .meeting-title { font-size: 15px; font-weight: 700; }
 .entry-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
