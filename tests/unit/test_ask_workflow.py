@@ -10,7 +10,7 @@ from pydantic import SecretStr
 from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.client import CompletionResult, Usage
 from summit_workbench.providers.llm.config import ModelConfig
-from summit_workbench.workflows.ask.ask import answer_question
+from summit_workbench.workflows.ask.ask import AskTurn, answer_question
 
 CFG = ModelConfig(capability="qa", model_id="m", base_url="http://x", credential_account="shared")
 PROMPT = Prompt(name="qa-answer", version=1, capability="qa", body="系统提示")
@@ -114,3 +114,77 @@ def test_source_id_appears_in_model_context(tmp_path):
     )
     _, user = completer.calls[0]
     assert "source_id: projects/P1" in user
+
+
+def test_followup_reincludes_historical_source_when_fresh_retrieval_empty(tmp_path):
+    """追问轮：当前问题召回为空，但历史轮引用过的来源被重新纳入 → 仍可作答。"""
+    completer = FakeCompleter({"summary": "延续：免费实现。"})
+    result = answer_question(
+        _vault(tmp_path),
+        "那后来呢",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        history=(AskTurn(question="价格怎么定", sources=("projects/P1",)),),
+    )
+    assert len(completer.calls) == 1
+    _, user = completer.calls[0]
+    assert "source_id: projects/P1" in user  # 历史来源重新进入上下文
+    assert "价格怎么定" in user  # 历史问题作为背景传入
+    assert "不是知识来源" in user
+    assert result.answer.unanswerable is False
+
+
+def test_history_brings_prior_questions_as_background_only(tmp_path):
+    """历史轮只携带问题原文；AI 当时的回答绝不进入下一轮上下文。"""
+    completer = FakeCompleter({"summary": "ok"})
+    answer_question(
+        _vault(tmp_path),
+        "价格",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        history=(AskTurn(question="上一轮问题", sources=("projects/P1",)),),
+    )
+    _, user = completer.calls[0]
+    assert "上一轮问题" in user
+    assert "不是知识来源" in user
+
+
+def test_history_missing_note_is_skipped(tmp_path):
+    """历史轮引用的笔记已被删除 → 跳过，不报错；仍无候选则不调用模型。"""
+    completer = FakeCompleter({"summary": "x"})
+    result = answer_question(
+        _vault(tmp_path),
+        "那后来呢",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        history=(AskTurn(question="问过 P1", sources=("projects/GONE",)),),
+    )
+    assert completer.calls == []
+    assert result.answer.unanswerable is True
+    assert result.usage is None
+
+
+def test_history_capped_to_last_turns(tmp_path):
+    """追问上下文最多携带最近 6 轮，更早的被截断。"""
+    completer = FakeCompleter({"summary": "ok"})
+    turns = tuple(AskTurn(question=f"前轮问题{i}") for i in range(1, 9))  # 8 轮 → 保留后 6 轮
+    answer_question(
+        _vault(tmp_path),
+        "价格",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        history=turns,
+    )
+    _, user = completer.calls[0]
+    assert "前轮问题1" not in user
+    assert "前轮问题2" not in user
+    assert "前轮问题3" in user
+    assert "前轮问题8" in user

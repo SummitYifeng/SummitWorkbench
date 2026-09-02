@@ -290,6 +290,27 @@ def test_api_ask_without_model_shows_unavailable(tmp_path: Path, monkeypatch) ->
     data = resp.json()
     assert data["ok"] is True
     assert "问答不可用" in data["answer_html"]
+    assert data["source_ids"] == []
+
+
+def test_api_ask_accepts_history_payload(tmp_path: Path, monkeypatch) -> None:
+    """追问上下文随请求体透传（schema 与回传字段）；无模型时仍按不可用兜底。"""
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _ = _client(tmp_path)
+    resp = client.post(
+        "/api/ask",
+        json={
+            "question": "那后来呢",
+            "history": [
+                {"question": "网课项目最近的决策是什么？", "sources": ["projects/P1"]},
+                {"question": "没有引用的轮", "sources": []},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert "问答不可用" in data["answer_html"]
 
 
 # ---------- SPA 服务 ----------

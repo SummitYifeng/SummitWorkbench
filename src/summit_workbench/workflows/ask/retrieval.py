@@ -74,6 +74,35 @@ def _score(terms: list[str], title: str, meta_blob: str, body: str) -> float:
     return total
 
 
+def candidate_by_id(vault_dir: Path, source_id: str) -> Candidate | None:
+    """按 source_id（vault 相对路径，无 .md）取回单篇候选，供追问轮重新纳入历史来源。
+
+    只接受 vault 内的普通路径（拒绝越界/派生类型），笔记已删除或不可用时返回 None。
+    """
+    if not vault_dir.is_dir() or not source_id:
+        return None
+    rel = Path(source_id)
+    if rel.is_absolute() or ".." in rel.parts:
+        return None
+    path = vault_dir.joinpath(rel).with_suffix(".md")
+    if not path.is_file():
+        return None
+    note = load_note(path)
+    if note.parse_error is not None:
+        return None
+    note_type = str(note.meta.get("type") or "")
+    if note_type in _EXCLUDED_TYPES:
+        return None
+    return Candidate(
+        source_id=source_id,
+        title=_title(note.meta, note.body, path),
+        note_type=note_type,
+        projects=_projects(note.meta),
+        body=note.body[:_BODY_CHAR_CAP].strip(),
+        score=0.0,  # 固定召回：不参与相关度排序，仅作为历史延续来源
+    )
+
+
 def retrieve_candidates(
     vault_dir: Path,
     query: str,

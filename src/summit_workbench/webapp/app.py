@@ -21,12 +21,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+if TYPE_CHECKING:
+    from summit_workbench.workflows.ask.ask import AskTurn
 
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
@@ -119,8 +122,13 @@ def _build_task_creator(ctx: WebContext) -> TaskCreator:
     return create
 
 
-def _ask_html(vault_dir: Path, question: str) -> str:
-    """跑一次 wb ask 并渲染为 HTML；模型不可用时返回可见错误。"""
+def _ask_html(
+    vault_dir: Path, question: str, history: tuple[AskTurn, ...] = ()
+) -> tuple[str, list[str]]:
+    """跑一次 wb ask（可带追问上下文）并渲染为 HTML；返回 (HTML, 本次来源 id 列表)。
+
+    模型不可用时返回可见错误；source_ids 供前端存进会话，追问时回传给后端。
+    """
     from summit_workbench.config.secrets import CredentialError, resolve_credential
     from summit_workbench.prompts import load_prompt
     from summit_workbench.providers.llm import LLMError, load_model_config
@@ -130,9 +138,9 @@ def _ask_html(vault_dir: Path, question: str) -> str:
         cfg = load_model_config("qa")
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("qa-answer")
-        result = answer_question(vault_dir, question, cfg, api_key, prompt=prompt)
+        result = answer_question(vault_dir, question, cfg, api_key, prompt=prompt, history=history)
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>'
+        return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', []
 
     answer = result.answer
     parts = [f"<p><strong>{escape(answer.summary)}</strong></p>"]
@@ -147,10 +155,11 @@ def _ask_html(vault_dir: Path, question: str) -> str:
         parts.append("<h4>建议（模型推断）</h4><ul>")
         parts += [f"<li>{escape(s)}</li>" for s in answer.suggestions]
         parts.append("</ul>")
+    source_ids = [c.source_id for c in result.sources]
     if result.sources:
         srcs = "、".join(f"[[{escape(c.source_id)}]]" for c in result.sources)
         parts.append(f'<p class="not-actionable">召回来源：{srcs}</p>')
-    return "\n".join(parts)
+    return "\n".join(parts), source_ids
 
 
 def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]:
@@ -448,7 +457,15 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         question = payload.question.strip()
         if not question:
             return {"ok": False, "message": "请输入问题"}
-        return {"ok": True, "answer_html": _ask_html(ctx.vault_dir, question)}
+        from summit_workbench.workflows.ask.ask import AskTurn
+
+        history = tuple(
+            AskTurn(question=t.question.strip(), sources=tuple(t.sources))
+            for t in payload.history
+            if t.question.strip()
+        )
+        html, source_ids = _ask_html(ctx.vault_dir, question, history=history)
+        return {"ok": True, "answer_html": html, "source_ids": source_ids}
 
     @app.post("/api/meetings/import")
     def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
@@ -529,7 +546,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         q = question.strip()
         if not q:
             return _dashboard(msg="请输入问题")
-        return _dashboard(ask_q=q, ask_html=_ask_html(ctx.vault_dir, q))
+        html, _source_ids = _ask_html(ctx.vault_dir, q)
+        return _dashboard(ask_q=q, ask_html=html)
 
     @app.get("/review", response_class=HTMLResponse)
     def review(msg: str | None = None) -> HTMLResponse:

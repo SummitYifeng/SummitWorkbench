@@ -19,16 +19,34 @@ from summit_workbench.providers.llm.client import MAX_RETRIES, CompletionResult,
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMSchemaError
 from summit_workbench.providers.llm.usage import UsageRecord, record_from_result
-from summit_workbench.workflows.ask.retrieval import Candidate, retrieve_candidates
+from summit_workbench.workflows.ask.retrieval import (
+    Candidate,
+    candidate_by_id,
+    retrieve_candidates,
+)
 from summit_workbench.workflows.meetings.processor import estimate_tokens
 
 _BACKOFF_BASE = 0.5
+
+# 追问上下文最多携带的历史轮数（前后端同口径；防无限增长挤占上下文预算）。
+_MAX_HISTORY_TURNS = 6
 
 
 class Completer(Protocol):
     """``ModelClient.complete`` 的结构化协议，便于测试注入。"""
 
     def complete(self, system: str, user: str, *, json_mode: bool = True) -> CompletionResult: ...
+
+
+@dataclass(frozen=True)
+class AskTurn:
+    """一轮历史问答的追问上下文：问题原文 + 当时引用过的来源 id。
+
+    刻意不带当时的 AI 答案全文——AI 回答不是 vault 事实，不得作为下一轮来源。
+    """
+
+    question: str
+    sources: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -73,14 +91,33 @@ def _render_sources(sources: list[Candidate]) -> str:
     return "\n\n".join(blocks)
 
 
-def _build_user_message(query: str, sources: list[Candidate]) -> str:
-    return (
-        f"问题：{query}\n\n"
+def _render_history(history: tuple[AskTurn, ...]) -> str:
+    if not history:
+        return ""
+    lines: list[str] = []
+    for index, turn in enumerate(history, 1):
+        if turn.sources:
+            lines.append(f"{index}. {turn.question}（当时引用来源：{', '.join(turn.sources)}）")
+        else:
+            lines.append(f"{index}. {turn.question}")
+    return "\n".join(lines)
+
+
+def _build_user_message(query: str, sources: list[Candidate], history_text: str = "") -> str:
+    parts = [f"问题：{query}"]
+    if history_text:
+        parts.append(
+            "以下是用户此前在本会话问过的问题，仅作延续话题的背景，不是知识来源"
+            "（AI 之前的回答同样不是来源）：\n"
+            + history_text
+        )
+    parts.append(
         "以下是从本地知识库召回的来源，只能引用这些来源作答，"
         "每条事实必须给出对应的 source_id；证据矛盾时并列展示；"
         "无法从来源回答时把 unanswerable 设为 true。\n\n"
         f"{_render_sources(sources)}"
     )
+    return "\n\n".join(parts)
 
 
 def _ground(answer: QaAnswer, allowed: set[str]) -> tuple[QaAnswer, tuple[str, ...]]:
@@ -161,15 +198,41 @@ def answer_question(
     prompt: Prompt,
     project: str | None = None,
     limit: int = 6,
+    history: tuple[AskTurn, ...] = (),
     completer: Completer | None = None,
     now: datetime | None = None,
     sleep: Callable[[float], None] = time.sleep,
 ) -> AskResult:
-    """召回本地来源并让模型带来源作答；无召回则不调用模型。"""
+    """召回本地来源并让模型带来源作答；无召回则不调用模型。
+
+    ``history`` 提供追问上下文：前几轮问题原文进入 prompt 作背景（非来源），
+    历史轮引用过的来源 id 会被重新纳入本次候选（笔记已删除/越界则跳过），
+    保证「那后来呢 / 具体哪次会」这类追问能引用同一批笔记。
+    """
     query = query.strip()
     if not query:
         raise ValueError("问题不能为空")
+    history = history[-_MAX_HISTORY_TURNS:]
+    history_text = _render_history(history)
+
     candidates = retrieve_candidates(vault_dir, query, project=project, limit=limit)
+    # 追问轮：把历史引用过的来源补回候选（去重、保持新鲜召回在前）。
+    seen: set[str] = set()
+    merged: list[Candidate] = []
+    for candidate in candidates:
+        if candidate.source_id not in seen:
+            merged.append(candidate)
+            seen.add(candidate.source_id)
+    for turn in history:
+        for source_id in turn.sources:
+            if source_id in seen:
+                continue
+            pinned = candidate_by_id(vault_dir, source_id)
+            if pinned is not None:
+                merged.append(pinned)
+                seen.add(source_id)
+    candidates = merged
+
     if not candidates:
         return AskResult(
             question=query,
@@ -178,9 +241,14 @@ def answer_question(
             usage=None,
         )
 
-    fixed = estimate_tokens(prompt.body) + estimate_tokens(query) + 64
+    fixed = (
+        estimate_tokens(prompt.body)
+        + estimate_tokens(query)
+        + (estimate_tokens(history_text) if history_text else 0)
+        + 64
+    )
     sources = _select_within_budget(candidates, cfg, fixed)
-    user_message = _build_user_message(query, sources)
+    user_message = _build_user_message(query, sources, history_text)
 
     client = completer or ModelClient(cfg, api_key)
     answer, usage = _answer_with_retry(

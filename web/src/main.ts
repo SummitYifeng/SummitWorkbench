@@ -2,7 +2,7 @@ import './style.css';
 
 import { esc, mdToHtml } from './md';
 
-type Tab = 'today' | 'review';
+type Tab = 'today' | 'review' | 'ask';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -101,7 +101,45 @@ let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
 let tab: Tab = 'today';
 let importing = false;
-let lastAnswerHtml: string | null = null;
+
+// ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
+
+interface AskMsg {
+  role: 'user' | 'ai';
+  /** user：原文（追问时回传）；ai：服务端渲染的答案 HTML */
+  text: string;
+  ts: string;
+  /** ai 消息本次召回/引用的来源 id（追问时回传，让后端重新纳入候选） */
+  sources: string[];
+}
+interface AskThread {
+  id: string;
+  title: string;
+  createdAt: string;
+  messages: AskMsg[];
+}
+interface AskHistoryTurn {
+  question: string;
+  sources: string[];
+}
+interface AskResponse {
+  ok: boolean;
+  message?: string;
+  answer_html?: string;
+  source_ids?: string[];
+}
+
+const ASK_STORAGE_KEY = 'wb.ask.threads.v1';
+const ASK_MAX_THREADS = 10;
+/** 追问时最多回传的历史轮数（与后端 _MAX_HISTORY_TURNS 同口径） */
+const ASK_MAX_HISTORY = 6;
+let askThreads: AskThread[] = [];
+let askActiveId: string | null = null;
+let askBusy = false;
+/** 正在请求的会话 id（切换会话时「思考中…」只出现在真正等待的那个会话） */
+let askBusyThreadId: string | null = null;
+/** 输入框草稿：renderAskChat 会整体重建输入区，等待期间打的新问题不能丢 */
+let askDraft = '';
 
 const app = document.getElementById('app') as HTMLElement;
 const toasts = document.getElementById('toasts') as HTMLElement;
@@ -149,12 +187,16 @@ function render(): void {
   });
   const todayView = document.getElementById('view-today') as HTMLElement;
   const reviewView = document.getElementById('view-review') as HTMLElement;
+  const askView = document.getElementById('view-ask') as HTMLElement;
   todayView.style.display = tab === 'today' ? '' : 'none';
   reviewView.style.display = tab === 'review' ? '' : 'none';
+  askView.style.display = tab === 'ask' ? '' : 'none';
   if (tab === 'today') {
     renderToday(todayView);
-  } else {
+  } else if (tab === 'review') {
     renderReview(reviewView);
+  } else {
+    renderAsk(askView);
   }
 }
 
@@ -171,16 +213,19 @@ function renderShell(): void {
     '<nav class="tabs" role="tablist">' +
     '<button class="tab" data-tab="today" role="tab">今日</button>' +
     '<button class="tab" data-tab="review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
+    '<button class="tab" data-tab="ask" role="tab">第二大脑</button>' +
     '</nav>' +
     '<main>' +
     '<section id="view-today" class="view"></section>' +
     '<section id="view-review" class="view"></section>' +
+    '<section id="view-ask" class="view"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     b.addEventListener('click', () => {
-      tab = b.dataset.tab === 'review' ? 'review' : 'today';
+      const next = b.dataset.tab;
+      tab = next === 'review' || next === 'ask' ? next : 'today';
       render();
     });
   });
@@ -215,7 +260,6 @@ function renderToday(view: HTMLElement): void {
   const s = state.status;
   const h = healthTone();
   const captureValue = (view.querySelector<HTMLInputElement>('#capture-input'))?.value ?? '';
-  const askValue = (view.querySelector<HTMLTextAreaElement>('#ask-input'))?.value ?? '';
 
   // 待确认卡片
   const pending = s.pending_review;
@@ -244,14 +288,6 @@ function renderToday(view: HTMLElement): void {
     : '<div class="empty"><p>今日简报还没生成。</p>' +
       '<button class="primary" data-action="run-brief">⚡ 现在生成（约 30 秒）</button></div>';
 
-  // 问答
-  const askHtml =
-    '<form class="ask" id="ask-form">' +
-    '<textarea id="ask-input" rows="2" placeholder="问第二大脑：例如「网课项目最近的决策是什么？」">' + esc(askValue) + '</textarea>' +
-    '<div class="form-row"><button class="primary" type="submit">提问</button></div>' +
-    '</form>' +
-    '<div class="answer" id="answer">' + (lastAnswerHtml ?? '') + '</div>';
-
   view.innerHTML =
     '<section class="hero">' +
     '<div class="hero-main"><p class="kicker">今天</p>' +
@@ -273,9 +309,6 @@ function renderToday(view: HTMLElement): void {
     '<section class="block">' +
     '<div class="section-head"><h3 class="section-title">今日简报</h3>' +
     '<button class="ghost" data-action="run-brief" title="重新生成">↻</button></div>' + briefHtml +
-    '</section>' +
-    '<section class="block">' +
-    '<h3 class="section-title">问第二大脑</h3>' + askHtml +
     '</section>';
 
   const captureForm = document.getElementById('capture-form') as HTMLFormElement;
@@ -299,7 +332,6 @@ function renderToday(view: HTMLElement): void {
   });
 
   bindDropzone();
-  bindAsk();
 }
 
 function bindDropzone(): void {
@@ -368,34 +400,257 @@ async function doImport(file: File): Promise<void> {
   }
 }
 
-function bindAsk(): void {
-  const form = document.getElementById('ask-form') as HTMLFormElement;
-  if (!form) return;
-  form.addEventListener('submit', (ev) => {
+// ---------- 第二大脑：会话存储（localStorage，上限 10） ----------
+
+function loadAskStore(): void {
+  try {
+    const raw = window.localStorage.getItem(ASK_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { threads?: AskThread[]; activeId?: string | null };
+    if (Array.isArray(parsed.threads)) askThreads = parsed.threads.slice(0, ASK_MAX_THREADS);
+    if (typeof parsed.activeId === 'string') askActiveId = parsed.activeId;
+    if (!askThreads.some((t) => t.id === askActiveId)) askActiveId = askThreads[0]?.id ?? null;
+  } catch {
+    /* localStorage 数据损坏时按空会话处理，不阻断使用 */
+  }
+}
+
+function saveAskStore(): void {
+  try {
+    window.localStorage.setItem(
+      ASK_STORAGE_KEY,
+      JSON.stringify({ threads: askThreads, activeId: askActiveId }),
+    );
+  } catch {
+    /* 配额满/隐私模式等：静默失败，仅本次不持久化 */
+  }
+}
+
+function activeAskThread(): AskThread | null {
+  return askThreads.find((t) => t.id === askActiveId) ?? null;
+}
+
+function makeThreadTitle(q: string): string {
+  const one = q.replace(/\s+/g, ' ').trim();
+  if (!one) return '新会话';
+  return one.length > 12 ? one.slice(0, 12) + '…' : one;
+}
+
+function newAskThread(): AskThread | null {
+  if (askThreads.length >= ASK_MAX_THREADS) {
+    toast('已达 ' + ASK_MAX_THREADS + ' 个会话上限，请先删除或清空一个', 'err');
+    return null;
+  }
+  const thread: AskThread = {
+    id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    title: '新会话',
+    createdAt: new Date().toISOString(),
+    messages: [],
+  };
+  askThreads.push(thread);
+  askActiveId = thread.id;
+  saveAskStore();
+  return thread;
+}
+
+function deleteAskThread(threadId: string): void {
+  const idx = askThreads.findIndex((t) => t.id === threadId);
+  if (idx < 0) return;
+  if (!window.confirm('删除会话「' + askThreads[idx].title + '」？其中的问答记录会一并删除。')) return;
+  askThreads.splice(idx, 1);
+  if (askActiveId === threadId) {
+    askActiveId = askThreads[0]?.id ?? null;
+    askDraft = '';
+  }
+  saveAskStore();
+  renderAsk(document.getElementById('view-ask') as HTMLElement);
+}
+
+function askHistoryOf(thread: AskThread): AskHistoryTurn[] {
+  const turns: AskHistoryTurn[] = [];
+  for (let i = 0; i + 1 < thread.messages.length; i += 2) {
+    const userMsg = thread.messages[i];
+    const aiMsg = thread.messages[i + 1];
+    if (userMsg.role === 'user' && aiMsg?.role === 'ai') {
+      turns.push({ question: userMsg.text, sources: aiMsg.sources });
+    }
+  }
+  return turns.slice(-ASK_MAX_HISTORY);
+}
+
+function askView(): HTMLElement {
+  return document.getElementById('view-ask') as HTMLElement;
+}
+
+function renderAsk(view: HTMLElement): void {
+  const full = askThreads.length >= ASK_MAX_THREADS;
+  view.innerHTML =
+    '<div class="ask-layout">' +
+    '<aside class="ask-side">' +
+    '<div class="ask-side-head">' +
+    '<button class="primary ask-new-btn" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限，请先删除或清空一个"' : '') + '>＋ 新会话</button>' +
+    '<span class="ask-side-count">' + askThreads.length + '/' + ASK_MAX_THREADS + '</span>' +
+    '</div>' +
+    '<div class="ask-side-list" id="ask-side-list"></div>' +
+    '</aside>' +
+    '<div class="ask-main" id="ask-main"></div>' +
+    '</div>';
+  renderAskSide();
+  renderAskChat();
+}
+
+function renderAskSide(): void {
+  const listEl = document.getElementById('ask-side-list');
+  if (!listEl) return;
+  if (askThreads.length === 0) {
+    listEl.innerHTML = '<p class="hint">还没有会话。点「＋ 新会话」开始提问。</p>';
+    return;
+  }
+  listEl.innerHTML = askThreads.map((t) => {
+    const active = t.id === askActiveId;
+    return '<div class="ask-item' + (active ? ' active' : '') + '" data-thread="' + t.id + '">' +
+      '<button class="ask-item-main" data-action="ask-open" data-thread="' + t.id + '" title="' + esc(t.title) + '">' + esc(t.title) + '</button>' +
+      '<button class="ask-item-op" data-action="ask-rename" data-thread="' + t.id + '" title="重命名会话">✎</button>' +
+      '<button class="ask-item-op danger" data-action="ask-del" data-thread="' + t.id + '" title="删除会话">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+function renderAskChat(): void {
+  const main = document.getElementById('ask-main');
+  if (!main) return;
+  const existing = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (existing) askDraft = existing.value;
+  const full = askThreads.length >= ASK_MAX_THREADS;
+  const thread = activeAskThread();
+  if (!thread) {
+    main.innerHTML =
+      '<div class="ask-welcome"><h3>问第二大脑</h3>' +
+      '<p>基于工作 vault 召回<strong>带来源</strong>的事实回答：做过什么、为什么这样决定、接下来最该做什么。</p>' +
+      '<p class="hint">例如：「网课项目最近的决策是什么？」 · 追问如：「那后来呢？」</p>' +
+      '<button class="primary" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限"' : '') + '>＋ 开始新对话</button>' +
+      '</div>';
+    return;
+  }
+  const bubbles = thread.messages.map((m) =>
+    m.role === 'user'
+      ? '<div class="msg user"><div class="bubble">' + esc(m.text).replace(/\n/g, '<br>') + '</div></div>'
+      : '<div class="msg ai"><div class="bubble">' + m.text + '</div></div>'
+  ).join('');
+  const showTyping = askBusy && thread.id === askBusyThreadId;
+  const typing = showTyping ? '<div class="msg ai"><div class="bubble typing">思考中…</div></div>' : '';
+  main.innerHTML =
+    '<div class="ask-chat" id="ask-chat">' + bubbles + typing + '</div>' +
+    '<div class="ask-inputbar">' +
+    '<form class="ask" id="ask-form" autocomplete="off">' +
+    '<textarea id="ask-input" rows="2" placeholder="问第二大脑…（Enter 提问，Shift+Enter 换行）"></textarea>' +
+    '<div class="form-row"><span class="hint ask-keyhint">Enter 提问 · Shift+Enter 换行</span>' +
+    '<button class="primary" type="submit"' + (askBusy ? ' disabled' : '') + '>提问</button></div>' +
+    '</form></div>';
+  bindAskInput();
+  const inputEl = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (inputEl) inputEl.value = askDraft;
+  const chat = document.getElementById('ask-chat');
+  if (chat?.lastElementChild) chat.lastElementChild.scrollIntoView({ block: 'nearest' });
+}
+
+function bindAskInput(): void {
+  const form = document.getElementById('ask-form') as HTMLFormElement | null;
+  if (form) form.addEventListener('submit', (ev) => {
     ev.preventDefault();
-    const input = document.getElementById('ask-input') as HTMLTextAreaElement;
-    const q = input.value.trim();
-    if (!q) return;
-    // 答案写入必须同时持久化到 lastAnswerHtml 并写入「当前」的 #answer 节点：
-    // renderToday() 每 60 秒会整体重建 DOM，若请求期间发生重绘，响应若落到
-    // 已脱离文档的旧节点上，可见区域会一直停留在思考中/旧答案——即「问完突然空白」的同一根因。
-    const show = (html: string): void => {
-      lastAnswerHtml = html;
-      const box = document.getElementById('answer');
-      if (box) box.innerHTML = html;
-    };
-    show('<div class="loading">思考中…</div>');
-    void api<{ ok: boolean; message: string; answer_html?: string }>('/api/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q }),
-    }).then((r) => {
-      show(r.ok && r.answer_html ? r.answer_html : '<p class="err-text">' + esc(r.message) + '</p>');
-    }).catch((err: unknown) => {
-      show('<p class="err-text">' + esc(String(err)) + '</p>');
-    });
+    void askSubmit();
+  });
+  const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (!input) return;
+  // Enter 提问（中文输入法组词时的回车不触发）；Shift+Enter 换行。
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' || ev.shiftKey) return;
+    if (ev.isComposing || ev.keyCode === 229) return;
+    ev.preventDefault();
+    void askSubmit();
   });
 }
+
+async function askSubmit(): Promise<void> {
+  const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (!input || askBusy) return;
+  const q = input.value.trim();
+  if (!q) return;
+  let thread = activeAskThread();
+  if (!thread) {
+    thread = newAskThread();
+    if (!thread) return;
+  }
+  if (thread.messages.length === 0) thread.title = makeThreadTitle(q);
+  const history = askHistoryOf(thread);
+  thread.messages.push({ role: 'user', text: q, ts: new Date().toISOString(), sources: [] });
+  input.value = '';
+  askDraft = '';
+  askBusy = true;
+  askBusyThreadId = thread.id;
+  saveAskStore();
+  renderAskSide();
+  renderAskChat();
+  try {
+    const r = await api<AskResponse>('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, history }),
+    });
+    const html = r.ok && r.answer_html
+      ? r.answer_html
+      : '<p class="err-text">' + esc(r.message ?? '提问失败') + '</p>';
+    thread.messages.push({
+      role: 'ai',
+      text: html,
+      ts: new Date().toISOString(),
+      sources: r.source_ids ?? [],
+    });
+  } catch (err) {
+    thread.messages.push({
+      role: 'ai',
+      text: '<p class="err-text">' + esc(String(err)) + '</p>',
+      ts: new Date().toISOString(),
+      sources: [],
+    });
+  } finally {
+    askBusy = false;
+    askBusyThreadId = null;
+    saveAskStore();
+    renderAskSide();
+    renderAskChat();
+  }
+}
+
+function beginAskRename(threadId: string): void {
+  const item = document.querySelector<HTMLElement>('.ask-item[data-thread="' + threadId + '"]');
+  const thread = askThreads.find((t) => t.id === threadId);
+  if (!item || !thread) return;
+  const input = document.createElement('input');
+  input.className = 'ask-rename-input';
+  input.value = thread.title;
+  input.maxLength = 40;
+  item.innerHTML = '';
+  item.appendChild(input);
+  input.focus();
+  input.select();
+  const commit = (): void => {
+    const value = input.value.trim();
+    if (value) thread.title = value;
+    saveAskStore();
+    renderAskSide();
+  };
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      commit();
+    } else if (ev.key === 'Escape') {
+      renderAskSide();
+    }
+  });
+  input.addEventListener('blur', commit);
+}
+
 
 function renderReview(view: HTMLElement): void {
   if (!review) {
@@ -585,6 +840,29 @@ document.addEventListener('click', (ev) => {
       .filter((e) => e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today)
       .map((e) => e.candidate_id);
     void batchDecide(ids, 'rejected');
+    return;
+  }
+  if (action === 'ask-new') {
+    askDraft = '';
+    const thread = newAskThread();
+    renderAsk(askView());
+    const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+    if (thread && input) input.focus();
+    return;
+  }
+  if (action === 'ask-open') {
+    askDraft = '';
+    askActiveId = btn.dataset.thread ?? null;
+    saveAskStore();
+    renderAsk(askView());
+    return;
+  }
+  if (action === 'ask-del') {
+    deleteAskThread(btn.dataset.thread ?? '');
+    return;
+  }
+  if (action === 'ask-rename') {
+    beginAskRename(btn.dataset.thread ?? '');
     return;
   }
   if (action === 'toggle-edit') {
@@ -778,6 +1056,7 @@ async function refreshAll(): Promise<void> {
 
 // ---------- 启动 ----------
 
+loadAskStore();
 renderShell();
 void refreshAll();
 window.setInterval(() => { void refreshState(); }, 60000);

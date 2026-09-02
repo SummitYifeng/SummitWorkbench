@@ -223,6 +223,56 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
 .loading { color: var(--muted); text-align: center; padding: 24px 0; }
 
+/* ---- 第二大脑（对话页） ---- */
+.ask-layout { display: flex; gap: 16px; align-items: flex-start; }
+.ask-side {
+  width: 232px; flex-shrink: 0; position: sticky; top: 118px;
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px; max-height: calc(100vh - 140px); overflow-y: auto;
+}
+.ask-side-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ask-side-head .ask-new-btn { flex: 1; }
+.ask-side-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ask-side-list { display: flex; flex-direction: column; gap: 2px; }
+.ask-item { display: flex; align-items: center; gap: 2px; border-radius: 8px; padding: 2px; }
+.ask-item.active { background: var(--accent-soft); }
+.ask-item-main {
+  flex: 1; min-width: 0; text-align: left; border: none; background: none;
+  font-weight: 600; padding: 6px 8px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.ask-item-main:hover { box-shadow: none; text-decoration: underline; }
+.ask-item-op { border: none; background: none; color: var(--muted); padding: 2px 5px; font-size: 12px; }
+.ask-item-op.danger:hover { color: var(--bad); }
+.ask-rename-input { width: 100%; font: inherit; padding: 4px 6px; border-radius: 6px; }
+.ask-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.ask-welcome {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 26px; max-width: 560px;
+}
+.ask-welcome h3 { margin: 0 0 8px; }
+.ask-chat { display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 4px; }
+.msg { display: flex; }
+.msg.user { justify-content: flex-end; }
+.bubble {
+  max-width: 80%; padding: 10px 14px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--card); font-size: 14px; line-height: 1.6;
+}
+.msg.user .bubble { background: var(--accent-soft); border-color: transparent; }
+.bubble h4 { font-size: 13px; color: var(--accent); margin: 8px 0 2px; }
+.bubble p { margin: 4px 0; }
+.bubble ul { margin: 4px 0; padding-left: 20px; }
+.bubble li { margin: 2px 0; }
+.bubble .wikilink { color: var(--accent); }
+.bubble .not-actionable { color: var(--warn); font-size: 12px; margin: 4px 0; }
+.bubble .err-text { color: var(--bad); }
+.bubble.typing { color: var(--muted); }
+.ask-inputbar {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.ask-keyhint { margin: 6px 0 0; }
+
 /* ---- 审批页 ---- */
 .review-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

@@ -35,8 +35,19 @@ class CapturePayload(BaseModel):
     text: str
 
 
+class AskHistoryTurn(BaseModel):
+    """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
+
+    刻意**不带** AI 当时的答案全文——AI 回答不是 vault 事实，不进入下一轮来源集合。
+    """
+
+    question: str
+    sources: list[str] = []
+
+
 class AskPayload(BaseModel):
     question: str
+    history: list[AskHistoryTurn] = []
 
 
 # ---- 序列化 ----
