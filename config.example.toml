@@ -45,7 +45,8 @@ redirect_uri = "http://localhost:8765/callback"
 #   wb feishu smoke                 # 刷新 token 并调 user_info，验证链路
 
 # ── 云端模型（M0-6）──────────────────────────────────────────────────────────
-# 四类能力 meeting/qa/review/ranking 分别配置；首版可只写 [models.shared] 共用。
+# 五类能力 meeting/qa/review/ranking/capture 分别配置；首版可只写 [models.shared] 共用。
+# capture 用于快速捕捉的「承诺/想法」分类（Web 工作台），可指向更便宜的模型。
 # 只放非敏感项；api key 进 Keychain（见下）。base_url 填 API 根，代码会拼 /chat/completions。
 [models.shared]
 model_id = "deepseek-chat"              # 你的模型 ID（如 DeepSeek V4 Flash 的实际 ID）

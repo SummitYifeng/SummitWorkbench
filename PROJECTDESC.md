@@ -11,7 +11,7 @@
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | `wb` CLI（已就绪）、可选本地 Web 面板 `wb web`、Obsidian 待确认页与每日笔记 |
+| 交互入口 | `wb` CLI（已就绪）、本地 Web 工作台 `wb web`（SPA：今日页 + 审批页 + 问答，纯本地按需启动）、Obsidian 待确认页与每日笔记 |
 | 权威规格 | `docs/product/PRD.md` v1.1 |
 
 ## Mission
@@ -59,7 +59,7 @@
 - `repositories`：vault Markdown、幂等状态、错误队列、用量账本。
 - `workflows`：会议、审批、问答、简报、周复盘、同步的编排（上下文启动与录入属 M3/M4 规划）。
 - `observability`：`wb status`、运行心跳与定时任务健康度、macOS 通知、预算和积压告警。
-- `webapp`：可选本地 Web 面板（FastAPI 服务端渲染，复用领域逻辑，无独立前端框架）。
+- `webapp`：可选本地 Web 工作台（FastAPI 提供 `/api/*` JSON 端点 + 静态托管；前端为 Vite + 原生 TS 构建的 SPA「今日工作台」，构建产物随包分发；未构建时回退服务端渲染，SSR 视图保留）。
 
 定时触发由 `deploy/launchd/` 的 plist + `scripts/install-launchd.sh` 承担，不实现常驻服务，故无独立 `scheduling` 模块。
 
@@ -91,5 +91,6 @@
 - **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb ask` 带来源问答、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
 - **M2** 晨间简报：`wb brief` 全链路（飞书日历/任务 + 项目扫描 → 模型排序/确定性回退 → 幂等写当日笔记）与 `wb weekly` 周复盘，均由 launchd 定时触发。
 - **加固**：工作区跨进程锁、JSONL 容错读、飞书退避重试（ADR 0016–0018）；schema 版本号、运行心跳健康度、`wb doctor` 预检、飞书授权可见性（ADR 0019–0022）；GitHub Actions 质量门（macOS，360 项全绿）。
+- **Web 工作台（v0.2）**：`wb web` 升级为 SPA「今日工作台」——快速捕捉（AI 承诺/想法分类 + `#项目` 本地解析 + 失败兜底）、拖拽导入逐字稿全自动链路、待确认审批卡片、项目推进卡、简报与问答；审批页即时批准/拒绝/修改 + 预演/应用；`wb status --notify` 真正投递 macOS 通知；`wb web --open` 直达面板。质量门 387 项全绿。设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
 下一步 M3（带上下文启动与收尾）。变更记录见 `CHANGELOG.md`。

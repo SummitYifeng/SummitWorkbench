@@ -182,3 +182,35 @@ def test_diagnose_exit_code_reflects_readiness(monkeypatch, tmp_path) -> None:
     result = runner.invoke(app, ["diagnose"])
     # 就绪 → 0，缺失 → 1；本机通常就绪，这里只断言取值合法。
     assert result.exit_code in (0, 1)
+
+
+def test_web_help_shows_open_flag() -> None:
+    result = _help_text("web")
+    assert "--open" in result
+    assert "后台拉起" in result
+
+
+def test_status_notify_delivers_macos_notification(monkeypatch, tmp_path) -> None:
+    """wb status --notify 把评估出的新通知发到 macOS 通知中心（osascript 替身）。"""
+    from summit_workbench.observability.alerts import Notification
+
+    sent: list[tuple[str, str, str | None]] = []
+
+    def fake_send(title: str, message: str, *, subtitle: str | None = None) -> bool:
+        sent.append((title, message, subtitle))
+        return True
+
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path / "work"))
+    monkeypatch.setattr("summit_workbench.observability.notifier.send_notification", fake_send)
+    monkeypatch.setattr(
+        "summit_workbench.cli.status.check_and_update",
+        lambda _vault, _report: [Notification("backlog", "待确认积压需要处理：测试积压。")],
+    )
+    result = runner.invoke(app, ["status", "--notify"])
+    assert result.exit_code == 0
+    assert len(sent) == 1
+    title, message, subtitle = sent[0]
+    assert title == "SummitWorkbench"
+    assert "测试积压" in message
+    assert subtitle == "待确认积压"

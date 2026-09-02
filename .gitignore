@@ -29,3 +29,6 @@ config.local.toml
 .coverage.*
 htmlcov/
 coverage.xml
+
+# 前端（Vite 构建产物已提交以支持开箱即用的 wb web；node_modules 不提交）
+web/node_modules/

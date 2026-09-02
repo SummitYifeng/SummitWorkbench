@@ -42,6 +42,8 @@ def status_command(
     vault_dir = settings.work_paths().vault_dir
     report = build_status(vault_dir, config_file=default_config_file())
     notifications = check_and_update(vault_dir, report) if notify else []
+    if notify:
+        _deliver_notifications(notifications)
 
     if as_json:
         payload = report.as_dict()
@@ -49,6 +51,26 @@ def status_command(
         typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     _print_human(report, notifications)
+
+
+# 通知副标题（macOS 通知中心的分组标题）。
+_KIND_SUBTITLE: dict[str, str] = {
+    "budget": "费用提醒",
+    "backlog": "待确认积压",
+    "run": "定时任务告警",
+}
+
+
+def _deliver_notifications(notifications: list[Notification]) -> None:
+    """把评估出的新通知发到 macOS 通知中心；环境不支持时安全空转（不中断 CLI）。"""
+    from summit_workbench.observability.notifier import send_notification
+
+    for note in notifications:
+        send_notification(
+            "SummitWorkbench",
+            note.message,
+            subtitle=_KIND_SUBTITLE.get(note.kind, "工作台提醒"),
+        )
 
 
 def _print_human(report: StatusReport, notifications: list[Notification]) -> None:

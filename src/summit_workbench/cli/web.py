@@ -1,17 +1,89 @@
-"""``wb web``：启动本地审批面板（可选组件，需 ``web`` extra）。"""
+"""wb web：启动本地工作台（可选组件，需 web extra）。
+
+--open 把「打开面板」变成一条命令：若服务未在跑则后台拉起，再打开浏览器——
+通知/脚本/Spotlight 都能直达 127.0.0.1:8787。
+"""
 
 from __future__ import annotations
+
+import shutil
+import subprocess
+import sys
+import urllib.request
 
 import typer
 
 from summit_workbench.config.settings import load_settings
 
 
+def _server_alive(host: str, port: int) -> bool:
+    """探测面板是否已在运行（GET /api/state，短超时）。"""
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/state", timeout=1.5) as resp:
+            return bool(getattr(resp, "status", None) == 200)
+    except Exception:  # noqa: BLE001 - 探测失败即视为未运行
+        return False
+
+
+def _spawn_detached(host: str, port: int) -> bool:
+    """后台拉起 wb web（不占用当前终端），成功返回 True。"""
+    try:
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "summit_workbench.cli.main",
+                "web",
+                "--host",
+                host,
+                "--port",
+                str(port),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return True
+    except OSError:
+        return False
+
+
+def _open_browser(host: str, port: int) -> bool:
+    if sys.platform != "darwin":
+        return False
+    opener = shutil.which("open")
+    if not opener:
+        return False
+    return (
+        subprocess.run(
+            [opener, f"http://{host}:{port}/"],
+            check=False,
+            capture_output=True,
+            timeout=10,
+        ).returncode
+        == 0
+    )
+
+
 def web_command(
     host: str = typer.Option("127.0.0.1", "--host", help="绑定地址（默认仅本机回环）。"),
     port: int = typer.Option(8787, "--port", help="监听端口。"),
+    open_browser: bool = typer.Option(
+        False, "--open", help="若服务未运行则后台拉起，并打开浏览器直达面板。"
+    ),
 ) -> None:
-    """在 localhost 启动会议审批面板（点选批准/拒绝/修改 + 预演/应用）。"""
+    """在 localhost 启动 Web 工作台；--open 可随时「点开直达」。"""
+    if open_browser:
+        if _server_alive(host, port):
+            typer.echo(f"面板已在运行：http://{host}:{port}/")
+        elif _spawn_detached(host, port):
+            typer.echo(f"已在后台启动面板：http://{host}:{port}/")
+        else:
+            typer.echo("后台启动失败，请直接运行：wb web")
+        _open_browser(host, port)
+        return
+
     try:
         import uvicorn
 
@@ -25,6 +97,6 @@ def web_command(
     ctx = WebContext(
         vault_dir=paths.vault_dir, work_root=paths.work_root, timezone=settings.timezone
     )
-    typer.echo(f"审批面板：http://{host}:{port}/review  （Ctrl+C 停止）")
+    typer.echo(f"工作台：http://{host}:{port}/  （Ctrl+C 停止）")
     typer.echo(f"vault：{paths.vault_dir}")
     uvicorn.run(create_app(ctx), host=host, port=port, log_level="warning")

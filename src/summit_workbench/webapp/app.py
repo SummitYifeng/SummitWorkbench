@@ -1,37 +1,56 @@
-"""本地面板的 FastAPI 应用（只绑定回环地址，服务端渲染）。
+"""本地面板的 FastAPI 应用（只绑定回环地址，服务端渲染 + JSON API）。
 
-领域逻辑全部复用 repositories/workflows：审批读页用 ``parse_review_page``、改条目用
-``review_edit``、应用用 ``apply_meeting_review``；看板状态用 ``build_status``、简报/复盘/问答用
-各自 runner。Web 层只做路由与 HTML。
+领域逻辑全部复用 repositories/workflows：审批读页用 parse_review_page、改条目用
+review_edit、应用用 apply_meeting_review；看板状态用 build_status、简报/复盘/问答用
+各自 runner。Web 层只做路由与 HTML/JSON。
+
+两种前端形态（同一套 API）：
+- 构建了 webapp/static/index.html（npm run build 产物）时，/ 服务 SPA 工作台，
+  交互走 /api/* JSON 端点；
+- 未构建时回退为服务端渲染看板（views.render_dashboard），保证 wb web 永远可用。
 """
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.daily_note import read_brief_block
+from summit_workbench.repositories.project_scan import count_inbox_pending, scan_projects
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
     update_fields,
 )
 from summit_workbench.repositories.review_page import parse_review_page, review_path
+from summit_workbench.webapp.api import (
+    AskPayload,
+    CapturePayload,
+    DecidePayload,
+    EditPayload,
+    review_payload,
+)
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
 from summit_workbench.workflows.review_apply import (
     ApplyReport,
     TaskCreator,
     apply_meeting_review,
 )
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @dataclass(frozen=True)
@@ -129,7 +148,75 @@ def _ask_html(vault_dir: Path, question: str) -> str:
     return "\n".join(parts)
 
 
-def create_app(ctx: WebContext) -> FastAPI:
+def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]:
+    """把一份本地逐字稿全自动归档 + 结构化 + 生成审批候选（复用 backfill 链路）。
+
+    与 wb meeting import 同一套幂等逻辑；Web 侧按产品约定走全自动（不二次确认），
+    软预算只报告不阻断（PRD：预算是提醒线，不是停机线）。
+    """
+    from summit_workbench.config.secrets import CredentialError, resolve_credential
+    from summit_workbench.observability.status import load_budget_settings
+    from summit_workbench.prompts import load_prompt
+    from summit_workbench.providers.llm import LLMError, load_model_config
+    from summit_workbench.repositories.usage_ledger import monthly_totals
+    from summit_workbench.workflows.meetings.backfill import (
+        plan_backfill,
+        run_backfill,
+        scan_for_import,
+    )
+
+    try:
+        cfg = load_model_config("meeting")
+        api_key = resolve_credential(cfg.api_key_ref)
+        prompt = load_prompt("meeting-processor")
+        merger_prompt = load_prompt("meeting-merger")
+    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
+        return {"ok": False, "message": f"导入未启动（模型未配置？）：{exc}"}
+
+    items = scan_for_import(ctx.vault_dir, transcript_path)
+    if not items:
+        return {"ok": False, "message": "未识别为可导入的逐字稿（需要 .md/.txt 且内容非空）"}
+
+    month = datetime.now(ZoneInfo(ctx.timezone)).strftime("%Y-%m")
+    month_spent = monthly_totals(ctx.vault_dir, month).estimated_cost
+    soft_limit, _currency = load_budget_settings(default_config_file())
+    est = plan_backfill(items, cfg, month_spent=month_spent, soft_limit=soft_limit)
+
+    report = run_backfill(
+        ctx.vault_dir,
+        items,
+        cfg,
+        api_key,
+        prompt=prompt,
+        merger_prompt=merger_prompt,
+        include_actions=True,
+    )
+    lines = [
+        f"处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}、"
+        f"生成候选 {report.candidates}"
+    ]
+    for result in report.results:
+        if result.action == "failed":
+            lines.append(f"✗ {result.item.date} {result.item.title}：{result.reason}")
+    return {
+        "ok": True,
+        "message": "导入完成：" + "；".join(lines),
+        "details": lines,
+        "estimate": {
+            "pending": est.pending,
+            "already_done": est.already_done,
+            "est_input_tokens": est.est_input_tokens,
+            "est_output_tokens": est.est_output_tokens,
+            "est_cost": est.est_cost,
+            "currency": est.currency,
+            "projected_month_cost": est.projected_month_cost,
+            "soft_limit": soft_limit,
+            "crosses_soft_budget": est.crosses_soft_budget,
+        },
+    }
+
+
+def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="SummitWorkbench 面板")
 
     def _dashboard(
@@ -149,9 +236,220 @@ def create_app(ctx: WebContext) -> FastAPI:
             )
         )
 
-    @app.get("/", response_class=HTMLResponse)
-    def home(msg: str | None = None) -> HTMLResponse:
-        return _dashboard(msg=msg)
+    # ---- 首页：SPA（已构建）或 SSR 回退 ----
+    spa_dir = static_dir or _STATIC_DIR
+    spa_index = spa_dir / "index.html"
+    if spa_index.is_file():
+        app.mount("/static", StaticFiles(directory=str(spa_dir)), name="static")
+
+        @app.get("/", response_class=FileResponse, include_in_schema=False)
+        def spa_home() -> FileResponse:
+            return FileResponse(spa_index)
+
+    else:
+
+        @app.get("/", response_class=HTMLResponse)
+        def home(msg: str | None = None) -> HTMLResponse:
+            return _dashboard(msg=msg)
+
+    # ---- JSON API（SPA 工作台） ----
+
+    @app.get("/api/state")
+    def api_state() -> dict[str, object]:
+        """看板数据：日期、状态速览、今日简报、inbox 积压。"""
+        day = ctx.today()
+        status = build_status(ctx.vault_dir, config_file=default_config_file())
+        brief_md = read_brief_block(ctx.vault_dir, day)
+        inbox_path = ctx.vault_dir / "inbox.md"
+        inbox_pending = (
+            count_inbox_pending(inbox_path.read_text(encoding="utf-8"))
+            if inbox_path.is_file()
+            else 0
+        )
+        projects = [
+            {
+                "name": p.name,
+                "dirty": p.dirty,
+                "ahead": p.ahead,
+                "behind": p.behind,
+                "has_upstream": p.has_upstream,
+                "inbox_pending": p.inbox_pending,
+                "next_step": p.next_step,
+                "git_error": p.git_error,
+            }
+            for p in scan_projects(ctx.work_root, ctx.vault_dir)
+        ]
+        return {
+            "day": day,
+            "status": status.as_dict(),
+            "brief_md": brief_md,
+            "brief_generated": brief_md is not None,
+            "inbox_pending": inbox_pending,
+            "projects": projects,
+        }
+
+    @app.get("/api/review")
+    def api_review() -> dict[str, object]:
+        entries, errors = _load(ctx.vault_dir)
+        return review_payload(entries, errors)
+
+    @app.post("/api/review/decide")
+    def api_decide(payload: DecidePayload) -> dict[str, object]:
+        try:
+            set_decision(ctx.vault_dir, payload.candidate_id, CandidateDecision(payload.decision))
+        except (ReviewEditError, ValueError) as exc:
+            return {"ok": False, "message": f"操作失败：{exc}"}
+        return {"ok": True, "message": f"已更新 → {payload.decision}"}
+
+    @app.post("/api/review/edit")
+    def api_edit(payload: EditPayload) -> dict[str, object]:
+        try:
+            update_fields(
+                ctx.vault_dir,
+                payload.candidate_id,
+                description=payload.description,
+                target_project=payload.target_project,
+                route=RouteTarget(payload.route) if payload.route else None,
+                due_date=payload.due_date,
+            )
+        except (ReviewEditError, ValueError) as exc:
+            return {"ok": False, "message": f"保存失败：{exc}"}
+        return {"ok": True, "message": "已保存修改"}
+
+    @app.post("/api/review/plan")
+    def api_plan() -> dict[str, object]:
+        try:
+            report = apply_meeting_review(ctx.vault_dir, ctx.work_root, apply=False)
+        except ValueError as exc:
+            return {"ok": False, "message": f"预演失败：{exc}"}
+        return {"ok": True, "plan_text": _plan_text(report), "executed": False}
+
+    @app.post("/api/review/apply")
+    def api_apply() -> dict[str, object]:
+        try:
+            report = apply_meeting_review(
+                ctx.vault_dir, ctx.work_root, apply=True, task_creator=_build_task_creator(ctx)
+            )
+        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
+            return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
+        return {"ok": True, "plan_text": _plan_text(report), "executed": True}
+
+    @app.post("/api/capture")
+    def api_capture(payload: CapturePayload) -> dict[str, object]:
+        """快速捕捉：AI 分类（承诺/想法 + 截止 + #项目）后记入全局 inbox。
+
+        模型不可用/超时/输出非法时按「想法」兜底，绝不丢数据；#项目 标签本地解析，
+        不经模型，避免臆造项目名。分类以稳定标记写回 inbox，供 M4 wb task 承接路由。
+        """
+        text = payload.text.strip()
+        if not text:
+            return {"ok": False, "message": "输入为空"}
+        from summit_workbench.config.secrets import CredentialError, resolve_credential
+        from summit_workbench.domain.capture import CaptureKind
+        from summit_workbench.prompts import load_prompt
+        from summit_workbench.providers.llm import LLMError, load_model_config
+        from summit_workbench.repositories.project_registry import load_project_registry
+        from summit_workbench.repositories.writeback import append_global_inbox
+        from summit_workbench.workflows.capture import classify_capture, extract_project_tags
+
+        candidate_id = f"web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+        kind: CaptureKind = CaptureKind.IDEA
+        due_date: str | None = None
+        model_used = False
+        try:
+            cfg = load_model_config("capture")
+            api_key = resolve_credential(cfg.api_key_ref)
+            prompt = load_prompt("capture-classifier")
+            cls = classify_capture(cfg, api_key, prompt, text)
+            kind = cls.kind
+            due_date = cls.due_date
+            model_used = True
+        except (LLMError, CredentialError, FileNotFoundError, ValueError):
+            # 分类不可用 → 按想法归档（不丢数据，录入永不阻塞）
+            kind = CaptureKind.IDEA
+
+        tags = extract_project_tags(text, load_project_registry(ctx.vault_dir))
+        project = tags[0] if tags else None
+        markers = [f"wb-capture-kind: {kind.value}"]
+        if due_date:
+            markers.append(f"wb-capture-due: {due_date}")
+        if project:
+            markers.append(f"wb-capture-project: {project}")
+        path, written = append_global_inbox(ctx.vault_dir, text, candidate_id, markers=markers)
+        label = "承诺" if kind is CaptureKind.TASK else "想法"
+        tail = f"（截止 {due_date}）" if due_date else ""
+        project_tail = f" · 关联 {project}" if project else ""
+        return {
+            "ok": True,
+            "message": f"已记入全局 inbox · {label}{tail}{project_tail}",
+            "path": str(path),
+            "kind": kind.value,
+            "due_date": due_date,
+            "project": project,
+            "model_used": model_used,
+        }
+
+    @app.post("/api/run/brief")
+    def api_run_brief() -> dict[str, object]:
+        from summit_workbench.workflows.brief.runner import run_brief
+
+        try:
+            run = run_brief(
+                work_root=ctx.work_root,
+                vault_dir=ctx.vault_dir,
+                timezone=ctx.timezone,
+                day=ctx.today(),
+                write=True,
+                notify=False,
+            )
+            return {
+                "ok": True,
+                "message": f"已生成今日简报（健康度 {run.result.brief.health.level}）",
+            }
+        except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
+            return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
+
+    @app.post("/api/run/weekly")
+    def api_run_weekly() -> dict[str, object]:
+        from summit_workbench.workflows.weekly.weekly import generate_weekly
+
+        try:
+            result = generate_weekly(
+                ctx.work_root,
+                ctx.vault_dir,
+                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
+                write=True,
+            )
+            return {"ok": True, "message": f"已生成周复盘 {result.review.week}"}
+        except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
+            return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
+
+    @app.post("/api/ask")
+    def api_ask(payload: AskPayload) -> dict[str, object]:
+        question = payload.question.strip()
+        if not question:
+            return {"ok": False, "message": "请输入问题"}
+        return {"ok": True, "answer_html": _ask_html(ctx.vault_dir, question)}
+
+    @app.post("/api/meetings/import")
+    def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
+        """拖拽上传逐字稿 → 全自动归档 + 结构化 + 生成审批候选。"""
+        name = file.filename or "transcript.txt"
+        if not name.lower().endswith((".md", ".txt")):
+            return {"ok": False, "message": "仅支持 .md / .txt 逐字稿文件"}
+        data = file.file.read()
+        text = data.decode("utf-8", errors="replace")
+        if not text.strip():
+            return {"ok": False, "message": "文件内容为空"}
+        tmp_dir = Path(tempfile.mkdtemp(prefix="wb-web-import-"))
+        try:
+            target = tmp_dir / Path(name).name
+            target.write_text(text, encoding="utf-8")
+            return _run_web_import(ctx, target)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
     @app.post("/run/brief", response_class=RedirectResponse)
     def run_brief_endpoint() -> RedirectResponse:

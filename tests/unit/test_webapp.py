@@ -48,7 +48,8 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_review_page([_entry()]), encoding="utf-8")
     ctx = WebContext(vault_dir=vault, work_root=tmp_path, timezone="Asia/Shanghai")
-    return TestClient(create_app(ctx)), vault
+    # 显式指向不存在的 static 目录：这些测试验证 SSR 回退路径（构建产物存在时 / 是 SPA）
+    return TestClient(create_app(ctx, static_dir=tmp_path / "no-static")), vault
 
 
 def test_home_renders_dashboard(tmp_path: Path, monkeypatch) -> None:

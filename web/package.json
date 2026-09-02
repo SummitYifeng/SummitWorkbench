@@ -1,0 +1,15 @@
+{
+  "name": "summit-workbench-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SummitWorkbench 本地 Web 工作台（SPA，Vite + 原生 TypeScript）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
+  }
+}

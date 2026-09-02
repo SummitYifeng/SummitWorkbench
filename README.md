@@ -92,6 +92,8 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 
 本地 Web 面板依赖是可选 extra：仅装运行时用 `uv sync`，需要 `wb web` 再加 `--extra web`（`--extra dev` 已包含）。
 
+Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱即用；改动前端后需重新构建：`cd web && npm install && npm run build`（产物写入 `src/summit_workbench/webapp/static/`）。开发时可用 `npm run dev` 经 Vite 代理直连本机 `wb web`（端口 8787）。
+
 `wb` 命令组：
 
 - `wb version` / `wb diagnose`：版本号与底座环境诊断。
@@ -104,10 +106,10 @@ uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区�
 - `wb meeting backfill <目录|文件> --since --until [--include-actions] [--yes]`：按显式日期范围补导本地逐字稿，开始前预估会议数/token/费用、预计跨软预算再确认，逐场幂等续跑；默认只沉淀知识，`--include-actions` 才生成带 historical 标记的候选。
 - `wb project new | list`：在第二大脑侧为新项目建档（不碰 GitHub 仓库）并查看已建项目及别名。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID，未匹配项目的候选零摩擦落入全局 inbox。
-- `wb web [--host --port]`：在 `127.0.0.1:8787` 启动本地 Web 面板——点选批准/拒绝/修改（预演/应用复用 `wb review apply`）、看板读今日简报、一键触发 `brief`/`weekly`/`ask`。
+- `wb web [--host --port] [--open]`：在 `127.0.0.1:8787` 启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）——「今日」页：快速捕捉（AI 区分承诺/想法 + `#项目` 关联 + 截止日期，失败兜底不丢数据）、待确认审批卡片、会议逐字稿**拖拽导入**（全自动归档+结构化+生成候选）、项目推进卡（未提交/落后/下一步）、今日简报、问第二大脑；「审批」页即时批准/拒绝/修改 + 预演/应用。交互走 `/api/*` JSON 端点；未构建前端时自动回退服务端渲染面板；`--open` 可在服务未运行时后台拉起并打开浏览器直达。
 - `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。
 - `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
-- `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则发出阈值通知（供 launchd 定时调用）。
+- `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
 - `wb ask "问题" [--save --project P --limit N]`：本地按路径/frontmatter/全文召回相关笔记，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。

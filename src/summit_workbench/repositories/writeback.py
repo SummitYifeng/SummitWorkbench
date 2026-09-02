@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -24,7 +25,9 @@ def _ensure_global_inbox(path: Path) -> None:
     )
 
 
-def _append_under_heading(path: Path, heading: str, line: str, candidate_id: str) -> bool:
+def _append_under_heading(
+    path: Path, heading: str, line: str, candidate_id: str, markers: Sequence[str] | None = None
+) -> bool:
     if not path.is_file():
         raise ValueError(f"写回目标不存在：{path}")
     text = path.read_text(encoding="utf-8")
@@ -43,7 +46,8 @@ def _append_under_heading(path: Path, heading: str, line: str, candidate_id: str
             break
     while end > start and not lines[end - 1].strip():
         end -= 1
-    addition = ["", f"- {line}", f"  {marker}", ""]
+    extra = [f"  <!-- {m} -->" for m in (markers or [])]
+    addition = ["", f"- {line}", f"  {marker}", *extra, ""]
     updated = [*lines[:end], *addition, *lines[end:]]
     atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
     return True
@@ -61,10 +65,18 @@ def append_project_main(
     return path, _append_under_heading(path, heading, description, candidate_id)
 
 
-def append_global_inbox(vault_dir: Path, description: str, candidate_id: str) -> tuple[Path, bool]:
+def append_global_inbox(
+    vault_dir: Path,
+    description: str,
+    candidate_id: str,
+    *,
+    markers: Sequence[str] | None = None,
+) -> tuple[Path, bool]:
     path = vault_dir / "inbox.md"
     _ensure_global_inbox(path)
-    written = _append_under_heading(path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id)
+    written = _append_under_heading(
+        path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id, markers=markers
+    )
     return path, written
 
 
