@@ -60,6 +60,8 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Web 面板的 HTML 模板是内联字符串，长行不可避免且拆行反而损害可读性。
 "src/summit_workbench/webapp/views.py" = ["E501"]
+# guide_to_html.py 把 CSS 作为内联字符串固化进 HTML，长行是有意为之（与 web/src/style.css 对应）。
+"scripts/guide_to_html.py" = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 # Typer 依赖在参数默认值里调用 Argument/Option，属其惯用法，豁免 B008。

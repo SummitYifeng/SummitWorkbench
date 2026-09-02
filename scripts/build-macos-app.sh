@@ -56,44 +56,27 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>SummitWorkbench</string>
 $ICON_KEY
   <key>LSMinimumSystemVersion</key><string>12.0</string>
-  <key>LSUIElement</key><false/>
+  <key>LSUIElement</key><true/>
+  <key>LSMultipleInstancesProhibited</key><true/>
 </dict></plist>
 PLIST
 
-# 启动器：前台跑 wb web（App 存活=服务存活），后台延时开面板窗口。
-cat > "$APP/Contents/MacOS/SummitWorkbench" <<LAUNCHER
-#!/usr/bin/env bash
-export WORK_ROOT="$WORK_ROOT"
-PORT="$PORT"
-URL="http://127.0.0.1:\$PORT/"
-LOG="\$HOME/Library/Logs/summitworkbench-panel.log"
-
-open_panel() {
-  for _ in \$(seq 1 40); do
-    if curl -sf "\$URL" -o /dev/null 2>/dev/null; then break; fi
-    sleep 0.25
-  done
-  CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  if [[ -x "\$CHROME" ]]; then
-    "\$CHROME" --app="\$URL" \\
-      --user-data-dir="\$HOME/Library/Application Support/SummitWorkbench/browser" \\
-      >/dev/null 2>&1 &
-  else
-    open "\$URL"
-  fi
-}
-
-# 端口已被占用（服务已在跑）→ 只开窗口，保持本进程存活以维持 Dock 图标。
-if curl -sf "\$URL" -o /dev/null 2>/dev/null; then
-  open_panel
-  # 无自有服务可 exec，睡眠维持 App 存活直至用户退出。
-  while true; do sleep 3600; done
+# 原生启动器：编译 Swift（AppKit 生命周期）。
+# 脚本型主程序会造成 Dock 图标无限弹跳（前台）或 macOS 报「应用无响应」（LSUIElement）；
+# 原生主程序注册正常的应用生命周期，根治两者，并保持「无 Dock 图标 + 网页退出」体验。
+TMP_SWIFT="$(mktemp -d)/summit_launcher.swift"
+sed -e "s|__WB_BIN__|$WB_BIN|g" \
+    -e "s|__PORT__|$PORT|g" \
+    -e "s|__WORK_ROOT__|$WORK_ROOT|g" \
+  "$REPO_ROOT/scripts/summit_launcher.swift" > "$TMP_SWIFT"
+if ! xcrun swiftc -O "$TMP_SWIFT" -o "$APP/Contents/MacOS/SummitWorkbench" 2>"$TMP_SWIFT.err"; then
+  echo "✗ Swift 编译失败（需要 Xcode 命令行工具：xcode-select --install）" >&2
+  head -5 "$TMP_SWIFT.err" >&2
+  rm -rf "$(dirname "$TMP_SWIFT")"
+  exit 1
 fi
-
-open_panel &
-exec "$WB_BIN" web --port "\$PORT" >>"\$LOG" 2>&1
-LAUNCHER
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
+rm -rf "$(dirname "$TMP_SWIFT")"
 
 echo "✓ 已构建 $APP"
 echo "  wb=$WB_BIN  WORK_ROOT=$WORK_ROOT  端口=$PORT"

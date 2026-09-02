@@ -95,13 +95,25 @@ def convert(md: str) -> str:
             i += 1
             continue
         if stripped.startswith("#### "):
-            close_list(); out.append(f"<h4>{_inline(stripped[5:])}</h4>"); i += 1; continue
+            close_list()
+            out.append(f"<h4>{_inline(stripped[5:])}</h4>")
+            i += 1
+            continue
         if stripped.startswith("### "):
-            close_list(); out.append(f"<h3>{_inline(stripped[4:])}</h3>"); i += 1; continue
+            close_list()
+            out.append(f"<h3>{_inline(stripped[4:])}</h3>")
+            i += 1
+            continue
         if stripped.startswith("## "):
-            close_list(); out.append(f"<h2>{_inline(stripped[3:])}</h2>"); i += 1; continue
+            close_list()
+            out.append(f"<h2>{_inline(stripped[3:])}</h2>")
+            i += 1
+            continue
         if stripped.startswith("# "):
-            close_list(); out.append(f"<h1>{_inline(stripped[2:])}</h1>"); i += 1; continue
+            close_list()
+            out.append(f"<h1>{_inline(stripped[2:])}</h1>")
+            i += 1
+            continue
         if stripped.startswith("> "):
             close_list()
             quote: list[str] = []

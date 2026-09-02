@@ -160,3 +160,31 @@ def test_bad_candidate_shows_message(tmp_path: Path) -> None:
         follow_redirects=True,
     )
     assert "找不到候选" in resp.text
+
+
+def test_shutdown_requires_header(tmp_path: Path) -> None:
+    """缺自定义头时拒绝关闭——防止任意本地网页把面板关掉。"""
+    client, _ = _client(tmp_path)
+    resp = client.post("/api/shutdown")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert "缺少关闭令牌" in body["message"]
+
+
+def test_shutdown_with_header_exits(tmp_path: Path, monkeypatch) -> None:
+    """带 X-WB-Shutdown 头时返回 ok，并在后台线程触发进程退出（此处打桩）。"""
+    import time as _time
+
+    client, _ = _client(tmp_path)
+    exited: list[int] = []
+    monkeypatch.setattr("summit_workbench.webapp.app.os._exit", lambda code: exited.append(code))
+
+    resp = client.post("/api/shutdown", headers={"X-WB-Shutdown": "1"})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+    deadline = _time.monotonic() + 2.0
+    while not exited and _time.monotonic() < deadline:
+        _time.sleep(0.01)
+    assert exited == [0]
