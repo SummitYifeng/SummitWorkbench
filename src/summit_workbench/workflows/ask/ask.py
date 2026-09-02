@@ -108,8 +108,7 @@ def _build_user_message(query: str, sources: list[Candidate], history_text: str 
     if history_text:
         parts.append(
             "以下是用户此前在本会话问过的问题，仅作延续话题的背景，不是知识来源"
-            "（AI 之前的回答同样不是来源）：\n"
-            + history_text
+            "（AI 之前的回答同样不是来源）：\n" + history_text
         )
     parts.append(
         "以下是从本地知识库召回的来源，只能引用这些来源作答，"

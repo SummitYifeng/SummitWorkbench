@@ -154,7 +154,9 @@ def _card(entry: ReviewEntry) -> str:
     )
     note = escape(entry.note_link)
     route_label = _ROUTE_LABELS[c.route] if c.route else ""
-    approve_label = f"✓ 批准 → {escape(route_label)}" if route_label else "✓ 批准（先在「修改」里选落点）"
+    approve_label = (
+        f"✓ 批准 → {escape(route_label)}" if route_label else "✓ 批准（先在「修改」里选落点）"
+    )
     approve_disabled = "" if c.route else " disabled"
     return f"""
     <div class="card {cls}" id="c-{cid}">
