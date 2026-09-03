@@ -93,9 +93,10 @@ def test_build_project_view_blocks_and_counts(tmp_path: Path) -> None:
         build_project_view(vault, "Ghost")
 
 
-def test_log_artifact_write_touches_archive_updated(tmp_path: Path) -> None:
+def test_log_artifact_write_refreshes_activity_not_updated(tmp_path: Path) -> None:
+    """S1：只写日志/产物 → 档案 updated 不变（实质更新语义），activity_at 刷新（活动痕迹）。"""
     vault = tmp_path / "vault"
-    _archive(vault)
+    _archive(vault)  # updated: '2026-09-02'
     append_work_log(
         vault,
         projects=["FinanceOps"],
@@ -104,7 +105,8 @@ def test_log_artifact_write_touches_archive_updated(tmp_path: Path) -> None:
         now=datetime(2026, 9, 5, 12, tzinfo=UTC),
     )
     note = load_note(vault / "projects" / "FinanceOps.md")
-    assert note.meta["updated"] == "2026-09-05"
+    assert note.meta["updated"] == "2026-09-02"  # 实质更新不被机器活动刷新
+    assert note.meta["activity_at"] == "2026-09-05"
     assert "## 决策记录" in note.body  # 正文未被触碰
     save_thread_artifact(
         vault,
@@ -113,7 +115,12 @@ def test_log_artifact_write_touches_archive_updated(tmp_path: Path) -> None:
         now=datetime(2026, 9, 6, 12, tzinfo=UTC),
     )
     note2 = load_note(vault / "projects" / "FinanceOps.md")
-    assert note2.meta["updated"] == "2026-09-06"
+    assert note2.meta["updated"] == "2026-09-02"
+    assert note2.meta["activity_at"] == "2026-09-06"
+    # 线视图载荷同时带 updated 与 activity_at（读侧归一）
+    view = build_project_view(vault, "FinanceOps")
+    assert view["updated"] == "2026-09-02"
+    assert view["activity_at"] == "2026-09-06"
 
 
 def test_view_endpoint_resolves_alias(tmp_path: Path) -> None:

@@ -48,8 +48,12 @@ class ProjectState:
     status: str | None = None
     # 知识线程项目（无 Work 文件夹、纯 vault 档案）标记；仓库项目为 False。
     is_thread: bool = False
-    # 档案 frontmatter 的 updated（最近一次状态/内容更新时间，YYYY-MM-DD）。
+    # 档案 frontmatter 的 updated（实质更新：建档/激活/归档/改名/状态确认，YYYY-MM-DD）。
+    # 停滞点名与「>14 天未更新」读它——日志/产物等机器活动不再刷新它（P1 语义拆分）。
     updated: str | None = None
+    # 档案 frontmatter 的 activity_at（活动痕迹：日志/产物入库等，YYYY-MM-DD，可缺省）。
+    # 首页「最近活跃」展示用，不代表实质状态更新。
+    activity_at: str | None = None
     # 显示名（frontmatter `title`，可选）：UI 展示用，不影响规范 ID/别名解析与文件夹名。
     title: str | None = None
 
@@ -95,27 +99,28 @@ def _project_inbox_pending(project_path: Path) -> int:
 
 def _project_registry_state(
     vault_dir: Path, name: str
-) -> tuple[bool, str | None, str | None, str | None, str | None, str | None]:
-    """一次读取项目档案，返回 ``(registered, status, next_step, next_step_ref, updated, title)``。
+) -> tuple[bool, str | None, str | None, str | None, str | None, str | None, str | None]:
+    """一次读取项目档案，返回 ``(registered, status, next_step, next_step_ref, updated, title,
+    activity_at)``。
 
     档案口径与 ``project_registry`` 一致（ADR 0023）：``_vault/projects/<name>.md``
     存在、无解析错误、``type: project-main`` 才算已建档（registered=False）；否则一律视为
-    「新文件夹」。「下一步」只从有效档案正文取；``updated`` / ``title`` 取档案 frontmatter
-    的 ``updated`` / ``title`` 字段（无则 None）。
+    「新文件夹」。「下一步」只从有效档案正文取；``updated`` / ``title`` / ``activity_at`` 取
+    档案 frontmatter（无则 None；日期字段兼容 YAML 未加引号的 date 对象形态）。
     """
     note_path = vault_dir / "projects" / f"{name}.md"
     if not note_path.is_file():
-        return False, None, None, None, None, None
+        return False, None, None, None, None, None, None
     note = load_note(note_path)
     if note.parse_error is not None or note.meta.get("type") != "project-main":
-        return False, None, None, None, None, None
+        return False, None, None, None, None, None, None
     status = note.meta.get("status")
     step = extract_next_step(note.body)
     ref = f"projects/{name}.md#下一步" if step else None
-    # updated/title 取档案 frontmatter；updated 兼容 YAML 未加引号日期（date 对象）形态。
     updated = meta_date_iso(note.meta.get("updated"))
     title_raw = note.meta.get("title")
     title = title_raw if isinstance(title_raw, str) and title_raw else None
+    activity_at = meta_date_iso(note.meta.get("activity_at"))
     return (
         True,
         status if isinstance(status, str) else None,
@@ -123,6 +128,7 @@ def _project_registry_state(
         ref,
         updated,
         title,
+        activity_at,
     )
 
 
@@ -146,9 +152,15 @@ def scan_project(path: Path, vault_dir: Path) -> ProjectState:
     """采集单个项目目录的离线状态。"""
     name = path.name
     is_git, dirty, ahead, behind, has_upstream, git_error = _git_state(path)
-    registered, status, next_step, next_step_ref, updated, title = _project_registry_state(
-        vault_dir, name
-    )
+    (
+        registered,
+        status,
+        next_step,
+        next_step_ref,
+        updated,
+        title,
+        activity_at,
+    ) = _project_registry_state(vault_dir, name)
     return ProjectState(
         name=name,
         path=path,
@@ -166,6 +178,7 @@ def scan_project(path: Path, vault_dir: Path) -> ProjectState:
         is_thread=False,
         updated=updated,
         title=title,
+        activity_at=activity_at,
     )
 
 
@@ -197,9 +210,15 @@ def thread_projects(vault_dir: Path, work_root: Path) -> list[ProjectState]:
     for project_id in sorted(registry.canonical):
         if project_id in folder_names or is_internal_dirname(project_id):
             continue
-        registered, status, next_step, next_step_ref, updated, title = _project_registry_state(
-            vault_dir, project_id
-        )
+        (
+            registered,
+            status,
+            next_step,
+            next_step_ref,
+            updated,
+            title,
+            activity_at,
+        ) = _project_registry_state(vault_dir, project_id)
         if not registered:
             continue
         threads.append(
@@ -219,6 +238,7 @@ def thread_projects(vault_dir: Path, work_root: Path) -> list[ProjectState]:
                 is_thread=True,
                 updated=updated,
                 title=title,
+                activity_at=activity_at,
             )
         )
     return threads

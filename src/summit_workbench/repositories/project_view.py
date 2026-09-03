@@ -202,6 +202,7 @@ def build_project_view(vault_dir: Path, project: str) -> dict[str, object]:
 
     status = note.meta.get("status")
     updated = meta_date_iso(note.meta.get("updated")) or ""
+    activity_at = meta_date_iso(note.meta.get("activity_at")) or ""
     title_raw = note.meta.get("title")
     title = title_raw if isinstance(title_raw, str) and title_raw else ""
     timeline = _collect_timeline(vault_dir, project)
@@ -210,6 +211,7 @@ def build_project_view(vault_dir: Path, project: str) -> dict[str, object]:
         "title": title,
         "status": status if isinstance(status, str) else "active",
         "updated": updated,
+        "activity_at": activity_at,
         "blocks": blocks,
         "followup_pending": followup_pending,
         "inbox_pending": inbox_pending,

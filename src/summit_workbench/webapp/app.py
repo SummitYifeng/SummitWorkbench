@@ -476,6 +476,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 "status": p.status,
                 "is_thread": p.is_thread,
                 "updated": p.updated,
+                "activity_at": p.activity_at,
                 "title": p.title,
             }
             for p in scan_all_projects(ctx.work_root, ctx.vault_dir)

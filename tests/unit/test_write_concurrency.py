@@ -191,9 +191,10 @@ def test_t4_concurrent_work_logs_distinct_filenames(tmp_path: Path) -> None:
     assert len({p.name for p in logs}) == 6
     for path in logs:
         assert "## 原文" in path.read_text(encoding="utf-8")  # 完整落盘
-    # 关联档案 updated 被刷到同日（并发 touch 也不丢）
+    # 关联档案 activity_at 被并发刷到同日不丢；updated（实质更新语义）不被日志写入
     archive = (vault / "projects" / "FinanceOps.md").read_text(encoding="utf-8")
-    assert "updated: '2026-09-03'" in archive
+    assert "updated: '2026-09-01'" in archive
+    assert "activity_at: '2026-09-03'" in archive
 
 
 # ---- T2：apply 收尾乐观合并（P0-5） ----

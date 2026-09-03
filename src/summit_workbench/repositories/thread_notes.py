@@ -65,11 +65,12 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
-def _touch_projects_updated(vault_dir: Path, projects: Iterable[str], day: str) -> None:
-    """日志/产物入库后，把关联项目档案 frontmatter 的 ``updated`` 刷到今天。
+def _touch_projects_activity(vault_dir: Path, projects: Iterable[str], day: str) -> None:
+    """日志/产物入库后，刷新关联项目档案 frontmatter 的 ``activity_at``（活动痕迹）。
 
-    这样首页推进卡与线视图的「最近更新」无需全库扫描即可随内容写入即时刷新
-    （档案正文不动，只改 frontmatter 字段，保留原子写）。
+    语义拆分（P1）：``updated`` = 实质更新，只在建档/激活/归档/改名与用户显式确认的状态
+    写回时刷新；机器高频自刷新的日志/产物入库**不再动 updated**（否则 AI 收尾会让停滞点名
+    失明），只写 ``activity_at`` 供首页「最近活跃」展示（档案正文不动，保留原子写）。
     """
     from summit_workbench.repositories.note_status import update_note_status
     from summit_workbench.repositories.vault import load_note as _load
@@ -83,7 +84,7 @@ def _touch_projects_updated(vault_dir: Path, projects: Iterable[str], day: str) 
             continue
         status = note.meta.get("status")
         if isinstance(status, str):
-            update_note_status(vault_dir, path, status, extra={"updated": day})
+            update_note_status(vault_dir, path, status, extra={"activity_at": day})
 
 
 def append_work_log(
@@ -140,7 +141,7 @@ def append_work_log(
             path = logs_dir / f"{day}-{seq:03d}.md"
         _write_note(path, meta, body)
         _check(path)
-        _touch_projects_updated(vault_dir, projects_list, day)
+        _touch_projects_activity(vault_dir, projects_list, day)
     return path
 
 
@@ -184,5 +185,5 @@ def save_thread_artifact(
         body = f"# {heading}\n\n" + body_text + "\n"
         _write_note(path, meta, body)
         _check(path)
-        _touch_projects_updated(vault_dir, [project], day)
+        _touch_projects_activity(vault_dir, [project], day)
     return path

@@ -94,3 +94,23 @@ def test_rename_endpoint_sets_title_and_state_exposes_it(tmp_path: Path) -> None
     # 空显示名拒绝
     r2 = c.post("/api/projects/rename", json={"name": "FinanceOps", "title": "  "})
     assert r2.json()["ok"] is False
+
+
+def test_state_payload_carries_activity_at(tmp_path: Path) -> None:
+    """/api/state 项目载荷带 activity_at（P1 读侧）；日志活动只刷新活动痕迹。"""
+    vault = tmp_path / "Work" / "_vault"
+    _archive(vault)
+    from summit_workbench.repositories.note_status import update_note_status
+
+    update_note_status(
+        vault,
+        vault / "projects" / "FinanceOps.md",
+        "active",
+        extra={"activity_at": "2026-09-05"},  # 模拟一次推进日志入库的 touch
+    )
+    ctx = WebContext(vault_dir=vault, work_root=vault.parent, timezone="Asia/Shanghai")
+    r = TestClient(create_app(ctx)).get("/api/state")
+    assert r.status_code == 200
+    proj = next(p for p in r.json()["projects"] if p["name"] == "FinanceOps")
+    assert proj["activity_at"] == "2026-09-05"
+    assert proj["updated"] == "2026-09-02"  # updated 未被日志 touch 刷新

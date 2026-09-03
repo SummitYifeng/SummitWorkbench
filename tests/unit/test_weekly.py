@@ -51,14 +51,16 @@ def _thread_archive(
     blocked: str = "无",
     followup: str = "",
     quote_updated: bool = True,
+    activity_at: str | None = None,
 ) -> None:
     """写一篇线程主档案（无对应 Work 文件夹 → thread_projects 会视为知识线程）。"""
     path = vault / "projects" / f"{project}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     updated_line = f"updated: '{updated}'" if quote_updated else f"updated: {updated}"
+    activity_line = f"activity_at: '{activity_at}'\n" if activity_at else ""
     path.write_text(
         f"---\nproject: {project}\ndate: 2026-08-01\ntype: project-main\nstatus: {status}\n"
-        f"{updated_line}\n---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n\n"
+        f"{updated_line}\n{activity_line}---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n\n"
         f"## 阻塞\n{blocked}\n\n## 决策记录\n\n## 跟进事项\n{followup}\n",
         encoding="utf-8",
     )
@@ -198,6 +200,26 @@ def test_collect_weekly_names_stale_thread_with_open_followup(tmp_path: Path) ->
     assert "1 条跟进待闭环" in item.text
     assert item.source_ref == "projects/FinanceOps.md#跟进事项"
     assert item.evidence is EvidenceLevel.E2
+
+
+def test_s2_recent_activity_does_not_exempt_stale_thread(tmp_path: Path) -> None:
+    """S2：停滞线程（updated 超 14 天 + 未闭环跟进）即使最近有日志活动（activity_at 新）
+    也不被豁免点名——停滞判据只读实质更新 updated（P1 语义拆分）。"""
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    # 实质更新停留在 2026-07-01（>14 天），但最近一天刚有推进日志/产物（activity_at 新）
+    _thread_archive(
+        vault,
+        "BusyOps",
+        updated="2026-07-01",
+        activity_at="2026-08-29",
+        followup="- [ ] 木子月底前完成 Coach 梳理",
+    )
+
+    signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
+    item = next(s for s in signals.stalled if s.project == "BusyOps")
+    assert "60 天无更新" in item.text
+    assert item.source_ref == "projects/BusyOps.md#跟进事项"
 
 
 def test_collect_weekly_thread_stall_ignores_recent_or_clean(tmp_path: Path) -> None:

@@ -22,7 +22,8 @@ from summit_workbench.repositories.project_scan import (
 from summit_workbench.repositories.project_view import project_archive_state
 from summit_workbench.repositories.vault import load_note
 
-# 线程内容停滞阈值（天）：超过该天数无任何内容更新（档案 frontmatter updated）且仍有
+# 线程内容停滞阈值（天）：超过该天数无**实质更新**（档案 frontmatter updated，只由建档/
+# 激活/归档/改名与状态确认刷新；日志/产物等机器活动只写 activity_at，P1 语义拆分）且仍有
 # 阻塞/未闭环跟进时，周复盘在「停滞项目」点名——与首页卡「>14 天未更新」提示同口径。
 THREAD_STALL_DAYS = 14
 
