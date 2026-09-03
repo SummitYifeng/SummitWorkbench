@@ -1,6 +1,6 @@
 # 桌面 App（macOS）
 
-当前生产路径是自包含的 Swift/AppKit + WebKit 壳：App 先验证 `/api/version`，服务 ready 后才创建页面导航，随后由唯一的 WKWebView 加载带 build identity 的 canonical URL。Chrome 不再是生产依赖；旧 Chrome 启动器仅通过隐藏的 `WB_RENDERER=chrome` 开发回滚构建保留。
+当前生产路径是自包含的 Swift/AppKit + WebKit 壳：App 先验证 `/api/version`，服务 ready 后才创建页面导航，随后由唯一的 WKWebView 加载带 build identity 的 canonical URL。Chrome 已不再是运行或构建依赖。
 
 原生壳使用 `LSUIElement`，不显示 Dock 图标。窗口关闭只隐藏窗口，不停止服务；网页顶栏「退出」通过 native bridge 请求监督器停止自己管理的服务。重复打开 App 会复用同一个窗口：服务和 build 一致时只把窗口带到前台，不重建 WebView。
 
@@ -17,8 +17,8 @@ scripts/build-macos-app.sh
 编译 `native/SummitWorkbench/*.swift`，链接 AppKit 与 WebKit。构建结束前会完成 ad-hoc/指定身份签名、
 签名校验和不依赖仓库 Python 的 server smoke test。
 
-可选参数：`scripts/build-macos-app.sh 8787` 指定端口；`WORK_ROOT` 和 `WB_BIN` 仅影响开发回滚构建。
-普通生产构建不要设置 `WB_RENDERER=chrome`。
+可选参数：`scripts/build-macos-app.sh 8787` 指定端口。`WORK_ROOT`、`WB_SERVER_BINARY`、
+`WB_STATIC_DIR` 可在直接运行原生壳的开发场景中覆盖默认配置，不影响生产 bundle 的默认路径。
 
 安装已验证的 bundle：
 
