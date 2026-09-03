@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -60,6 +61,26 @@ def iter_markdown_files(root: Path) -> Iterator[Path]:
         if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
             continue
         yield path
+
+
+def meta_date_iso(value: object) -> str | None:
+    """把 frontmatter 日期值规整为 ``YYYY-MM-DD`` 字符串（或 None）。
+
+    YAML 会把未加引号的 ``updated: 2026-09-03`` 解析成 ``date`` 对象；只有加引号
+    （``'2026-09-03'``）才保留为 str。读取侧统一经本函数规整，避免「同值不同型」
+    导致字段被误判为空。
+    """
+    if isinstance(value, datetime):  # datetime 是 date 子类，须先判
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        candidate = value.strip()
+        try:
+            return date.fromisoformat(candidate).isoformat()
+        except ValueError:
+            return None
+    return None
 
 
 def load_note(path: Path) -> ParsedNote:

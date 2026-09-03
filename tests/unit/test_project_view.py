@@ -123,3 +123,19 @@ def test_view_endpoint_resolves_alias(tmp_path: Path) -> None:
     assert r.status_code == 200 and body["ok"] is True
     assert body["name"] == "FinanceOps"
     assert body["followup_pending"] == 1
+
+
+def test_build_project_view_unquoted_updated_is_normalized(tmp_path: Path) -> None:
+    """frontmatter 的 updated 未加引号（YAML 解析成 date 对象）也应读出 YYYY-MM-DD。"""
+    vault = tmp_path / "vault"
+    path = vault / "projects" / "FinanceOps.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\nproject: FinanceOps\ndate: 2026-09-01\ntype: project-main\nstatus: active\n"
+        "updated: 2026-09-02\n---\n\n# FinanceOps\n\n## 当前状态\n\n## 下一步\n\n"
+        "## 阻塞\n无\n\n## 决策记录\n\n## 跟进事项\n",
+        encoding="utf-8",
+    )
+    view = build_project_view(vault, "FinanceOps")
+    assert view["updated"] == "2026-09-02"
+    assert view["status"] == "active"

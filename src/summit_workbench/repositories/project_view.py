@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from summit_workbench.repositories.vault import load_note
+from summit_workbench.repositories.vault import load_note, meta_date_iso
 
 # 主档案中要展示的区块（按此顺序），其余二级标题忽略。
 _BLOCK_ORDER = ("当前状态", "下一步", "阻塞", "跟进事项", "决策记录")
@@ -201,7 +201,7 @@ def build_project_view(vault_dir: Path, project: str) -> dict[str, object]:
         )
 
     status = note.meta.get("status")
-    updated = note.meta.get("updated")
+    updated = meta_date_iso(note.meta.get("updated")) or ""
     title_raw = note.meta.get("title")
     title = title_raw if isinstance(title_raw, str) and title_raw else ""
     timeline = _collect_timeline(vault_dir, project)
@@ -209,7 +209,7 @@ def build_project_view(vault_dir: Path, project: str) -> dict[str, object]:
         "name": project,
         "title": title,
         "status": status if isinstance(status, str) else "active",
-        "updated": updated if isinstance(updated, str) else "",
+        "updated": updated,
         "blocks": blocks,
         "followup_pending": followup_pending,
         "inbox_pending": inbox_pending,

@@ -2,7 +2,25 @@
 
 from __future__ import annotations
 
-from summit_workbench.repositories.vault import check_vault, iter_markdown_files, parse_frontmatter
+from datetime import date, datetime
+
+from summit_workbench.repositories.vault import (
+    check_vault,
+    iter_markdown_files,
+    meta_date_iso,
+    parse_frontmatter,
+)
+
+
+def test_meta_date_iso_normalizes_forms():
+    # YAML 会把未加引号的 2026-09-03 解析成 date 对象；加引号保留 str。两者应归一到同一串。
+    assert meta_date_iso("2026-09-03") == "2026-09-03"
+    assert meta_date_iso(" 2026-09-03 ") == "2026-09-03"
+    assert meta_date_iso(date(2026, 9, 3)) == "2026-09-03"
+    assert meta_date_iso(datetime(2026, 9, 3, 8, 30)) == "2026-09-03"
+    assert meta_date_iso(None) is None
+    assert meta_date_iso("不是日期") is None
+    assert meta_date_iso(20260903) is None
 
 
 def test_parse_frontmatter_ok():

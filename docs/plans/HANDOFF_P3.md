@@ -27,19 +27,25 @@ SummitWorkbench 已完成「业务线程 = vault 一等公民」改造 P0/P1/P2 
 - P3 第一批：产物一键转「当前状态」（`POST /api/threads/state`）、本地文件导入（粘贴/
   label 选择/**拖放**）、项目显示名（`POST /api/projects/rename`，frontmatter `title`，
   全局显示名 + 线视图「✎ 显示名」）。
+- P3 末项（代码+测试已完成，待装机复验）：**内容停滞检测进周复盘**（线程 >14 天无更新 +
+  有阻塞/未闭环跟进 → 停滞项目点名，`weekly/collect.py`）；顺带修复未加引号 `updated`
+  （YAML date 对象）读不到的归一化问题。
 - 原生壳（LSUIElement）：`runOpenPanel`（文件选择）、最小「编辑」主菜单（⌘V 等）、
   窗口焦点交 webView。
 
 ## 质量门（推送前全绿）
 
-pytest 全绿（≈482+，含线程/简报/状态/改名测试）、mypy strict 119 文件、ruff 全绿、
+pytest 全绿（491，含线程/简报/状态/改名/周复盘停滞检测测试）、mypy strict 119 文件、ruff 全绿、
 web 构建通过、macOS App 打包安装通过（`scripts/build-macos-app.sh` + `install-macos-app.sh`）。
 
 ## 剩下的 P3 待办（可选，按需挑选）
 
-1. **内容停滞检测进周复盘**（原 P3 最后一项）：线程 N 天无更新但有未决/未闭环跟进时，
-   周复盘（`workflows/weekly/`）点名；参考 `workflows/brief/collect.py` 的
-   `_thread_extra_signals` 与 `repositories/project_view.project_archive_state`。
+1. ✅ **内容停滞检测进周复盘**（2026-09-03 完成，pytest 491 全绿）：线程 N 天无更新但有未决/
+   未闭环跟进时，周复盘（`workflows/weekly/`）点名；实现 = `weekly/collect.py::_collect_thread_stalls`
+   + `_thread_stall_reason`（阈值 `THREAD_STALL_DAYS = 14`，与首页卡「>14 天未更新」同口径；
+   参考 `workflows/brief/collect.py` 的 `_thread_extra_signals` 与 `project_view.project_archive_state`）。
+   顺带修复：`updated` 未加引号时 YAML 解析成 date 对象被丢弃 → `repositories/vault.py::meta_date_iso`
+   统一归一（project_scan / project_view 已接入）。
 2. 把本次改造结论回写 PRD/ADR（知识线程项目定义、L22 路由扩展、显示名/状态草案语义）。
 3. CHANGELOG 补 v0.4.0 条目（当前未加）。
 4. 让系统陪你跑几天后再定其它体验改进。

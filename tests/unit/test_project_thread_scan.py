@@ -101,3 +101,20 @@ def test_thread_projects_excludes_archived_folders_and_archived_threads_still_li
     assert names == ["DoneThread"]
     all_projects = {s.name: s for s in scan_all_projects(work_root, vault)}
     assert all_projects["DoneThread"].status == "archived"
+
+
+def test_thread_projects_normalizes_unquoted_updated_date(tmp_path: Path) -> None:
+    """档案 frontmatter 的 updated 未加引号时 YAML 解析成 date 对象，扫描应归一到字符串。"""
+    work_root = tmp_path / "Work"
+    vault = work_root / "_vault"
+    path = vault / "projects" / "rawdate.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\nproject: rawdate\ndate: 2026-08-31\ntype: project-main\nstatus: active\n"
+        "updated: 2026-09-03\n---\n"
+        "# rawdate\n\n## 当前状态\n\n## 下一步\n\n## 阻塞\n无\n\n## 决策记录\n\n## 跟进事项\n",
+        encoding="utf-8",
+    )
+    thread = thread_projects(vault, work_root)[0]
+    assert thread.name == "rawdate"
+    assert thread.updated == "2026-09-03"

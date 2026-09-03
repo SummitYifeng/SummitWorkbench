@@ -1,8 +1,9 @@
 """周复盘信号采集（M2-10）：从 git + 会议笔记 + inbox + 项目状态重新汇总。
 
 **offline-first**：本周完成来自各项目 git 提交，关键决策来自本周会议笔记的
-``## 已形成决策``，未闭合来自项目/全局 inbox 与待确认积压，停滞项目 = 本周零提交的 git 项目。
-逐源隔离，失败转 ``source_notes``。飞书已完成任务可作为可选事实补充（传入）。
+``## 已形成决策``，未闭合来自项目/全局 inbox 与待确认积压，停滞项目 = 本周零提交的 git 项目
++ 长期无内容更新但仍有未决/未闭环跟进的线程（P3）。逐源隔离，失败转 ``source_notes``。
+飞书已完成任务可作为可选事实补充（传入）。
 """
 
 from __future__ import annotations
@@ -13,8 +14,17 @@ from pathlib import Path
 from summit_workbench.domain.brief import EvidenceLevel
 from summit_workbench.domain.weekly import WeeklyItem, WeeklySignals
 from summit_workbench.repositories.git import GitError, GitRepo
-from summit_workbench.repositories.project_scan import count_inbox_pending, scan_projects
+from summit_workbench.repositories.project_scan import (
+    count_inbox_pending,
+    scan_projects,
+    thread_projects,
+)
+from summit_workbench.repositories.project_view import project_archive_state
 from summit_workbench.repositories.vault import load_note
+
+# 线程内容停滞阈值（天）：超过该天数无任何内容更新（档案 frontmatter updated）且仍有
+# 阻塞/未闭环跟进时，周复盘在「停滞项目」点名——与首页卡「>14 天未更新」提示同口径。
+THREAD_STALL_DAYS = 14
 
 
 def extract_section_bullets(body: str, heading: str) -> list[str]:
@@ -128,6 +138,55 @@ def _collect_global_inbox(signals: WeeklySignals, vault_dir: Path) -> None:
             )
 
 
+def _thread_stall_reason(blocked: str | None, followup_open: list[str]) -> tuple[str, str]:
+    """线程停滞的「原因摘要 + 档案锚点」：阻塞/未闭环跟进都算未决（P3 内容停滞）。
+
+    返回 ``(reason, anchor)``；reason 用于条目文案，anchor 指向档案中对应区块。
+    """
+    parts: list[str] = []
+    if blocked:
+        parts.append(f"阻塞：{blocked}")
+    if followup_open:
+        parts.append(f"{len(followup_open)} 条跟进待闭环")
+    anchor = "#跟进事项" if followup_open else "#阻塞"
+    return "；".join(parts) or "有未决事项", anchor
+
+
+def _collect_thread_stalls(
+    signals: WeeklySignals, vault_dir: Path, work_root: Path, end_iso: str
+) -> None:
+    """线程内容停滞点名（P3）：N 天无内容更新但仍有未决/未闭环跟进 → 停滞项目。
+
+    线程没有 git，本周零提交的检测覆盖不到它们；改用档案 frontmatter ``updated``
+    判停滞：距复盘周截止日超过 :data:`THREAD_STALL_DAYS` 天无更新，且档案仍有
+    阻塞/未闭环跟进（``project_archive_state``）时，周复盘点名。仅 active 线程；
+    archived 已退出工作台、不点名。
+    """
+    end = date.fromisoformat(end_iso)
+    for project in thread_projects(vault_dir, work_root):
+        if project.status != "active" or not project.updated:
+            continue
+        try:
+            updated = date.fromisoformat(project.updated)
+        except ValueError:
+            continue  # updated 非法（非 YYYY-MM-DD）：无法判停滞，跳过
+        days = (end - updated).days
+        if days <= THREAD_STALL_DAYS:
+            continue
+        blocked, followup_open = project_archive_state(vault_dir, project.name)
+        if blocked is None and not followup_open:
+            continue  # 无未决/未闭环跟进：不点名（干净线程可由生命周期提示自行归档）
+        reason, anchor = _thread_stall_reason(blocked, followup_open)
+        signals.stalled.append(
+            WeeklyItem(
+                text=f"{project.name}（{days} 天无更新，{reason}）",
+                source_ref=f"projects/{project.name}.md{anchor}",
+                evidence=EvidenceLevel.E2,
+                project=project.name,
+            )
+        )
+
+
 def collect_weekly(
     work_root: Path,
     vault_dir: Path,
@@ -141,6 +200,7 @@ def collect_weekly(
     signals = WeeklySignals()
 
     _collect_commits(signals, work_root, vault_dir, start_iso, end_iso)
+    _collect_thread_stalls(signals, vault_dir, work_root, end_iso)
     _collect_meeting_decisions(signals, vault_dir, start_iso, end_iso)
     _collect_global_inbox(signals, vault_dir)
 

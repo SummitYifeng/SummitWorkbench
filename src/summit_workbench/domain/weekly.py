@@ -55,7 +55,7 @@ class WeeklyReview:
     completed: tuple[WeeklyItem, ...] = ()  # 本周完成（E1/E2，附来源）
     decisions: tuple[WeeklyItem, ...] = ()  # 关键决策（附来源）
     unclosed: tuple[WeeklyItem, ...] = ()  # 未闭合信号
-    stalled: tuple[WeeklyItem, ...] = ()  # 停滞项目（本周无提交）
+    stalled: tuple[WeeklyItem, ...] = ()  # 停滞项目（git 本周零提交 / 线程长期无更新且有未决跟进）
     proposals: tuple[WeeklyItem, ...] = ()  # 下周建议（提议区，E3）
     source_notes: tuple[str, ...] = ()  # 采集降级/缺失说明（可见性）
 

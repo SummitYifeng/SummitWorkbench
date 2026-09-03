@@ -1,9 +1,9 @@
-"""周复盘单测：ISO 周math / 去重分区 / 采集(git+会议笔记) / 渲染 / 端到端幂等。"""
+"""周复盘单测：ISO 周math / 去重分区 / 采集(git+会议笔记+线程停滞) / 渲染 / 端到端幂等。"""
 
 from __future__ import annotations
 
 import subprocess
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from summit_workbench.domain.brief import EvidenceLevel
@@ -16,7 +16,11 @@ from summit_workbench.domain.weekly import (
     previous_week_bounds,
     week_bounds,
 )
-from summit_workbench.workflows.weekly.collect import collect_weekly, extract_section_bullets
+from summit_workbench.workflows.weekly.collect import (
+    THREAD_STALL_DAYS,
+    collect_weekly,
+    extract_section_bullets,
+)
 from summit_workbench.workflows.weekly.render import render_weekly
 from summit_workbench.workflows.weekly.weekly import generate_weekly
 
@@ -35,6 +39,28 @@ def _commit_at(path: Path, message: str, when_iso: str) -> None:
         check=True,
         capture_output=True,
         env=env,
+    )
+
+
+def _thread_archive(
+    vault: Path,
+    project: str,
+    *,
+    updated: str,
+    status: str = "active",
+    blocked: str = "无",
+    followup: str = "",
+    quote_updated: bool = True,
+) -> None:
+    """写一篇线程主档案（无对应 Work 文件夹 → thread_projects 会视为知识线程）。"""
+    path = vault / "projects" / f"{project}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    updated_line = f"updated: '{updated}'" if quote_updated else f"updated: {updated}"
+    path.write_text(
+        f"---\nproject: {project}\ndate: 2026-08-01\ntype: project-main\nstatus: {status}\n"
+        f"{updated_line}\n---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n\n"
+        f"## 阻塞\n{blocked}\n\n## 决策记录\n\n## 跟进事项\n{followup}\n",
+        encoding="utf-8",
     )
 
 
@@ -133,6 +159,123 @@ def test_collect_weekly_flags_stalled_project(tmp_path: Path) -> None:
 
     signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
     assert any(s.project == "Idle" for s in signals.stalled)
+
+
+# —— 线程内容停滞（P3）：N 天无更新 + 有未决/未闭环跟进 → 停滞点名 ——
+
+
+def _stale_thread(
+    vault: Path,
+    project: str,
+    *,
+    updated: str,
+    status: str = "active",
+    blocked: str = "无",
+    followup: str = "- [ ] 木子月底前完成 Coach 梳理",
+    quote_updated: bool = True,
+) -> None:
+    """写一篇「停滞候选」线程档案：默认带一条未闭环跟进。"""
+    _thread_archive(
+        vault,
+        project,
+        updated=updated,
+        status=status,
+        blocked=blocked,
+        followup=followup,
+        quote_updated=quote_updated,
+    )
+
+
+def test_collect_weekly_names_stale_thread_with_open_followup(tmp_path: Path) -> None:
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    # 距复盘周截止日（2026-08-30）远超 14 天的线程 + 未闭环跟进 → 停滞点名
+    _stale_thread(vault, "FinanceOps", updated="2026-07-01")
+
+    signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
+    item = next(s for s in signals.stalled if s.project == "FinanceOps")
+    assert "60 天无更新" in item.text
+    assert "1 条跟进待闭环" in item.text
+    assert item.source_ref == "projects/FinanceOps.md#跟进事项"
+    assert item.evidence is EvidenceLevel.E2
+
+
+def test_collect_weekly_thread_stall_ignores_recent_or_clean(tmp_path: Path) -> None:
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    # 最近有更新（阈值内）：不点名
+    _stale_thread(vault, "RecentOps", updated="2026-08-28")
+    # 停滞但跟进已闭环（档案干净）：不点名
+    _thread_archive(vault, "DoneOps", updated="2026-07-01", followup="- [x] 已闭环")
+    # 停滞但完全无跟进条目、无阻塞：不点名
+    _thread_archive(vault, "EmptyOps", updated="2026-07-01")
+    # archived 线程：不点名
+    _stale_thread(vault, "RetiredOps", updated="2026-07-01", status="archived")
+
+    signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
+    named = {s.project for s in signals.stalled}
+    assert "FinanceOps" not in named  # 本测试未创建
+    assert "RecentOps" not in named
+    assert "DoneOps" not in named
+    assert "EmptyOps" not in named
+    assert "RetiredOps" not in named
+
+
+def test_collect_weekly_thread_stall_blocked_only_and_threshold(tmp_path: Path) -> None:
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    # 只有阻塞、无跟进条目 → 也点名（未决 = 阻塞），锚点指向 #阻塞
+    _thread_archive(
+        vault, "BlockedOps", updated="2026-07-01", blocked="等金老师回复税务口径", followup=""
+    )
+    # 恰好 14 天：阈值是「超过 14 天」，不点名；第 15 天点名（两者都带未闭环跟进）
+    stale_end = date(2026, 8, 30)
+    _thread_archive(
+        vault,
+        "Edge14",
+        updated=(stale_end - timedelta(days=14)).isoformat(),
+        followup="- [ ] 待闭环跟进",
+    )
+    _thread_archive(
+        vault,
+        "Edge15",
+        updated=(stale_end - timedelta(days=15)).isoformat(),
+        followup="- [ ] 待闭环跟进",
+    )
+
+    signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
+    by_name = {s.project: s for s in signals.stalled}
+    blocked_item = by_name["BlockedOps"]
+    assert "阻塞：等金老师回复税务口径" in blocked_item.text
+    assert blocked_item.source_ref == "projects/BlockedOps.md#阻塞"
+    assert "Edge14" not in by_name
+    assert "Edge15" in by_name
+    assert THREAD_STALL_DAYS == 14
+
+
+def test_collect_weekly_thread_stall_unquoted_updated_date(tmp_path: Path) -> None:
+    """frontmatter 的 updated 未加引号时 YAML 解析成 date 对象，也应能判停滞（P3 数据兼容）。"""
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    _stale_thread(vault, "UnquotedOps", updated="2026-07-01", quote_updated=False)
+
+    signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
+    assert any(s.project == "UnquotedOps" for s in signals.stalled)
+
+
+def test_weekly_thread_stall_flows_into_render_and_proposals(tmp_path: Path) -> None:
+    """端到端：停滞线程出现在渲染的「停滞项目」区块，并派生「推进」提议。"""
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    _stale_thread(vault, "FinanceOps", updated="2026-07-01")
+
+    result = generate_weekly(work, vault, today=date(2026, 9, 1))
+    assert "## 停滞项目" in result.markdown
+    assert "FinanceOps" in result.markdown
+    assert "天无更新" in result.markdown
+    assert any(
+        p.project == "FinanceOps" and "推进停滞项目" in p.text for p in result.review.proposals
+    )
 
 
 # —— 渲染 + 端到端幂等 ——

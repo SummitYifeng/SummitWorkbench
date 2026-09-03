@@ -14,7 +14,7 @@ from pathlib import Path
 
 from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.project_registry import load_project_registry
-from summit_workbench.repositories.vault import load_note
+from summit_workbench.repositories.vault import load_note, meta_date_iso
 
 # 下划线前缀目录 = 系统内部目录（vault、落料夹等），一律不进「项目」视野：
 # 不扫描、不提示「加入工作台」、不允许激活/归档操作。
@@ -112,8 +112,8 @@ def _project_registry_state(
     status = note.meta.get("status")
     step = extract_next_step(note.body)
     ref = f"projects/{name}.md#下一步" if step else None
-    updated_raw = note.meta.get("updated")
-    updated = updated_raw if isinstance(updated_raw, str) and updated_raw else None
+    # updated/title 取档案 frontmatter；updated 兼容 YAML 未加引号日期（date 对象）形态。
+    updated = meta_date_iso(note.meta.get("updated"))
     title_raw = note.meta.get("title")
     title = title_raw if isinstance(title_raw, str) and title_raw else None
     return (
