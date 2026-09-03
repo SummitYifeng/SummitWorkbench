@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import CandidateKind
 from summit_workbench.repositories._atomic import atomic_write_text
 
@@ -20,11 +21,11 @@ def _ensure_global_inbox(path: Path) -> None:
     if path.is_file():
         return
     today = datetime.now(UTC).date().isoformat()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    atomic_write_text(
+        path,
         f"---\ndate: {today}\ntype: inbox\nstatus: active\nproject: global\n---\n\n"
         f"# 全局收件箱（inbox）\n\n{_GLOBAL_INBOX_HEADING}\n",
-        encoding="utf-8",
+        ensure_parents=True,
     )
 
 
@@ -62,28 +63,29 @@ def set_project_status(vault_dir: Path, project: str, text: str) -> tuple[Path, 
     只改该区块内的内容行，其余区块与 frontmatter 原样保留（原子写；旧版可由 vault
     git 找回）。调用方负责确认语义与更新 frontmatter ``updated``。
     """
-    path = vault_dir / "projects" / f"{project}.md"
-    if not path.is_file():
-        raise ValueError(f"写回目标不存在：{path}")
-    body = path.read_text(encoding="utf-8")
-    lines = body.splitlines()
-    try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == "## 当前状态") + 1
-    except StopIteration as exc:
-        raise ValueError(f"主档案缺少固定区块「当前状态」：{path}") from exc
-    end = len(lines)
-    for index in range(start, len(lines)):
-        if lines[index].startswith("## "):
-            end = index
-            break
-    # 去掉被替换区间首尾的空行，再以「文本 + 空行」接入下一个区块。
-    while start < end and not lines[start].strip():
-        start += 1
-    while end > start and not lines[end - 1].strip():
-        end -= 1
-    updated = [*lines[:start], text, "", *lines[end:]]
-    atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
-    return path, True
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "projects" / f"{project}.md"
+        if not path.is_file():
+            raise ValueError(f"写回目标不存在：{path}")
+        body = path.read_text(encoding="utf-8")
+        lines = body.splitlines()
+        try:
+            start = next(i for i, line in enumerate(lines) if line.strip() == "## 当前状态") + 1
+        except StopIteration as exc:
+            raise ValueError(f"主档案缺少固定区块「当前状态」：{path}") from exc
+        end = len(lines)
+        for index in range(start, len(lines)):
+            if lines[index].startswith("## "):
+                end = index
+                break
+        # 去掉被替换区间首尾的空行，再以「文本 + 空行」接入下一个区块。
+        while start < end and not lines[start].strip():
+            start += 1
+        while end > start and not lines[end - 1].strip():
+            end -= 1
+        updated = [*lines[:start], text, "", *lines[end:]]
+        atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
+        return path, True
 
 
 def append_project_main(
@@ -93,9 +95,11 @@ def append_project_main(
     candidate_id: str,
     kind: CandidateKind,
 ) -> tuple[Path, bool]:
-    path = vault_dir / "projects" / f"{project}.md"
-    heading = "## 决策记录" if kind is CandidateKind.DECISION else "## 下一步"
-    return path, _append_under_heading(path, heading, description, candidate_id)
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "projects" / f"{project}.md"
+        heading = "## 决策记录" if kind is CandidateKind.DECISION else "## 下一步"
+        written = _append_under_heading(path, heading, description, candidate_id)
+        return path, written
 
 
 def _ensure_heading(path: Path, heading: str) -> None:
@@ -118,14 +122,15 @@ def append_project_followup(
     产品语义（R4）：他人承诺的事沉淀为责任记录，不进本人待办；勾选闭环与否由本人后续
     人工维护，系统不自动置为完成。
     """
-    path = vault_dir / "projects" / f"{project}.md"
-    if not path.is_file():
-        raise ValueError(f"写回目标不存在：{path}")
-    _ensure_heading(path, _PROJECT_FOLLOWUP_HEADING)
-    written = _append_under_heading(
-        path, _PROJECT_FOLLOWUP_HEADING, f"[ ] {description}", candidate_id
-    )
-    return path, written
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "projects" / f"{project}.md"
+        if not path.is_file():
+            raise ValueError(f"写回目标不存在：{path}")
+        _ensure_heading(path, _PROJECT_FOLLOWUP_HEADING)
+        written = _append_under_heading(
+            path, _PROJECT_FOLLOWUP_HEADING, f"[ ] {description}", candidate_id
+        )
+        return path, written
 
 
 def _ensure_thread_inbox(path: Path, project: str) -> None:
@@ -133,11 +138,11 @@ def _ensure_thread_inbox(path: Path, project: str) -> None:
     if path.is_file():
         return
     today = datetime.now(UTC).date().isoformat()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    atomic_write_text(
+        path,
         f"---\ndate: {today}\ntype: project-inbox\nstatus: active\nproject: {project}\n---\n\n"
         f"# {project} · inbox\n\n{_GLOBAL_INBOX_HEADING}\n",
-        encoding="utf-8",
+        ensure_parents=True,
     )
 
 
@@ -145,10 +150,13 @@ def append_thread_inbox(
     vault_dir: Path, project: str, description: str, candidate_id: str
 ) -> tuple[Path, bool]:
     """把未成熟想法写进线程项目的 vault inbox（``_vault/inboxes/<project>.md``）。"""
-    path = vault_dir / "inboxes" / f"{project}.md"
-    _ensure_thread_inbox(path, project)
-    written = _append_under_heading(path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id)
-    return path, written
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "inboxes" / f"{project}.md"
+        _ensure_thread_inbox(path, project)
+        written = _append_under_heading(
+            path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id
+        )
+        return path, written
 
 
 def append_global_inbox(
@@ -158,16 +166,19 @@ def append_global_inbox(
     *,
     markers: Sequence[str] | None = None,
 ) -> tuple[Path, bool]:
-    path = vault_dir / "inbox.md"
-    _ensure_global_inbox(path)
-    written = _append_under_heading(
-        path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id, markers=markers
-    )
-    return path, written
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "inbox.md"
+        _ensure_global_inbox(path)
+        written = _append_under_heading(
+            path, _GLOBAL_INBOX_HEADING, f"[ ] {description}", candidate_id, markers=markers
+        )
+        return path, written
 
 
 def append_project_inbox(
     work_root: Path, project: str, description: str, candidate_id: str
 ) -> tuple[Path, bool]:
-    path = work_root / project / "input" / "inbox.md"
-    return path, _append_under_heading(path, "## 待处理条目", f"[ ] {description}", candidate_id)
+    with workspace_lock(work_root):
+        path = work_root / project / "input" / "inbox.md"
+        written = _append_under_heading(path, "## 待处理条目", f"[ ] {description}", candidate_id)
+        return path, written

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from fastapi.testclient import TestClient
 
@@ -73,14 +74,16 @@ def test_build_project_view_blocks_and_counts(tmp_path: Path) -> None:
     )
 
     view = build_project_view(vault, "FinanceOps")
-    assert view["blocks"]["下一步"] == ["- 月底前出 V1.1"]
-    assert view["blocks"]["决策记录"] == ["- Coach 单次 1500 确认"]
+    blocks = cast(dict[str, list[str]], view["blocks"])
+    assert blocks["下一步"] == ["- 月底前出 V1.1"]
+    assert blocks["决策记录"] == ["- Coach 单次 1500 确认"]
     assert view["followup_pending"] == 1  # 只有未勾选那条
     assert view["inbox_pending"] == 1
-    kinds = [item["kind"] for item in view["timeline"]]
+    timeline = cast(list[dict[str, str]], view["timeline"])
+    kinds = [item["kind"] for item in timeline]
     assert kinds == ["thread-doc", "work-log", "meeting-note", "work-log"]  # 按日期倒序
     # 时间线命中正确且带摘要
-    by_kind = {item["kind"]: item for item in view["timeline"]}
+    by_kind = {item["kind"]: item for item in timeline}
     assert by_kind["thread-doc"]["snippet"] == "新对话背景包。"
     assert by_kind["meeting-note"]["snippet"] == "定了 Coach 规则。"
     # 未建档报错

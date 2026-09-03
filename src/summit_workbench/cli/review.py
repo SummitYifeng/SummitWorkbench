@@ -7,6 +7,7 @@ from functools import lru_cache
 
 import typer
 
+from summit_workbench.config.locking import LockBusy
 from summit_workbench.config.settings import load_settings
 from summit_workbench.providers.feishu import (
     FeishuClient,
@@ -34,6 +35,9 @@ def refresh() -> None:
     paths = load_settings().work_paths()
     try:
         report = refresh_meeting_review(paths.vault_dir)
+    except LockBusy as exc:
+        typer.echo(f"✗ 工作区忙，稍后重试：{exc}")
+        raise typer.Exit(code=1) from exc
     except ValueError as exc:
         typer.echo(f"✗ 审批页刷新失败：{exc}")
         raise typer.Exit(code=1) from exc
@@ -77,6 +81,9 @@ def apply_review(
             apply=execute,
             task_creator=create if execute else None,
         )
+    except LockBusy as exc:
+        typer.echo(f"✗ 工作区忙，稍后重试：{exc}")
+        raise typer.Exit(code=1) from exc
     except (ValueError, FeishuError) as exc:
         typer.echo(f"✗ 审批应用失败：{exc}")
         raise typer.Exit(code=1) from exc
@@ -116,6 +123,9 @@ def sweep_review(
             apply=execute,
             before=date.fromisoformat(before) if before else None,
         )
+    except LockBusy as exc:
+        typer.echo(f"✗ 工作区忙，稍后重试：{exc}")
+        raise typer.Exit(code=1) from exc
     except (ValueError, ReviewEditError) as exc:
         typer.echo(f"✗ 清扫失败：{exc}")
         raise typer.Exit(code=1) from exc

@@ -20,7 +20,7 @@ from summit_workbench.repositories.project_scan import (
 
 def _write_project_main(
     vault: Path, project: str, *, status: str = "active", updated: str = "2026-09-01"
-) -> None:
+) -> Path:
     path = vault / "projects" / f"{project}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

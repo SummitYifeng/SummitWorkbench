@@ -11,6 +11,7 @@ from pathlib import Path
 
 import yaml
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import (
     ApprovalCandidate,
     CandidateDecision,
@@ -247,20 +248,23 @@ def refresh_review_page(
     vault_dir: Path, generated: list[ReviewEntry], *, today: date | None = None
 ) -> RefreshOutcome:
     """新增候选，保留审批页中已有的勾选状态和用户编辑。"""
-    path = review_path(vault_dir)
-    existing: list[ReviewEntry] = []
-    if path.is_file():
-        parsed = parse_review_page(path.read_text(encoding="utf-8"))
-        if parsed.errors:
-            raise ValueError("审批页存在语法错误，拒绝覆盖：" + "; ".join(parsed.errors))
-        existing = parsed.entries
-    by_id = {entry.candidate.candidate_id: entry for entry in existing}
-    added = 0
-    for entry in generated:
-        stable_id = entry.candidate.candidate_id
-        if stable_id not in by_id:
-            by_id[stable_id] = entry
-            added += 1
-    combined = list(by_id.values())
-    atomic_write_text(path, render_review_page(combined, today=today), ensure_parents=True)
-    return RefreshOutcome(path, added=added, preserved=len(existing))
+    # 读旧页 → 合并 → 整页原子重写 的整体与 set_decision/set_decisions/apply 收尾
+    # 互斥（同一把 .wb.lock），防止并发 refresh 与人工勾选交错丢更新。
+    with workspace_lock(vault_dir.parent):
+        path = review_path(vault_dir)
+        existing: list[ReviewEntry] = []
+        if path.is_file():
+            parsed = parse_review_page(path.read_text(encoding="utf-8"))
+            if parsed.errors:
+                raise ValueError("审批页存在语法错误，拒绝覆盖：" + "; ".join(parsed.errors))
+            existing = parsed.entries
+        by_id = {entry.candidate.candidate_id: entry for entry in existing}
+        added = 0
+        for entry in generated:
+            stable_id = entry.candidate.candidate_id
+            if stable_id not in by_id:
+                by_id[stable_id] = entry
+                added += 1
+        combined = list(by_id.values())
+        atomic_write_text(path, render_review_page(combined, today=today), ensure_parents=True)
+        return RefreshOutcome(path, added=added, preserved=len(existing))

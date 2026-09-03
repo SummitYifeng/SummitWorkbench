@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories._schema import (
     SCHEMA_VERSION_FIELD,
@@ -32,11 +33,14 @@ def write_snapshot(vault_dir: Path, day: str, payload: dict[str, object]) -> Pat
     """
     path = snapshot_path(vault_dir, day)
     versioned = {SCHEMA_VERSION_FIELD: SIGNAL_SNAPSHOT_VERSION, **payload}
-    atomic_write_text(
-        path,
-        json.dumps(versioned, ensure_ascii=False, indent=2) + "\n",
-        ensure_parents=True,
-    )
+    # 快照是「读旧快照 → 变换 → 覆盖写」链路的终点：与 mark_* 的 RMW 在同一把
+    # .wb.lock 上互斥（launchd brief 与面板并发时也不会交错写坏快照）。
+    with workspace_lock(vault_dir.parent):
+        atomic_write_text(
+            path,
+            json.dumps(versioned, ensure_ascii=False, indent=2) + "\n",
+            ensure_parents=True,
+        )
     return path
 
 
@@ -68,8 +72,8 @@ def _action_links_task(item: object, guid: str) -> bool:
     return signal_match is not None and signal_match.group(1).lower() == lower
 
 
-def mark_task_completed(vault_dir: Path, day: str, task_guid: str) -> str | None:
-    """把当日快照中某飞书任务镜像为「已完成」，返回被移除的任务标题（无快照/不在其中 → None）。
+def _mark_task_completed_locked(vault_dir: Path, day: str, task_guid: str) -> str | None:
+    """锁内实现：把当日快照中某飞书任务镜像为「已完成」（见公共包装的 docstring）。
 
     飞书是任务状态的唯一真源；Web「一键完成」在 PATCH 成功后调用本函数，让当日
     **渲染快照**与之一致化（快照只服务 Web 面板与北极星基线，vault 简报 Markdown 不动）：
@@ -116,7 +120,21 @@ def mark_task_completed(vault_dir: Path, day: str, task_guid: str) -> str | None
     return summary or None
 
 
-def mark_task_edited(
+def mark_task_completed(vault_dir: Path, day: str, task_guid: str) -> str | None:
+    """把当日快照中某飞书任务镜像为「已完成」，返回被移除的任务标题（无快照/不在其中 → None）。
+
+    飞书是任务状态的唯一真源；Web「一键完成」在 PATCH 成功后调用本函数，让当日
+    **渲染快照**与之一致化（快照只服务 Web 面板与北极星基线，vault 简报 Markdown 不动）：
+    ``task_list`` 移除该任务、引用它的行动候选同步移除、``completion_list`` 追加完成记录。
+    任务不在快照中（如当日尚无简报）时不写盘、返回 None，调用方照常向用户报成功。
+
+    read -> mutate -> write 的整体落在工作区锁内（P0-1），与并发 brief 写快照互斥。
+    """
+    with workspace_lock(vault_dir.parent):
+        return _mark_task_completed_locked(vault_dir, day, task_guid)
+
+
+def _mark_task_edited_locked(
     vault_dir: Path,
     day: str,
     task_guid: str,
@@ -125,7 +143,7 @@ def mark_task_edited(
     due_date: str | None = None,
     clear_due: bool = False,
 ) -> bool:
-    """把当日快照中某飞书任务的行内编辑镜像一致（Web「编辑任务」用）。
+    """锁内实现：把当日快照中某飞书任务的行内编辑镜像一致（见公共包装的 docstring）。
 
     - ``task_list`` 中对应条目更新标题/截止（仅更新显式给出的字段）；
     - 引用它的行动候选（AI「今日优先」注解行）同步标题/截止，保持事实区一致；
@@ -176,7 +194,36 @@ def mark_task_edited(
     return True
 
 
-def mark_meeting_edited(
+def mark_task_edited(
+    vault_dir: Path,
+    day: str,
+    task_guid: str,
+    *,
+    summary: str | None = None,
+    due_date: str | None = None,
+    clear_due: bool = False,
+) -> bool:
+    """把当日快照中某飞书任务的行内编辑镜像一致（Web「编辑任务」用）。
+
+    - ``task_list`` 中对应条目更新标题/截止（仅更新显式给出的字段）；
+    - 引用它的行动候选（AI「今日优先」注解行）同步标题/截止，保持事实区一致；
+    - ``clear_due`` 为 True 时把该任务/行动的截止清掉（与飞书侧清除同步）。
+    任务不在快照中返回 False（不写盘）。
+
+    read -> mutate -> write 的整体落在工作区锁内（P0-1）。
+    """
+    with workspace_lock(vault_dir.parent):
+        return _mark_task_edited_locked(
+            vault_dir,
+            day,
+            task_guid,
+            summary=summary,
+            due_date=due_date,
+            clear_due=clear_due,
+        )
+
+
+def _mark_meeting_edited_locked(
     vault_dir: Path,
     day: str,
     event_id: str,
@@ -186,7 +233,7 @@ def mark_meeting_edited(
     start_ts: str | None = None,
     end_ts: str | None = None,
 ) -> bool:
-    """把当日快照中某日历事件的行内编辑镜像一致（Web「编辑会议」用）。
+    """锁内实现：把当日快照中某日历事件的行内编辑镜像一致（见公共包装的 docstring）。
 
     只更新显式给出的字段（``start_time`` 为展示串，``start_ts``/``end_ts`` 为原始
     unix 秒，供行内编辑弹窗预填）。事件不在快照中返回 False（不写盘）。
@@ -214,3 +261,32 @@ def mark_meeting_edited(
         target["end_ts"] = end_ts
     write_snapshot(vault_dir, day, snapshot)
     return True
+
+
+def mark_meeting_edited(
+    vault_dir: Path,
+    day: str,
+    event_id: str,
+    *,
+    summary: str | None = None,
+    start_time: str | None = None,
+    start_ts: str | None = None,
+    end_ts: str | None = None,
+) -> bool:
+    """把当日快照中某日历事件的行内编辑镜像一致（Web「编辑会议」用）。
+
+    只更新显式给出的字段（``start_time`` 为展示串，``start_ts``/``end_ts`` 为原始
+    unix 秒，供行内编辑弹窗预填）。事件不在快照中返回 False（不写盘）。
+
+    read -> mutate -> write 的整体落在工作区锁内（P0-1）。
+    """
+    with workspace_lock(vault_dir.parent):
+        return _mark_meeting_edited_locked(
+            vault_dir,
+            day,
+            event_id,
+            summary=summary,
+            start_time=start_time,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )

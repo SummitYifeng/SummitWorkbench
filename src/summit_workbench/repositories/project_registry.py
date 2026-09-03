@@ -20,8 +20,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import UNRESOLVED
 from summit_workbench.domain.vault import NOTE_TYPES
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.note_status import update_note_status
 from summit_workbench.repositories.vault import load_note
 
@@ -104,21 +106,22 @@ def create_project_note(
         raise ValueError(
             f"非法项目 ID {project_id!r}：只允许字母、数字、下划线和连字符（用作文件名）"
         )
-    path = vault_dir / "projects" / f"{project_id}.md"
-    if path.exists():
-        raise FileExistsError(f"项目已存在：{path}")
-    day = (now or datetime.now(UTC)).date().isoformat()
-    clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
-    alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
-    blocks = (*NOTE_TYPES["project-main"].required_blocks, "## 跟进事项")
-    frontmatter = (
-        f"---\nproject: {project_id}\ndate: {day}\ntype: project-main\n"
-        f"status: active\nupdated: {day}\n{alias_line}---\n"
-    )
-    body = f"\n# {project_id}\n\n" + "\n\n".join(blocks) + "\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(frontmatter + body, encoding="utf-8")
-    return path
+    # 建档 = 检查存在 + 落盘：整体持锁避免并发建档竞态（重复建档/互相覆盖），落盘用原子写。
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / "projects" / f"{project_id}.md"
+        if path.exists():
+            raise FileExistsError(f"项目已存在：{path}")
+        day = (now or datetime.now(UTC)).date().isoformat()
+        clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
+        alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
+        blocks = (*NOTE_TYPES["project-main"].required_blocks, "## 跟进事项")
+        frontmatter = (
+            f"---\nproject: {project_id}\ndate: {day}\ntype: project-main\n"
+            f"status: active\nupdated: {day}\n{alias_line}---\n"
+        )
+        body = f"\n# {project_id}\n\n" + "\n\n".join(blocks) + "\n"
+        atomic_write_text(path, frontmatter + body, ensure_parents=True)
+        return path
 
 
 def project_note_path(vault_dir: Path, project_id: str) -> Path:
@@ -147,7 +150,7 @@ def _set_status(vault_dir: Path, project_id: str, status: str, now: datetime | N
     """把已有档案的 status 与 updated 一并改写（保留正文，原子写）。"""
     path = project_note_path(vault_dir, project_id)
     day = (now or datetime.now(UTC)).date().isoformat()
-    update_note_status(path, status, extra={"updated": day})
+    update_note_status(vault_dir, path, status, extra={"updated": day})
     return path
 
 
@@ -157,15 +160,16 @@ def ensure_project_active(vault_dir: Path, project_id: str, *, now: datetime | N
     - 同名文件存在但不是有效 project-main 档案时抛 :class:`ValueError`（不覆盖、不臆造）；
     - 已 active 时 no-op（不改文件，不刷新 updated）。
     """
-    path = project_note_path(vault_dir, project_id)
-    if path.is_file():
-        registered, status = read_project_registration(vault_dir, project_id)
-        if not registered:
-            raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
-        if status == "active":
-            return path
-        return _set_status(vault_dir, project_id, "active", now)
-    return create_project_note(vault_dir, project_id, now=now)
+    with workspace_lock(vault_dir.parent):
+        path = project_note_path(vault_dir, project_id)
+        if path.is_file():
+            registered, status = read_project_registration(vault_dir, project_id)
+            if not registered:
+                raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
+            if status == "active":
+                return path
+            return _set_status(vault_dir, project_id, "active", now)
+        return create_project_note(vault_dir, project_id, now=now)
 
 
 def archive_project(vault_dir: Path, project_id: str, *, now: datetime | None = None) -> Path:
@@ -174,13 +178,14 @@ def archive_project(vault_dir: Path, project_id: str, *, now: datetime | None = 
     未建档的项目也会建一份档案再归档（处置「新文件夹」时落盘可循、不再重复提示）；
     同名文件存在但不是有效 project-main 档案时抛 :class:`ValueError`。
     """
-    path = project_note_path(vault_dir, project_id)
-    if path.is_file():
-        registered, status = read_project_registration(vault_dir, project_id)
-        if not registered:
-            raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
-        if status == "archived":
-            return path
+    with workspace_lock(vault_dir.parent):
+        path = project_note_path(vault_dir, project_id)
+        if path.is_file():
+            registered, status = read_project_registration(vault_dir, project_id)
+            if not registered:
+                raise ValueError(f"{project_id} 已有同名文件但不是有效项目笔记：{path}")
+            if status == "archived":
+                return path
+            return _set_status(vault_dir, project_id, "archived", now)
+        create_project_note(vault_dir, project_id, now=now)
         return _set_status(vault_dir, project_id, "archived", now)
-    create_project_note(vault_dir, project_id, now=now)
-    return _set_status(vault_dir, project_id, "archived", now)

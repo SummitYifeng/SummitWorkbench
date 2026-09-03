@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
@@ -82,7 +83,7 @@ def _touch_projects_updated(vault_dir: Path, projects: Iterable[str], day: str) 
             continue
         status = note.meta.get("status")
         if isinstance(status, str):
-            update_note_status(path, status, extra={"updated": day})
+            update_note_status(vault_dir, path, status, extra={"updated": day})
 
 
 def append_work_log(
@@ -104,10 +105,6 @@ def append_work_log(
     if not projects:
         raise ValueError("推进日志至少要关联一个项目/线程")
     day = _day(now)
-    logs_dir = vault_dir / _LOGS_DIRNAME
-    seq = _next_seq(logs_dir, day)
-    path = logs_dir / f"{day}-{seq:03d}.md"
-
     projects_list = list(dict.fromkeys(projects))
     meta: dict[str, object] = {
         "date": day,
@@ -132,9 +129,18 @@ def append_work_log(
     body += "## 原文\n\n" + body_text + "\n"
     if summary:
         body += "\n## AI 摘要\n\n" + summary + "\n"
-    _write_note(path, meta, body)
-    _check(path)
-    _touch_projects_updated(vault_dir, projects_list, day)
+    # 序号分配 + 落盘 + 关联档案 touch 整体持锁（P0-4）：两个并发写入不会算出同一
+    # 序号互相静默覆盖；写前若目标已被占（如人工预占名）则重取序号，绝不覆盖既有文件。
+    with workspace_lock(vault_dir.parent):
+        logs_dir = vault_dir / _LOGS_DIRNAME
+        seq = _next_seq(logs_dir, day)
+        path = logs_dir / f"{day}-{seq:03d}.md"
+        while path.exists():
+            seq += 1
+            path = logs_dir / f"{day}-{seq:03d}.md"
+        _write_note(path, meta, body)
+        _check(path)
+        _touch_projects_updated(vault_dir, projects_list, day)
     return path
 
 
@@ -153,9 +159,6 @@ def save_thread_artifact(
     if not body_text:
         raise ValueError("产物正文不能为空")
     day = _day(now)
-    artifacts_dir = vault_dir / _ARTIFACTS_DIRNAME
-    seq = _next_seq(artifacts_dir, project)
-    path = artifacts_dir / f"{project}-{seq:03d}.md"
 
     meta: dict[str, object] = {
         "date": day,
@@ -169,9 +172,17 @@ def save_thread_artifact(
     if summary:
         meta["summary"] = summary
 
-    heading = title or f"{project} 产物 {seq}"
-    body = f"# {heading}\n\n" + body_text + "\n"
-    _write_note(path, meta, body)
-    _check(path)
-    _touch_projects_updated(vault_dir, [project], day)
+    # 序号分配 + 落盘 + 关联档案 touch 整体持锁（P0-4，同 append_work_log）。
+    with workspace_lock(vault_dir.parent):
+        artifacts_dir = vault_dir / _ARTIFACTS_DIRNAME
+        seq = _next_seq(artifacts_dir, project)
+        path = artifacts_dir / f"{project}-{seq:03d}.md"
+        while path.exists():
+            seq += 1
+            path = artifacts_dir / f"{project}-{seq:03d}.md"
+        heading = title or f"{project} 产物 {seq}"
+        body = f"# {heading}\n\n" + body_text + "\n"
+        _write_note(path, meta, body)
+        _check(path)
+        _touch_projects_updated(vault_dir, [project], day)
     return path

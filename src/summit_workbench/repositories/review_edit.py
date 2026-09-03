@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import (
     ApprovalCandidate,
     CandidateDecision,
@@ -31,23 +32,26 @@ class ReviewEditError(RuntimeError):
 def _rewrite(
     vault_dir: Path, candidate_id: str, mutate: Callable[[ApprovalCandidate], ApprovalCandidate]
 ) -> None:
-    path = review_path(vault_dir)
-    if not path.is_file():
-        raise ReviewEditError("审批页不存在，先运行 wb review refresh")
-    parsed = parse_review_page(path.read_text(encoding="utf-8"))
-    if parsed.errors:
-        raise ReviewEditError("审批页存在语法错误，拒绝改写：" + "; ".join(parsed.errors))
-    found = False
-    new_entries = []
-    for entry in parsed.entries:
-        if entry.candidate.candidate_id == candidate_id:
-            new_entries.append(replace(entry, candidate=mutate(entry.candidate)))
-            found = True
-        else:
-            new_entries.append(entry)
-    if not found:
-        raise ReviewEditError(f"找不到候选：{candidate_id}")
-    atomic_write_text(path, render_review_page(new_entries))
+    # 锁只包文件临界区：整段 parse -> mutate -> atomic_write 与其它写审批页的
+    # 触发源（refresh/apply/CLI sweep）在同一把 .wb.lock 上互斥，杜绝并发 RMW。
+    with workspace_lock(vault_dir.parent):
+        path = review_path(vault_dir)
+        if not path.is_file():
+            raise ReviewEditError("审批页不存在，先运行 wb review refresh")
+        parsed = parse_review_page(path.read_text(encoding="utf-8"))
+        if parsed.errors:
+            raise ReviewEditError("审批页存在语法错误，拒绝改写：" + "; ".join(parsed.errors))
+        found = False
+        new_entries = []
+        for entry in parsed.entries:
+            if entry.candidate.candidate_id == candidate_id:
+                new_entries.append(replace(entry, candidate=mutate(entry.candidate)))
+                found = True
+            else:
+                new_entries.append(entry)
+        if not found:
+            raise ReviewEditError(f"找不到候选：{candidate_id}")
+        atomic_write_text(path, render_review_page(new_entries))
 
 
 def set_decision(vault_dir: Path, candidate_id: str, decision: CandidateDecision) -> None:
@@ -64,25 +68,26 @@ def set_decisions(vault_dir: Path, candidate_ids: list[str], decision: Candidate
     wanted = set(candidate_ids)
     if not wanted:
         return 0
-    path = review_path(vault_dir)
-    if not path.is_file():
-        raise ReviewEditError("审批页不存在，先运行 wb review refresh")
-    parsed = parse_review_page(path.read_text(encoding="utf-8"))
-    if parsed.errors:
-        raise ReviewEditError("审批页存在语法错误，拒绝改写：" + "; ".join(parsed.errors))
-    hit = 0
-    new_entries = []
-    for entry in parsed.entries:
-        if entry.candidate.candidate_id in wanted:
-            updated = replace(entry.candidate, decision=decision)
-            new_entries.append(replace(entry, candidate=updated))
-            hit += 1
-        else:
-            new_entries.append(entry)
-    if hit == 0:
-        raise ReviewEditError("找不到任何匹配候选")
-    atomic_write_text(path, render_review_page(new_entries))
-    return hit
+    with workspace_lock(vault_dir.parent):
+        path = review_path(vault_dir)
+        if not path.is_file():
+            raise ReviewEditError("审批页不存在，先运行 wb review refresh")
+        parsed = parse_review_page(path.read_text(encoding="utf-8"))
+        if parsed.errors:
+            raise ReviewEditError("审批页存在语法错误，拒绝改写：" + "; ".join(parsed.errors))
+        hit = 0
+        new_entries = []
+        for entry in parsed.entries:
+            if entry.candidate.candidate_id in wanted:
+                updated = replace(entry.candidate, decision=decision)
+                new_entries.append(replace(entry, candidate=updated))
+                hit += 1
+            else:
+                new_entries.append(entry)
+        if hit == 0:
+            raise ReviewEditError("找不到任何匹配候选")
+        atomic_write_text(path, render_review_page(new_entries))
+        return hit
 
 
 def update_fields(

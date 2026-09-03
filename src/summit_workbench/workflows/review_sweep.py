@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import CandidateDecision
 from summit_workbench.repositories.meeting_archive import notes_dir
@@ -82,20 +83,23 @@ def sweep_meeting_review(
         total = sum(len(by_note.get(f"[[{_note_rel(vault_dir, p)}]]", [])) for p in notes)
         return SweepReport(dry_run=True, notes=notes, candidates=total)
 
-    ids: list[str] = []
-    for path in notes:
-        rel = _note_rel(vault_dir, path)
-        ids.extend(by_note.get(f"[[{rel}]]", []))
-    if ids:
-        set_decisions(vault_dir, ids, CandidateDecision.REJECTED)
+    # 清扫（apply=True）= 审批页批量裁决 + 笔记状态 + 会议任务状态的多步串行 RMW；
+    # 无外部调用，整段持锁最简（P0-1），避免与面板并发操作交错。
+    with workspace_lock(vault_dir.parent):
+        ids: list[str] = []
+        for path in notes:
+            rel = _note_rel(vault_dir, path)
+            ids.extend(by_note.get(f"[[{rel}]]", []))
+        if ids:
+            set_decisions(vault_dir, ids, CandidateDecision.REJECTED)
 
-    for path in notes:
-        note = load_note(path)
-        update_note_status(path, ProcessingState.IGNORED.value)
-        idem_key = str(note.meta.get("idem_key") or "")
-        if not idem_key:
-            continue
-        task = latest_task(vault_dir, idem_key)
-        if task is not None and task.state is ProcessingState.PENDING_REVIEW:
-            record_task(vault_dir, task.advanced_to(ProcessingState.IGNORED), now=now)
+        for path in notes:
+            note = load_note(path)
+            update_note_status(vault_dir, path, ProcessingState.IGNORED.value)
+            idem_key = str(note.meta.get("idem_key") or "")
+            if not idem_key:
+                continue
+            task = latest_task(vault_dir, idem_key)
+            if task is not None and task.state is ProcessingState.PENDING_REVIEW:
+                record_task(vault_dir, task.advanced_to(ProcessingState.IGNORED), now=now)
     return SweepReport(dry_run=False, notes=notes, candidates=len(ids))

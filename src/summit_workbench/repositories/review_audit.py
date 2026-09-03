@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry
+from summit_workbench.repositories._jsonl import append_row, read_models
 
 REVIEW_ACTIONS_SUBDIR = ("_signals", "review-actions")
 
@@ -29,39 +30,44 @@ class ExecutionRecord:
     external_id: str | None = None
 
 
+class ExecutionRecordRow(BaseModel):
+    """幂等账本的一行（显式 schema，``extra=\"ignore\"`` 容忍漂移，ADR 0017 语义）。
+
+    读侧经 :func:`read_models` 逐行校验：一条半截/缺键坏行只跳过并隔离进
+    ``.quarantine``，不再让 apply 的幂等判定整体崩溃（P0-3）。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    timestamp: str
+    candidate_id: str
+    decision: str
+    ai_original: str
+    final_description: str
+    target_project: str | None = None
+    route: str | None = None
+    due_date: str | None = None
+    destination: str
+    result: str
+    external_id: str | None = None
+
+
 def _ledger(vault_dir: Path) -> Path:
     return vault_dir.joinpath(*REVIEW_ACTIONS_SUBDIR, "log.jsonl")
 
 
 def completed_ids(vault_dir: Path) -> set[str]:
-    path = _ledger(vault_dir)
-    if not path.is_file():
-        return set()
-    ids: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            row = json.loads(line)
-            if row.get("result") in {"applied", "rejected"}:
-                ids.add(str(row["candidate_id"]))
-    return ids
+    rows = read_models(_ledger(vault_dir), ExecutionRecordRow)
+    return {row.candidate_id for row in rows if row.result in {"applied", "rejected"}}
 
 
 def completed_decisions(vault_dir: Path, task_key: str) -> set[CandidateDecision]:
     """读取某会议已完成候选的历史裁决，供部分成功后的最终状态收口。"""
-    path = _ledger(vault_dir)
-    if not path.is_file():
-        return set()
-    decisions: set[CandidateDecision] = set()
     prefix = f"{task_key}#"
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        row = json.loads(line)
-        if str(row.get("candidate_id", "")).startswith(prefix) and row.get("result") in {
-            "applied",
-            "rejected",
-        }:
-            decisions.add(CandidateDecision(str(row["decision"])))
+    decisions: set[CandidateDecision] = set()
+    for row in read_models(_ledger(vault_dir), ExecutionRecordRow):
+        if row.candidate_id.startswith(prefix) and row.result in {"applied", "rejected"}:
+            decisions.add(CandidateDecision(row.decision))
     return decisions
 
 
@@ -90,11 +96,8 @@ def make_execution_record(
 
 
 def append_execution(vault_dir: Path, record: ExecutionRecord) -> Path:
-    ledger = _ledger(vault_dir)
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    with ledger.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
-    return ledger
+    """追加一条执行记录（与其它 JSONL 日志同一套 append 写法）。"""
+    return append_row(_ledger(vault_dir), asdict(record))
 
 
 def archive_executions(

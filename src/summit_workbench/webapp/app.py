@@ -497,7 +497,9 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             status = note.meta.get("status")
             if not isinstance(status, str):
                 return {"ok": False, "message": f"项目档案无效：{project}"}
-            update_note_status(path, status, extra={"title": title, "updated": ctx.today()})
+            update_note_status(
+                ctx.vault_dir, path, status, extra={"title": title, "updated": ctx.today()}
+            )
         except ValueError as exc:
             return {"ok": False, "message": f"改名失败：{exc}"}
         return {"ok": True, "message": f"{project} 显示名已设为「{title}」"}
@@ -634,6 +636,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             status = note.meta.get("status")
             if isinstance(status, str):
                 update_note_status(
+                    ctx.vault_dir,
                     ctx.vault_dir / "projects" / f"{project}.md",
                     status,
                     extra={"updated": ctx.today()},

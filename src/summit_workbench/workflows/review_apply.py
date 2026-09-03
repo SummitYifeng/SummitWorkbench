@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
     CandidateDecision,
@@ -206,6 +207,26 @@ def _task_key(candidate_id: str) -> str:
     return candidate_id.split("#", 1)[0]
 
 
+def _candidate_unchanged_since(current: ReviewEntry, original: ReviewEntry | None) -> bool:
+    """最新页条目相对 apply 开始时的同 id 条目是否未被用户改动（P0-5 移除判据）。
+
+    只比较用户在页上可改的字段（裁决 + 正文 + target_project/route/起止/截止）：
+    任一被并发改动即视为「最新页已被改动」，条目留在页上、绝不静默覆盖用户编辑。
+    """
+    if original is None:
+        return False
+    c, o = current.candidate, original.candidate
+    return (
+        c.decision is o.decision
+        and c.description == o.description
+        and c.target_project == o.target_project
+        and c.route == o.route
+        and c.due_date == o.due_date
+        and c.start_at == o.start_at
+        and c.end_at == o.end_at
+    )
+
+
 def _note_path(vault_dir: Path, note_link: str) -> Path | None:
     if not note_link.startswith("[[") or not note_link.endswith("]]"):
         return None
@@ -239,7 +260,7 @@ def _update_meeting_states(
         record_task(vault_dir, task.advanced_to(final_state), now=now)
         note_path = _note_path(vault_dir, entries[0].note_link)
         if note_path is not None:
-            update_note_status(note_path, final_state.value)
+            update_note_status(vault_dir, note_path, final_state.value)
 
 
 def apply_meeting_review(
@@ -255,7 +276,10 @@ def apply_meeting_review(
     page = review_path(vault_dir)
     if not page.is_file():
         raise ValueError(f"审批页不存在：{page}")
-    parsed = parse_review_page(page.read_text(encoding="utf-8"))
+    # apply 从旧快照解析后逐个做外部写回（分钟级）；收尾写页前必须重读最新页，
+    # 窗口期内用户在页上的并发勾选/编辑不能被整页重写吞掉（P0-5 乐观合并）。
+    page_snapshot = page.read_text(encoding="utf-8")
+    parsed = parse_review_page(page_snapshot)
     if parsed.errors:
         raise ValueError("审批页语法错误：" + "; ".join(parsed.errors))
     registry = load_project_registry(vault_dir)
@@ -338,8 +362,32 @@ def apply_meeting_review(
             continue
         remaining.append(replace(entry, apply_error=failure_reasons.get(stable_id)))
     archive_path = archive_executions(vault_dir, records, now=now) if records else None
-    atomic_write_text(page, render_review_page(remaining))
-    _update_meeting_states(vault_dir, handled, remaining, now=now)
+
+    # P0-5 收尾「乐观合并」。整段收尾（重读最新页 + 合并 + 整页写 + 会议状态收口）
+    # 是纯文件操作，放在工作区锁内；分钟级外部写回阶段不持锁（锁不跨 LLM/网络调用）。
+    with workspace_lock(vault_dir.parent):
+        latest_text = page.read_text(encoding="utf-8")
+        if latest_text == page_snapshot:
+            # 页面未被并发改动：维持既有行为（解析后剩余条目整页重写）。
+            atomic_write_text(page, render_review_page(remaining))
+        else:
+            latest = parse_review_page(latest_text)
+            if latest.errors:
+                raise ValueError("审批页语法错误：" + "; ".join(latest.errors))
+            # 只移除「本次 handled 且最新页中该候选未变」的条目；被并发改动的候选
+            # 留在页上不动（账本已记 applied/rejected，下次 apply 按 already-completed
+            # 幂等清理，不会重复执行）；失败候选的 error 标注只合并进最新页。
+            start_by_id = {e.candidate.candidate_id: e for e in parsed.entries}
+            merged: list[ReviewEntry] = []
+            for entry in latest.entries:
+                cid = entry.candidate.candidate_id
+                if cid in handled_ids and _candidate_unchanged_since(entry, start_by_id.get(cid)):
+                    continue
+                if cid in failure_reasons and entry.apply_error is None:
+                    entry = replace(entry, apply_error=failure_reasons[cid])
+                merged.append(entry)
+            atomic_write_text(page, render_review_page(merged))
+        _update_meeting_states(vault_dir, handled, remaining, now=now)
     return ApplyReport(
         False,
         actions,

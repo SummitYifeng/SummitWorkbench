@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
+from summit_workbench.repositories._atomic import atomic_write_text
+
 
 def weekly_path(vault_dir: Path, week: str) -> Path:
     return vault_dir / "reviews" / "weekly" / f"{week}.md"
@@ -21,10 +24,9 @@ def _frontmatter(week: str, start: str, end: str) -> str:
 
 
 def write_weekly(vault_dir: Path, week: str, start: str, end: str, body_markdown: str) -> Path:
-    """覆盖写周复盘笔记，返回路径。"""
+    """覆盖写周复盘笔记，返回路径（工作区锁内原子落盘，P0-1/P0-2）。"""
     path = weekly_path(vault_dir, week)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        _frontmatter(week, start, end) + "\n" + body_markdown.rstrip() + "\n", encoding="utf-8"
-    )
+    text = _frontmatter(week, start, end) + "\n" + body_markdown.rstrip() + "\n"
+    with workspace_lock(vault_dir.parent):
+        atomic_write_text(path, text, ensure_parents=True)
     return path

@@ -19,6 +19,7 @@ import yaml
 
 from summit_workbench.domain.pipeline import SourceKind
 from summit_workbench.domain.review import UNRESOLVED
+from summit_workbench.repositories._atomic import atomic_write_text
 
 MEETINGS_SUBDIR = "meetings"
 TRANSCRIPTS_SUBDIR = "transcripts"  # 证据层
@@ -119,6 +120,6 @@ def archive_transcript(
     path = transcript_path(vault_dir, inp)
     if path.exists() and not overwrite:
         return ArchiveOutcome(path=path, written=False)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_transcript(inp), encoding="utf-8")
+    # 证据层新文件落盘也用原子写（P0-2）：断电/被 kill 不留半截逐字稿。
+    atomic_write_text(path, render_transcript(inp), ensure_parents=True)
     return ArchiveOutcome(path=path, written=True)

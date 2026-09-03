@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from summit_workbench.config.locking import workspace_lock
+from summit_workbench.repositories._atomic import atomic_write_text
+
 BRIEF_START = "<!-- BRIEF:START 由 wb brief 生成，勿手改此区块 -->"
 BRIEF_END = "<!-- BRIEF:END -->"
 
@@ -40,24 +43,29 @@ def read_brief_block(vault_dir: Path, day: str) -> str | None:
 
 
 def write_brief(vault_dir: Path, day: str, brief_markdown: str) -> Path:
-    """把简报正文幂等写入当日笔记的锚点区块，返回文件路径。"""
+    """把简报正文幂等写入当日笔记的锚点区块，返回文件路径。
+
+    当日笔记可能含用户锚点外手写内容：整体 read -> 锚点替换 -> 原子落盘 放在
+    工作区锁内（launchd brief 与面板「生成简报」经同一把 .wb.lock 互斥），并
+    全程用原子写，断电/被 kill 不留半截文件（P0-1 / P0-2）。
+    """
     path = daily_note_path(vault_dir, day)
     block = _brief_block(brief_markdown)
 
-    if not path.is_file():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_frontmatter(day) + "\n" + block, encoding="utf-8")
-        return path
+    with workspace_lock(vault_dir.parent):
+        if not path.is_file():
+            atomic_write_text(path, _frontmatter(day) + "\n" + block, ensure_parents=True)
+            return path
 
-    text = path.read_text(encoding="utf-8")
-    start = text.find(BRIEF_START)
-    end = text.find(BRIEF_END)
-    if start != -1 and end != -1 and end > start:
-        # 替换既有锚点区块（含结束锚点自身）。
-        new_text = text[:start] + block.rstrip("\n") + text[end + len(BRIEF_END) :]
-    else:
-        # 无锚点：在文末追加区块，保留用户既有内容。
-        sep = "" if text.endswith("\n") else "\n"
-        new_text = text + sep + "\n" + block
-    path.write_text(new_text, encoding="utf-8")
-    return path
+        text = path.read_text(encoding="utf-8")
+        start = text.find(BRIEF_START)
+        end = text.find(BRIEF_END)
+        if start != -1 and end != -1 and end > start:
+            # 替换既有锚点区块（含结束锚点自身）。
+            new_text = text[:start] + block.rstrip("\n") + text[end + len(BRIEF_END) :]
+        else:
+            # 无锚点：在文末追加区块，保留用户既有内容。
+            sep = "" if text.endswith("\n") else "\n"
+            new_text = text + sep + "\n" + block
+        atomic_write_text(path, new_text)
+        return path
