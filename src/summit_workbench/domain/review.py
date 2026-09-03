@@ -32,6 +32,7 @@ class RouteTarget(StrEnum):
     """执行动作的写入位置（L22 路由规则）。"""
 
     FEISHU_TASK = "feishu-task"  # 有期限或涉及他人
+    FEISHU_MEETING = "feishu-meeting"  # 会议结论落成未来日历日程（新建飞书日历事件）
     PROJECT_MAIN = "project-main"  # 明确内部下一步
     PROJECT_INBOX = "project-inbox"  # 未成熟想法
     GLOBAL_INBOX = "global-inbox"  # 目标项目不明
@@ -74,6 +75,8 @@ class ApprovalCandidate:
     route: RouteTarget | None = None
     evidence: EvidenceRef | None = None
     due_date: str | None = None  # YYYY-MM-DD；无期限留空
+    start_at: str | None = None  # 新建日历会议的开始时间（本地 naive YYYY-MM-DDTHH:MM）
+    end_at: str | None = None  # 新建日历会议的结束时间（同上；缺省按开始 + 1 小时）
     involves_others: bool = False
     is_next_step: bool = False  # 明确的内部下一步（区别于未成熟想法）
     decision: CandidateDecision = CandidateDecision.PENDING
@@ -83,12 +86,13 @@ class ApprovalCandidate:
         """是否可进入可勾选状态：必须有有效来源依据，且目标可写。
 
         目标可写的判定按 route 区分（贴合真实场景：多数会议未必对应已建项目）：
-        - 全局 inbox 正是「目标项目不明」的兜底，不需要已解析项目即可捕获；
+        - 全局 inbox 与新建日历会议（个人日程排期）正是「目标项目不明」的兜底，
+          不需要已解析项目即可捕获/落日程；
         - 其余落点（项目主笔记 / 项目 inbox / 飞书任务 / 未定 route）需已解析目标项目。
         """
         if self.evidence is None or not self.evidence.is_valid():
             return False
-        if self.route is RouteTarget.GLOBAL_INBOX:
+        if self.route in (RouteTarget.GLOBAL_INBOX, RouteTarget.FEISHU_MEETING):
             return True
         return _has_project(self.target_project)
 

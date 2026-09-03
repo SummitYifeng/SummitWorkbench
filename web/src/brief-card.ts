@@ -12,6 +12,10 @@ export interface BriefHealth {
 export interface BriefMeeting {
   title: string;
   start_time: string;
+  /** 飞书日历事件原始标识/时间戳（附加演进；缺 event_id 的旧快照不可行内编辑） */
+  event_id?: string | null;
+  start_ts?: string | null;
+  end_ts?: string | null;
 }
 export interface BriefTask {
   summary: string;
@@ -99,14 +103,22 @@ function briefMeetingBlock(list: BriefMeeting[]): string {
   const rows = list.map((m) => {
     const t = /^(\d{1,2}):(\d{2})$/.exec(m.start_time);
     const past = t ? Number(t[1]) * 60 + Number(t[2]) < nowMinutes : false;
+    const edit = m.event_id
+      ? '<button class="bf-edit" data-action="meeting-edit" data-event="' + esc(m.event_id) +
+        '" data-title="' + esc(m.title) + '" data-start="' + esc(m.start_ts ?? '') +
+        '" data-end="' + esc(m.end_ts ?? '') +
+        '" title="编辑该日历会议（标题/时间，写回飞书）" aria-label="编辑会议">✎</button>'
+      : '';
+    const trailing = edit ? '<span class="bf-trailing">' + edit + '</span>' : '';
     return '<div class="bf-row bf-mt' + (past ? ' past' : '') + '">' +
       '<span class="bf-time">' + esc(m.start_time) + '</span>' +
-      '<span class="bf-mt-title">' + esc(m.title) + '</span></div>';
+      '<span class="bf-mt-title">' + esc(m.title) + '</span>' +
+      trailing + '</div>';
   });
   return '<div class="bf-section">' + head + rows.join('') + '</div>';
 }
 
-/** 任务行尾部：AI 注解 chip（若有）+「标记完成」控件（仅真飞书任务，有 task_id）。 */
+/** 任务行尾部：AI 注解 chip（若有）+「标记完成」/「编辑」控件（仅真飞书任务，有 task_id）。 */
 function briefTaskTrailing(t: BriefTask, ann: BriefAction | undefined): string {
   const chip = ann ? briefAnnChip(ann) : '';
   const done = t.task_id
@@ -114,7 +126,14 @@ function briefTaskTrailing(t: BriefTask, ann: BriefAction | undefined): string {
       esc(t.task_id) +
       '" title="在飞书中标记该任务为已完成" aria-label="标记完成">✓</button>'
     : '';
-  return chip || done ? '<span class="bf-trailing">' + chip + done + '</span>' : '';
+  const edit = t.task_id
+    ? '<button class="bf-edit" data-action="task-edit" data-task="' + esc(t.task_id) +
+      '" data-title="' + esc(t.summary) + '" data-due="' + esc(t.due_date ?? '') +
+      '" title="编辑该任务（标题/截止，写回飞书）" aria-label="编辑任务">✎</button>'
+    : '';
+  return chip || done || edit
+    ? '<span class="bf-trailing">' + chip + done + edit + '</span>'
+    : '';
 }
 
 function briefTaskBlock(b: BriefData, todayIso: string): string {

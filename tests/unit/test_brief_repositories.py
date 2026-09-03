@@ -16,7 +16,9 @@ from summit_workbench.repositories.project_scan import (
     scan_projects,
 )
 from summit_workbench.repositories.signal_snapshot import (
+    mark_meeting_edited,
     mark_task_completed,
+    mark_task_edited,
     read_snapshot,
     write_snapshot,
 )
@@ -256,3 +258,73 @@ def test_write_brief_preserves_user_content_outside_anchors(tmp_path: Path) -> N
     final = path.read_text(encoding="utf-8")
     assert "我的手记" in final and "重要" in final
     assert "内容 B" in final and "内容 A" not in final
+
+
+def _detail_snapshot_with_meeting(day: str) -> dict[str, object]:
+    payload = _detail_snapshot(day)
+    payload["meeting_list"] = [
+        {
+            "title": "排版会",
+            "start_time": "14:00",
+            "event_id": "ev-1",
+            "start_ts": "1789000000",
+            "end_ts": "1789003600",
+        }
+    ]
+    return payload
+
+
+def test_mark_task_edited_updates_task_and_linked_action(tmp_path: Path) -> None:
+    vault = tmp_path / "_vault"
+    day = "2026-09-04"
+    write_snapshot(vault, day, _detail_snapshot(day))
+
+    assert mark_task_edited(vault, day, "guid-1", summary="改标题", due_date="2026-09-20")
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert task_list[0]["summary"] == "改标题"
+    assert task_list[0]["due_date"] == "2026-09-20"
+    # 关联行动候选同步（保持事实区一致）
+    actions = snap["actions"]
+    assert isinstance(actions, list)
+    linked = next(a for a in actions if a.get("signal_id") == "task-guid-1")
+    assert linked["title"] == "改标题"
+    assert linked["due_date"] == "2026-09-20"
+    # 清除截止
+    assert mark_task_edited(vault, day, "guid-1", clear_due=True)
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert task_list[0]["due_date"] is None
+    # 快照里没有该任务 → False 不写盘
+    assert mark_task_edited(vault, day, "guid-99", summary="x") is False
+
+
+def test_mark_meeting_edited_updates_display_and_raw_ts(tmp_path: Path) -> None:
+    vault = tmp_path / "_vault"
+    day = "2026-09-04"
+    write_snapshot(vault, day, _detail_snapshot_with_meeting(day))
+
+    assert mark_meeting_edited(
+        vault,
+        day,
+        "EV-1",  # 大小写不敏感
+        summary="改后标题",
+        start_time="15:30",
+        start_ts="1789006200",
+        end_ts="1789009800",
+    )
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    meeting_list = snap["meeting_list"]
+    assert isinstance(meeting_list, list)
+    row = meeting_list[0]
+    assert row["title"] == "改后标题"
+    assert row["start_time"] == "15:30"
+    assert row["start_ts"] == "1789006200"
+    assert row["end_ts"] == "1789009800"
+    # 事件不在快照 → False
+    assert mark_meeting_edited(vault, day, "ev-9", summary="x") is False

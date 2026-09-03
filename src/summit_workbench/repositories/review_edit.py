@@ -93,8 +93,10 @@ def update_fields(
     target_project: str | None = None,
     route: RouteTarget | None = None,
     due_date: str | None = None,
+    start_at: str | None = None,
+    end_at: str | None = None,
 ) -> None:
-    """原地修改候选正文 / 目标项目 / route / 截止日期（None 表示保持不变）。"""
+    """原地修改候选正文 / 目标项目 / route / 截止 / 日历会议起止（None 表示保持不变）。"""
 
     def mutate(c: ApprovalCandidate) -> ApprovalCandidate:
         return replace(
@@ -103,6 +105,8 @@ def update_fields(
             target_project=target_project if target_project is not None else c.target_project,
             route=route if route is not None else c.route,
             due_date=due_date if due_date is not None else c.due_date,
+            start_at=start_at if start_at is not None else c.start_at,
+            end_at=end_at if end_at is not None else c.end_at,
         )
 
     _rewrite(vault_dir, candidate_id, mutate)

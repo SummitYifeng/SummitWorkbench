@@ -40,6 +40,8 @@ from summit_workbench.repositories.writeback import (
 )
 
 TaskCreator = Callable[[str, str | None, str], str]
+# 日历会议创建器：(summary, start_at, end_at, candidate_id) -> event_id
+MeetingCreator = Callable[[str, str | None, str | None, str], str]
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,8 @@ def _destination(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> str:
         return str(vault_dir / "inbox.md")
     if item.route is RouteTarget.FEISHU_TASK:
         return "feishu-task"
+    if item.route is RouteTarget.FEISHU_MEETING:
+        return "feishu-meeting"
     return ""
 
 
@@ -97,6 +101,8 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
             reason = "缺少已解析 target_project 或有效 evidence"
         elif item.route is None:
             reason = "缺少 route"
+        elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
+            reason = "新建会议需要开始时间（在「修改」里填开始时间）"
         elif (
             item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_INBOX)
             and not Path(destination).is_file()
@@ -193,6 +199,7 @@ def apply_meeting_review(
     *,
     apply: bool = False,
     task_creator: TaskCreator | None = None,
+    meeting_creator: MeetingCreator | None = None,
     now: datetime | None = None,
 ) -> ApplyReport:
     """默认仅返回计划；``apply=True`` 才产生业务写回与审计。"""
@@ -246,6 +253,16 @@ def apply_meeting_review(
                         entry.candidate.candidate_id,
                     )
                     destination = "feishu-task"
+                elif entry.candidate.route is RouteTarget.FEISHU_MEETING:
+                    if meeting_creator is None:
+                        raise ValueError("缺少飞书日历会议创建器")
+                    external_id = meeting_creator(
+                        entry.candidate.description,
+                        entry.candidate.start_at,
+                        entry.candidate.end_at,
+                        entry.candidate.candidate_id,
+                    )
+                    destination = "feishu-meeting"
                 else:
                     destination, external_id = _write_local(entry, vault_dir, work_root)
                 record = make_execution_record(

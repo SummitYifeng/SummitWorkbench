@@ -86,11 +86,19 @@ class ActionSignal:
 
 @dataclass(frozen=True)
 class MeetingFact:
-    """今日会议事实（飞书日历原文直取）。"""
+    """今日会议事实（飞书日历原文直取）。
+
+    ``start_time`` 为展示串（如 ``10:00``）；``event_id`` / ``start_ts`` / ``end_ts``
+    是飞书原始标识与 unix 秒时间戳（原样直取、不经模型），供 Web 层对日历事件做
+    行内编辑定位（附加演进：旧快照没有这些键时行内编辑按钮不出现）。
+    """
 
     title: str
-    start_time: str  # 原始时间字符串，不做人类改写
+    start_time: str  # 展示串
     source_ref: str = "feishu-calendar"
+    event_id: str | None = None
+    start_ts: str | None = None  # 原始 unix 秒字符串（定时事件）；全天事件为日期串
+    end_ts: str | None = None
 
 
 @dataclass(frozen=True)
@@ -276,7 +284,16 @@ class Brief:
             "pending_review": self.pending_review_count,
             "ranking_model": self.ranking_model,
             # —— Web 工作台结构化明细（附加键）——
-            "meeting_list": [{"title": m.title, "start_time": m.start_time} for m in self.meetings],
+            "meeting_list": [
+                {
+                    "title": m.title,
+                    "start_time": m.start_time,
+                    **({"event_id": m.event_id} if m.event_id else {}),
+                    **({"start_ts": m.start_ts} if m.start_ts else {}),
+                    **({"end_ts": m.end_ts} if m.end_ts else {}),
+                }
+                for m in self.meetings
+            ],
             "task_list": [
                 {
                     "summary": t.summary,

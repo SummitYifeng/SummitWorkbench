@@ -1,21 +1,29 @@
-"""飞书日历事实采集（M2-1）：主日历 → 指定时间窗内的会议/日程事件。
+"""飞书日历适配：事实采集（M2-1 只读）+ 日程写回（审批新建会议 / 工作台行内编辑）。
 
-事实区硬约束（PRD 3.4 / G1）：这里只把飞书原始响应字段**原样**取出（summary / 起止时间），
+事实区硬约束（PRD 3.4 / G1）：只读部分把飞书原始响应字段**原样**取出（summary / 起止时间），
 不做任何模型改写。上层简报直取这些字段。
+
+写回部分（Web 工作台「新建会议 / 编辑会议」）：创建/更新主日历日程事件。日历事件的时间戳
+按官方契约使用 **unix 秒的字符串**（``start_time.timestamp``）；创建事件不支持直接传参会人
+（如需邀请走 attendees 二次调用，MVP 不做）。所需写 scope ``calendar:calendar`` 需在开放平台
+开通并重新授权后才能真机验证（读 scope ``calendar:calendar:readonly`` 已开通）。
 
 端点为**预期端点，依官方文档给出，待真机冒烟核实后固定**（沿用 M0-4/M0-10 范式）：
 - 主日历：``POST /open-apis/calendar/v4/calendars/primary``（应用/用户主日历）；
-- 事件列表：``GET /open-apis/calendar/v4/calendars/{calendar_id}/events``（起止为 unix 秒）。
-所需 scope ``calendar:calendar:readonly`` 已在开放平台开通。
+- 事件列表：``GET /open-apis/calendar/v4/calendars/{calendar_id}/events``（起止为 unix 秒）；
+- 创建事件：``POST /open-apis/calendar/v4/calendars/{calendar_id}/events``；
+- 更新事件：``PATCH /open-apis/calendar/v4/calendars/{calendar_id}/events/{event_id}``。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from summit_workbench.providers.feishu.client import FeishuClient
-from summit_workbench.providers.feishu.errors import FeishuError
+from summit_workbench.providers.feishu.errors import FeishuAPIError, FeishuError
 
 PRIMARY_CALENDAR_PATH = "/open-apis/calendar/v4/calendars/primary"
 EVENTS_PATH = "/open-apis/calendar/v4/calendars/{calendar_id}/events"
@@ -151,10 +159,18 @@ def _parse_instance(raw: dict[str, Any]) -> CalendarEvent | None:
     start_repr = str(start or raw.get("start_timestamp") or "")
     if not start_repr:
         return None
+    end_raw = raw.get("end_time")
+    if isinstance(end_raw, dict):
+        end_repr = str(end_raw.get("timestamp") or end_raw.get("date") or "")
+    elif end_raw:
+        end_repr = str(end_raw)
+    else:
+        end_repr = ""
     return CalendarEvent(
         event_id=str(raw.get("event_id", "")),
         title=str(raw.get("summary", "") or "(无标题)"),
         start_time=start_repr,
+        end_time=end_repr or None,
     )
 
 
@@ -164,3 +180,73 @@ def list_events_between(
     """便捷入口：解析主日历后列出时间窗内**实例**（今日会议）。"""
     calendar_id = primary_calendar_id(client)
     return list_event_instances(client, calendar_id, start_unix, end_unix, max_items=max_items)
+
+
+# ---- 日程写回（Web 工作台：审批新建会议 / 行内编辑会议） ----
+
+
+def local_iso_to_epoch_seconds(value: str, timezone: str) -> str:
+    """把本地无时区的 ``YYYY-MM-DDTHH:MM`` 转成 unix 秒字符串（日历事件时间戳用秒）。
+
+    非法输入抛出 ValueError，让上层把不可执行的写回显式拒绝（不猜测）。
+    """
+    moment = datetime.fromisoformat(value)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=ZoneInfo(timezone))
+    return str(int(moment.timestamp()))
+
+
+def _event_id_from(data: dict[str, Any], verb: str) -> str:
+    raw = data.get("event")
+    if not isinstance(raw, dict):
+        raise FeishuAPIError(f"{verb} 响应缺少 event")
+    event_id = str(raw.get("event_id") or "")
+    if not event_id:
+        raise FeishuAPIError(f"{verb} 响应缺少 event_id")
+    return event_id
+
+
+def create_event(
+    client: FeishuClient,
+    calendar_id: str,
+    summary: str,
+    start_iso: str,
+    end_iso: str,
+    *,
+    timezone: str,
+) -> str:
+    """在主日历创建一条定时日程事件，返回 event_id（幂等键由上层 candidate_id 派生）。
+
+    起止时间用本地 naive ``YYYY-MM-DDTHH:MM``，本函数按 ``timezone`` 换算成秒级时间戳。
+    """
+    body: dict[str, object] = {
+        "summary": summary,
+        "start_time": {"timestamp": local_iso_to_epoch_seconds(start_iso, timezone)},
+        "end_time": {"timestamp": local_iso_to_epoch_seconds(end_iso, timezone)},
+    }
+    data = client.post(EVENTS_PATH.format(calendar_id=calendar_id), json=body)
+    return _event_id_from(data, "POST /calendar/v4/events")
+
+
+def update_event(
+    client: FeishuClient,
+    calendar_id: str,
+    event_id: str,
+    *,
+    summary: str | None = None,
+    start_iso: str | None = None,
+    end_iso: str | None = None,
+    timezone: str,
+) -> None:
+    """更新日历事件（只改显式给出的字段）；起止为本地 naive ``YYYY-MM-DDTHH:MM``。"""
+    body: dict[str, object] = {}
+    if summary is not None:
+        body["summary"] = summary
+    if start_iso is not None:
+        body["start_time"] = {"timestamp": local_iso_to_epoch_seconds(start_iso, timezone)}
+    if end_iso is not None:
+        body["end_time"] = {"timestamp": local_iso_to_epoch_seconds(end_iso, timezone)}
+    if not body:
+        raise ValueError("没有需要更新的字段")
+    path = f"{EVENTS_PATH.format(calendar_id=calendar_id)}/{event_id}"
+    client.patch(path, json=body)

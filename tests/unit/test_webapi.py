@@ -230,7 +230,15 @@ def test_api_state_brief_structured_when_snapshot_has_detail(tmp_path: Path, mon
     assert brief["health"]["level"] == "degraded"
     assert brief["health"]["label"] == "降级"
     assert brief["health"]["reasons"] == ["采集源失败：飞书日历"]
-    assert brief["meetings"] == [{"title": "钻石三角双周例会", "start_time": "10:00"}]
+    assert brief["meetings"] == [
+        {
+            "title": "钻石三角双周例会",
+            "start_time": "10:00",
+            "event_id": None,
+            "start_ts": None,
+            "end_ts": None,
+        }
+    ]
     assert brief["tasks"] == [{"summary": "门户验收", "due_date": day, "task_id": "guid-1"}]
     action = brief["actions"][0]
     assert action["rank"] == 1
@@ -776,3 +784,203 @@ def test_api_task_complete_rejects_empty_id(tmp_path: Path, monkeypatch) -> None
     assert data["ok"] is False
     assert "缺少任务 id" in data["message"]
     assert called == []  # 不触发任何飞书写回
+
+
+# ---------- /api/tasks/update · /api/meetings/update（行内编辑写回） ----------
+
+
+def _task_snapshot_with_row(day: str) -> dict[str, object]:
+    payload = _task_snapshot_payload(day)
+    payload["meeting_list"] = [
+        {
+            "title": "排版会",
+            "start_time": "14:00",
+            "event_id": "ev-1",
+            "start_ts": "1789000000",
+            "end_ts": "1789003600",
+        }
+    ]
+    return payload
+
+
+def _stub_feishu_writes(monkeypatch) -> None:
+    """把 /api/tasks|meetings/update 的飞书调用替换为离线替身（写回点不动）。"""
+
+    class _FakeSession:
+        def __init__(self, cfg: object) -> None:
+            self.cfg = cfg
+
+        def access_token(self) -> SecretStr:
+            return SecretStr("tok")
+
+    monkeypatch.setattr(
+        "summit_workbench.providers.feishu.FeishuClient", lambda _cfg, _tok: object()
+    )
+    monkeypatch.setattr("summit_workbench.providers.feishu.FeishuSession", _FakeSession)
+    monkeypatch.setattr("summit_workbench.providers.feishu.load_feishu_config", lambda: object())
+
+
+def test_api_task_update_writes_feishu_and_mirrors_snapshot(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    from summit_workbench.repositories.signal_snapshot import read_snapshot, write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(vault, day, _task_snapshot_with_row(day))
+    seen: dict[str, object] = {}
+
+    def fake_update(_c: object, guid: str, **kw: object) -> None:
+        seen["guid"] = guid
+        seen["kw"] = kw
+
+    _stub_feishu_writes(monkeypatch)
+    monkeypatch.setattr("summit_workbench.providers.feishu.update_task", fake_update)
+
+    resp = client.post(
+        "/api/tasks/update",
+        json={"task_id": "guid-1", "summary": "新标题", "due_date": "2026-09-20"},
+    )
+    data = resp.json()
+    assert data["ok"] is True
+    assert seen["guid"] == "guid-1"
+    kw = seen["kw"]
+    assert isinstance(kw, dict)
+    assert kw["summary"] == "新标题"
+    assert kw["due_date"] == "2026-09-20"
+    assert kw["clear_due"] is False
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert task_list[0]["summary"] == "新标题"
+    assert task_list[0]["due_date"] == "2026-09-20"
+    # 清除截止 → 快照里 due_date 清空
+    resp = client.post(
+        "/api/tasks/update", json={"task_id": "guid-1", "summary": "新标题", "due_date": ""}
+    )
+    assert resp.json()["ok"] is True
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert task_list[0]["due_date"] is None
+
+
+def test_api_task_update_errors_surface_without_snapshot_change(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    from summit_workbench.repositories.signal_snapshot import read_snapshot, write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(vault, day, _task_snapshot_with_row(day))
+
+    def fake_update(_c: object, guid: str, **kw: object) -> None:
+        raise RuntimeError("任务不存在")
+
+    _stub_feishu_writes(monkeypatch)
+    monkeypatch.setattr("summit_workbench.providers.feishu.update_task", fake_update)
+    data = client.post("/api/tasks/update", json={"task_id": "guid-1", "summary": "x"}).json()
+    assert data["ok"] is False
+    assert "任务不存在" in data["message"]
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert task_list[0]["summary"] == "提交样章"  # 快照未动
+    # 空标题拒绝（不发飞书写回）
+    data = client.post("/api/tasks/update", json={"task_id": "guid-1", "summary": "   "}).json()
+    assert data["ok"] is False
+
+
+def test_api_meeting_update_writes_feishu_and_mirrors_snapshot(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    from summit_workbench.repositories.signal_snapshot import read_snapshot, write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(vault, day, _task_snapshot_with_row(day))
+    seen: dict[str, object] = {}
+
+    def fake_primary(_c: object) -> str:
+        return "cal_main"
+
+    def fake_update(_c: object, calendar_id: str, event_id: str, **kw: object) -> None:
+        seen["calendar_id"] = calendar_id
+        seen["event_id"] = event_id
+        seen["kw"] = kw
+
+    _stub_feishu_writes(monkeypatch)
+    monkeypatch.setattr("summit_workbench.providers.feishu.update_event", fake_update)
+    monkeypatch.setattr(
+        "summit_workbench.providers.feishu.calendar.primary_calendar_id", fake_primary
+    )
+
+    resp = client.post(
+        "/api/meetings/update",
+        json={
+            "event_id": "ev-1",
+            "summary": "改会名",
+            "start_at": "2026-09-10T15:30",
+            "end_at": "2026-09-10T16:30",
+        },
+    )
+    data = resp.json()
+    assert data["ok"] is True
+    assert seen["event_id"] == "ev-1"
+    assert seen["calendar_id"] == "cal_main"
+    kw = seen["kw"]
+    assert isinstance(kw, dict)
+    assert kw["summary"] == "改会名"
+    assert kw["start_iso"] == "2026-09-10T15:30"
+    assert kw["end_iso"] == "2026-09-10T16:30"
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    meeting_list = snap["meeting_list"]
+    assert isinstance(meeting_list, list)
+    row = meeting_list[0]
+    assert row["title"] == "改会名"
+    assert row["start_time"] == "15:30"
+    assert row["start_ts"] == "1789025400"
+    assert row["end_ts"] == "1789029000"
+
+
+def test_api_meeting_update_requires_fields(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _vault = _client(tmp_path, seed_review=False)
+    _stub_feishu_writes(monkeypatch)
+    # 只改结束时间不改开始 → 拒绝
+    data = client.post(
+        "/api/meetings/update",
+        json={"event_id": "ev-1", "summary": "会", "end_at": "2026-09-10T16:30"},
+    ).json()
+    assert data["ok"] is False
+    # 无任何字段 → 拒绝
+    data = client.post("/api/meetings/update", json={"event_id": "ev-1"}).json()
+    assert data["ok"] is False
+    assert "没有需要更新" in data["message"]
+
+
+def test_api_review_edit_saves_meeting_time_fields(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path)
+    data = client.get("/api/review").json()
+    candidate_id = data["groups"][0]["entries"][0]["candidate_id"]
+    resp = client.post(
+        "/api/review/edit",
+        json={
+            "candidate_id": candidate_id,
+            "route": "feishu-meeting",
+            "start_at": "2026-09-10T14:00",
+            "end_at": "2026-09-10T15:00",
+        },
+    )
+    assert resp.json()["ok"] is True
+    parsed = parse_review_page((vault / "review" / "meetings.md").read_text(encoding="utf-8"))
+    assert parsed.errors == []
+    entry = next(e for e in parsed.entries if e.candidate.candidate_id == candidate_id)
+    assert entry.candidate.route is not None
+    assert entry.candidate.route.value == "feishu-meeting"
+    assert entry.candidate.start_at == "2026-09-10T14:00"
+    assert entry.candidate.end_at == "2026-09-10T15:00"

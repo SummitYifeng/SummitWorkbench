@@ -114,12 +114,53 @@ def complete_task(client: FeishuClient, task_guid: str) -> None:
 
     Web 工作台「一键完成」的写回点：飞书是任务状态的唯一真源，本地只在
     调用成功后镜像到当日渲染快照（见 repositories.signal_snapshot.mark_task_completed）。
-    请求体按官方 Task v2「更新任务」契约包在 ``task`` 字段内。
+    请求体按官方 Task v2「更新任务」契约包在 ``task`` 字段内，且必须列出
+    ``update_fields``（不列则不生效）。
     """
     guid = str(task_guid).strip()
     if not guid:
         raise ValueError("缺少任务 guid")
-    client.patch(f"{CREATE_TASK_PATH}/{guid}", json={"task": {"completed": True}})
+    client.patch(
+        f"{CREATE_TASK_PATH}/{guid}",
+        json={"task": {"completed": True}, "update_fields": ["completed"]},
+    )
+
+
+def update_task(
+    client: FeishuClient,
+    task_guid: str,
+    *,
+    summary: str | None = None,
+    due_date: str | None = None,
+    clear_due: bool = False,
+    timezone: str,
+) -> None:
+    """更新任务标题 / 截止日期（PATCH /task/v2/tasks/{guid}）。
+
+    只更新显式给出的字段（body 与 ``update_fields`` 同步）：``summary`` 非 None 时更新
+    标题；``due_date`` 非 None 时设置截止（全天、本机时区）；``clear_due`` 为 True 时清除
+    截止。无更新字段时抛错（避免空 PATCH）。
+    """
+    guid = str(task_guid).strip()
+    if not guid:
+        raise ValueError("缺少任务 guid")
+    task_patch: dict[str, object] = {}
+    update_fields: list[str] = []
+    if summary is not None:
+        task_patch["summary"] = summary
+        update_fields.append("summary")
+    if clear_due:
+        task_patch["due"] = None
+        update_fields.append("due")
+    elif due_date is not None:
+        task_patch["due"] = _all_day_due(due_date, timezone)
+        update_fields.append("due")
+    if not update_fields:
+        raise ValueError("没有需要更新的字段")
+    client.patch(
+        f"{CREATE_TASK_PATH}/{guid}",
+        json={"task": task_patch, "update_fields": update_fields},
+    )
 
 
 def create_task(

@@ -107,3 +107,17 @@ def test_candidate_id_is_stable_and_unique_per_kind_index():
     assert a == candidate_id("m1:n1", CandidateKind.ACTION_ITEM, 0)  # 重跑稳定
     assert a != candidate_id("m1:n1", CandidateKind.ACTION_ITEM, 1)
     assert a != candidate_id("m1:n1", CandidateKind.DECISION, 0)
+
+
+def test_candidate_feishu_meeting_actionable_without_project():
+    # 新建日历会议属个人日程排期：不需要已解析项目即可批准（与全局 inbox 同级兜底）。
+    c = _candidate(target_project=None, route=RouteTarget.FEISHU_MEETING)
+    assert c.is_actionable()
+    c2 = _candidate(route=RouteTarget.FEISHU_TASK)
+    assert c2.is_actionable()  # 有项目即可
+    assert not _candidate(target_project=None, route=RouteTarget.FEISHU_TASK).is_actionable()
+
+
+def test_candidate_default_start_at_end_at_none():
+    c = _candidate()
+    assert c.start_at is None and c.end_at is None

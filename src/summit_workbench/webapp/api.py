@@ -30,8 +30,29 @@ class EditPayload(BaseModel):
     candidate_id: str
     description: str | None = None
     target_project: str | None = None
-    route: str | None = None  # feishu-task | project-main | project-inbox | global-inbox
+    route: str | None = (
+        None  # feishu-task | feishu-meeting | project-main | project-inbox | global-inbox
+    )
     due_date: str | None = None
+    start_at: str | None = None  # 新建日历会议：本地 naive YYYY-MM-DDTHH:MM（空串 = 清除）
+    end_at: str | None = None
+
+
+class TaskEditPayload(BaseModel):
+    """今日待办任务行内编辑：只改标题与/或截止日期（空 due_date = 清除截止）。"""
+
+    task_id: str
+    summary: str | None = None
+    due_date: str | None = None
+
+
+class MeetingEditPayload(BaseModel):
+    """今日会议行内编辑：只改标题与/或起止时间（本地 naive YYYY-MM-DDTHH:MM）。"""
+
+    event_id: str
+    summary: str | None = None
+    start_at: str | None = None
+    end_at: str | None = None
 
 
 class CapturePayload(BaseModel):
@@ -78,6 +99,8 @@ def review_entry_payload(entry: ReviewEntry) -> dict[str, object]:
         "target_project": c.target_project,
         "route": c.route.value if c.route else None,
         "due_date": c.due_date,
+        "start_at": c.start_at,
+        "end_at": c.end_at,
         "evidence": c.evidence.anchor if c.evidence else None,
         "decision": c.decision.value,
         "historical": c.historical,
@@ -173,7 +196,13 @@ def brief_payload(snapshot: dict[str, object] | None) -> dict[str, object] | Non
             "reasons": [str(r) for r in health_reasons] if isinstance(health_reasons, list) else [],
         },
         "meetings": [
-            {"title": str(m.get("title", "")), "start_time": str(m.get("start_time", ""))}
+            {
+                "title": str(m.get("title", "")),
+                "start_time": str(m.get("start_time", "")),
+                "event_id": m.get("event_id"),
+                "start_ts": m.get("start_ts"),
+                "end_ts": m.get("end_ts"),
+            }
             for m in meeting_list
             if isinstance(m, dict)
         ]

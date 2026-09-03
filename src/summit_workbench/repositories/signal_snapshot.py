@@ -114,3 +114,103 @@ def mark_task_completed(vault_dir: Path, day: str, task_guid: str) -> str | None
     snapshot["completions"] = len(completion_list)
     write_snapshot(vault_dir, day, snapshot)
     return summary or None
+
+
+def mark_task_edited(
+    vault_dir: Path,
+    day: str,
+    task_guid: str,
+    *,
+    summary: str | None = None,
+    due_date: str | None = None,
+    clear_due: bool = False,
+) -> bool:
+    """把当日快照中某飞书任务的行内编辑镜像一致（Web「编辑任务」用）。
+
+    - ``task_list`` 中对应条目更新标题/截止（仅更新显式给出的字段）；
+    - 引用它的行动候选（AI「今日优先」注解行）同步标题/截止，保持事实区一致；
+    - ``clear_due`` 为 True 时把该任务/行动的截止清掉（与飞书侧清除同步）。
+    任务不在快照中返回 False（不写盘）。
+    """
+    snapshot = read_snapshot(vault_dir, day)
+    if snapshot is None:
+        return False
+    task_list = snapshot.get("task_list")
+    if not isinstance(task_list, list):
+        return False
+
+    def _apply(item: dict[str, object]) -> None:
+        if summary is not None:
+            item["summary"] = summary
+        if clear_due:
+            item["due_date"] = None
+        elif due_date is not None:
+            item["due_date"] = due_date
+
+    idx = next(
+        (i for i, item in enumerate(task_list) if _task_guid_matches(item, task_guid)),
+        None,
+    )
+    if idx is None:
+        return False
+    target = task_list[idx]
+    if not isinstance(target, dict):
+        return False
+    _apply(target)
+
+    actions = snapshot.get("actions")
+    if isinstance(actions, list):
+        updated: list[object] = []
+        for item in actions:
+            if _action_links_task(item, task_guid) and isinstance(item, dict):
+                if summary is not None:
+                    item["title"] = summary
+                if clear_due:
+                    item["due_date"] = None
+                elif due_date is not None:
+                    item["due_date"] = due_date
+            updated.append(item)
+        snapshot["actions"] = updated
+
+    write_snapshot(vault_dir, day, snapshot)
+    return True
+
+
+def mark_meeting_edited(
+    vault_dir: Path,
+    day: str,
+    event_id: str,
+    *,
+    summary: str | None = None,
+    start_time: str | None = None,
+    start_ts: str | None = None,
+    end_ts: str | None = None,
+) -> bool:
+    """把当日快照中某日历事件的行内编辑镜像一致（Web「编辑会议」用）。
+
+    只更新显式给出的字段（``start_time`` 为展示串，``start_ts``/``end_ts`` 为原始
+    unix 秒，供行内编辑弹窗预填）。事件不在快照中返回 False（不写盘）。
+    """
+    snapshot = read_snapshot(vault_dir, day)
+    if snapshot is None:
+        return False
+    meeting_list = snapshot.get("meeting_list")
+    if not isinstance(meeting_list, list):
+        return False
+    target: dict[str, object] | None = None
+    for item in meeting_list:
+        if isinstance(item, dict) and str(item.get("event_id") or "").lower() == event_id.lower():
+            target = item
+            break
+    if target is None:
+        return False
+    if summary is not None:
+        target["title"] = summary
+    if start_time is not None:
+        target["start_time"] = start_time
+    if start_ts is not None:
+        target["start_ts"] = start_ts
+    if end_ts is not None:
+        target["end_ts"] = end_ts
+    write_snapshot(vault_dir, day, snapshot)
+    return True

@@ -6,6 +6,8 @@ export interface ReviewDraftFields {
   target_project: string;
   route: string;
   due_date: string;
+  start_at?: string;
+  end_at?: string;
 }
 
 export interface DraftSnapshot {

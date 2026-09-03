@@ -30,9 +30,11 @@ TOKEN_PATH = "/open-apis/authen/v2/oauth/token"  # 授权码换取与刷新共�
 # 不进入这里——避免把仅 tenant 可授予的 scope 混入用户授权导致 20027。
 # offline_access 必需——只有授予它，换取 token 时才会返回 refresh_token。
 DEFAULT_SCOPES: tuple[str, ...] = (
-    "calendar:calendar:readonly",  # 日历只读（真机核实：instance_view 读今日会议可用，2026-09）
+    # 日历读写（2026-09 由只读升级：审批「新建会议」与工作台行内编辑日历事件需要写；
+    # 在开放平台给应用开通 calendar:calendar 后需**重新授权一次**，旧 token 不带新 scope）。
+    "calendar:calendar",
     "task:task:read",  # 任务读（M2-1 list_tasks；真机核实：粗粒度 task:task 不足，需细粒度）
-    "task:task:write",  # 任务写（M1-4 create_task / M4 wb task）
+    "task:task:write",  # 任务写（create/update/complete）
     "docx:document:readonly",  # 文档只读（用户态）
     "offline_access",  # 换取 refresh_token 必需
 )

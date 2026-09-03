@@ -77,6 +77,8 @@ def _render_entry(entry: ReviewEntry) -> str:
             f"  - target_project: {target}",
             f"  - route: {route}",
             f"  - due_date: {due}",
+            f"  - start_at: {item.start_at or ''}",
+            f"  - end_at: {item.end_at or ''}",
             f"  - evidence: {evidence}",
             f"  - actionable: {actionable}",
             f"  - historical: {'yes' if item.historical else 'no'}",
@@ -157,6 +159,8 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
     due = _field(block, "due_date") or None
     if due:
         date.fromisoformat(due)
+    start_at = _field(block, "start_at") or None
+    end_at = _field(block, "end_at") or None
     evidence_raw = _field(block, "evidence")
     original = _original(block)
     heading_parts = heading.removeprefix("## ").split(" ", 1)
@@ -171,6 +175,8 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         route=RouteTarget(route_raw) if route_raw else None,
         evidence=EvidenceRef(anchor=evidence_raw) if evidence_raw else None,
         due_date=due,
+        start_at=start_at,
+        end_at=end_at,
         is_next_step=True,
         decision=decision,
         historical=_field(block, "historical") == "yes",

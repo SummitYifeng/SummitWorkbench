@@ -50,7 +50,9 @@ from summit_workbench.repositories.review_edit import (
 )
 from summit_workbench.repositories.review_page import parse_review_page, review_path
 from summit_workbench.repositories.signal_snapshot import (
+    mark_meeting_edited,
     mark_task_completed,
+    mark_task_edited,
     read_snapshot,
 )
 from summit_workbench.webapp.api import (
@@ -59,8 +61,10 @@ from summit_workbench.webapp.api import (
     CapturePayload,
     DecidePayload,
     EditPayload,
+    MeetingEditPayload,
     ProjectPayload,
     TaskCompletePayload,
+    TaskEditPayload,
     brief_payload,
     review_payload,
 )
@@ -73,6 +77,7 @@ from summit_workbench.webapp.build_info import (
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
 from summit_workbench.workflows.review_apply import (
     ApplyReport,
+    MeetingCreator,
     TaskCreator,
     apply_meeting_review,
 )
@@ -137,6 +142,52 @@ def _build_task_creator(ctx: WebContext) -> TaskCreator:
             candidate_id,
             timezone=ctx.timezone,
         ).guid
+
+    return create
+
+
+def _build_meeting_creator(ctx: WebContext) -> MeetingCreator:
+    """审批「新建会议」写回器：解析主日历后创建定时日程事件，返回 event_id。
+
+    缺省结束时间 = 开始 + 60 分钟；失败（含日历写 scope 未授权）抛错由
+    apply 面板层可见化。
+    """
+    from datetime import datetime, timedelta
+    from functools import lru_cache
+
+    from summit_workbench.providers.feishu import (
+        FeishuClient,
+        FeishuSession,
+        create_event,
+        load_feishu_config,
+    )
+    from summit_workbench.providers.feishu.calendar import primary_calendar_id
+
+    @lru_cache(maxsize=1)
+    def client() -> object:
+        cfg = load_feishu_config()
+        return FeishuClient(cfg, FeishuSession(cfg).access_token())
+
+    def create(summary: str, start_at: str | None, end_at: str | None, candidate_id: str) -> str:
+        if start_at is None:
+            raise ValueError("新建会议需要开始时间")
+        start = datetime.fromisoformat(start_at)
+        if start.tzinfo is not None:
+            start = start.replace(tzinfo=None)  # 统一按 ctx 时区解释（前端传本地 naive）
+        end_iso = (
+            end_at
+            if end_at is not None
+            else (start + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M")
+        )
+        calendar_id = primary_calendar_id(client())  # type: ignore[arg-type]
+        return create_event(
+            client(),  # type: ignore[arg-type]
+            calendar_id,
+            summary,
+            start_at,
+            end_iso,
+            timezone=ctx.timezone,
+        )
 
     return create
 
@@ -454,6 +505,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 target_project=payload.target_project,
                 route=RouteTarget(payload.route) if payload.route else None,
                 due_date=payload.due_date,
+                start_at=payload.start_at,
+                end_at=payload.end_at,
             )
         except (ReviewEditError, ValueError) as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
@@ -471,7 +524,11 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     def api_apply() -> dict[str, object]:
         try:
             report = apply_meeting_review(
-                ctx.vault_dir, ctx.work_root, apply=True, task_creator=_build_task_creator(ctx)
+                ctx.vault_dir,
+                ctx.work_root,
+                apply=True,
+                task_creator=_build_task_creator(ctx),
+                meeting_creator=_build_meeting_creator(ctx),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
@@ -558,6 +615,108 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         summary = mark_task_completed(ctx.vault_dir, ctx.today(), guid)
         tail = f"：{summary}" if summary else ""
         return {"ok": True, "message": f"任务已完成{tail}", "task_id": guid}
+
+    @app.post("/api/tasks/update")
+    def api_task_update(payload: TaskEditPayload) -> dict[str, object]:
+        """今日待办任务行内编辑：改标题/截止（写回飞书 = 真源）并镜像当日快照。"""
+        guid = payload.task_id.strip()
+        if not guid:
+            return {"ok": False, "message": "缺少任务 id"}
+        summary = payload.summary.strip() if payload.summary is not None else None
+        if summary == "":
+            return {"ok": False, "message": "任务标题不能为空"}
+        due_raw = payload.due_date
+        due_value: str | None = None
+        clear_due = False
+        if due_raw is not None:
+            stripped = due_raw.strip()
+            if stripped:
+                due_value = stripped
+            else:
+                clear_due = True
+        if summary is None and due_value is None and not clear_due:
+            return {"ok": False, "message": "没有需要更新的内容"}
+        from summit_workbench.providers.feishu import (
+            FeishuClient,
+            FeishuSession,
+            load_feishu_config,
+            update_task,
+        )
+
+        try:
+            cfg = load_feishu_config()
+            update_task(
+                FeishuClient(cfg, FeishuSession(cfg).access_token()),
+                guid,
+                summary=summary,
+                due_date=due_value,
+                clear_due=clear_due,
+                timezone=ctx.timezone,
+            )
+        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
+            return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
+        mark_task_edited(
+            ctx.vault_dir,
+            ctx.today(),
+            guid,
+            summary=summary,
+            due_date=due_value,
+            clear_due=clear_due,
+        )
+        return {"ok": True, "message": "任务已更新", "task_id": guid}
+
+    @app.post("/api/meetings/update")
+    def api_meeting_update(payload: MeetingEditPayload) -> dict[str, object]:
+        """今日会议行内编辑：改标题/起止时间（写回飞书日历 = 真源）并镜像当日快照。"""
+        event_id = payload.event_id.strip()
+        if not event_id:
+            return {"ok": False, "message": "缺少会议事件 id"}
+        summary = payload.summary.strip() if payload.summary is not None else None
+        if summary == "":
+            return {"ok": False, "message": "会议标题不能为空"}
+        start_at = payload.start_at.strip() if payload.start_at else None
+        end_at = payload.end_at.strip() if payload.end_at else None
+        if end_at is not None and start_at is None:
+            return {"ok": False, "message": "改了结束时间也要一并改开始时间"}
+        if summary is None and start_at is None and end_at is None:
+            return {"ok": False, "message": "没有需要更新的内容"}
+        from summit_workbench.providers.feishu import (
+            FeishuClient,
+            FeishuSession,
+            load_feishu_config,
+            update_event,
+        )
+        from summit_workbench.providers.feishu.calendar import (
+            local_iso_to_epoch_seconds,
+            primary_calendar_id,
+        )
+
+        try:
+            cfg = load_feishu_config()
+            client = FeishuClient(cfg, FeishuSession(cfg).access_token())
+            calendar_id = primary_calendar_id(client)
+            update_event(
+                client,
+                calendar_id,
+                event_id,
+                summary=summary,
+                start_iso=start_at,
+                end_iso=end_at,
+                timezone=ctx.timezone,
+            )
+        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
+            return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
+        display_start = start_at[11:16] if start_at else None
+        mark_meeting_edited(
+            ctx.vault_dir,
+            ctx.today(),
+            event_id,
+            summary=summary,
+            start_time=display_start,
+            start_ts=local_iso_to_epoch_seconds(start_at, ctx.timezone) if start_at else None,
+            end_ts=local_iso_to_epoch_seconds(end_at, ctx.timezone) if end_at else None,
+        )
+        return {"ok": True, "message": "会议已更新", "event_id": event_id}
 
     @app.post("/api/run/brief")
     def api_run_brief() -> dict[str, object]:
@@ -739,7 +898,11 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     def apply() -> HTMLResponse:
         try:
             report = apply_meeting_review(
-                ctx.vault_dir, ctx.work_root, apply=True, task_creator=_build_task_creator(ctx)
+                ctx.vault_dir,
+                ctx.work_root,
+                apply=True,
+                task_creator=_build_task_creator(ctx),
+                meeting_creator=_build_meeting_creator(ctx),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             detail = f"应用失败：{type(exc).__name__}: {exc}"

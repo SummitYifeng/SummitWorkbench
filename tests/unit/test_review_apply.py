@@ -240,3 +240,61 @@ def test_completed_ledger_makes_reintroduced_candidate_idempotent(tmp_path):
     second = apply_meeting_review(vault, work, apply=True)
     assert second.applied == 0
     assert project.read_text(encoding="utf-8") == first
+
+
+def _meeting_entry(start_at: str | None = None, end_at: str | None = None) -> ReviewEntry:
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_MEETING,
+    )
+    return replace(entry, candidate=replace(entry.candidate, start_at=start_at, end_at=end_at))
+
+
+def test_meeting_route_plan_requires_start_time(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    refresh_review_page(vault, [_meeting_entry(start_at=None)])
+    report = apply_meeting_review(vault, work)
+    assert report.actions[0].executable is False
+    assert "开始时间" in (report.actions[0].reason or "")
+
+
+def test_meeting_route_apply_creates_event_via_creator(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    created: dict[str, object] = {}
+
+    def fake_meeting_creator(
+        summary: str, start_at: str | None, end_at: str | None, candidate_id: str
+    ) -> str:
+        created["summary"] = summary
+        created["start_at"] = start_at
+        created["end_at"] = end_at
+        created["candidate_id"] = candidate_id
+        return "ev-1"
+
+    refresh_review_page(
+        vault, [_meeting_entry(start_at="2026-09-10T14:00", end_at="2026-09-10T15:00")]
+    )
+    report = apply_meeting_review(vault, work, apply=True, meeting_creator=fake_meeting_creator)
+    assert report.applied == 1
+    assert created["summary"] == "final-m:n#action-item-0"
+    assert created["start_at"] == "2026-09-10T14:00"
+    assert created["end_at"] == "2026-09-10T15:00"
+    assert created["candidate_id"] == "m:n#action-item-0"
+    # 幂等：审计已完成的 candidate 不再重复创建
+    refresh_review_page(vault, [_meeting_entry(start_at="2026-09-10T14:00")])
+    report = apply_meeting_review(vault, work, apply=True, meeting_creator=fake_meeting_creator)
+    assert report.applied == 0
+    assert len(created) == 4  # 未再调用创建器
+
+
+def test_meeting_route_without_creator_reports_failure(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    refresh_review_page(vault, [_meeting_entry(start_at="2026-09-10T14:00")])
+    report = apply_meeting_review(vault, work, apply=True)
+    # 缺少会议创建器 → 条目留在审批页并记失败（与任务创建器同款安全行为）
+    assert report.applied == 0
+    assert report.failed == 1

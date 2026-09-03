@@ -113,3 +113,23 @@ def test_parser_ignores_template_example_inside_html_comment():
     parsed = parse_review_page(text)
     assert parsed.errors == []
     assert parsed.entries == []
+
+
+def test_feishu_meeting_entry_roundtrips_start_and_end():
+    entry = replace(
+        _entry(),
+        candidate=replace(
+            _entry().candidate,
+            route=RouteTarget.FEISHU_MEETING,
+            target_project=None,
+            start_at="2026-09-10T14:00",
+            end_at="2026-09-10T15:00",
+        ),
+    )
+    parsed = parse_review_page(render_review_page([entry], today=date(2026, 8, 31)))
+    assert parsed.errors == []
+    got = parsed.entries[0].candidate
+    assert got.route is RouteTarget.FEISHU_MEETING
+    assert got.start_at == "2026-09-10T14:00"
+    assert got.end_at == "2026-09-10T15:00"
+    assert got.is_actionable() is True  # 新建会议不需要已解析项目

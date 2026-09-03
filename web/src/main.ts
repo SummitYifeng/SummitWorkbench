@@ -88,6 +88,8 @@ interface ReviewEntry {
   target_project: string | null;
   route: string | null;
   due_date: string | null;
+  start_at: string | null;
+  end_at: string | null;
   evidence: string | null;
   decision: string;
   historical: boolean;
@@ -117,6 +119,7 @@ const KIND_LABELS: Record<string, string> = {
 };
 const ROUTE_LABELS: Record<string, string> = {
   'feishu-task': '飞书任务',
+  'feishu-meeting': '新建会议',
   'project-main': '项目主笔记',
   'project-inbox': '项目 inbox',
   'global-inbox': '全局 inbox',
@@ -257,6 +260,8 @@ function saveCurrentDraftSnapshot(): void {
       target_project: String(data.get('target_project') ?? ''),
       route: String(data.get('route') ?? ''),
       due_date: String(data.get('due_date') ?? ''),
+      start_at: String(data.get('start_at') ?? ''),
+      end_at: String(data.get('end_at') ?? ''),
     };
   });
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
@@ -1107,6 +1112,9 @@ function entryCard(e: ReviewEntry): string {
     e.target_project ? '目标：' + esc(e.target_project) : '目标：unresolved',
     e.route ? '落点：' + (ROUTE_LABELS[e.route] ?? e.route) : '落点：未定',
     e.due_date ? '截止：' + esc(e.due_date) + (expired ? '（已过期）' : '') : '',
+    e.start_at
+      ? '会议时间：' + esc(e.start_at.replace('T', ' ')) + (e.end_at ? ' ~ ' + esc(e.end_at.replace('T', ' ')) : '')
+      : '',
     e.evidence ? '依据：' + esc(e.evidence) : '',
     e.historical ? '历史补导' : '',
   ].filter(Boolean).join(' · ');
@@ -1138,6 +1146,8 @@ function entryCard(e: ReviewEntry): string {
     '<div><label>目标项目</label><input name="target_project" value="' + esc(e.target_project ?? '') + '"></div>' +
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
     '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
+    '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
+    '<div><label>结束时间（新建会议）</label><input name="end_at" type="datetime-local" value="' + esc(e.end_at ?? '') + '"></div>' +
     '</div>' +
     '<div class="row">' +
     (e.decision === 'pending'
@@ -1151,7 +1161,7 @@ function entryCard(e: ReviewEntry): string {
 }
 
 function routeOptions(current: string | null): string {
-  const keys = ['', 'feishu-task', 'project-main', 'project-inbox', 'global-inbox'];
+  const keys = ['', 'feishu-task', 'feishu-meeting', 'project-main', 'project-inbox', 'global-inbox'];
   return keys.map((k) => {
     const label = k === '' ? '（未定）' : ROUTE_LABELS[k] ?? k;
     return '<option value="' + k + '"' + (k === current ? ' selected' : '') + '>' + label + '</option>';
@@ -1208,6 +1218,27 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'task-complete') {
     void completeTask(btn);
+    return;
+  }
+  if (action === 'task-edit') {
+    openRowEditModal('task', {
+      id: btn.dataset.task ?? '',
+      title: btn.dataset.title ?? '',
+      due: btn.dataset.due ?? '',
+    });
+    return;
+  }
+  if (action === 'meeting-edit') {
+    openRowEditModal('meeting', {
+      id: btn.dataset.event ?? '',
+      title: btn.dataset.title ?? '',
+      start: tsToDatetimeLocal(btn.dataset.start),
+      end: tsToDatetimeLocal(btn.dataset.end) || plusMinutesInput(btn.dataset.start, 60),
+    });
+    return;
+  }
+  if (action === 'close-modal') {
+    closeModal();
     return;
   }
   if (action === 'plan') {
@@ -1417,6 +1448,95 @@ async function completeTask(btn: HTMLElement): Promise<void> {
     toast(String(err), 'err');
     doneBtn.disabled = false;
     doneBtn.classList.remove('busy');
+  }
+}
+
+/** unix 秒（字符串）→ 本地 datetime-local 输入值（YYYY-MM-DDTHH:MM）；无效返回空串。 */
+function tsToDatetimeLocal(ts: string | null | undefined): string {
+  const seconds = Number(ts);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  const d = new Date(seconds * 1000);
+  const pad = (x: number): string => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+/** unix 秒 + 分钟偏移 → datetime-local 输入值（结束时间缺省 = 开始 + 60 分钟）。 */
+function plusMinutesInput(ts: string | null | undefined, minutes: number): string {
+  const seconds = Number(ts);
+  if (!Number.isFinite(seconds) || seconds <= 0) return '';
+  const d = new Date((seconds + minutes * 60) * 1000);
+  const pad = (x: number): string => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+/** 打开任务/会议的行内编辑弹窗（改动直接写回飞书本体）。 */
+function openRowEditModal(kind: 'task' | 'meeting', seed: Record<string, string>): void {
+  const hint = kind === 'task'
+    ? '<p class="hint">改动直接写回飞书任务本体；清空截止 = 移除截止日期。</p>'
+    : '<p class="hint">改动直接写回飞书日历事件（个人日程，不邀请他人）。</p>';
+  const body = kind === 'task'
+    ? '<label>标题</label><input id="row-edit-summary" required value="' + esc(seed.title ?? '') + '">' +
+      '<div class="form-row"><label>截止日期</label><input id="row-edit-due" type="date" value="' +
+      esc(seed.due ?? '') + '"></div>'
+    : '<label>标题</label><input id="row-edit-summary" required value="' + esc(seed.title ?? '') + '">' +
+      '<div class="grid2">' +
+      '<div><label>开始时间</label><input id="row-edit-start" type="datetime-local" required value="' +
+      esc(seed.start ?? '') + '"></div>' +
+      '<div><label>结束时间</label><input id="row-edit-end" type="datetime-local" required value="' +
+      esc(seed.end ?? '') + '"></div>' +
+      '</div>';
+  openModal(
+    '<h3>' + (kind === 'task' ? '编辑任务' : '编辑会议') + '</h3>' + hint +
+    '<form id="row-edit-form">' + body +
+    '<div class="row"><button class="primary" type="submit">保存</button>' +
+    '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
+    '</form>'
+  );
+  const form = document.getElementById('row-edit-form') as HTMLFormElement | null;
+  form?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    void submitRowEdit(kind, seed.id ?? '');
+  });
+}
+
+/** 行内编辑提交：任务/会议 → PATCH 写回飞书 + 快照镜像 → 刷新「今日」。 */
+async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void> {
+  if (!id) {
+    toast('缺少目标 id', 'err');
+    return;
+  }
+  const summaryInput = document.getElementById('row-edit-summary') as HTMLInputElement | null;
+  const summary = (summaryInput?.value ?? '').trim();
+  if (!summary) {
+    toast('标题不能为空', 'err');
+    return;
+  }
+  const url = kind === 'task' ? '/api/tasks/update' : '/api/meetings/update';
+  const body: Record<string, string> = kind === 'task'
+    ? {
+        task_id: id,
+        summary,
+        due_date: (document.getElementById('row-edit-due') as HTMLInputElement | null)?.value ?? '',
+      }
+    : {
+        event_id: id,
+        summary,
+        start_at: (document.getElementById('row-edit-start') as HTMLInputElement | null)?.value ?? '',
+        end_at: (document.getElementById('row-edit-end') as HTMLInputElement | null)?.value ?? '',
+      };
+  try {
+    const r = await mutation(() => api<{ ok: boolean; message: string }>(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }));
+    closeModal();
+    toast(r.message, r.ok ? 'ok' : 'err');
+    if (r.ok) void refreshState();
+  } catch (err) {
+    toast(String(err), 'err');
   }
 }
 

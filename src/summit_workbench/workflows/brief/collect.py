@@ -51,7 +51,21 @@ def format_event_time(event: CalendarEvent, timezone: str) -> str:
 
 
 def _meeting_facts(events: list[CalendarEvent], timezone: str) -> list[MeetingFact]:
-    return [MeetingFact(title=e.title, start_time=format_event_time(e, timezone)) for e in events]
+    facts: list[MeetingFact] = []
+    for e in events:
+        display = format_event_time(e, timezone)
+        start_ts = e.start_time if not e.is_all_day else None
+        end_ts = e.end_time if (e.end_time and not e.is_all_day) else None
+        facts.append(
+            MeetingFact(
+                title=e.title,
+                start_time=display,
+                event_id=e.event_id or None,
+                start_ts=start_ts,
+                end_ts=end_ts,
+            )
+        )
+    return facts
 
 
 def _task_facts(tasks: list[TaskItem]) -> list[TaskFact]:

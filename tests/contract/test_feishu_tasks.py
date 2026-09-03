@@ -7,7 +7,12 @@ import json
 import httpx
 from pydantic import SecretStr
 
-from summit_workbench.providers.feishu import FeishuClient, complete_task, create_task
+from summit_workbench.providers.feishu import (
+    FeishuClient,
+    complete_task,
+    create_task,
+    update_task,
+)
 from summit_workbench.providers.feishu.config import FeishuConfig
 
 CFG = FeishuConfig(app_id="cli_test", redirect_uri="http://localhost/callback")
@@ -85,3 +90,52 @@ def test_complete_task_patches_official_v2_shape():
     task = body.get("task")
     assert isinstance(task, dict)
     assert task["completed"] is True
+    # 官方 Task v2 更新契约：必须列出 update_fields，否则字段不生效。
+    assert body["update_fields"] == ["completed"]
+
+
+def test_update_task_patches_only_given_fields():
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "body": json.loads(request.content),
+            }
+        )
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("token"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    update_task(client, "task-1", summary="改标题", timezone="Asia/Shanghai")
+    body = seen[-1]["body"]
+    assert isinstance(body, dict)
+    task = body.get("task")
+    assert isinstance(task, dict)
+    assert task == {"summary": "改标题"}
+    assert body["update_fields"] == ["summary"]
+
+    update_task(client, "task-1", due_date="2026-09-10", timezone="Asia/Shanghai")
+    body = seen[-1]["body"]
+    assert isinstance(body, dict)
+    task = body.get("task")
+    assert isinstance(task, dict)
+    assert set(task) == {"due"}
+    assert body["update_fields"] == ["due"]
+    due = task["due"]
+    assert isinstance(due, dict)
+    assert due["is_all_day"] is True
+    assert isinstance(due["timestamp"], int)
+
+    update_task(client, "task-1", clear_due=True, timezone="Asia/Shanghai")
+    body = seen[-1]["body"]
+    assert isinstance(body, dict)
+    task = body.get("task")
+    assert isinstance(task, dict)
+    assert task["due"] is None
+    assert body["update_fields"] == ["due"]

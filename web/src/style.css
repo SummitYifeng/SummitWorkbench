@@ -276,11 +276,12 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .brief2 .bf-ann.cat-stall { color: var(--warn); background: var(--warn-soft); }
 .brief2 .bf-ann.cat-proposal { color: var(--muted); background: var(--bg); }
 
-/* 任务行尾部：注解 chip +「标记完成」小圆钮（一键写回飞书） */
+/* 任务/会议行尾部：注解 chip +「标记完成 / 编辑」小圆钮（一键写回飞书） */
 .brief2 .bf-trailing {
   display: inline-flex; align-items: center; gap: 8px; justify-self: end;
 }
-.brief2 .bf-done {
+.brief2 .bf-done,
+.brief2 .bf-edit {
   width: 22px; height: 22px; padding: 0; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 999px; font-size: 12px; line-height: 1;
@@ -288,7 +289,8 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   transition: color 0.12s, border-color 0.12s, opacity 0.12s;
 }
 .brief2 .bf-done:hover { color: var(--ok); border-color: var(--ok); box-shadow: none; }
-.brief2 .bf-done.busy { opacity: 0.5; pointer-events: none; }
+.brief2 .bf-edit:hover { color: var(--accent); border-color: var(--accent); box-shadow: none; }
+.brief2 .bf-done.busy, .brief2 .bf-edit.busy { opacity: 0.5; pointer-events: none; }
 
 /* 需要行动（任务清单之外） */
 .brief2 .bf-act { padding: 9px 2px; }

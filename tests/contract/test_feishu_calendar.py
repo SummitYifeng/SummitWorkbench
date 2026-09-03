@@ -1,15 +1,20 @@
-"""飞书日历采集契约测试：主日历解析 + 事件列表原文直取（MockTransport）。"""
+"""飞书日历契约测试：只读采集原文直取 + 日程写回形状（MockTransport）。"""
 
 from __future__ import annotations
+
+import json
 
 import httpx
 from pydantic import SecretStr
 
 from summit_workbench.providers.feishu.calendar import (
+    create_event,
     list_event_instances,
     list_events,
     list_events_between,
+    local_iso_to_epoch_seconds,
     primary_calendar_id,
+    update_event,
 )
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.config import FeishuConfig
@@ -109,3 +114,79 @@ def test_list_events_between_uses_instance_view() -> None:
     # 便捷入口解析主日历后应走 instance_view（今日会议的正确来源）。
     events = list_events_between(_client(_handler), 1, 2)
     assert [e.event_id for e in events] == ["inst-b"]
+
+
+def test_local_iso_converts_with_timezone() -> None:
+    assert local_iso_to_epoch_seconds("2026-09-10T14:00", "Asia/Shanghai") == "1789020000"
+    # 带时区的输入按原时区换算
+    assert local_iso_to_epoch_seconds("2026-09-10T06:00+00:00", "Asia/Shanghai") == "1789020000"
+
+
+def _write_client(seen: dict[str, object]) -> FeishuClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        if request.method == "POST" and request.url.path.endswith("/events"):
+            return httpx.Response(200, json={"code": 0, "data": {"event": {"event_id": "ev-new"}}})
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    return FeishuClient(CFG, SecretStr("tok"), client=http)
+
+
+def test_create_event_posts_seconds_timestamps() -> None:
+    seen: dict[str, object] = {}
+    client = _write_client(seen)
+    event_id = create_event(
+        client,
+        "cal_main",
+        "需求对齐会",
+        "2026-09-10T14:00",
+        "2026-09-10T15:00",
+        timezone="Asia/Shanghai",
+    )
+    assert event_id == "ev-new"
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/open-apis/calendar/v4/calendars/cal_main/events"
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert body["summary"] == "需求对齐会"
+    start = body["start_time"]
+    end = body["end_time"]
+    assert isinstance(start, dict) and isinstance(end, dict)
+    # 官方日历契约：时间戳是 unix 秒的字符串（不是毫秒/数字）。
+    assert isinstance(start["timestamp"], str)
+    assert start["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T14:00", "Asia/Shanghai")
+    assert end["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T15:00", "Asia/Shanghai")
+
+
+def test_update_event_patches_only_given_fields() -> None:
+    seen: dict[str, object] = {}
+    client = _write_client(seen)
+    update_event(
+        client,
+        "cal_main",
+        "ev-1",
+        summary="改标题",
+        timezone="Asia/Shanghai",
+    )
+    assert seen["method"] == "PATCH"
+    assert seen["path"] == "/open-apis/calendar/v4/calendars/cal_main/events/ev-1"
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert set(body) == {"summary"}
+    update_event(
+        client,
+        "cal_main",
+        "ev-1",
+        start_iso="2026-09-10T09:00",
+        end_iso="2026-09-10T10:00",
+        timezone="Asia/Shanghai",
+    )
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert set(body) == {"start_time", "end_time"}
+    start = body["start_time"]
+    assert isinstance(start, dict)
+    assert start["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T09:00", "Asia/Shanghai")
