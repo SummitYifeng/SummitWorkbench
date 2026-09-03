@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import time as _time
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Any
@@ -110,17 +111,27 @@ def _all_day_due(value: str, timezone: str) -> dict[str, object]:
 
 
 def complete_task(client: FeishuClient, task_guid: str) -> None:
-    """把飞书任务标记为已完成（POST /task/v2/tasks/{guid}/complete，幂等）。
+    """把飞书任务标记为已完成（PATCH /task/v2/tasks/{guid}，幂等近似）。
 
     Web 工作台「一键完成」的写回点：飞书是任务状态的唯一真源，本地只在
     调用成功后镜像到当日渲染快照（见 repositories.signal_snapshot.mark_task_completed）。
-    真机核实（2026-09-03）：Task v2 的 ``PATCH update_fields`` **不支持** ``completed``
-    （合法字段白名单见报错），完成必须走官方专用端点 ``.../tasks/{guid}/complete``。
+    真机核实（2026-09-03，多形态实测收敛）：
+    - Task v2 的 ``PATCH update_fields`` 白名单**不含** ``completed``；
+    - ``POST .../tasks/{guid}/complete`` 在本租户返回 404（第三方文档所述端点不存在）；
+    - 正解是 ``PATCH`` 设置 ``completed_at``（毫秒时间戳字符串）并列入
+      ``update_fields``——飞书返回 ``agent_task_status=4`` 并落 ``completed_at``。
     """
     guid = str(task_guid).strip()
     if not guid:
         raise ValueError("缺少任务 guid")
-    client.post(f"{CREATE_TASK_PATH}/{guid}/complete", json={})
+    completed_at_ms = str(int(_time.time() * 1000))
+    client.patch(
+        f"{CREATE_TASK_PATH}/{guid}",
+        json={
+            "task": {"completed_at": completed_at_ms},
+            "update_fields": ["completed_at"],
+        },
+    )
 
 
 def update_task(

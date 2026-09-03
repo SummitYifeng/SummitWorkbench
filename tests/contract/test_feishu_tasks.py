@@ -69,25 +69,43 @@ def test_without_due_omits_due_field():
     assert "due" not in bodies[0]
 
 
-def test_complete_task_posts_official_complete_endpoint():
+def test_complete_task_patches_completed_at_official_shape():
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["method"] = request.method
         seen["path"] = request.url.path
-        seen["body"] = json.loads(request.content) if request.content else {}
-        return httpx.Response(200, json={"code": 0, "data": {}})
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "task": {
+                        "agent_task_status": 4,
+                        "completed_at": str(int(1789000000 * 1000)),
+                    }
+                },
+            },
+        )
 
     client = FeishuClient(
         CFG,
         SecretStr("token"),
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
+    # 真机核实（2026-09-03）：update_fields 白名单不含 completed、POST .../complete 返回 404；
+    # 完成正解 = PATCH 设置 completed_at（毫秒字符串）+ update_fields。
     complete_task(client, "task-guid-123")
-    # 真机核实（2026-09-03）：PATCH update_fields 白名单不含 completed，
-    # 完成必须走官方专用端点 .../tasks/{guid}/complete。
-    assert seen["method"] == "POST"
-    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-123/complete"
+    assert seen["method"] == "PATCH"
+    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-123"
+    body = seen["body"]
+    assert isinstance(body, dict)
+    task = body.get("task")
+    assert isinstance(task, dict)
+    completed_at = str(task.get("completed_at") or "")
+    assert completed_at.isdigit() and len(completed_at) == 13
+    assert body["update_fields"] == ["completed_at"]
 
 
 def test_update_task_patches_only_given_fields():

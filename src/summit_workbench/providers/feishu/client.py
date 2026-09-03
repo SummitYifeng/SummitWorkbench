@@ -108,8 +108,15 @@ class FeishuClient:
 
         try:
             data = resp.json()
-        except ValueError as exc:
-            raise FeishuAPIError(f"{method} {path} 返回非 JSON", status=resp.status_code) from exc
+        except ValueError:
+            # 部分端点成功时返回空体（如 204 / 200 空 body，真机核实：task complete 端点）。
+            # 2xx 空响应视为成功；非空但非 JSON 仍是语义错误，显式上抛不猜测。
+            if resp.status_code < 300 and not resp.content.strip():
+                return {}
+            raise FeishuAPIError(
+                f"{method} {path} 返回非 JSON（HTTP {resp.status_code}）",
+                status=resp.status_code,
+            ) from None
 
         code = data.get("code")
         if code not in (0, None):
