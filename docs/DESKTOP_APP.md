@@ -1,12 +1,12 @@
 # 桌面 App（macOS）
 
-> 当前页面描述现有 Chrome App Mode 启动器。已经确认的 WKWebView、版本握手、服务监督与
+> 当前页面描述 Phase 2 的临时 Chrome App Mode 启动器。已经确认的 WKWebView、服务监督与
 > 自包含打包改造，请按
 > [面板生命周期、版本一致性与 macOS 原生壳实施文档](plans/PANEL_LIFECYCLE_AND_UPDATE_IMPLEMENTATION.md)
 > 分阶段实施；改造完成后再用最终行为整体更新本页。
 
-把本地 Web 面板包成一个原生 `.app`：双击启动 `wb web` 并在独立应用窗口
-（Chrome app 模式，无 Chrome 时退化为默认浏览器）打开面板。
+把本地 Web 面板包成一个原生 `.app`：双击后先验证 `wb web` 的 `/api/version` readiness，
+再用带当前 build 的 canonical URL 在独立应用窗口（Chrome app 模式，无 Chrome 时退化为默认浏览器）打开面板。
 
 主程序是**原生 Swift/AppKit 启动器**（`scripts/summit_launcher.swift`，构建时 `swiftc`
 编译）——脚本型主程序无法向 LaunchServices 报告「启动完成」，前台形态会 Dock 图标
@@ -33,6 +33,9 @@ scripts/build-macos-app.sh
 
 `wb` 路径、`WORK_ROOT` 与端口在构建时烘焙进启动器（同 launchd 安装方式）。仓库迁移后
 重跑脚本即可。
+
+首次使用新启动器时，如检测到严格匹配的旧 SummitWorkbench Chrome 专用 profile 主进程，
+启动器会发送 SIGTERM，最多等待 5 秒后重新打开当前 build；无法严格匹配时不会终止任何进程。
 
 ## 安装 / 打开（正式位置：/Applications）
 
@@ -63,8 +66,8 @@ open /Applications/SummitWorkbench.app              # 从「应用程序」/ 启
   的 .app**（只有 `wb` 路径 / `WORK_ROOT` / 端口 / 仓库路径变了才重跑
   `scripts/build-macos-app.sh` + 重新安装）。重启方式：退出正在运行的面板（网页顶栏
   「退出」），再从「应用程序」打开 App 重新拉起；或直接重跑 `wb web`。
-- 改了版本仍看到旧界面，按序排查：① 服务是否在构建后重启过；② 浏览器缓存了旧 `index.html`
-  （引用的旧哈希资源已删）→ **⌘⇧R 强刷**；③ 打开的是不是本仓库构建的 App——`/Applications`
+- 改了版本后启动器会先检查服务版本，SPA 也会自动检查并在安全时整页更新；用户不需要手动清缓存或强刷。
+  仍异常时，确认打开的是不是本仓库构建的 App——`/Applications`
   里的 `SummitKnowledge.app` / `SummitServerAI.app` 是**历史遗留旧产品**（内嵌冻结的旧前端
   runtime），不是本仓库产物；请打开 `/Applications/SummitWorkbench.app`（安装命令见上）。
 
@@ -73,8 +76,8 @@ open /Applications/SummitWorkbench.app              # 从「应用程序」/ 启
 - 启动器拉起 `wb web` 子进程并打开面板窗口，**App 进程存活 = 服务存活**；启动器周期
   探测 `/api/state`，服务停止后自动退出。退出面板用网页顶栏「退出」按钮（POST
   `/api/shutdown`，带 `X-WB-Shutdown` 头防任意网页误关），服务优雅退出并关窗。
-- 已运行时再次双击/打开 App → 重新弹出面板窗口（不重复起服务）；端口已被占用（例如
-  已在别处 `wb web`）时同样只开窗口。
+- 已运行时再次双击/打开 App → 先验证 `/api/version`，再重新弹出带当前 build 的面板窗口（不重复起服务）；
+  端口已被占用（例如已在别处 `wb web`）时不会终止未知进程。
 - 日志：`~/Library/Logs/summitworkbench-panel.log`。
 - 图标：雪山主题，源图 `assets/icon-1024.png`（由 `scripts/make-icon.py` 用 Pillow 生成），
   构建时转 `.icns` 注入 bundle。换新图后若仍显旧图标（访达/启动台），是系统图标缓存，

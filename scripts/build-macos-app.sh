@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # 把本地 Web 面板打包成 macOS .app（原生 Dock 图标，双击启动）。
 #
-# 双击 App → 启动 `wb web`（前台，App 存活=服务存活）→ 在独立应用窗口打开面板
-# （优先 Chrome app 模式，退化到默认浏览器）。退出 App（Cmd-Q / Dock 退出）即关服务。
+# 双击 App → 启动 `wb web`（前台，App 存活=服务存活）→ 等待 /api/version readiness
+# → 以 canonical build URL 打开 Chrome app 模式（无 Chrome 时退化到默认浏览器）。
+# 首次迁移只会终止严格匹配的 SummitWorkbench 专用 Chrome 主进程。
 #
 # 不需要 Rust/Tauri，只用系统自带工具。wb 路径在构建时烘焙进去（同 launchd 安装）；
 # 仓库若迁移，重跑本脚本即可。产物在 dist/（已 gitignore）。
@@ -61,7 +62,7 @@ $ICON_KEY
 </dict></plist>
 PLIST
 
-# 原生启动器：编译 Swift（AppKit 生命周期）。
+# 原生启动器：编译 Swift（AppKit 生命周期、readiness 握手和一次性 Chrome 迁移）。
 # 脚本型主程序会造成 Dock 图标无限弹跳（前台）或 macOS 报「应用无响应」（LSUIElement）；
 # 原生主程序注册正常的应用生命周期，根治两者，并保持「无 Dock 图标 + 网页退出」体验。
 TMP_SWIFT="$(mktemp -d)/summit_launcher.swift"
