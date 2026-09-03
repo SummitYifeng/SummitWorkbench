@@ -84,7 +84,7 @@ codesign --verify --deep --strict "$STAGED_APP"
 mkdir -p "$(dirname "$DEST_APP")"
 BACKUP_APP="$DEST_APP.previous"
 if [[ -e "$BACKUP_APP" ]]; then
-  echo "✗ 已存在旧备份：$BACKUP_APP，请先处理后重试" >&2
+  echo "✗ 已存在旧备份：${BACKUP_APP}，请先处理后重试" >&2
   exit 1
 fi
 if [[ -d "$DEST_APP" ]]; then mv "$DEST_APP" "$BACKUP_APP"; fi
