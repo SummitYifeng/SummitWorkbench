@@ -30,10 +30,12 @@
 | [0023](0023-workbench-project-curation.md) | v0.2.0 Web 工作台 | 首页「项目推进」精选清单 + 「全部项目」页（`_vault/projects/*.md` 建档 status 驱动，解决百级文件夹平铺）|
 | [0024](0024-morning-brief-v2-web-rendering.md) | v0.2.0 晨间简报 v2 | Web 面板简报组件化日程视图（信号快照附加演进下发明细 + 清单合一 AI 注解 + 全局设计令牌换新；vault Markdown 版式不变）|
 | [0025](0025-workbench-feishu-bidirectional-writeback.md) | v0.3.0 双向写回 | 工作台 → 飞书写回闭环：一键完成/行内编辑任务与会议、审批新建日历日程（飞书=唯一真源 + 快照镜像；日历写 scope 升级与重授权；完成走官方专用端点）|
+| [0026](0026-knowledge-thread-projects.md) | v0.4.0 知识线程项目 | 业务线程 = vault 一等公民（P0–P3）：线程无 Work 文件夹建档入工作台、审批「跟进事项」落点 + 线程 inbox、✎ 日志/存产物（本地文件导入/拖放/一键转当前状态）、线视图（档案区块 + 时间线）、线程信号进简报 + >14 天停滞进周复盘点名、显示名（frontmatter title）、updated 归一 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
 配套的写侧原子写归并（`repositories/_atomic.py`）随 LHF #2 一并完成。
 正式使用前再做四项加固（ADR 0019–0022）+ CI 质量门/覆盖率体检，`v0.1.0` 首发；
 随后 Web 工作台产品化、macOS 桌面 App 正式化与晨间简报 v2（ADR 0023–0024），`v0.2.0` 发布版；
-工作台 → 飞书双向写回与真机核实（ADR 0025），`v0.3.0` 发布版（M3 仍未开始）。
+工作台 → 飞书双向写回与真机核实（ADR 0025），`v0.3.0` 发布版；
+知识线程改造 P0–P3（ADR 0026），`v0.4.0` 发布版（M3 仍未开始）。

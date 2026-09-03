@@ -1,7 +1,7 @@
 {
   "name": "summit-workbench-web",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "SummitWorkbench 本地 Web 工作台（SPA，Vite + 原生 TypeScript）",
   "scripts": {

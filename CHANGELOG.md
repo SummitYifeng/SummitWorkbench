@@ -1,3 +1,26 @@
+## [0.4.0] - 2026-09-03
+
+发布版。核心问题不变（外置执行管理层 + 第二大脑），v0.4.0 完成需求再梳理结论 R2-A+ 的落地：**业务线程 = vault 一等公民**——知识线程（FinanceOps / CoachFinance / EnrollmentProduct / ERPExplore 等试点）不再依赖 Work 文件夹与 git，以 `_vault/projects/*.md` 档案建档即入工作台；线程有自己的推进日志（work-log）、AI 产物（thread-doc）、收件箱与**线视图**（档案区块 + 时间线聚合），信号（下一步 / 阻塞 / 未闭环跟进 / 长期无更新）进入晨间简报与**周复盘停滞点名**，第二大脑可按线程检索。桌面 App（LSUIElement）补上原生文件选择与编辑快捷键。质量门 491 项全绿。M3（带上下文启动与收尾）仍是下一步，未在本版开始。
+
+### 新增
+
+- **知识线程 = vault 一等公民（P0）**：线程**无需 Work 文件夹 / git**，`POST /api/projects/create` 直接在 `_vault/projects/` 建档（`type: project-main`）即入工作台；registry 全集（`scan_all_projects` = 文件夹项目 + 线程档案合并）统一进首页推进卡、「项目」页与审批「目标项目」建议下拉；下划线前缀目录（`_vault`、`_transcripts-inbox` 等）是系统内部目录，不进项目视野。已建档 4 条试点线程（FinanceOps / CoachFinance / EnrollmentProduct / ERPExplore，含中文别名解析）。归档/恢复只动档案 frontmatter，文件夹与 git 零触碰。
+- **审批路由扩展（P0，承接 L22）**：审批「目标项目」下拉与写作候选现支持已建档的**知识线程**；新落点 **「跟进事项」**（`project-followup`）把他人行动项写成主档案 `## 跟进事项` 下的**待闭环责任记录**（`- [ ] ` 复选框，人工勾选闭环，不进本人待办）；老档案首次写回自动补区块；知识线程的 inbox 落 `_vault/inboxes/<project>.md`（`type: project-inbox`），仓库项目仍写文件夹内 inbox。
+- **✎ 推进日志（P1）**：线程/项目卡与线视图内「✎ 日志」粘贴推进文本（与谁沟通、定了什么、下一步），可勾选**多个线程/项目** → AI 消化为摘要（`prompts/log-digest.md`：摘要/涉及人/类型/下一步/决策）→ 写 `_vault/logs/YYYY-MM-DD-NNN.md`（`type: work-log`，`projects:[...]` 多线程 scope）；模型不可用只存原文（`status: draft`），绝不丢。
+- **存产物（P1/P3）**：视图内「存产物」把与 AI 长对话产出的**阶段总结 / PRD / 背景包 / 时间线**全文存进所选线程（`_vault/artifacts/<project>-NNN.md`，`type: thread-doc`，frontmatter 自动命名 + `title/summary/kind` 摘要索引），之后第二大脑按线程可检索；产物弹窗支持 **📄 选择本地文件**（.md/.txt，`runOpenPanel`）与**拖放**（全环境可用），存量文档零成本收进线视图；勾选「同步更新主档案当前状态」可把产物摘要一键写为档案「当前状态」草案（`POST /api/threads/state`，显式确认后写回并刷新 `updated`）。
+- **线视图（P2）**：点项目/线程名打开 = 档案区块（当前状态 / 下一步 / 阻塞 / 跟进事项 / 决策记录，跟进带「N 条待闭环」徽标）+ **时间线**（该线程的 logs / artifacts / meetings 按日期聚合，一屏看全）；视图内可直接「✎ 日志 / 存产物 / 刷新」。日志或产物入库自动刷新关联档案 frontmatter `updated`（首页卡「更新 X」即时）。
+- **线程信号进简报与周复盘（P2/P3）**：线程「下一步」进今日简报**主线推进**、「阻塞」进**防止停摆**、未闭环跟进聚合为「跟进 X：…（共 N 条）」主线推进；已归档线程不产生信号。线程卡 >14 天无更新显示「⚠ N 天未更新」；**内容停滞检测进周复盘**——线程距复盘周截止日 >14 天无更新（`THREAD_STALL_DAYS`，与卡片同口径）且档案仍有阻塞/未闭环跟进时，周复盘「停滞项目」点名并派生「推进停滞项目 X」提议。
+- **项目显示名（P3）**：`POST /api/projects/rename` 写档案 frontmatter `title`（显示名，不改规范 ID / 别名 / Work 文件夹 / git）；卡片/项目页/审批建议/第二大脑范围/日志与产物选择器统一显示显示名（不同于档案 ID 时标注 ID）；线视图内「✎ 显示名」行内改名。
+- **桌面 App 原生壳（LSUIElement）**：`runOpenPanel`（自绘 NSOpenPanel）解决 WKWebView 在 accessory 应用下 `<input type="file">` 不弹系统面板；补最小「编辑」主菜单（⌘V 等路由第一响应者）；窗口焦点交 webView。
+
+### 修复
+
+- **frontmatter `updated` 读取归一（P3 内容停滞检测依赖）**：建档/写回产生的 `updated: 2026-09-03`（未加引号）会被 YAML 解析成 `date` 对象，`project_scan`/`project_view` 的 str-only 判断会把它当空丢弃 → 新增 `repositories/vault.py::meta_date_iso` 统一归一到 `YYYY-MM-DD` 字符串（str / date / datetime 同值同型），线程卡「更新」、>14 天未更新提示与周复盘停滞判定由此都能读到真实的最后更新时间。
+
+### 质量
+
+- 线程扫描 / 审批落点 / 线视图 / 简报线程信号 / 显示名与状态 / 周复盘停滞检测等新增测试，全套 **491 项全绿**；ruff + format + mypy strict（src 119 文件）+ 前端 strict TS + Vite 构建通过。P0/P1/P2 与 P3 第一批经真机验收并装机（前端 `215658a3`）；内容停滞检测进周复盘（本版代码完成，随本版装机后生效）。
+
 ## [0.3.0] - 2026-09-03
 
 发布版。核心问题不变（外置执行管理层 + 第二大脑），v0.3.0 把「工作台 → 飞书」的**双向写回**补全：在 v0.2 只读呈现（读任务/日历进简报）之上，现在可以在工作台**一键完成 / 行内编辑**飞书任务、**行内编辑**日历会议，并能在审批时把会议结论落成**新建日历日程事件**；飞书始终是任务与日程状态的唯一真源，本地只镜像当日渲染快照、vault 简报 Markdown 一字不动。日历权限由只读升级为**读写**（`calendar:calendar`，需重新授权），全部写回端点经真机验证（2026-09-03：建日程 / 改会议标题与起止时间 / 改任务标题与截止 / 一键完成契约修正）。质量门 457 项全绿。M3（带上下文启动与收尾）仍是下一步，未在本版开始。

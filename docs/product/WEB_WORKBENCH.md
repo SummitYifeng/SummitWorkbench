@@ -1,6 +1,6 @@
 # Web 工作台（wb web）设计说明
 
-> 状态：v0.2 已交付 · 配套 PRD L45–L49 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
+> 状态：v0.4 已交付 · 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
 >
 > 本文回答「为什么这样设计」：形态、信息架构、边界与技术取舍。
 
@@ -73,12 +73,17 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 
 - 数据来自 `scan_projects`（离线 git 状态 + 项目 inbox 计数 + 主笔记「下一步」，与简报事实区同一来源）。
 - 有动静的项目高亮（未提交/落后/积压），下一步文本直接取自主笔记，不经过模型。
-- **显示集合是「工作台精选」而非全量文件夹（ADR 0023）**：`work_root` 下只有已建档
-  （`_vault/projects/<name>.md` 存在、`type: project-main`）且 `status: active` 的项目
-  才渲染推进卡；**未建档的新文件夹**在项目区顶部以一条邀请横幅出现（逐条
+- **显示集合是「工作台精选」而非全量文件夹（ADR 0023），且项目全集含知识线程（ADR 0026）**：
+  `work_root` 下已建档（`_vault/projects/<name>.md` 存在、`type: project-main`）且
+  `status: active` 的**文件夹项目**与**无文件夹的知识线程档案**（`scan_all_projects` =
+  文件夹项目 + 线程合并；线程卡显示「知识线程」徽标 + 档案 `updated`，>14 天无更新提示）
+  一起渲染推进卡；**未建档的新文件夹**在项目区顶部以一条邀请横幅出现（逐条
   「加入工作台 / 归档」，不占卡片位），处理完即消失；归档项目（`status: archived`）不上
   首页但可在「项目」页一键恢复。每张首页卡片右下角有「归档」按钮（带确认），可直接把
   该项目移出首页。目标：本地文件夹到几十上百个量级时首页仍是清爽的推进视图。
+- **线视图（ADR 0026）**：点项目/线程名打开 = 档案区块（当前状态 / 下一步 / 阻塞 /
+  跟进事项 / 决策记录，跟进带「N 条待闭环」徽标）+ 时间线聚合（logs/artifacts/meetings
+  按日期倒序）；视图内可直接「✎ 日志 / 存产物 / 刷新」与「✎ 显示名」。
 - 第 4 个页签「项目」= 全部项目视图：列出 `work_root` 全量文件夹（含归档），支持按名搜索，
   排序为 在工作台 → 新 → 已归档；行内「加入工作台 / 归档」即改 `_vault` 档案状态，与
   `#项目` 标签解析、审批路由共用同一份项目账本。
@@ -100,6 +105,9 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 | `POST /api/review/plan` / `POST /api/review/apply` | 预演 / 显式应用（apply_meeting_review） |
 | `POST /api/capture` | 快速捕捉 + AI 分类 + 标记写回 |
 | `POST /api/projects/activate` / `POST /api/projects/archive` | 加入/恢复工作台 / 归档（ADR 0023：写 `_vault` 档案 status，幂等） |
+| `POST /api/projects/create` / `POST /api/projects/rename` | 知识线程建档（v0.4，无文件夹）/ 项目显示名（frontmatter `title`）|
+| `GET /api/projects/view` | 线视图：档案区块 + 时间线聚合（ADR 0026）|
+| `POST /api/threads/logs` / `POST /api/threads/artifacts` / `POST /api/threads/state` | ✎ 推进日志 / 存产物（含本地文件导入）/ 产物摘要 → 当前状态草案（v0.4）|
 | `POST /api/meetings/import` | 拖拽上传逐字稿全自动导入（multipart） |
 | `POST /api/run/brief` / `POST /api/run/weekly` / `POST /api/ask` | 一键触发简报/周复盘/问答 |
 
