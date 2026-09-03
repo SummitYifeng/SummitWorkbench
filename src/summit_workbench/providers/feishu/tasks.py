@@ -110,20 +110,17 @@ def _all_day_due(value: str, timezone: str) -> dict[str, object]:
 
 
 def complete_task(client: FeishuClient, task_guid: str) -> None:
-    """把飞书任务标记为已完成（PATCH /task/v2/tasks/{guid}，幂等）。
+    """把飞书任务标记为已完成（POST /task/v2/tasks/{guid}/complete，幂等）。
 
     Web 工作台「一键完成」的写回点：飞书是任务状态的唯一真源，本地只在
     调用成功后镜像到当日渲染快照（见 repositories.signal_snapshot.mark_task_completed）。
-    请求体按官方 Task v2「更新任务」契约包在 ``task`` 字段内，且必须列出
-    ``update_fields``（不列则不生效）。
+    真机核实（2026-09-03）：Task v2 的 ``PATCH update_fields`` **不支持** ``completed``
+    （合法字段白名单见报错），完成必须走官方专用端点 ``.../tasks/{guid}/complete``。
     """
     guid = str(task_guid).strip()
     if not guid:
         raise ValueError("缺少任务 guid")
-    client.patch(
-        f"{CREATE_TASK_PATH}/{guid}",
-        json={"task": {"completed": True}, "update_fields": ["completed"]},
-    )
+    client.post(f"{CREATE_TASK_PATH}/{guid}/complete", json={})
 
 
 def update_task(
@@ -161,6 +158,14 @@ def update_task(
         f"{CREATE_TASK_PATH}/{guid}",
         json={"task": task_patch, "update_fields": update_fields},
     )
+
+
+def delete_task(client: FeishuClient, task_guid: str) -> None:
+    """删除任务（DELETE /task/v2/tasks/{guid}；真机校验用/将来工作台删除任务）。"""
+    guid = str(task_guid).strip()
+    if not guid:
+        raise ValueError("缺少任务 guid")
+    client.delete(f"{CREATE_TASK_PATH}/{guid}")
 
 
 def create_task(

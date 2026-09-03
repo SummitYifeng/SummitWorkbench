@@ -11,6 +11,7 @@ from summit_workbench.providers.feishu import (
     FeishuClient,
     complete_task,
     create_task,
+    delete_task,
     update_task,
 )
 from summit_workbench.providers.feishu.config import FeishuConfig
@@ -68,13 +69,13 @@ def test_without_due_omits_due_field():
     assert "due" not in bodies[0]
 
 
-def test_complete_task_patches_official_v2_shape():
+def test_complete_task_posts_official_complete_endpoint():
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen["method"] = request.method
         seen["path"] = request.url.path
-        seen["body"] = json.loads(request.content)
+        seen["body"] = json.loads(request.content) if request.content else {}
         return httpx.Response(200, json={"code": 0, "data": {}})
 
     client = FeishuClient(
@@ -83,15 +84,10 @@ def test_complete_task_patches_official_v2_shape():
         client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
     complete_task(client, "task-guid-123")
-    assert seen["method"] == "PATCH"
-    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-123"
-    body = seen["body"]
-    assert isinstance(body, dict)
-    task = body.get("task")
-    assert isinstance(task, dict)
-    assert task["completed"] is True
-    # 官方 Task v2 更新契约：必须列出 update_fields，否则字段不生效。
-    assert body["update_fields"] == ["completed"]
+    # 真机核实（2026-09-03）：PATCH update_fields 白名单不含 completed，
+    # 完成必须走官方专用端点 .../tasks/{guid}/complete。
+    assert seen["method"] == "POST"
+    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-123/complete"
 
 
 def test_update_task_patches_only_given_fields():
@@ -139,3 +135,21 @@ def test_update_task_patches_only_given_fields():
     assert isinstance(task, dict)
     assert task["due"] is None
     assert body["update_fields"] == ["due"]
+
+
+def test_delete_task_deletes_official_endpoint():
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("token"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    delete_task(client, "task-guid-9")
+    assert seen["method"] == "DELETE"
+    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-9"

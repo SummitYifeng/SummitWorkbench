@@ -57,6 +57,9 @@ class FeishuClient:
     def patch(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._request("PATCH", path, params=None, json=json)
 
+    def delete(self, path: str) -> dict[str, Any]:
+        return self._request("DELETE", path, params=None, json=None)
+
     def _request(
         self,
         method: str,

@@ -34,6 +34,7 @@ from summit_workbench.providers.feishu.tasks import (
     CreatedTask,
     complete_task,
     create_task,
+    delete_task,
     update_task,
 )
 
@@ -54,6 +55,7 @@ __all__ = [
     "complete_task",
     "create_event",
     "create_task",
+    "delete_task",
     "import_local_transcript",
     "list_events_between",
     "list_meetings_by_no",
