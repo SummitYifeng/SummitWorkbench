@@ -29,31 +29,39 @@ scripts/build-macos-app.sh
 `wb` 路径、`WORK_ROOT` 与端口在构建时烘焙进启动器（同 launchd 安装方式）。仓库迁移后
 重跑脚本即可。
 
-## 安装 / 打开
+## 安装 / 打开（正式位置：/Applications）
+
+**App 只装在 `/Applications`**（不放桌面、不复制到别处）；它烘焙的 `wb` 路径指向仓库
+`.venv`（editable），因此**与仓库代码自动链接**——仓库每次改造只需重建前端 + 重启 App，
+无需重新安装或重新链接。
 
 ```bash
-open dist/SummitWorkbench.app           # 直接打开
-# 或拖到 /Applications 后从启动台/访达打开
+scripts/build-macos-app.sh                          # 产物在 dist/SummitWorkbench.app
+rm -rf /Applications/SummitWorkbench.app
+cp -R dist/SummitWorkbench.app /Applications/
+xattr -dr com.apple.quarantine /Applications/SummitWorkbench.app   # 首次打开免 Gatekeeper 拦
+open /Applications/SummitWorkbench.app              # 从「应用程序」/ 启动台打开
 ```
 
-首次打开若被 Gatekeeper 拦（未签名），右键 →「打开」，或：
+首次打开若仍被 Gatekeeper 拦（未签名），右键 →「打开」即可。
 
-```bash
-xattr -dr com.apple.quarantine dist/SummitWorkbench.app
-```
+> 提示：旧的「桌面副本」做法已弃用（桌面的 SummitWorkbench.app 已移入废纸篓）。
+> 日常请统一从「应用程序」或启动台打开 `/Applications/SummitWorkbench.app`。
 
 ## 更新（换新版本 / 改了前端没生效？）
 
 - **用户日常只打开 App / 浏览器面板，不用 CLI**（见 README 与 WEB_WORKBENCH §7）。App 只是
   Swift 启动器：烘焙 `$REPO_ROOT/.venv/bin/wb`（uv sync **editable** 安装），服务运行时直接
-  读仓库 `src/summit_workbench/webapp/static/` 下的前端产物。
-- **Web 界面更新 = `cd web && npm run build` + 重启面板服务**，**不需要重打 .app**（只有
-  `wb` 路径 / `WORK_ROOT` / 端口变了才重跑 `scripts/build-macos-app.sh`）。重启方式：退出
-  正在运行的面板（网页顶栏「退出」），再双击 App 重新拉起；或直接重跑 `wb web`。
+  读仓库 `src/summit_workbench/webapp/static/` 下的前端产物——**这就是「自动链接到项目」**：
+  只要仓库还是这个路径，改完代码重建后重启 App 就是新版。
+- **Web 界面更新 = `cd web && npm run build` + 重启面板服务**，**不需要重装 /Applications 里
+  的 .app**（只有 `wb` 路径 / `WORK_ROOT` / 端口 / 仓库路径变了才重跑
+  `scripts/build-macos-app.sh` + 重新安装）。重启方式：退出正在运行的面板（网页顶栏
+  「退出」），再从「应用程序」打开 App 重新拉起；或直接重跑 `wb web`。
 - 改了版本仍看到旧界面，按序排查：① 服务是否在构建后重启过；② 浏览器缓存了旧 `index.html`
   （引用的旧哈希资源已删）→ **⌘⇧R 强刷**；③ 打开的是不是本仓库构建的 App——`/Applications`
   里的 `SummitKnowledge.app` / `SummitServerAI.app` 是**历史遗留旧产品**（内嵌冻结的旧前端
-  runtime），不是本仓库产物；请使用 `dist/SummitWorkbench.app` 或桌面副本。
+  runtime），不是本仓库产物；请打开 `/Applications/SummitWorkbench.app`（安装命令见上）。
 
 ## 说明
 

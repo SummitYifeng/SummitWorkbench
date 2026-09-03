@@ -111,25 +111,26 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 
 ## 7. 用户入口与交付注意（开发必读）
 
-- **用户的日常入口是 Web 面板，不是 CLI。** 真人用户只打开桌面 App（Swift 启动器 →
-  `wb web`）或浏览器访问 `http://127.0.0.1:8787` 完成全部日常工作；CLI 只用于自动化
-  （launchd/脚本）与深度操作。因此**任何「用户可见」的功能改动，默认交付到 Web 面板**，
-  并同时保证 CLI 语义不倒退（两者共用 repositories/workflows）。
+- **用户的日常入口是 Web 面板，不是 CLI。** 真人用户只打开 `/Applications` 里的桌面 App
+  （Swift 启动器 → `wb web`）或浏览器访问 `http://127.0.0.1:8787` 完成全部日常工作；CLI 只
+  用于自动化（launchd/脚本）与深度操作。因此**任何「用户可见」的功能改动，默认交付到
+  Web 面板**，并同时保证 CLI 语义不倒退（两者共用 repositories/workflows）。
 - **Web 改动必须重建产物 + 重启服务才生效**：`cd web && npm run build`（tsc + vite，产物写进
   `src/summit_workbench/webapp/static/`，随 Python 包分发）→ 退出旧面板进程后重新打开
   App（或直接重跑 `wb web`）。没有常驻守护进程，也不会热加载已运行的服务。
-- **桌面 App 只是启动器，Web 更新无需重打 .app**：启动器烘焙 `$REPO_ROOT/.venv/bin/wb`
+- **桌面 App 只是启动器，Web 更新无需重装 .app**：启动器烘焙 `$REPO_ROOT/.venv/bin/wb`
   （`uv sync` editable 安装，运行时直接读仓库 `src/` 下的 static），所以换 UI 只需
-  「重建 + 重启服务」；只有 `wb` 路径 / `WORK_ROOT` / 端口变化时才需要重跑
-  `scripts/build-macos-app.sh`（见 DESKTOP_APP.md）。
+  「重建 + 重启服务」——**/Applications 里的 App 与仓库自动链接**，不必重新安装或重新链接；
+  只有 `wb` 路径 / `WORK_ROOT` / 端口 / 仓库路径变化时才需要重跑
+  `scripts/build-macos-app.sh` 并重装到 `/Applications`（安装命令见 DESKTOP_APP.md）。
 - **「改了版本但点开没更新」的排查顺序**：
   1. 面板服务是不是在本次构建**之后**重启的？（服务读的是磁盘上的 static，重启即新版本）
   2. 浏览器是否缓存了旧 `index.html`——它引用的旧哈希资源已从磁盘删除，会呈现旧界面或
      白屏；**⌘⇧R 强刷**一次。
   3. 打开的是不是当前构建的 App？`/Applications` 里的 `SummitKnowledge.app`、
      `SummitServerAI.app` 是历史遗留的旧名/旧前端产品（内嵌冻结运行时），**不是本仓库的
-     产物**；请使用 `dist/SummitWorkbench.app`（或桌面副本），它们烘焙的 wb 指向本仓库
-     `.venv`。
+     产物**；请打开 `/Applications/SummitWorkbench.app`（唯一正式安装位，桌面副本已弃用），
+     它烘焙的 wb 指向本仓库 `.venv`。
 
 ## 8. 边界与约束（与 PRD 一致）
 
