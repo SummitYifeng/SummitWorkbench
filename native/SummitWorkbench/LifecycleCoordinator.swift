@@ -7,6 +7,7 @@ final class LifecycleCoordinator {
     private var supervisor: ServiceSupervisor?
     private var panel: PanelWindowController?
     private var currentClientBuild: String?
+    private var currentClientServerInstance: String?
     private var startInFlight = false
     private var recoveryAttempts = 0
 
@@ -17,21 +18,30 @@ final class LifecycleCoordinator {
         }
         startInFlight = true
         do {
-            let config = try AppConfiguration.load()
-            configuration = config
-            let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
-            logger = log
-            log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
-            log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
-            let window = panel ?? PanelWindowController(logger: log)
-            window.configurationPort = config.manifest.port
-            panel = window
-            let service = supervisor ?? ServiceSupervisor(configuration: config, logger: log)
-            supervisor = service
-            service.onStateChange = { [weak self] state in self?.handleState(state) }
-            window.onMessage = { [weak self] message in self?.handle(message) }
-            window.onNavigationFailure = { [weak self] error in self?.navigationFailed(error) }
-            window.onContentProcessTerminated = { [weak self] in self?.contentProcessTerminated() }
+            if configuration == nil {
+                let config = try AppConfiguration.load()
+                configuration = config
+                let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
+                logger = log
+                log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
+                log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
+                let window = PanelWindowController(logger: log)
+                window.configurationPort = config.manifest.port
+                panel = window
+                let service = ServiceSupervisor(configuration: config, logger: log)
+                supervisor = service
+                service.onStateChange = { [weak self] state in self?.handleState(state) }
+                service.onIdentityChange = { [weak self] identity in self?.identityBecameReady(identity) }
+                window.onMessage = { [weak self] message in self?.handle(message) }
+                window.onNavigationFailure = { [weak self] error in self?.navigationFailed(error) }
+                window.onContentProcessTerminated = { [weak self] in self?.contentProcessTerminated() }
+            } else {
+                logger?.log("reopen_received", fields: ["reason": reason])
+            }
+            guard let service = supervisor, let window = panel else {
+                throw NSError(domain: "SummitWorkbench.Lifecycle", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "生命周期组件初始化失败"])
+            }
             window.showStatus("正在启动 SummitWorkbench…")
             service.ensureReady { [weak self] identity in
                 self?.startInFlight = false
@@ -64,7 +74,8 @@ final class LifecycleCoordinator {
             guard let self else { return }
             self.startInFlight = false
             guard let identity else { self.presentFailure(); return }
-            if self.currentClientBuild != identity.frontendBuild {
+            if self.currentClientBuild != identity.frontendBuild ||
+                self.currentClientServerInstance != identity.serverInstance {
                 self.loadReadyService(identity)
             } else {
                 panel.hideStatus()
@@ -76,15 +87,16 @@ final class LifecycleCoordinator {
 
     func applicationTerminating() {
         logger?.log("app_terminated")
+        supervisor?.shutdownForApplicationTermination()
     }
 
     private func loadReadyService(_ identity: ServiceIdentity) {
         guard let config = configuration, let panel, let logger else { return }
         currentClientBuild = nil
+        currentClientServerInstance = nil
         panel.showStatus("正在加载工作台…")
         logger.log("navigation_started", fields: ["frontend_build": identity.frontendBuild])
-        panel.load(config.panelURL)
-        recoveryAttempts = 0
+        panel.load(config.panelURL(for: identity.frontendBuild))
     }
 
     private func handle(_ message: NativeMessage) {
@@ -98,6 +110,8 @@ final class LifecycleCoordinator {
                 return
             }
             currentClientBuild = build
+            currentClientServerInstance = serverInstance
+            recoveryAttempts = 0
             panel?.hideStatus()
             logger?.log("client_ready", fields: ["server_instance": serverInstance])
             logger?.log("version_match")
@@ -127,9 +141,18 @@ final class LifecycleCoordinator {
         }
     }
 
+    private func identityBecameReady(_ identity: ServiceIdentity) {
+        guard !startInFlight else { return }
+        if currentClientBuild != identity.frontendBuild ||
+            currentClientServerInstance != identity.serverInstance {
+            logger?.log("service_recovered", fields: ["server_instance": identity.serverInstance])
+            loadReadyService(identity)
+        }
+    }
+
     private func navigationFailed(_ error: Error) {
         logger?.log("navigation_failed", level: "error", fields: ["message": error.localizedDescription])
-        panel?.showStatus("页面加载失败，可重新打开 App 重试")
+        recoverPanel(message: "页面加载失败，正在自动恢复…")
     }
 
     private func contentProcessTerminated() {
@@ -137,10 +160,23 @@ final class LifecycleCoordinator {
             presentError("页面进程已停止", detail: "自动恢复次数已用尽，请重新打开 App 或复制诊断信息。")
             return
         }
+        logger?.log("web_content_process_terminated", fields: ["attempt": String(recoveryAttempts + 1)])
+        recoverPanel(message: "页面进程已停止，正在自动恢复…")
+    }
+
+    private func recoverPanel(message: String) {
+        guard !startInFlight else { return }
+        guard recoveryAttempts < 3 else {
+            presentError("页面恢复失败", detail: "自动恢复次数已用尽，请重试或复制诊断信息。")
+            return
+        }
         recoveryAttempts += 1
-        logger?.log("web_content_process_terminated", fields: ["attempt": String(recoveryAttempts)])
+        startInFlight = true
+        panel?.showStatus(message)
         supervisor?.ensureReady { [weak self] identity in
-            guard let self, let identity else { self?.presentFailure(); return }
+            guard let self else { return }
+            self.startInFlight = false
+            guard let identity else { self.presentFailure(); return }
             self.loadReadyService(identity)
         }
     }
@@ -186,4 +222,3 @@ final class LifecycleCoordinator {
         logger?.log("diagnostics_copied")
     }
 }
-

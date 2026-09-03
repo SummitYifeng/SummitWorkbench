@@ -2,22 +2,18 @@
 # 构建自包含的 macOS SummitWorkbench.app。
 #
 # 生产路径：bundle 内 server + bundle 内静态资源 + WKWebView 原生壳。
-# Chrome 仅在显式 WB_RENDERER=chrome 的开发回滚构建中保留。
 # 构建先完成临时 bundle、签名与 smoke test，最后才替换 dist 产物。
 # 用法：scripts/build-macos-app.sh [PORT 默认 8787]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${1:-8787}"
-WORK_ROOT="${WORK_ROOT:-$HOME/Documents/Work}"
-WB_BIN="${WB_BIN:-$REPO_ROOT/.venv/bin/wb}"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 STATIC_DIR="$REPO_ROOT/src/summit_workbench/webapp/static"
 FINAL_APP="$REPO_ROOT/dist/SummitWorkbench.app"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 
 [[ -x "$PYTHON" ]] || { echo "✗ 找不到 Python：$PYTHON" >&2; exit 1; }
-[[ -f "$STATIC_DIR/build-meta.json" ]] || { echo "✗ 缺少 build-meta.json，请先构建 web" >&2; exit 1; }
 command -v npm >/dev/null || { echo "✗ 需要 npm" >&2; exit 1; }
 command -v xcrun >/dev/null || { echo "✗ 需要 Xcode 命令行工具" >&2; exit 1; }
 command -v codesign >/dev/null || { echo "✗ 需要 codesign" >&2; exit 1; }
@@ -35,7 +31,15 @@ node "$REPO_ROOT/web/scripts/verify-build.mjs" "$STATIC_DIR"
 
 FRONTEND_BUILD="$($PYTHON -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["frontend_build"])' "$STATIC_DIR/build-meta.json")"
 BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/summitworkbench-build.XXXXXX")"
-trap 'rm -rf "$BUILD_ROOT"' EXIT
+SMOKE_PID=""
+cleanup() {
+  if [[ "$SMOKE_PID" =~ ^[0-9]+$ ]] && kill -0 "$SMOKE_PID" 2>/dev/null; then
+    kill "$SMOKE_PID" 2>/dev/null || true
+    wait "$SMOKE_PID" 2>/dev/null || true
+  fi
+  rm -rf "$BUILD_ROOT"
+}
+trap cleanup EXIT
 APP="$BUILD_ROOT/SummitWorkbench.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/static" \
   "$APP/Contents/Resources/server" "$APP/Contents/Resources/prompts" \
@@ -68,33 +72,23 @@ if [[ -f "$SRC_ICON" ]] && command -v iconutil >/dev/null && command -v sips >/d
 fi
 
 # 原生壳从 Resources/server 与 Resources/web/static 的相对路径启动服务。
-TMP_SWIFT="$BUILD_ROOT/swift"
-mkdir -p "$TMP_SWIFT"
-SWIFT_SOURCES=()
-if [[ "${WB_RENDERER:-webview}" == "chrome" ]]; then
-  source="$REPO_ROOT/scripts/summit_launcher.swift"
-  target="$TMP_SWIFT/$(basename "$source")"
-  sed -e "s|__WB_BIN__|$WB_BIN|g" -e "s|__PORT__|$PORT|g" \
-      -e "s|__WORK_ROOT__|$WORK_ROOT|g" "$source" > "$target"
-  SWIFT_SOURCES+=("$target")
-else
-  for source in "$REPO_ROOT"/native/SummitWorkbench/*.swift; do
-    target="$TMP_SWIFT/$(basename "$source")"
-    sed -e "s|__WB_BIN__|$WB_BIN|g" -e "s|__PORT__|$PORT|g" \
-        -e "s|__WORK_ROOT__|$WORK_ROOT|g" "$source" > "$target"
-    SWIFT_SOURCES+=("$target")
-  done
-fi
+SWIFT_SOURCES=("$REPO_ROOT"/native/SummitWorkbench/*.swift)
 xcrun swiftc -O -target "$(uname -m)-apple-macosx13.0" \
   -framework AppKit -framework WebKit "${SWIFT_SOURCES[@]}" \
   -o "$APP/Contents/MacOS/SummitWorkbench"
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
 
-SHORT_VERSION="$(date +%Y.%-m.%-d)"
-BUNDLE_VERSION="$(date +%Y%m%d%H%M)"
+read -r SHORT_VERSION BUNDLE_VERSION < <("$PYTHON" - <<'PY'
+from datetime import UTC, datetime
+from time import time
+
+now = datetime.now(UTC)
+print(f"{now.year}.{now.month}.{now.day}", int(time()))
+PY
+)
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0//EN" >
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>SummitWorkbench</string>
   <key>CFBundleDisplayName</key><string>SummitWorkbench</string>
@@ -114,10 +108,10 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
   "schema_version": 1,
   "product_id": "com.summitworkbench.panel",
   "frontend_build": "$FRONTEND_BUILD",
-  "port": $PORT,
-  "server_build": "$FRONTEND_BUILD"
+  "port": $PORT
 }
 MANIFEST
+/usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 # 先签名嵌套 server，再签名 App；没有开发者证书时使用 ad-hoc 签名。
 codesign --force --sign "$SIGNING_IDENTITY" "$APP/Contents/Resources/server/SummitWorkbenchServer"
@@ -125,7 +119,7 @@ codesign --force --sign "$SIGNING_IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 
 # 不依赖仓库 .venv 的 bundle server smoke：直接运行嵌套 server 与 bundle static。
-SMOKE_PORT="$((PORT + 1))"
+SMOKE_PORT="$($PYTHON -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 SMOKE_ROOT="$BUILD_ROOT/smoke-work"
 mkdir -p "$SMOKE_ROOT"
 SMOKE_SERVER="$APP/Contents/Resources/server/SummitWorkbenchServer"
@@ -151,6 +145,7 @@ assert payload["api_protocol"] >= 2
 PY
 kill "$SMOKE_PID" 2>/dev/null || true
 wait "$SMOKE_PID" 2>/dev/null || true
+SMOKE_PID=""
 
 mkdir -p "$(dirname "$FINAL_APP")"
 PREVIOUS_APP="$BUILD_ROOT/previous.app"

@@ -50,6 +50,10 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    deinit {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "wbLifecycle")
+    }
+
     func load(_ url: URL) {
         overlay.isHidden = false
         logger.log("navigation_started")
@@ -70,8 +74,6 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
     }
 
     func hideStatus() { overlay.isHidden = true }
-
-    func reload(_ url: URL) { load(url) }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == "wbLifecycle" else { return }
@@ -119,6 +121,32 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
         onContentProcessTerminated?()
     }
 
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "好")
+        alert.runModal()
+        completionHandler()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "确定")
+        alert.addButton(withTitle: "取消")
+        completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         return false
@@ -130,4 +158,3 @@ enum PanelNavigationPolicy {
         url.scheme?.lowercased() == "http" && url.host == "127.0.0.1" && url.port == port
     }
 }
-

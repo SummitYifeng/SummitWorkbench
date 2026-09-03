@@ -53,8 +53,14 @@ struct AppConfiguration {
     let staticDirectory: String?
     let promptsDirectory: String?
 
-    var panelURL: URL {
-        URL(string: "http://127.0.0.1:\(manifest.port)/?build=\(manifest.frontendBuild)")!
+    func panelURL(for frontendBuild: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = "127.0.0.1"
+        components.port = manifest.port
+        components.path = "/"
+        components.queryItems = [URLQueryItem(name: "build", value: frontendBuild)]
+        return components.url!
     }
 
     var serverArguments: [String] {
@@ -73,7 +79,15 @@ struct AppConfiguration {
         let bundledServer = resources?.appendingPathComponent("server/SummitWorkbenchServer").path
         let bundledStatic = resources?.appendingPathComponent("web/static").path
         let bundledPrompts = resources?.appendingPathComponent("prompts").path
-        let wbBinary = environment["WB_SERVER_BINARY"] ?? bundledServer ?? "__WB_BIN__"
+        guard let wbBinary = environment["WB_SERVER_BINARY"] ?? bundledServer else {
+            throw NSError(domain: "SummitWorkbench.Configuration", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "无法定位 bundle server"])
+        }
+        if PanelMode.current != .developmentExternal,
+           !FileManager.default.isExecutableFile(atPath: wbBinary) {
+            throw NSError(domain: "SummitWorkbench.Configuration", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "bundle server 不存在或不可执行：\(wbBinary)"])
+        }
         let staticDirectory = environment["WB_STATIC_DIR"] ?? bundledStatic
         let promptsDirectory = environment["WB_PROMPTS_DIR"] ?? bundledPrompts
         return AppConfiguration(manifest: manifest, mode: .current, workRoot: workRoot,

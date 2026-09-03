@@ -46,7 +46,8 @@ def test_build_script_compiles_native_sources_and_writes_manifest() -> None:
     assert "native/SummitWorkbench/*.swift" in source
     assert "-framework WebKit" in source
     assert "build-manifest.json" in source
-    assert "WB_RENDERER:-webview" in source
+    assert "native/SummitWorkbench/*.swift" in source
+    assert "summit_launcher.swift" not in source
 
 
 def test_web_native_bridge_reports_ready_and_supports_native_quit() -> None:
