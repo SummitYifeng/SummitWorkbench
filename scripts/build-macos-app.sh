@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # 把本地 Web 面板打包成 macOS .app（原生 Dock 图标，双击启动）。
 #
-# 双击 App → 启动 `wb web`（前台，App 存活=服务存活）→ 等待 /api/version readiness
-# → 以 canonical build URL 打开 Chrome app 模式（无 Chrome 时退化到默认浏览器）。
-# 首次迁移只会终止严格匹配的 SummitWorkbench 专用 Chrome 主进程。
+# 双击 App → 原生 WKWebView 壳监督 `wb web` → 等待 /api/version readiness
+# → 以 canonical build URL 加载唯一面板窗口。Chrome 仅在显式的开发回滚构建中保留。
 #
 # 不需要 Rust/Tauri，只用系统自带工具。wb 路径在构建时烘焙进去（同 launchd 安装）；
 # 仓库若迁移，重跑本脚本即可。产物在 dist/（已 gitignore）。
@@ -62,22 +61,50 @@ $ICON_KEY
 </dict></plist>
 PLIST
 
-# 原生启动器：编译 Swift（AppKit 生命周期、readiness 握手和一次性 Chrome 迁移）。
-# 脚本型主程序会造成 Dock 图标无限弹跳（前台）或 macOS 报「应用无响应」（LSUIElement）；
-# 原生主程序注册正常的应用生命周期，根治两者，并保持「无 Dock 图标 + 网页退出」体验。
-TMP_SWIFT="$(mktemp -d)/summit_launcher.swift"
-sed -e "s|__WB_BIN__|$WB_BIN|g" \
-    -e "s|__PORT__|$PORT|g" \
-    -e "s|__WORK_ROOT__|$WORK_ROOT|g" \
-  "$REPO_ROOT/scripts/summit_launcher.swift" > "$TMP_SWIFT"
-if ! xcrun swiftc -O "$TMP_SWIFT" -o "$APP/Contents/MacOS/SummitWorkbench" 2>"$TMP_SWIFT.err"; then
+# 原生启动器：编译 Swift 多文件（AppKit + WebKit、服务监督、WKWebView 生命周期）。
+# `WB_RENDERER=chrome` 仅供开发回滚，生产默认永远走 WKWebView。
+TMP_ROOT="$(mktemp -d)"
+if [[ "${WB_RENDERER:-webview}" == "chrome" ]]; then
+  source="$REPO_ROOT/scripts/summit_launcher.swift"
+  target="$TMP_ROOT/$(basename "$source")"
+  sed -e "s|__WB_BIN__|$WB_BIN|g" \
+      -e "s|__PORT__|$PORT|g" \
+      -e "s|__WORK_ROOT__|$WORK_ROOT|g" \
+    "$source" > "$target"
+  SWIFT_SOURCES=("$target")
+else
+  SWIFT_SOURCES=()
+  for source in "$REPO_ROOT"/native/SummitWorkbench/*.swift; do
+    target="$TMP_ROOT/$(basename "$source")"
+    sed -e "s|__WB_BIN__|$WB_BIN|g" \
+        -e "s|__PORT__|$PORT|g" \
+        -e "s|__WORK_ROOT__|$WORK_ROOT|g" \
+      "$source" > "$target"
+    SWIFT_SOURCES+=("$target")
+  done
+fi
+SWIFT_ERR="$TMP_ROOT/swift.err"
+if ! xcrun swiftc -O -target "$(uname -m)-apple-macosx13.0" \
+    -framework AppKit -framework WebKit "${SWIFT_SOURCES[@]}" \
+    -o "$APP/Contents/MacOS/SummitWorkbench" 2>"$SWIFT_ERR"; then
   echo "✗ Swift 编译失败（需要 Xcode 命令行工具：xcode-select --install）" >&2
-  head -5 "$TMP_SWIFT.err" >&2
-  rm -rf "$(dirname "$TMP_SWIFT")"
+  head -20 "$SWIFT_ERR" >&2
+  rm -rf "$TMP_ROOT"
   exit 1
 fi
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
-rm -rf "$(dirname "$TMP_SWIFT")"
+
+# manifest 与已经提交的静态构建绑定；Phase 4 再把静态资源和 server 搬入 bundle。
+FRONTEND_BUILD="$($REPO_ROOT/.venv/bin/python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["frontend_build"])' "$REPO_ROOT/src/summit_workbench/webapp/static/build-meta.json")"
+cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
+{
+  "schema_version": 1,
+  "product_id": "com.summitworkbench.panel",
+  "frontend_build": "$FRONTEND_BUILD",
+  "port": $PORT
+}
+MANIFEST
+rm -rf "$TMP_ROOT"
 
 echo "✓ 已构建 $APP"
 echo "  wb=$WB_BIN  WORK_ROOT=$WORK_ROOT  端口=$PORT"

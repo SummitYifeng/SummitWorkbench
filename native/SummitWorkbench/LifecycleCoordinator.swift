@@ -1,0 +1,189 @@
+import AppKit
+import Foundation
+
+final class LifecycleCoordinator {
+    private var configuration: AppConfiguration?
+    private var logger: StructuredLogger?
+    private var supervisor: ServiceSupervisor?
+    private var panel: PanelWindowController?
+    private var currentClientBuild: String?
+    private var startInFlight = false
+    private var recoveryAttempts = 0
+
+    func start(reason: String) {
+        guard !startInFlight else {
+            logger?.log("reopen_coalesced")
+            return
+        }
+        startInFlight = true
+        do {
+            let config = try AppConfiguration.load()
+            configuration = config
+            let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
+            logger = log
+            log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
+            log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
+            let window = panel ?? PanelWindowController(logger: log)
+            window.configurationPort = config.manifest.port
+            panel = window
+            let service = supervisor ?? ServiceSupervisor(configuration: config, logger: log)
+            supervisor = service
+            service.onStateChange = { [weak self] state in self?.handleState(state) }
+            window.onMessage = { [weak self] message in self?.handle(message) }
+            window.onNavigationFailure = { [weak self] error in self?.navigationFailed(error) }
+            window.onContentProcessTerminated = { [weak self] in self?.contentProcessTerminated() }
+            window.showStatus("正在启动 SummitWorkbench…")
+            service.ensureReady { [weak self] identity in
+                self?.startInFlight = false
+                guard let self, let identity else {
+                    self?.presentFailure()
+                    return
+                }
+                self.loadReadyService(identity)
+            }
+        } catch {
+            startInFlight = false
+            logger?.log("manifest_invalid", level: "error", fields: ["message": error.localizedDescription])
+            presentError("无法启动 SummitWorkbench", detail: error.localizedDescription)
+        }
+    }
+
+    func reopen() {
+        logger?.log("reopen_received")
+        if startInFlight {
+            logger?.log("reopen_coalesced")
+            return
+        }
+        guard let supervisor, let panel else {
+            start(reason: "reopen")
+            return
+        }
+        startInFlight = true
+        panel.showStatus("正在检查服务…")
+        supervisor.ensureReady { [weak self] identity in
+            guard let self else { return }
+            self.startInFlight = false
+            guard let identity else { self.presentFailure(); return }
+            if self.currentClientBuild != identity.frontendBuild {
+                self.loadReadyService(identity)
+            } else {
+                panel.hideStatus()
+                panel.show()
+                self.logger?.log("version_match")
+            }
+        }
+    }
+
+    func applicationTerminating() {
+        logger?.log("app_terminated")
+    }
+
+    private func loadReadyService(_ identity: ServiceIdentity) {
+        guard let config = configuration, let panel, let logger else { return }
+        currentClientBuild = nil
+        panel.showStatus("正在加载工作台…")
+        logger.log("navigation_started", fields: ["frontend_build": identity.frontendBuild])
+        panel.load(config.panelURL)
+        recoveryAttempts = 0
+    }
+
+    private func handle(_ message: NativeMessage) {
+        switch message {
+        case .clientReady(let build, let serverInstance):
+            guard let identity = supervisor?.identity else { return }
+            guard build == identity.frontendBuild, serverInstance == identity.serverInstance else {
+                logger?.log("version_mismatch", level: "error")
+                panel?.showStatus("版本不一致，正在重新加载…")
+                loadReadyService(identity)
+                return
+            }
+            currentClientBuild = build
+            panel?.hideStatus()
+            logger?.log("client_ready", fields: ["server_instance": serverInstance])
+            logger?.log("version_match")
+        case .quit:
+            logger?.log("user_quit_requested")
+            panel?.showStatus("正在退出…")
+            supervisor?.stop { [weak self] in
+                self?.panel?.close()
+                NSApp.terminate(nil)
+            }
+        case .copyDiagnostics:
+            copyDiagnostics()
+        case .openExternal(let url):
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func handleState(_ state: SupervisorState) {
+        switch state {
+        case .ready: break
+        case .starting, .probing: panel?.showStatus("正在启动 SummitWorkbench…")
+        case .restarting: panel?.showStatus("服务异常，正在自动恢复…")
+        case .degraded: panel?.showStatus("正在等待开发服务…")
+        case .crashLoop: presentError("服务反复启动失败", detail: "请点击重试，或复制诊断信息查看最近生命周期事件。")
+        case .conflict: presentError("端口被其他服务占用", detail: "未识别到可由当前 App 管理的 SummitWorkbench 服务；未终止未知进程。")
+        default: break
+        }
+    }
+
+    private func navigationFailed(_ error: Error) {
+        logger?.log("navigation_failed", level: "error", fields: ["message": error.localizedDescription])
+        panel?.showStatus("页面加载失败，可重新打开 App 重试")
+    }
+
+    private func contentProcessTerminated() {
+        guard recoveryAttempts < 3 else {
+            presentError("页面进程已停止", detail: "自动恢复次数已用尽，请重新打开 App 或复制诊断信息。")
+            return
+        }
+        recoveryAttempts += 1
+        logger?.log("web_content_process_terminated", fields: ["attempt": String(recoveryAttempts)])
+        supervisor?.ensureReady { [weak self] identity in
+            guard let self, let identity else { self?.presentFailure(); return }
+            self.loadReadyService(identity)
+        }
+    }
+
+    private func presentFailure() {
+        let state = supervisor?.state.rawValue ?? "unknown"
+        let detail = state == SupervisorState.conflict.rawValue
+            ? "端口被其他服务占用，未终止未知进程。"
+            : "服务尚未就绪（状态：\(state)）。"
+        presentError("SummitWorkbench 暂时无法启动", detail: detail)
+    }
+
+    private func presentError(_ title: String, detail: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.addButton(withTitle: "重试")
+        alert.addButton(withTitle: "复制诊断信息")
+        alert.addButton(withTitle: "关闭")
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn { start(reason: "user_retry") }
+        else if response == .alertSecondButtonReturn { copyDiagnostics() }
+    }
+
+    private func copyDiagnostics() {
+        guard let config = configuration else { return }
+        let identity = supervisor?.identity
+        let text = [
+            "App frontend build: \(config.manifest.frontendBuild)",
+            "Frontend client build: \(currentClientBuild ?? "unknown")",
+            "Served frontend build: \(identity?.frontendBuild ?? "unknown")",
+            "Server version/instance: \(identity?.serverVersion ?? "unknown")/\(identity?.serverInstance ?? "unknown")",
+            "Panel mode: \(config.mode.rawValue)",
+            "Port: \(config.manifest.port)",
+            "Service state: \(supervisor?.state.rawValue ?? "unknown")",
+            "Recent lifecycle events:",
+        ] + (logger?.recentEvents() ?? []) + [
+            "Log: ~/Library/Logs/summitworkbench-panel.log",
+        ]
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text.joined(separator: "\n"), forType: .string)
+        logger?.log("diagnostics_copied")
+    }
+}
+

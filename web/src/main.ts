@@ -16,6 +16,7 @@ import {
   type VersionPayload,
   type VersionStatus,
 } from './lifecycle/version';
+import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
@@ -333,6 +334,7 @@ async function doCheckVersion(reason: string): Promise<void> {
   remoteVersion = remote;
   if (remote.frontend_build === CLIENT_BUILD) {
     setVersionStatus('synced');
+    notifyClientReady(CLIENT_BUILD, remote.server_instance);
     if (instanceChanged) await refreshAll();
     return;
   }
@@ -434,6 +436,7 @@ function renderShell(): void {
   });
   (document.getElementById('btn-quit') as HTMLButtonElement).addEventListener('click', () => {
     if (!window.confirm('确定退出工作台并停止本地服务？')) return;
+    if (sendNativeMessage({ type: 'quit' })) return;
     void api<{ ok: boolean; message: string }>('/api/shutdown', {
       method: 'POST',
       headers: { 'X-WB-Shutdown': '1' },
