@@ -5,8 +5,9 @@
   "type": "module",
   "description": "SummitWorkbench 本地 Web 工作台（SPA，Vite + 原生 TypeScript）",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build"
+    "sync-guide": "node scripts/sync-guide.mjs",
+    "dev": "npm run sync-guide && vite",
+    "build": "npm run sync-guide && tsc --noEmit && vite build"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

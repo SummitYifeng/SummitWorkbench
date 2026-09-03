@@ -1,8 +1,10 @@
 import './style.css';
 
 import { esc, mdToHtml } from './md';
+// 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
+import guideMd from './guide.md?raw';
 
-type Tab = 'today' | 'review' | 'ask' | 'projects';
+type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -192,16 +194,20 @@ function render(): void {
   const reviewView = document.getElementById('view-review') as HTMLElement;
   const askView = document.getElementById('view-ask') as HTMLElement;
   const projectsView = document.getElementById('view-projects') as HTMLElement;
+  const guideView = document.getElementById('view-guide') as HTMLElement;
   todayView.style.display = tab === 'today' ? '' : 'none';
   reviewView.style.display = tab === 'review' ? '' : 'none';
   askView.style.display = tab === 'ask' ? '' : 'none';
   projectsView.style.display = tab === 'projects' ? '' : 'none';
+  guideView.style.display = tab === 'guide' ? '' : 'none';
   if (tab === 'today') {
     renderToday(todayView);
   } else if (tab === 'review') {
     renderReview(reviewView);
   } else if (tab === 'projects') {
     renderProjects(projectsView);
+  } else if (tab === 'guide') {
+    renderGuide(guideView);
   } else {
     renderAsk(askView);
   }
@@ -222,19 +228,21 @@ function renderShell(): void {
     '<button class="tab" data-tab="review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
     '<button class="tab" data-tab="ask" role="tab">第二大脑</button>' +
     '<button class="tab" data-tab="projects" role="tab">项目</button>' +
+    '<button class="tab" data-tab="guide" role="tab">指南</button>' +
     '</nav>' +
     '<main>' +
     '<section id="view-today" class="view"></section>' +
     '<section id="view-review" class="view"></section>' +
     '<section id="view-ask" class="view"></section>' +
     '<section id="view-projects" class="view"></section>' +
+    '<section id="view-guide" class="view"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     b.addEventListener('click', () => {
       const next = b.dataset.tab;
-      tab = next === 'review' || next === 'ask' || next === 'projects' ? next : 'today';
+      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' ? next : 'today';
       render();
     });
   });
@@ -729,6 +737,9 @@ function projectCard(p: ProjectState): string {
     '<div class="card project' + (p.dirty || p.behind > 0 || p.inbox_pending > 0 ? ' attention' : '') + '">' +
     '<div class="card-head"><strong class="project-name">' + esc(p.name) + '</strong>' + chipsHtml + '</div>' +
     step +
+    '<div class="card-foot">' +
+    '<button class="ghost card-archive" data-action="project-archive" data-name="' + esc(p.name) + '" data-confirm="1">归档</button>' +
+    '</div>' +
     '</div>'
   );
 }
@@ -845,6 +856,57 @@ function renderProjects(view: HTMLElement): void {
   });
 }
 
+// ---------- 使用指南（第 5 页签；内容构建时从 WEB_USAGE_GUIDE.md 同步内置） ----------
+
+function guideSummaryHtml(q: string): string {
+  // <summary> 只允许短语内容：转义后仅放行行内代码
+  const safe = esc(q);
+  return safe.replace(/`([^`]+?)`/g, '<code>$1</code>');
+}
+
+let guideCache: string | null = null;
+
+function guideBodyHtml(): string {
+  if (guideCache) return guideCache;
+  const lines = guideMd.split('\n');
+  const faqIdx = lines.findIndex((l) => /^#{1,4}\s*.*常见问题/.test(l));
+  let html = mdToHtml((faqIdx === -1 ? lines : lines.slice(0, faqIdx)).join('\n'));
+  if (faqIdx !== -1) {
+    const rest = lines.slice(faqIdx + 1);
+    const tailIdx = rest.findIndex((l) => /^#{1,4}\s/.test(l));
+    const qaLines = tailIdx === -1 ? rest : rest.slice(0, tailIdx);
+    const tail = tailIdx === -1 ? [] : rest.slice(tailIdx);
+    const items: { q: string; a: string[] }[] = [];
+    let cur: { q: string; a: string[] } | null = null;
+    for (const line of qaLines) {
+      const qm = line.match(/^\*\*Q[:：]\s*(.+?)\s*\*\*$/);
+      if (qm) {
+        cur = { q: qm[1].trim(), a: [] };
+        items.push(cur);
+        continue;
+      }
+      if (!cur || !line.trim()) continue;
+      cur.a.push(line);
+    }
+    const faqHtml = items
+      .map(
+        (it) =>
+          '<details class="faq-item"><summary>' + guideSummaryHtml(it.q) + '</summary>' +
+          (it.a.length ? '<div class="faq-answer">' + mdToHtml(it.a.join('\n')) + '</div>' : '') +
+          '</details>'
+      )
+      .join('');
+    html += '<h3>常见问题</h3>' + faqHtml;
+    if (tail.length) html += mdToHtml(tail.join('\n'));
+  }
+  guideCache = html;
+  return html;
+}
+
+function renderGuide(view: HTMLElement): void {
+  view.innerHTML = '<div class="guide">' + guideBodyHtml() + '</div>';
+}
+
 function entryCard(e: ReviewEntry): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
@@ -926,7 +988,11 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'project-archive') {
-    void setProjectState('archive', btn.dataset.name ?? '');
+    const name = btn.dataset.name ?? '';
+    if (btn.dataset.confirm && !window.confirm('归档后将从首页移除（文件夹与笔记不动），可在「项目」页随时恢复。确定归档「' + name + '」？')) {
+      return;
+    }
+    void setProjectState('archive', name);
     return;
   }
   if (action === 'run-brief') {

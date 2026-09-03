@@ -395,6 +395,43 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 .toast.err { border-left-color: var(--bad); }
 @keyframes slidein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
+/* ---- 首页项目卡归档按钮 ---- */
+.card-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+.card-archive { font-size: 12px; padding: 2px 12px; }
+
+/* ---- 指南页签（第 5 页签；内容内置自 WEB_USAGE_GUIDE.md） ---- */
+.guide { max-width: 780px; }
+.guide h2 { font-size: 21px; margin: 8px 0 6px; }
+.guide h3 {
+  font-size: 16.5px; margin: 26px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border); color: var(--accent);
+}
+.guide h4 { font-size: 14.5px; margin: 18px 0 6px; }
+.guide p { margin: 8px 0; font-size: 14px; line-height: 1.75; }
+.guide ul { margin: 8px 0; padding-left: 22px; }
+.guide li { margin: 5px 0; font-size: 14px; line-height: 1.7; }
+.guide blockquote {
+  border-left: 3px solid var(--accent); margin: 12px 0; padding: 8px 14px;
+  background: var(--accent-soft); border-radius: 0 10px 10px 0;
+}
+.guide blockquote p { margin: 4px 0; font-size: 13px; color: var(--muted); }
+.guide code {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+  padding: 1px 5px; font-size: 0.88em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.guide details.faq-item {
+  border: 1px solid var(--border); border-radius: 10px; margin: 8px 0;
+  background: var(--card); overflow: hidden;
+}
+.guide details.faq-item summary {
+  cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 13.5px;
+  list-style-position: inside;
+}
+.guide details.faq-item summary::-webkit-details-marker { color: var(--accent); }
+.guide details.faq-item[open] summary { border-bottom: 1px solid var(--border); }
+.guide .faq-answer { padding: 6px 14px 12px; font-size: 13.5px; }
+.guide .faq-answer p { margin: 6px 0; }
+
 @media (max-width: 640px) {
   main { padding: 14px 12px 80px; }
   .tabs { padding: 8px 12px 0; }

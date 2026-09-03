@@ -2,6 +2,7 @@
 
 ### 新增
 
+- **首页卡片一键归档 + 内置「指南」页签**：首页每个项目推进卡右下角新增「归档」按钮（带确认，归档即离开首页、可在「项目」页恢复）；顶部新增第 5 个页签「指南」，把 `WEB_USAGE_GUIDE.md`（日常使用 + FAQ）在构建时同步内置进前端（`npm run sync-guide`），离线可看，FAQ 折叠为可展开条目——用户日常入口是 Web 面板，不必翻仓库文档。
 - **项目推进精选（ADR 0023）**：首页「项目推进」不再平铺 `work_root` 全部文件夹，只显示已建档（`_vault/projects/*.md`）且 `status: active` 的项目；未建档的新文件夹在项目区顶部以邀请横幅出现（逐条「加入工作台 / 归档」）；新增第 4 页签「项目」= 全部项目视图（搜索 + 排序 + 行内加入/归档/恢复）。`/api/state` projects 增 `registered/status` 字段；新增 `POST /api/projects/activate`、`POST /api/projects/archive`（写 `_vault` 档案 status，幂等，校验必须是 work_root 直接子目录）。归档/恢复只动 frontmatter，文件夹与 git 历史零触碰。
 - **Web 工作台（SPA）**：`wb web` 由服务端渲染面板升级为「今日工作台」单页应用（Vite + 原生 TypeScript，无组件库；FastAPI 新增 `/api/*` JSON 端点；构建产物存在时 `/` 服务 SPA，否则回退 SSR，旧路由与 CLI 语义完全保留）。
   - 「今日」页：顶部快速捕捉（回车记入全局 inbox）、待确认审批卡片（积压置顶 + 一键跳转）、会议逐字稿拖拽导入区、项目推进卡（未提交/落后/下一步/inbox 积压）、今日简报（未生成时给出空状态引导）、问第二大脑。
