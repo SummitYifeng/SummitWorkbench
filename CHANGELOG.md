@@ -16,6 +16,7 @@
 
 ### 修复
 
+- **入口页禁缓存（根治“点了没更新”）**：`/` 响应加 `Cache-Control: no-cache`——前端每次改版都换带哈希的资源名，若入口 index.html 被浏览器启发式缓存会一直指向旧资源，呈现旧界面/旧标签；现在刷新或重开 App 必取最新入口。
 - **弹窗遮罩常驻屏幕（亮条 + 整页变灰 + 点击无效）**：`.modal-backdrop` 的 `display: grid` 覆盖了 `hidden` 属性（作者样式优先于 UA 的 `[hidden]{display:none}`），导致未打开的弹窗遮罩从一开始就铺满全屏——中间的空白弹窗呈「很亮的矩形条」，背后整页被 45% 黑色遮罩压灰，且遮罩拦截所有点击（`closeModal` 因样式覆盖而失效）。已在 `web/src/style.css` 加 `[hidden]{display:none!important}` 防御规则并重建前端产物。
 - **程序坞图标无限弹跳 / 打开报「无响应」**：`.app` 主程序原本是 bash 脚本，常驻进程从不向系统报告「启动完成」——前台形态 Dock 图标无限弹跳，改 `LSUIElement` 后台形态后 macOS 又报「不能打开…没有响应」。根治方案：主程序换成**原生 Swift/AppKit 启动器**（`scripts/summit_launcher.swift`，构建时 `swiftc` 编译），注册正常的应用生命周期；`LSUIElement=true` 不占 Dock，打开/退出全部由原生进程管理（拉起 `wb web` 子进程 + 打开 Chrome 面板窗口，周期探测 `/api/state`，服务停止即自动退出）。退出面板用网页顶栏「退出」按钮 → `POST /api/shutdown`（带 `X-WB-Shutdown` 自定义头防任意网页误关，跨站预检被无 CORS 配置拦截）优雅停服并关窗。
 

@@ -263,7 +263,9 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
 
         @app.get("/", response_class=FileResponse, include_in_schema=False)
         def spa_home() -> FileResponse:
-            return FileResponse(spa_index)
+            # index.html 禁止启发式缓存：前端每次改版都换带哈希的资源名，
+            # 若入口被浏览器缓存会一直指向旧资源，呈现「点了没更新」的旧界面。
+            return FileResponse(spa_index, headers={"Cache-Control": "no-cache"})
 
     else:
 
