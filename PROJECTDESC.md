@@ -87,7 +87,7 @@
 
 已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；v0.3 双向写回经真机核实：
 
-- **v0.3 · 工作台 → 飞书双向写回（ADR 0025）**：待办任务行尾 **✓ 一键完成**（官方专用完成端点，真机核实 `PATCH update_fields` 白名单不含 `completed`）/ **✎ 行内编辑**（标题/截止，`PATCH summary/due`）；会议行尾 **✎ 行内编辑**（标题/起止时间，日历写 scope `calendar:calendar` 升级并重新授权）；审批候选落点新增 **「新建会议」**（`RouteTarget.FEISHU_MEETING` + 起止时间字段，批准 + 应用即在主日历新建定时日程事件，`MeetingCreator` 注入 + 候选 ID 审计幂等）。飞书 = 任务与日程唯一真源；本地只把当日渲染快照镜像一致（`signal_snapshot.mark_task_completed/mark_task_edited/mark_meeting_edited`），vault 简报 Markdown 一字不动。质量门 458 项全绿；日历/任务写回 2026-09-03 真机核实（建日程/改会议时间/改任务标题截止/一键完成闭环）。
+- **v0.3 · 工作台 → 飞书双向写回（ADR 0025）**：待办任务行尾 **✓ 一键完成**（`PATCH completed_at` 完成形态，真机核实 `update_fields` 白名单不含 `completed`）/ **✎ 行内编辑**（标题/截止，`PATCH summary/due`）；会议行尾 **✎ 行内编辑**（标题/起止时间，日历写 scope `calendar:calendar` 升级并重新授权）；审批候选落点新增 **「新建会议」**（`RouteTarget.FEISHU_MEETING` + 起止时间字段，批准 + 应用即在主日历新建定时日程事件，`MeetingCreator` 注入 + 候选 ID 审计幂等）。飞书 = 任务与日程唯一真源；本地只把当日渲染快照镜像一致（`signal_snapshot.mark_task_completed/mark_task_edited/mark_meeting_edited`），vault 简报 Markdown 一字不动。质量门 458 项全绿；日历/任务写回 2026-09-03 真机核实（建日程/改会议时间/改任务标题截止/一键完成闭环）。
 - **M0** 地基：工作目录与 vault、项目档案、飞书身份与最小权限、`wb sync` 非破坏性同步、云端模型与用量账本冒烟。
 - **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb ask` 带来源问答、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
 - **M2** 晨间简报：`wb brief` 全链路（飞书日历/任务 + 项目扫描 → 模型排序/确定性回退 → 幂等写当日笔记）与 `wb weekly` 周复盘，均由 launchd 定时触发。

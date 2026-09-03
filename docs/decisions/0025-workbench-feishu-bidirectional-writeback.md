@@ -16,7 +16,7 @@ v0.2 的 Web 工作台对飞书任务/日历是**单向只读**：简报把飞�
    - **一键完成**：待办任务行尾「✓」→ `complete_task` → 快照移除 + 计入最近完成；
    - **行内编辑**：任务行/会议行尾「✎」→ `PATCH` 任务（`update_fields` 白名单内的 `summary/due`）或日历事件（标题/起止时间）→ 快照镜像；
    - **审批新建会议**：`RouteTarget.FEISHU_MEETING` 落点 + 候选 `start_at/end_at`（本地 naive `YYYY-MM-DDTHH:MM`，结束留空按开始 + 1 小时）→ 批准 +「应用（写回）」经 `MeetingCreator` 创建主日历定时事件，按候选 ID 审计幂等。
-3. **日历写权限与契约（真机报错驱动修正）**：日历 scope 由 `calendar:calendar:readonly` 升级为 `calendar:calendar`（读写），需在开放平台开通并**重新授权一次**（旧 token 不带新 scope）；日历事件时间戳按官方契约用 **unix 秒字符串**。任务侧真机发现 `PATCH update_fields` 白名单**不含 `completed`**——完成改用官方专用端点 `POST /open-apis/task/v2/tasks/{guid}/complete`（首版按文档猜的 `PATCH completed:true` 真机被拒，本 ADR 固化正确端点）。
+3. **日历写权限与契约（真机报错驱动修正）**：日历 scope 由 `calendar:calendar:readonly` 升级为 `calendar:calendar`（读写），需在开放平台开通并**重新授权一次**（旧 token 不带新 scope）；日历事件时间戳按官方契约用 **unix 秒字符串**。任务侧真机发现（报错驱动 + 多形态实测收敛）：`PATCH update_fields` 白名单**不含 `completed`**；第三方文档所述 `POST /open-apis/task/v2/tasks/{guid}/complete` 在本租户返回 404；完成正解是 `PATCH` 设置 `completed_at`（毫秒时间戳字符串）并列入 `update_fields`——飞书回 `agent_task_status=4` 且落 `completed_at`。首版按文档猜的 `PATCH completed:true` 真机被拒，本 ADR 固化正确形态。
 4. **会议行内编辑的快照演进**：`MeetingFact`/快照 `meeting_list` 附加 `event_id/start_ts/end_ts`（纯附加；旧快照无键则行内编辑钮不出现，全量/无时间戳事件不开放时间编辑）。
 5. **范围**：不邀请参会人（日历 events attendees 二次调用不做）、不做任务删除 UI（provider `delete_task` 仅校验清理用）、取消完成不提供（`uncomplete` 端点留给将来）。
 
