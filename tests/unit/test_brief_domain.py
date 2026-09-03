@@ -5,9 +5,13 @@ from __future__ import annotations
 from summit_workbench.domain.brief import (
     ActionCategory,
     ActionSignal,
+    Brief,
     CollectedSignals,
+    CompletionItem,
     EvidenceLevel,
+    HealthState,
     MeetingFact,
+    TaskFact,
     evaluate_health,
     fallback_ranking,
     select_actions,
@@ -134,3 +138,49 @@ def test_collected_signal_count_counts_facts_and_candidates() -> None:
         candidates=[_sig("m1", ActionCategory.MAIN_PUSH)],
     )
     assert collected.signal_count == 2
+
+
+def test_snapshot_keeps_counts_and_adds_web_detail_lists() -> None:
+    """快照为附加演进：计数键保留，另附 Web 组件化渲染所需明细。"""
+    brief = Brief(
+        date="2026-09-03",
+        health=HealthState(level="ok"),
+        meetings=(MeetingFact("钻石三角双周例会", "10:00"),),
+        tasks=(TaskFact("门户验收", "2026-09-06", task_id="guid-1"),),
+        actions=(
+            ActionSignal(
+                signal_id="task-guid-1",
+                title="门户验收",
+                category=ActionCategory.COMMITMENT,
+                evidence=EvidenceLevel.E2,
+                source_ref="feishu-task:guid-1",
+                due_date="2026-09-06",
+            ),
+        ),
+        proposals=(
+            ActionSignal(
+                signal_id="p1",
+                title="建议拆分里程碑",
+                category=ActionCategory.PROPOSAL,
+                evidence=EvidenceLevel.E3,
+                source_ref="ref/p1",
+            ),
+        ),
+        completions=(CompletionItem(text="HIC_Tool_Kit", source_ref="feishu-task:x"),),
+    )
+    snap = brief.as_snapshot()
+    # 既有计数键保留（向后兼容）
+    assert snap["meetings"] == 1
+    assert snap["tasks"] == 1
+    assert snap["completions"] == 1
+    assert snap["proposals"] == ["p1"]
+    # 新明细键
+    assert snap["meeting_list"] == [{"title": "钻石三角双周例会", "start_time": "10:00"}]
+    assert snap["task_list"] == [
+        {"summary": "门户验收", "due_date": "2026-09-06", "task_id": "guid-1"}
+    ]
+    assert snap["actions"][0]["title"] == "门户验收"
+    assert snap["actions"][0]["due_date"] == "2026-09-06"
+    assert snap["proposal_list"][0]["title"] == "建议拆分里程碑"
+    assert snap["completion_list"] == [{"text": "HIC_Tool_Kit", "source_ref": "feishu-task:x"}]
+    assert snap["health_reasons"] == []

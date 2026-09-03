@@ -18,6 +18,7 @@ import {
 } from './lifecycle/version';
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
+import { briefCardHtml, type BriefData } from './brief-card';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
@@ -70,6 +71,8 @@ interface StatePayload {
   status: StatusState;
   brief_md: string | null;
   brief_generated: boolean;
+  /** 结构化简报（旧快照无明细时为 null → 前端回退 Markdown 视图） */
+  brief?: BriefData | null;
   inbox_pending: number;
   projects: ProjectState[];
   runtime?: {
@@ -485,11 +488,13 @@ function renderToday(view: HTMLElement): void {
       '<input type="file" id="file-input" accept=".md,.txt" hidden></div>' +
       '<div class="import-result" id="import-result"></div>';
 
-  // 简报
-  const briefHtml = state.brief_generated && state.brief_md
-    ? '<div class="brief">' + mdToHtml(state.brief_md) + '</div>'
-    : '<div class="empty"><p>今日简报还没生成。</p>' +
-      '<button class="primary" data-action="run-brief">⚡ 现在生成（约 30 秒）</button></div>';
+  // 简报：结构化快照优先（组件化渲染）；旧快照回退 Markdown 视图
+  const briefHtml = state.brief
+    ? '<div class="brief brief2">' + briefCardHtml(state.brief, state.day) + '</div>'
+    : state.brief_generated
+      ? '<div class="brief">' + mdToHtml(state.brief_md ?? '') + '</div>'
+      : '<div class="empty"><p>今日简报还没生成。</p>' +
+        '<button class="primary" data-action="run-brief">⚡ 现在生成（约 30 秒）</button></div>';
 
   view.innerHTML =
     '<section class="hero">' +

@@ -55,7 +55,7 @@ def _meeting_facts(events: list[CalendarEvent], timezone: str) -> list[MeetingFa
 
 
 def _task_facts(tasks: list[TaskItem]) -> list[TaskFact]:
-    return [TaskFact(summary=t.summary, due_date=t.due_date) for t in tasks]
+    return [TaskFact(summary=t.summary, due_date=t.due_date, task_id=t.guid) for t in tasks]
 
 
 def _commitment_signals(tasks: list[TaskItem]) -> list[ActionSignal]:

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from summit_workbench.domain.brief import CATEGORY_LABELS
 from summit_workbench.domain.review import ReviewEntry
+
+_HEALTH_LABELS = {"ok": "正常", "degraded": "降级", "alert": "告警"}
 
 # ---- 请求体模型（SPA 以 JSON 提交） ----
 
@@ -98,3 +101,89 @@ def review_payload(entries: list[ReviewEntry], errors: list[str]) -> dict[str, o
             }
         )
     return {"groups": groups, "errors": errors}
+
+
+# ---- 晨间简报（结构化明细，供「今日」页组件化渲染） ----
+
+_CATEGORY_VALUE_LABELS: dict[str, str] = {c.value: CATEGORY_LABELS[c] for c in CATEGORY_LABELS}
+
+
+def _action_item(raw: dict[str, object], rank: int | None = None) -> dict[str, object]:
+    category_key = str(raw.get("category", ""))
+    item: dict[str, object] = {
+        "signal_id": str(raw.get("signal_id", "")),
+        "title": str(raw.get("title", "")),
+        "category_key": category_key,
+        "category": _CATEGORY_VALUE_LABELS.get(category_key, category_key),
+        "evidence": str(raw.get("evidence", "")),
+        "source_ref": str(raw.get("source_ref", "")),
+        "project": raw.get("project"),
+        "due_date": raw.get("due_date"),
+        "detail": str(raw.get("detail", "")),
+    }
+    if rank is not None:
+        item["rank"] = rank
+    return item
+
+
+def brief_payload(snapshot: dict[str, object] | None) -> dict[str, object] | None:
+    """把当日信号快照转成前端可渲染的结构化简报；缺明细（旧格式）返回 None。
+
+    旧格式快照（仅计数）无法支撑组件化渲染，返回 None 由前端回退到既有
+    Markdown 视图；重新生成当日简报后即写入带 ``*_list`` 明细的新快照。
+    """
+    if not isinstance(snapshot, dict):
+        return None
+    task_list = snapshot.get("task_list")
+    if not isinstance(task_list, list):
+        return None  # 旧格式：无结构化明细
+
+    health_level = str(snapshot.get("health", "ok"))
+    actions = snapshot.get("actions")
+    selected: list[dict[str, object]] = []
+    if isinstance(actions, list):
+        selected = [
+            _action_item(raw, rank=idx + 1)
+            for idx, raw in enumerate(actions)
+            if isinstance(raw, dict)
+        ]
+
+    proposals = snapshot.get("proposal_list")
+    completions = snapshot.get("completion_list")
+    return {
+        "date": str(snapshot.get("date", "")),
+        "health": {
+            "level": health_level,
+            "label": _HEALTH_LABELS.get(health_level, health_level),
+            "reasons": [str(r) for r in snapshot.get("health_reasons", [])]
+            if isinstance(snapshot.get("health_reasons"), list)
+            else [],
+        },
+        "meetings": [
+            {"title": str(m.get("title", "")), "start_time": str(m.get("start_time", ""))}
+            for m in snapshot.get("meeting_list", [])
+            if isinstance(m, dict)
+        ],
+        "tasks": [
+            {
+                "summary": str(t.get("summary", "")),
+                "due_date": t.get("due_date"),
+                "task_id": t.get("task_id"),
+            }
+            for t in task_list
+            if isinstance(t, dict)
+        ],
+        "actions": selected,
+        "proposals": [_action_item(raw) for raw in proposals if isinstance(raw, dict)]
+        if isinstance(proposals, list)
+        else [],
+        "completions": [
+            {"text": str(c.get("text", "")), "source_ref": str(c.get("source_ref", ""))}
+            for c in completions
+            if isinstance(c, dict)
+        ]
+        if isinstance(completions, list)
+        else [],
+        "pending_review": int(snapshot.get("pending_review", 0) or 0),
+        "ranking_model": snapshot.get("ranking_model"),
+    }

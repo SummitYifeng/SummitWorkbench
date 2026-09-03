@@ -1,4 +1,8 @@
-:root {
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>晨间简报 v2 预览 · SummitWorkbench</title>
+<style>:root {
   color-scheme: light;
   /* Linear 型设计令牌：zinc 中性底 + indigo 主色；全 app 共享（tokens 全局换新） */
   --fg: #18181b;
@@ -568,3 +572,23 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 @media (prefers-color-scheme: dark) {
   .brief2 .bf-due.today { color: #18181b; }
 }
+
+/* 预览专用 */
+body { padding: 24px; }
+.preview-shell { max-width: 880px; margin: 0 auto; display: grid; gap: 40px; }
+.preview-head { color: var(--muted); font-size: 13px; }
+.preview-caption { display: flex; align-items: baseline; gap: 12px; margin: 0 0 10px; }
+.preview-caption h2 { font-size: 16px; margin: 0; }
+.preview-caption span { font-size: 12px; color: var(--muted); }
+</style></head><body>
+<div class="preview-shell">
+  <div>
+    <div class="preview-caption"><h2>晨间简报 v2 · 今日真实数据</h2><span>2026-09-03 · 结构化渲染（生产同一套代码输出）</span></div>
+    <div class="brief brief2"><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">会议</span><span class="bf-count">2</span></div><div class="bf-row bf-mt past"><span class="bf-time">10:00</span><span class="bf-mt-title">钻石三角双周例会</span></div><div class="bf-row bf-mt"><span class="bf-time">20:30</span><span class="bf-mt-title">TG+SB本地化反馈</span></div></div><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">待办任务</span><span class="bf-count">5</span><span class="bf-note">4 项今日优先（AI 排序）</span></div><div class="bf-row bf-task"><span class="bf-due today">今天到期</span><span class="bf-task-title">Danny的陪同机构和个人</span><span class="bf-ann cat-commit">近期承诺 · #1</span></div><div class="bf-row bf-task"><span class="bf-due today">今天到期</span><span class="bf-task-title">Sunny-薪资</span><span class="bf-ann cat-commit">近期承诺 · #2</span></div><div class="bf-row bf-task"><span class="bf-due week">剩 3 天</span><span class="bf-task-title">门户验收</span><span class="bf-ann cat-commit">近期承诺 · #4</span></div><div class="bf-row bf-task"><span class="bf-due week">剩 7 天</span><span class="bf-task-title">一对一辅导PRD</span><span class="bf-ann cat-commit">近期承诺 · #5</span></div><div class="bf-row bf-task"><span class="bf-due later">09-12</span><span class="bf-task-title">后勤toolkit验收</span></div></div><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">需要行动</span><span class="bf-count">1</span><span class="bf-note">任务清单之外</span></div><div class="bf-act"><div class="bf-act-top"><span class="bf-ann cat-stall">防止停摆 · #3</span><span class="bf-act-title">提交 HIC_Logistics 的未提交改动</span><span class="bf-due-slot"></span></div><div class="bf-act-meta">HIC_Logistics · 工作树有未提交改动</div></div></div><details class="bf-fold"><summary><span class="bf-chev">›</span><span>最近完成</span><span class="bf-count">1</span></summary><div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ HIC_Tool_Kit</span></div></details></div>
+  </div>
+  <div>
+    <div class="preview-caption"><h2>状态示例</h2><span>降级横幅 · 待确认提示 · 空会议 · 提议/最近完成折叠</span></div>
+    <div class="brief brief2"><div class="bf-alert warn"><span class="dot warn"></span><span>健康度 降级</span><span class="bf-alert-reasons">采集源失败：飞书日历 · 排序降级（确定性回退）</span></div><div class="bf-hint"><span>⏳ 另有 3 条会议提取结果待确认（未确认内容不计入事实）</span><button class="link" data-action="go-review">去审批</button></div><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">会议</span></div><div class="bf-empty">今日无会议</div></div><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">待办任务</span><span class="bf-count">1</span></div><div class="bf-row bf-task"><span class="bf-due over">已过期</span><span class="bf-task-title">招生简章终稿</span></div></div><div class="bf-section"><div class="bf-sec-head"><span class="bf-sec-title">需要行动</span><span class="bf-count">1</span><span class="bf-note">任务清单之外</span></div><div class="bf-act"><div class="bf-act-top"><span class="bf-ann cat-stall">防止停摆 · #1</span><span class="bf-act-title">提交 Sample 的未提交改动</span><span class="bf-due-slot"></span></div><div class="bf-act-meta">Sample · 工作树有未提交改动</div></div></div><details class="bf-fold"><summary><span class="bf-chev">›</span><span>AI 提议（非事实）</span><span class="bf-count">2</span></summary><div class="bf-minor-row"><span class="bf-minor-main">把网课项目里程碑拆细，先交付招生漏斗一版</span><span class="bf-minor-text">网课项目 · 网课项目.md</span></div><div class="bf-minor-row"><span class="bf-minor-main">本周末前完成 HIC 门户的验收清单拆分</span><span class="bf-minor-text">HIC_门户 · HIC_门户.md</span></div></details><details class="bf-fold"><summary><span class="bf-chev">›</span><span>最近完成</span><span class="bf-count">2</span></summary><div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ HIC_Tool_Kit</span></div><div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ 钻石三角双周例会纪要归档</span></div></details></div>
+  </div>
+</div>
+</body></html>

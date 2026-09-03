@@ -164,6 +164,83 @@ def test_api_state_returns_day_brief_status_and_inbox(tmp_path: Path, monkeypatc
     assert data["inbox_pending"] == 1
 
 
+def test_api_state_brief_null_without_detail_snapshot(tmp_path: Path, monkeypatch) -> None:
+    """旧格式快照（仅计数、无 *_list 明细）→ brief=None，前端回退 Markdown 视图。"""
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path)
+
+    from summit_workbench.repositories.daily_note import write_brief
+    from summit_workbench.repositories.signal_snapshot import write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_brief(vault, day, "# 晨间简报\n- 测试行动项")
+    write_snapshot(
+        vault,
+        day,
+        {"date": day, "health": "ok", "meetings": 1, "tasks": 1, "actions": [], "proposals": []},
+    )
+    data = client.get("/api/state").json()
+    assert data["brief"] is None
+    assert "测试行动项" in data["brief_md"]
+
+
+def test_api_state_brief_structured_when_snapshot_has_detail(tmp_path: Path, monkeypatch) -> None:
+    """含 *_list 明细的快照 → /api/state.brief 提供组件化渲染所需字段。"""
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path)
+
+    from summit_workbench.repositories.signal_snapshot import write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(
+        vault,
+        day,
+        {
+            "date": day,
+            "health": "degraded",
+            "health_reasons": ["采集源失败：飞书日历"],
+            "meetings": 1,
+            "tasks": 1,
+            "actions": [
+                {
+                    "signal_id": "task-guid-1",
+                    "title": "门户验收",
+                    "category": "commitment",
+                    "evidence": "E2",
+                    "source_ref": "feishu-task:guid-1",
+                    "project": None,
+                    "due_date": day,
+                    "detail": "",
+                }
+            ],
+            "proposals": [],
+            "completions": 1,
+            "pending_review": 2,
+            "ranking_model": "test-model",
+            "meeting_list": [{"title": "钻石三角双周例会", "start_time": "10:00"}],
+            "task_list": [{"summary": "门户验收", "due_date": day, "task_id": "guid-1"}],
+            "proposal_list": [],
+            "completion_list": [{"text": "HIC_Tool_Kit", "source_ref": "feishu-task:x"}],
+        },
+    )
+    data = client.get("/api/state").json()
+    brief = data["brief"]
+    assert brief is not None
+    assert brief["date"] == day
+    assert brief["health"]["level"] == "degraded"
+    assert brief["health"]["label"] == "降级"
+    assert brief["health"]["reasons"] == ["采集源失败：飞书日历"]
+    assert brief["meetings"] == [{"title": "钻石三角双周例会", "start_time": "10:00"}]
+    assert brief["tasks"] == [{"summary": "门户验收", "due_date": day, "task_id": "guid-1"}]
+    action = brief["actions"][0]
+    assert action["rank"] == 1
+    assert action["category_key"] == "commitment"
+    assert action["category"] == "近期承诺"
+    assert action["title"] == "门户验收"
+    assert brief["completions"] == [{"text": "HIC_Tool_Kit", "source_ref": "feishu-task:x"}]
+    assert brief["pending_review"] == 2
+
+
 # ---------- /api/review ----------
 
 

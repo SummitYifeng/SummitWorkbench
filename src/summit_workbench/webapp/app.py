@@ -49,6 +49,7 @@ from summit_workbench.repositories.review_edit import (
     update_fields,
 )
 from summit_workbench.repositories.review_page import parse_review_page, review_path
+from summit_workbench.repositories.signal_snapshot import read_snapshot
 from summit_workbench.webapp.api import (
     AskPayload,
     BatchDecidePayload,
@@ -56,6 +57,7 @@ from summit_workbench.webapp.api import (
     DecidePayload,
     EditPayload,
     ProjectPayload,
+    brief_payload,
     review_payload,
 )
 from summit_workbench.webapp.build_info import (
@@ -358,6 +360,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "status": status.as_dict(),
             "brief_md": brief_md,
             "brief_generated": brief_md is not None,
+            "brief": brief_payload(read_snapshot(ctx.vault_dir, day)),
             "inbox_pending": inbox_pending,
             "projects": projects,
         }

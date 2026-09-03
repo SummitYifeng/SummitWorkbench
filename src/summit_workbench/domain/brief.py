@@ -95,11 +95,16 @@ class MeetingFact:
 
 @dataclass(frozen=True)
 class TaskFact:
-    """待办任务事实（飞书任务原文直取）。"""
+    """待办任务事实（飞书任务原文直取）。
+
+    ``task_id`` 为飞书任务 guid（与行动候选 ``source_ref`` 里的 ``feishu-task:{guid}``
+    同源），供 Web 层把「需要行动」精确合并回任务行（清单合一），避免靠标题猜测。
+    """
 
     summary: str
     due_date: str | None
     source_ref: str = "feishu-task"
+    task_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -239,26 +244,63 @@ class Brief:
     ranking_model: str | None = None  # 实际参与排序的模型 ID；回退时为 None
 
     def as_snapshot(self) -> dict[str, object]:
-        """信号快照的可序列化视图（供北极星指标基线与幂等核对）。"""
+        """信号快照的可序列化视图（供北极星指标基线与幂等核对）。
+
+        **附加演进**：既有计数键（``meetings`` / ``tasks`` / ``completions`` /
+        ``proposals`` 为 id 列表）保持不变；Web 工作台需要完整明细，故另附
+        ``*_list`` 与行动条目的 ``title``/``due_date``/``detail`` 等字段。
+        老读者忽略新键即可；新读者读到缺键的旧快照时按「无结构化明细」降级。
+        """
+        action_items = [
+            {
+                "signal_id": a.signal_id,
+                "title": a.title,
+                "category": a.category.value,
+                "evidence": a.evidence.value,
+                "source_ref": a.source_ref,
+                "project": a.project,
+                "due_date": a.due_date,
+                "detail": a.detail,
+            }
+            for a in self.actions
+        ]
         return {
             "date": self.date,
             "health": self.health.level,
+            "health_reasons": list(self.health.reasons),
             "meetings": len(self.meetings),
             "tasks": len(self.tasks),
-            "actions": [
-                {
-                    "signal_id": a.signal_id,
-                    "category": a.category.value,
-                    "evidence": a.evidence.value,
-                    "source_ref": a.source_ref,
-                    "project": a.project,
-                }
-                for a in self.actions
-            ],
+            "actions": action_items,
             "proposals": [a.signal_id for a in self.proposals],
             "completions": len(self.completions),
             "pending_review": self.pending_review_count,
             "ranking_model": self.ranking_model,
+            # —— Web 工作台结构化明细（附加键）——
+            "meeting_list": [{"title": m.title, "start_time": m.start_time} for m in self.meetings],
+            "task_list": [
+                {
+                    "summary": t.summary,
+                    "due_date": t.due_date,
+                    "task_id": t.task_id,
+                }
+                for t in self.tasks
+            ],
+            "proposal_list": [
+                {
+                    "signal_id": p.signal_id,
+                    "title": p.title,
+                    "category": p.category.value,
+                    "evidence": p.evidence.value,
+                    "source_ref": p.source_ref,
+                    "project": p.project,
+                    "due_date": p.due_date,
+                    "detail": p.detail,
+                }
+                for p in self.proposals
+            ],
+            "completion_list": [
+                {"text": c.text, "source_ref": c.source_ref} for c in self.completions
+            ],
         }
 
 
