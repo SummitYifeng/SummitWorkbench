@@ -25,6 +25,34 @@ if [[ "$REPLACE_RUNNING" != true && -f "$HOME/Library/Application Support/Summit
   exit 1
 fi
 
+# Phase 2 旧启动器没有 runtime record；按完整可执行路径识别它，避免新旧 App 同时争用端口。
+LEGACY_LAUNCHER_PID="$(ps -ww -axo pid=,command= | awk -v target="$DEST_APP/Contents/MacOS/SummitWorkbench" \
+  '$0 ~ target { sub(/^[[:space:]]+/, ""); split($0, fields, /[[:space:]]+/); print fields[1]; exit }' || true)"
+if [[ -n "$LEGACY_LAUNCHER_PID" && "$REPLACE_RUNNING" != true ]]; then
+  echo "✗ 检测到运行中的 SummitWorkbench：请先退出 App，或明确传入 --replace-running" >&2
+  exit 1
+fi
+
+if [[ "$REPLACE_RUNNING" == true && -n "$LEGACY_LAUNCHER_PID" ]]; then
+  LEGACY_SERVER_PID="$(ps -ww -axo pid=,ppid=,command= | awk -v parent="$LEGACY_LAUNCHER_PID" \
+    '$2 == parent && $0 ~ /wb web --host 127\.0\.0\.1 --port/ { print $1; exit }' || true)"
+  for pid in "$LEGACY_SERVER_PID" "$LEGACY_LAUNCHER_PID"; do
+    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then kill -TERM "$pid"; fi
+  done
+  for _ in {1..40}; do
+    launcher_alive=false
+    server_alive=false
+    if [[ "$LEGACY_LAUNCHER_PID" =~ ^[0-9]+$ ]] && kill -0 "$LEGACY_LAUNCHER_PID" 2>/dev/null; then launcher_alive=true; fi
+    if [[ "$LEGACY_SERVER_PID" =~ ^[0-9]+$ ]] && kill -0 "$LEGACY_SERVER_PID" 2>/dev/null; then server_alive=true; fi
+    if [[ "$launcher_alive" == false && "$server_alive" == false ]]; then break; fi
+    sleep 0.25
+  done
+  if [[ "$launcher_alive" == true || "$server_alive" == true ]]; then
+    echo "✗ 旧 SummitWorkbench 实例未在 10 秒内退出，取消安装" >&2
+    exit 1
+  fi
+fi
+
 if [[ "$REPLACE_RUNNING" == true && -f "$HOME/Library/Application Support/SummitWorkbench/runtime.json" ]]; then
   read -r LAUNCHER_PID SERVICE_PID < <("$REPO_ROOT/.venv/bin/python" - "$HOME/Library/Application Support/SummitWorkbench/runtime.json" <<'PY'
 import json
