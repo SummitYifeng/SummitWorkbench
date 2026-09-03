@@ -38,6 +38,12 @@ class CapturePayload(BaseModel):
     text: str
 
 
+class TaskCompletePayload(BaseModel):
+    """把一条飞书任务标记为已完成（``task_id`` 即简报 ``task_list`` 里的飞书任务 guid）。"""
+
+    task_id: str
+
+
 class ProjectPayload(BaseModel):
     """工作台精选（ADR 0023）：按文件夹名加入/归档项目。"""
 
@@ -150,20 +156,29 @@ def brief_payload(snapshot: dict[str, object] | None) -> dict[str, object] | Non
 
     proposals = snapshot.get("proposal_list")
     completions = snapshot.get("completion_list")
+    health_reasons = snapshot.get("health_reasons")
+    meeting_list = snapshot.get("meeting_list")
+    pending_raw = snapshot.get("pending_review")
+    if isinstance(pending_raw, int):
+        pending_review = pending_raw
+    elif isinstance(pending_raw, str) and pending_raw.isdigit():
+        pending_review = int(pending_raw)
+    else:
+        pending_review = 0
     return {
         "date": str(snapshot.get("date", "")),
         "health": {
             "level": health_level,
             "label": _HEALTH_LABELS.get(health_level, health_level),
-            "reasons": [str(r) for r in snapshot.get("health_reasons", [])]
-            if isinstance(snapshot.get("health_reasons"), list)
-            else [],
+            "reasons": [str(r) for r in health_reasons] if isinstance(health_reasons, list) else [],
         },
         "meetings": [
             {"title": str(m.get("title", "")), "start_time": str(m.get("start_time", ""))}
-            for m in snapshot.get("meeting_list", [])
+            for m in meeting_list
             if isinstance(m, dict)
-        ],
+        ]
+        if isinstance(meeting_list, list)
+        else [],
         "tasks": [
             {
                 "summary": str(t.get("summary", "")),
@@ -184,6 +199,6 @@ def brief_payload(snapshot: dict[str, object] | None) -> dict[str, object] | Non
         ]
         if isinstance(completions, list)
         else [],
-        "pending_review": int(snapshot.get("pending_review", 0) or 0),
+        "pending_review": pending_review,
         "ranking_model": snapshot.get("ranking_model"),
     }

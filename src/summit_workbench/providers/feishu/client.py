@@ -54,6 +54,9 @@ class FeishuClient:
     def post(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
         return self._request("POST", path, params=None, json=json)
 
+    def patch(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._request("PATCH", path, params=None, json=json)
+
     def _request(
         self,
         method: str,

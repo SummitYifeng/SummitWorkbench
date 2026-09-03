@@ -1,4 +1,4 @@
-"""飞书 Task v2 创建契约：endpoint、all-day due、client_token 与响应。"""
+"""飞书 Task v2 契约：创建/完成（写回）与列举（只读）的 endpoint/请求形状。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 import httpx
 from pydantic import SecretStr
 
-from summit_workbench.providers.feishu import FeishuClient, create_task
+from summit_workbench.providers.feishu import FeishuClient, complete_task, create_task
 from summit_workbench.providers.feishu.config import FeishuConfig
 
 CFG = FeishuConfig(app_id="cli_test", redirect_uri="http://localhost/callback")
@@ -61,3 +61,27 @@ def test_without_due_omits_due_field():
     result = create_task(client, "内部推进", None, "stable", timezone="Asia/Shanghai")
     assert result.guid == "id"
     assert "due" not in bodies[0]
+
+
+def test_complete_task_patches_official_v2_shape():
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["method"] = request.method
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"code": 0, "data": {}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("token"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    complete_task(client, "task-guid-123")
+    assert seen["method"] == "PATCH"
+    assert seen["path"] == "/open-apis/task/v2/tasks/task-guid-123"
+    body = seen["body"]
+    assert isinstance(body, dict)
+    task = body.get("task")
+    assert isinstance(task, dict)
+    assert task["completed"] is True

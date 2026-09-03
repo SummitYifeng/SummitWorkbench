@@ -1206,6 +1206,10 @@ document.addEventListener('click', (ev) => {
     void runBrief();
     return;
   }
+  if (action === 'task-complete') {
+    void completeTask(btn);
+    return;
+  }
   if (action === 'plan') {
     void planApply(false);
     return;
@@ -1386,6 +1390,34 @@ async function runBrief(): Promise<void> {
     toast(String(err), 'err');
   }
   void refreshState();
+}
+
+/** 「今日」待办任务行的一键完成：写回飞书成功后刷新（快照镜像 → 行消失、进「最近完成」）。 */
+async function completeTask(btn: HTMLElement): Promise<void> {
+  const guid = btn.dataset.task ?? '';
+  const row = btn.closest<HTMLElement>('.bf-task');
+  if (!guid || !row) return;
+  const doneBtn = btn as HTMLButtonElement;
+  doneBtn.disabled = true;
+  doneBtn.classList.add('busy');
+  try {
+    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/tasks/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task_id: guid }),
+    }));
+    toast(r.message, r.ok ? 'ok' : 'err');
+    if (!r.ok) {
+      doneBtn.disabled = false;
+      doneBtn.classList.remove('busy');
+      return;
+    }
+    void refreshState();
+  } catch (err) {
+    toast(String(err), 'err');
+    doneBtn.disabled = false;
+    doneBtn.classList.remove('busy');
+  }
 }
 
 async function planApply(exec: boolean): Promise<void> {

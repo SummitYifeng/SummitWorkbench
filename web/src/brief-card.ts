@@ -106,12 +106,23 @@ function briefMeetingBlock(list: BriefMeeting[]): string {
   return '<div class="bf-section">' + head + rows.join('') + '</div>';
 }
 
+/** 任务行尾部：AI 注解 chip（若有）+「标记完成」控件（仅真飞书任务，有 task_id）。 */
+function briefTaskTrailing(t: BriefTask, ann: BriefAction | undefined): string {
+  const chip = ann ? briefAnnChip(ann) : '';
+  const done = t.task_id
+    ? '<button class="bf-done" data-action="task-complete" data-task="' +
+      esc(t.task_id) +
+      '" title="在飞书中标记该任务为已完成" aria-label="标记完成">✓</button>'
+    : '';
+  return chip || done ? '<span class="bf-trailing">' + chip + done + '</span>' : '';
+}
+
 function briefTaskBlock(b: BriefData, todayIso: string): string {
   // 任务 → 行动候选的精确实联：source_ref / signal_id 里的 feishu-task guid。
   const byGuid = new Map<string, BriefAction>();
   for (const a of b.actions) {
-    const m = /feishu-task:([0-9a-fA-F-]+)/.exec(a.source_ref)
-      || /^task-([0-9a-fA-F-]+)$/.exec(a.signal_id);
+    const m = /feishu-task:([0-9a-zA-Z_-]+)/.exec(a.source_ref)
+      || /^task-([0-9a-zA-Z_-]+)$/.exec(a.signal_id);
     if (m) byGuid.set(m[1].toLowerCase(), a);
   }
   const sorted = [...b.tasks].sort((x, y) => {
@@ -126,11 +137,10 @@ function briefTaskBlock(b: BriefData, todayIso: string): string {
     const key = t.task_id ? String(t.task_id).toLowerCase() : '';
     const ann = key ? byGuid.get(key) : undefined;
     if (ann) annotated += 1;
-    const chip = ann ? briefAnnChip(ann) : '';
     return '<div class="bf-row bf-task">' +
       briefDueBadge(t.due_date, todayIso) +
       '<span class="bf-task-title">' + esc(t.summary) + '</span>' +
-      chip + '</div>';
+      briefTaskTrailing(t, ann) + '</div>';
   }).join('');
   const head = briefSectionHead(
     '待办任务', sorted.length,
@@ -143,8 +153,8 @@ function briefOrphanActions(b: BriefData): BriefAction[] {
   const guids = new Set<string>();
   for (const t of b.tasks) if (t.task_id) guids.add(String(t.task_id).toLowerCase());
   return b.actions.filter((a) => {
-    const m = /feishu-task:([0-9a-fA-F-]+)/.exec(a.source_ref)
-      || /^task-([0-9a-fA-F-]+)$/.exec(a.signal_id);
+    const m = /feishu-task:([0-9a-zA-Z_-]+)/.exec(a.source_ref)
+      || /^task-([0-9a-zA-Z_-]+)$/.exec(a.signal_id);
     return !(m && guids.has(m[1].toLowerCase()));
   });
 }

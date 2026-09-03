@@ -1,4 +1,4 @@
-"""飞书 Task v2 适配器：创建（M1-4）+ 列举（M2-1）。接口形状依据飞书官方服务端 SDK。
+"""飞书 Task v2 适配器：创建/完成（M1-4 写回）+ 列举（M2-1 只读）。接口形状依据飞书官方服务端 SDK。
 
 列举用于晨间简报的**事实区**：任务名 / 截止时间 / 完成状态原样直取，不经模型（PRD 3.4 / G1）。
 端点为**预期端点**，确切分页/字段待真机冒烟核实（scope ``task:task`` 已开通）。
@@ -107,6 +107,19 @@ def _all_day_due(value: str, timezone: str) -> dict[str, object]:
     day = date.fromisoformat(value)
     moment = datetime.combine(day, time.min, tzinfo=ZoneInfo(timezone))
     return {"timestamp": int(moment.timestamp() * 1000), "is_all_day": True}
+
+
+def complete_task(client: FeishuClient, task_guid: str) -> None:
+    """把飞书任务标记为已完成（PATCH /task/v2/tasks/{guid}，幂等）。
+
+    Web 工作台「一键完成」的写回点：飞书是任务状态的唯一真源，本地只在
+    调用成功后镜像到当日渲染快照（见 repositories.signal_snapshot.mark_task_completed）。
+    请求体按官方 Task v2「更新任务」契约包在 ``task`` 字段内。
+    """
+    guid = str(task_guid).strip()
+    if not guid:
+        raise ValueError("缺少任务 guid")
+    client.patch(f"{CREATE_TASK_PATH}/{guid}", json={"task": {"completed": True}})
 
 
 def create_task(

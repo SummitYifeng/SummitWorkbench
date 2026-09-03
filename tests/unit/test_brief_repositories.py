@@ -16,6 +16,7 @@ from summit_workbench.repositories.project_scan import (
     scan_projects,
 )
 from summit_workbench.repositories.signal_snapshot import (
+    mark_task_completed,
     read_snapshot,
     write_snapshot,
 )
@@ -131,6 +132,96 @@ def test_snapshot_roundtrip_overwrites(tmp_path: Path) -> None:
     # 快照顶层打上 schema_version，便于将来格式演进的兼容读。
     assert got["schema_version"] == 1
     assert read_snapshot(vault, "2026-08-31") is None
+
+
+def _detail_snapshot(day: str) -> dict[str, object]:
+    return {
+        "date": day,
+        "health": "ok",
+        "tasks": 2,
+        "meetings": 1,
+        "actions": [
+            {
+                "signal_id": "task-guid-1",
+                "title": "提交样章",
+                "category": "commitment",
+                "evidence": "E2",
+                "source_ref": "feishu-task:guid-1",
+                "project": None,
+                "due_date": day,
+                "detail": "",
+            },
+            {
+                "signal_id": "stall-ProjA-dirty",
+                "title": "提交改动",
+                "category": "anti-stall",
+                "evidence": "E2",
+                "source_ref": "ProjA",
+                "project": "ProjA",
+                "due_date": None,
+                "detail": "未提交",
+            },
+        ],
+        "proposals": [],
+        "completions": 0,
+        "pending_review": 0,
+        "meeting_list": [{"title": "例会", "start_time": "10:00"}],
+        "task_list": [
+            {"summary": "提交样章", "due_date": day, "task_id": "guid-1"},
+            {"summary": "回邮件", "due_date": None, "task_id": "guid-2"},
+        ],
+        "completion_list": [],
+        "proposal_list": [],
+    }
+
+
+def test_mark_task_completed_mirrors_snapshot(tmp_path: Path) -> None:
+    vault = tmp_path / "_vault"
+    day = "2026-09-04"
+    write_snapshot(vault, day, _detail_snapshot(day))
+
+    summary = mark_task_completed(vault, day, "GUID-1")  # 大小写不敏感
+    assert summary == "提交样章"
+
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    # 待办移除该任务并同步计数；无关任务保留
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert [t.get("task_id") for t in task_list] == ["guid-2"]
+    assert snap["tasks"] == 1
+    # 关联它的行动候选一并移除，避免以「需要行动」重新出现；无关候选保留
+    actions = snap["actions"]
+    assert isinstance(actions, list)
+    assert [a.get("signal_id") for a in actions] == ["stall-ProjA-dirty"]
+    # 「最近完成」追加一条 E1 条目（与既有重复时不再追加）
+    completions = snap["completion_list"]
+    assert isinstance(completions, list)
+    assert completions == [{"text": "提交样章", "source_ref": "feishu-task:GUID-1"}]
+    assert snap["completions"] == 1
+    # meetings / proposal 等其它区块不受影响
+    assert snap["meetings"] == 1
+
+    # 幂等：再次标记同一任务 → 快照不变（任务已不在待办）
+    assert mark_task_completed(vault, day, "guid-1") is None
+    assert read_snapshot(vault, day) == snap
+
+
+def test_mark_task_completed_noop_when_task_absent_or_old_format(tmp_path: Path) -> None:
+    vault = tmp_path / "_vault"
+    day = "2026-09-04"
+    # 任务不在当日快照（如当日尚无简报）→ 不写盘
+    write_snapshot(vault, day, _detail_snapshot(day))
+    assert mark_task_completed(vault, day, "guid-99") is None
+    untouched = read_snapshot(vault, day)
+    assert untouched is not None
+    task_list = untouched["task_list"]
+    assert isinstance(task_list, list)
+    assert [t.get("task_id") for t in task_list] == ["guid-1", "guid-2"]
+    assert untouched["completion_list"] == []
+    # 旧格式快照（无 *_list 明细）→ 无镜像目标、零写入
+    write_snapshot(vault, day, {"date": day, "health": "ok", "tasks": 1, "actions": []})
+    assert mark_task_completed(vault, day, "guid-1") is None
 
 
 # —— daily 锚点幂等 ——

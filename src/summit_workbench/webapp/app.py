@@ -49,7 +49,10 @@ from summit_workbench.repositories.review_edit import (
     update_fields,
 )
 from summit_workbench.repositories.review_page import parse_review_page, review_path
-from summit_workbench.repositories.signal_snapshot import read_snapshot
+from summit_workbench.repositories.signal_snapshot import (
+    mark_task_completed,
+    read_snapshot,
+)
 from summit_workbench.webapp.api import (
     AskPayload,
     BatchDecidePayload,
@@ -57,6 +60,7 @@ from summit_workbench.webapp.api import (
     DecidePayload,
     EditPayload,
     ProjectPayload,
+    TaskCompletePayload,
     brief_payload,
     review_payload,
 )
@@ -527,6 +531,33 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "project": project,
             "model_used": model_used,
         }
+
+    @app.post("/api/tasks/complete")
+    def api_task_complete(payload: TaskCompletePayload) -> dict[str, object]:
+        """把一条飞书任务标记为已完成（写回飞书 = 真源）并镜像到当日渲染快照。
+
+        「反向完成」闭环：飞书侧完成成功后，当日快照里该任务从待办移除、计入
+        「最近完成」，前端刷新即消失；下次生成简报以飞书状态为准自然收敛。
+        任何失败（未授权/任务已删/网络）都可见化返回，不改本地快照。
+        """
+        guid = payload.task_id.strip()
+        if not guid:
+            return {"ok": False, "message": "缺少任务 id"}
+        from summit_workbench.providers.feishu import (
+            FeishuClient,
+            FeishuSession,
+            complete_task,
+            load_feishu_config,
+        )
+
+        try:
+            cfg = load_feishu_config()
+            complete_task(FeishuClient(cfg, FeishuSession(cfg).access_token()), guid)
+        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化（授权过期/任务已删等）
+            return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
+        summary = mark_task_completed(ctx.vault_dir, ctx.today(), guid)
+        tail = f"：{summary}" if summary else ""
+        return {"ok": True, "message": f"任务已完成{tail}", "task_id": guid}
 
     @app.post("/api/run/brief")
     def api_run_brief() -> dict[str, object]:

@@ -179,8 +179,14 @@ def test_snapshot_keeps_counts_and_adds_web_detail_lists() -> None:
     assert snap["task_list"] == [
         {"summary": "门户验收", "due_date": "2026-09-06", "task_id": "guid-1"}
     ]
-    assert snap["actions"][0]["title"] == "门户验收"
-    assert snap["actions"][0]["due_date"] == "2026-09-06"
-    assert snap["proposal_list"][0]["title"] == "建议拆分里程碑"
+    actions = snap["actions"]
+    assert isinstance(actions, list)
+    assert isinstance(actions[0], dict)
+    assert actions[0]["title"] == "门户验收"
+    assert actions[0]["due_date"] == "2026-09-06"
+    proposals = snap["proposal_list"]
+    assert isinstance(proposals, list)
+    assert isinstance(proposals[0], dict)
+    assert proposals[0]["title"] == "建议拆分里程碑"
     assert snap["completion_list"] == [{"text": "HIC_Tool_Kit", "source_ref": "feishu-task:x"}]
     assert snap["health_reasons"] == []

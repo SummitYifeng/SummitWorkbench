@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### 新增
+
+- **工作台内一键完成飞书任务（反向写回）**：v0.2「待办任务」默认只读、完成必须去飞书；现在每行最右新增小圆钮「✓」——点击即 `PATCH /open-apis/task/v2/tasks/{guid}` 把任务在**飞书侧**标记完成（真源），成功后把当日**渲染快照**镜像一致（该任务从 `task_list` 移除并计入 `completion_list`「最近完成」、引用它的行动候选一并移除，避免以「需要行动」重新出现），前端刷新即消失；任务不在当日快照时完成照常成功（飞书为准）。vault 简报 Markdown 与 Obsidian 阅读体验一字不动。新增 `providers.feishu.complete_task`（FeishuClient 增 `patch`）、`repositories.signal_snapshot.mark_task_completed`、`POST /api/tasks/complete`（`TaskCompletePayload`）；快照镜像按 `task_id`↔`feishu-task:{guid}` 大小写不敏感匹配，旧格式快照零写入降级。前端 `web/src/brief-card.ts` 待办行渲染 + `main.ts` 点击处理 + CSS（`.bf-done` 小圆钮）；使用指南同步（「今日」页与 FAQ）。质量门新增 7 项测试（Feishu PATCH 契约、快照镜像仓储、`/api/tasks/complete` 端点含失败/缺 id/无快照分支），全套 **440 项全绿**；ruff + format + mypy strict 通过（顺带修复 mypy 2.3.1 下既有 6 处严格类型报错：`webapp/api.py` 简报载荷 3 处与 `test_brief_domain.py` 3 处）。
+
 ## [0.2.0] - 2026-09-03
 
 发布版。核心问题不变（外置执行管理层 + 第二大脑），交付面收敛：**用户日常入口 = 原生 macOS 桌面 App 内的本地 Web 工作台**。在 v0.1.0（M0/M1/M2 + 韧性/正式使用前加固）之上完成 Web 工作台产品化、桌面 App 正式化与晨间简报 v2 呈现改版；vault 内简报 Markdown 版式不变（Obsidian 侧与 G1 回归的唯一真源）。质量门 433 项全绿。

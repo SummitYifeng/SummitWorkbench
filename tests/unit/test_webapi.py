@@ -621,3 +621,158 @@ def test_api_projects_reject_invalid_targets(tmp_path: Path, monkeypatch) -> Non
         for name in ("不存在", "../outside", "a/b", "", "_vault"):
             data = client.post(endpoint, json={"name": name}).json()
             assert data["ok"] is False, f"{endpoint} name={name!r} 应被拒绝"
+
+
+# ---------- /api/tasks/complete（工作台一键完成飞书任务） ----------
+
+
+def _patch_feishu_task_api(monkeypatch, fake_complete) -> None:
+    """把 /api/tasks/complete 内部的飞书调用替换为离线替身（真源写回点不动）。"""
+
+    class _FakeSession:
+        def __init__(self, cfg: object) -> None:
+            self.cfg = cfg
+
+        def access_token(self) -> SecretStr:
+            return SecretStr("tok")
+
+    class _FakeFeishuClient:
+        def __init__(self, cfg: object, token: SecretStr) -> None:
+            pass
+
+    monkeypatch.setattr("summit_workbench.providers.feishu.FeishuClient", _FakeFeishuClient)
+    monkeypatch.setattr("summit_workbench.providers.feishu.FeishuSession", _FakeSession)
+    monkeypatch.setattr("summit_workbench.providers.feishu.load_feishu_config", lambda: object())
+    monkeypatch.setattr("summit_workbench.providers.feishu.complete_task", fake_complete)
+
+
+def _task_snapshot_payload(day: str) -> dict[str, object]:
+    return {
+        "date": day,
+        "health": "ok",
+        "tasks": 2,
+        "meetings": 0,
+        "actions": [
+            {
+                "signal_id": "task-guid-1",
+                "title": "提交样章",
+                "category": "commitment",
+                "evidence": "E2",
+                "source_ref": "feishu-task:guid-1",
+                "project": None,
+                "due_date": day,
+                "detail": "",
+            }
+        ],
+        "proposals": [],
+        "completions": 0,
+        "pending_review": 0,
+        "meeting_list": [],
+        "task_list": [
+            {"summary": "提交样章", "due_date": day, "task_id": "guid-1"},
+            {"summary": "回邮件", "due_date": None, "task_id": "guid-2"},
+        ],
+        "completion_list": [],
+        "proposal_list": [],
+    }
+
+
+def test_api_task_complete_marks_feishu_and_mirrors_snapshot(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    from summit_workbench.repositories.signal_snapshot import read_snapshot, write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(vault, day, _task_snapshot_payload(day))
+
+    seen: dict[str, object] = {}
+
+    def fake_complete(_client_obj: object, task_guid: str) -> None:
+        seen["guid"] = task_guid
+
+    _patch_feishu_task_api(monkeypatch, fake_complete)
+
+    resp = client.post("/api/tasks/complete", json={"task_id": "GUID-1"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["task_id"] == "GUID-1"
+    assert "提交样章" in data["message"]  # 镜像成功时消息带任务名
+    assert seen["guid"] == "GUID-1"
+
+    # 当日渲染快照被镜像：待办移除 + 关联行动移除 + 计入「最近完成」
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert [t.get("task_id") for t in task_list] == ["guid-2"]
+    assert snap["tasks"] == 1
+    assert snap["actions"] == []
+    completions = snap["completion_list"]
+    assert isinstance(completions, list)
+    assert completions == [{"text": "提交样章", "source_ref": "feishu-task:GUID-1"}]
+    assert snap["completions"] == 1
+    # /api/state 随即反映：任务从待办消失
+    state = client.get("/api/state").json()
+    assert state["brief"]["tasks"] == [{"summary": "回邮件", "due_date": None, "task_id": "guid-2"}]
+
+
+def test_api_task_complete_reports_error_without_touching_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    from summit_workbench.repositories.signal_snapshot import read_snapshot, write_snapshot
+
+    day = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    write_snapshot(vault, day, _task_snapshot_payload(day))
+
+    def fake_complete(_client_obj: object, task_guid: str) -> None:
+        raise RuntimeError("飞书授权过期，请重新登录")
+
+    _patch_feishu_task_api(monkeypatch, fake_complete)
+
+    resp = client.post("/api/tasks/complete", json={"task_id": "guid-1"})
+    data = resp.json()
+    assert data["ok"] is False
+    assert "飞书授权过期" in data["message"]
+    # 快照不动：任务仍在待办、未计入完成
+    snap = read_snapshot(vault, day)
+    assert snap is not None
+    task_list = snap["task_list"]
+    assert isinstance(task_list, list)
+    assert [t.get("task_id") for t in task_list] == ["guid-1", "guid-2"]
+    assert snap["completion_list"] == []
+
+
+def test_api_task_complete_ok_even_without_snapshot_entry(tmp_path: Path, monkeypatch) -> None:
+    """飞书是真源：即便当日快照没有该任务（尚无简报/晚建任务），完成照常成功。"""
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _vault = _client(tmp_path, seed_review=False)
+    seen: dict[str, object] = {}
+
+    def fake_complete(_client_obj: object, task_guid: str) -> None:
+        seen["guid"] = task_guid
+
+    _patch_feishu_task_api(monkeypatch, fake_complete)
+    resp = client.post("/api/tasks/complete", json={"task_id": "outside-snapshot"})
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["message"] == "任务已完成"
+    assert seen["guid"] == "outside-snapshot"
+
+
+def test_api_task_complete_rejects_empty_id(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _vault = _client(tmp_path, seed_review=False)
+    called: list[str] = []
+
+    def fake_complete(_client_obj: object, task_guid: str) -> None:
+        called.append(task_guid)
+
+    _patch_feishu_task_api(monkeypatch, fake_complete)
+    resp = client.post("/api/tasks/complete", json={"task_id": "   "})
+    data = resp.json()
+    assert data["ok"] is False
+    assert "缺少任务 id" in data["message"]
+    assert called == []  # 不触发任何飞书写回
