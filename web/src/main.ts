@@ -65,6 +65,12 @@ interface ProjectState {
   /** ADR 0023：已建档（有效 project-main 档案）与否及其 status */
   registered: boolean;
   status: string | null;
+  /** 知识线程项目（无 Work 文件夹的 vault 档案）标记；仓库项目为 false/缺省 */
+  is_thread?: boolean;
+  /** 档案 frontmatter 的 updated（最近状态/内容更新时间，YYYY-MM-DD） */
+  updated?: string | null;
+  /** 显示名（frontmatter `title`，可选）：展示用，规范 ID/别名/文件夹不受影响 */
+  title?: string | null;
 }
 interface StatePayload {
   day: string;
@@ -111,6 +117,20 @@ interface ReviewPayload {
   errors: string[];
 }
 
+/** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
+interface ProjectView {
+  ok: boolean;
+  message?: string;
+  name: string;
+  title?: string;
+  status: string;
+  updated: string;
+  blocks: Record<string, string[]>;
+  followup_pending: number;
+  inbox_pending: number;
+  timeline: { date: string; kind: string; label: string; title: string; snippet: string }[];
+}
+
 const KIND_LABELS: Record<string, string> = {
   decision: '决策',
   'action-item': '行动项',
@@ -121,6 +141,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'feishu-task': '飞书任务',
   'feishu-meeting': '新建会议',
   'project-main': '项目主笔记',
+  'project-followup': '跟进事项',
   'project-inbox': '项目 inbox',
   'global-inbox': '全局 inbox',
 };
@@ -179,6 +200,8 @@ let askBusy = false;
 let askBusyThreadId: string | null = null;
 /** 输入框草稿：renderAskChat 会整体重建输入区，等待期间打的新问题不能丢 */
 let askDraft = '';
+/** 问答检索范围：''=全部；否则为项目/线程名（后端按 registry 解析） */
+let askScope = '';
 
 const app = document.getElementById('app') as HTMLElement;
 const toasts = document.getElementById('toasts') as HTMLElement;
@@ -521,7 +544,7 @@ function renderToday(view: HTMLElement): void {
     projectsHtml() +
     '<section class="block">' +
     '<div class="section-head"><h3 class="section-title">今日简报</h3>' +
-    '<button class="ghost" data-action="run-brief" title="重新生成">↻</button></div>' + briefHtml +
+    '<button class="ghost" data-action="run-brief" title="重新生成今日简报（约 30 秒）">↻ 重新生成</button></div>' + briefHtml +
     '</section>';
 
   const captureForm = document.getElementById('capture-form') as HTMLFormElement;
@@ -734,6 +757,8 @@ function renderAskChat(): void {
   if (!main) return;
   const existing = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (existing) askDraft = existing.value;
+  const scopeEl = document.getElementById('ask-scope') as HTMLSelectElement | null;
+  if (scopeEl) askScope = scopeEl.value;
   const full = askThreads.length >= ASK_MAX_THREADS;
   const thread = activeAskThread();
   if (!thread) {
@@ -752,10 +777,20 @@ function renderAskChat(): void {
   ).join('');
   const showTyping = askBusy && thread.id === askBusyThreadId;
   const typing = showTyping ? '<div class="msg ai"><div class="bubble typing">思考中…</div></div>' : '';
+  const scopeOptions = (state?.projects ?? [])
+    .filter((p) => p.registered)
+    .map((p) =>
+      '<option value="' + esc(p.name) + '"' + (askScope === p.name ? ' selected' : '') + '>' +
+      esc(dispName(p)) + (p.is_thread ? '（线程）' : '') +
+      (dispName(p) !== p.name ? ' · ' + esc(p.name) : '') + '</option>'
+    )
+    .join('');
   main.innerHTML =
     '<div class="ask-chat" id="ask-chat">' + bubbles + typing + '</div>' +
     '<div class="ask-inputbar">' +
     '<form class="ask" id="ask-form" autocomplete="off">' +
+    '<div class="ask-scope-row"><label class="hint">检索范围</label>' +
+    '<select id="ask-scope"><option value="">全部（整个第二大脑）</option>' + scopeOptions + '</select></div>' +
     '<textarea id="ask-input" rows="2" placeholder="问第二大脑…（Enter 提问，Shift+Enter 换行）"></textarea>' +
     '<div class="form-row"><span class="hint ask-keyhint">Enter 提问 · Shift+Enter 换行</span>' +
     '<button class="primary" type="submit"' + (askBusy ? ' disabled' : '') + '>提问</button></div>' +
@@ -763,6 +798,8 @@ function renderAskChat(): void {
   bindAskInput();
   const inputEl = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (inputEl) inputEl.value = askDraft;
+  const scopeSet = document.getElementById('ask-scope') as HTMLSelectElement | null;
+  if (scopeSet) scopeSet.value = askScope;
   const chat = document.getElementById('ask-chat');
   if (chat?.lastElementChild) chat.lastElementChild.scrollIntoView({ block: 'nearest' });
 }
@@ -796,6 +833,8 @@ async function askSubmit(): Promise<void> {
   }
   if (thread.messages.length === 0) thread.title = makeThreadTitle(q);
   const history = askHistoryOf(thread);
+  const scopeInput = document.getElementById('ask-scope') as HTMLSelectElement | null;
+  if (scopeInput) askScope = scopeInput.value;
   thread.messages.push({ role: 'user', text: q, ts: new Date().toISOString(), sources: [] });
   input.value = '';
   askDraft = '';
@@ -808,7 +847,7 @@ async function askSubmit(): Promise<void> {
     const r = await mutation(() => api<AskResponse>('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, history }),
+      body: JSON.stringify({ question: q, history, project: askScope || null }),
     }));
     const html = r.ok && r.answer_html
       ? r.answer_html
@@ -897,6 +936,11 @@ function renderReview(view: HTMLElement): void {
   const applyNudge = approvedPending > 0
     ? '<p class="apply-nudge">' + approvedPending + ' 条已批准、尚未写回 —— 点「应用（写回）」后才会真正写入项目/创建飞书任务</p>'
     : '';
+  const projectOptions = state && state.projects.length
+    ? '<datalist id="wb-project-options">' +
+      state.projects.map((p) => '<option value="' + esc(p.name) + '">' + esc(dispName(p)) + '</option>').join('') +
+      '</datalist>'
+    : '';
   view.innerHTML =
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
@@ -908,11 +952,35 @@ function renderReview(view: HTMLElement): void {
     '</div></div>' +
     errorsHtml +
     '<div id="review-groups">' + groupsHtml + '</div>' +
+    projectOptions +
     '<div id="plan-result"></div>';
+}
+
+/** 'YYYY-MM-DD' 差值（天）；任一非法返回 -1。 */
+function dayDiff(later: string | null | undefined, earlier: string | null | undefined): number {
+  if (!later || !earlier) return -1;
+  const a = Date.parse(later + 'T00:00:00Z');
+  const b = Date.parse(earlier + 'T00:00:00Z');
+  if (Number.isNaN(a) || Number.isNaN(b)) return -1;
+  return Math.round((a - b) / 86400000);
+}
+
+/** 项目展示名：优先 frontmatter `title`（显示名），否则用规范 ID。 */
+function dispName(p: ProjectState): string {
+  return (p.title && p.title.trim()) || p.name;
 }
 
 function projectChips(p: ProjectState): string[] {
   const chips: string[] = [];
+  if (p.is_thread) {
+    chips.push('知识线程');
+    if (p.updated) {
+      chips.push('更新 ' + p.updated);
+      const stale = dayDiff(state?.day, p.updated);
+      if (p.status === 'active' && stale > 14) chips.push('⚠ ' + stale + ' 天未更新');
+    }
+    return chips;
+  }
   if (p.dirty) chips.push('未提交改动');
   if (p.behind > 0) chips.push('落后 ' + p.behind + ' 提交');
   if (p.ahead > 0) chips.push('领先 ' + p.ahead + ' 提交');
@@ -929,11 +997,15 @@ function projectCard(p: ProjectState): string {
   const step = p.next_step
     ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + esc(p.next_step) + '</span></div>'
     : '<div class="project-step muted-step"><span class="step-label">下一步</span><span class="step-text">主笔记还没写下一步</span></div>';
+  const quick = p.registered
+    ? '<button class="ghost card-quick" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
+      '<button class="ghost card-quick" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
+    : '';
   return (
     '<div class="card project' + (p.dirty || p.behind > 0 || p.inbox_pending > 0 ? ' attention' : '') + '">' +
-    '<div class="card-head"><strong class="project-name">' + esc(p.name) + '</strong>' + chipsHtml + '</div>' +
+    '<div class="card-head"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(dispName(p)) + '</button>' + chipsHtml + '</div>' +
     step +
-    '<div class="card-foot">' +
+    '<div class="card-foot">' + quick +
     '<button class="ghost card-archive" data-action="project-archive" data-name="' + esc(p.name) + '" data-confirm="1">归档</button>' +
     '</div>' +
     '</div>'
@@ -1002,14 +1074,18 @@ function projectRow(p: ProjectState): string {
   const action = isOnHome(p)
     ? '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>'
     : '<button class="ghost" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>';
+  const quick = p.registered
+    ? '<button class="ghost" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
+      '<button class="ghost" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
+    : '';
   return (
     '<div class="card project-row">' +
     '<div class="project-row-main">' +
-    '<div class="project-row-title"><strong class="project-name">' + esc(p.name) + '</strong>' + projectStatusBadge(p) + '</div>' +
+    '<div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(dispName(p)) + '</button>' + projectStatusBadge(p) + '</div>' +
     chipsHtml +
     step +
     '</div>' +
-    '<div class="project-row-actions">' + action + '</div>' +
+    '<div class="project-row-actions">' + quick + action + '</div>' +
     '</div>'
   );
 }
@@ -1041,6 +1117,13 @@ function renderProjects(view: HTMLElement): void {
     '<span class="hint">共 ' + total + ' · 在工作台 ' + onHome + ' · 新 ' + fresh + ' · 已归档 ' + archived + '</span></div>' +
     '<div class="project-toolbar">' +
     '<input id="project-search" type="search" placeholder="搜索项目名…" value="' + esc(query) + '">' +
+    '<details class="thread-create" title="业务线程不需要 Work 文件夹/git 仓库，直接在 vault 建档">' +
+    '<summary class="ghost">＋ 新建知识线程</summary>' +
+    '<form class="thread-create-form">' +
+    '<input name="project_id" placeholder="项目 ID，如 finance-ops" required pattern="[A-Za-z0-9_-]+" title="字母/数字/下划线/连字符">' +
+    '<input name="aliases" placeholder="别名（逗号分隔，可选）：财务运营, Finance Ops">' +
+    '<button class="ok" type="submit">建档</button>' +
+    '</form></details>' +
     '</div>' +
     '<div id="projects-list"></div>';
   const listEl = document.getElementById('projects-list') as HTMLElement;
@@ -1143,7 +1226,7 @@ function entryCard(e: ReviewEntry): string {
     '<input type="hidden" name="candidate_id" value="' + esc(e.candidate_id) + '">' +
     '<label>正文</label><textarea name="description" rows="2">' + esc(e.description) + '</textarea>' +
     '<div class="grid2">' +
-    '<div><label>目标项目</label><input name="target_project" value="' + esc(e.target_project ?? '') + '"></div>' +
+    '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="项目 ID 或别名（如 finance-ops）；留空=全局 inbox" value="' + esc(e.target_project ?? '') + '"></div>' +
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
     '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
     '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
@@ -1161,7 +1244,7 @@ function entryCard(e: ReviewEntry): string {
 }
 
 function routeOptions(current: string | null): string {
-  const keys = ['', 'feishu-task', 'feishu-meeting', 'project-main', 'project-inbox', 'global-inbox'];
+  const keys = ['', 'feishu-task', 'feishu-meeting', 'project-main', 'project-followup', 'project-inbox', 'global-inbox'];
   return keys.map((k) => {
     const label = k === '' ? '（未定）' : ROUTE_LABELS[k] ?? k;
     return '<option value="' + k + '"' + (k === current ? ' selected' : '') + '>' + label + '</option>';
@@ -1210,6 +1293,18 @@ document.addEventListener('click', (ev) => {
       return;
     }
     void setProjectState('archive', name);
+    return;
+  }
+  if (action === 'open-log') {
+    openLogModal(btn.dataset.project ?? '');
+    return;
+  }
+  if (action === 'open-artifact') {
+    openArtifactModal(btn.dataset.project ?? '');
+    return;
+  }
+  if (action === 'open-view') {
+    void showProjectView(btn.dataset.name ?? '');
     return;
   }
   if (action === 'run-brief') {
@@ -1305,6 +1400,30 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('submit', (ev) => {
   const form = ev.target as HTMLFormElement;
+  if (form.classList.contains('thread-create-form')) {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const projectId = String(data.get('project_id') ?? '').trim();
+    if (!projectId) {
+      toast('请输入项目 ID', 'err');
+      return;
+    }
+    const aliases = String(data.get('aliases') ?? '')
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    void mutation(async () => {
+      const r = await api<{ ok: boolean; message: string }>('/api/projects/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, aliases }),
+      });
+      toast(r.message, r.ok ? 'ok' : 'err');
+      if (r.ok) form.reset();
+      void refreshAll();
+    }).catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
   if (!form.classList.contains('edit-form')) return;
   ev.preventDefault();
   const data = new FormData(form);
@@ -1410,6 +1529,301 @@ async function setProjectState(action: 'activate' | 'archive', name: string): Pr
     toast(String(err), 'err');
   }
   void refreshAll();
+}
+
+/** 追加推进日志弹窗：多选关联线程/项目 + 粘贴文本 → AI 消化入各线程。 */
+function openLogModal(defaultProject: string): void {
+  const registered = (state?.projects ?? []).filter((p) => p.registered);
+  const boxes = registered
+    .map((p) =>
+      '<label class="log-proj"><input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
+      (p.name === defaultProject ? ' checked' : '') + '>' + esc(dispName(p)) +
+      (dispName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
+      (p.is_thread ? ' <span class="hint">(线程)</span>' : '') + '</label>'
+    )
+    .join('');
+  openModal(
+    '<h3>追加推进日志</h3>' +
+    '<p class="hint">粘贴一段推进/沟通摘录/跟进（文本即可，语音请先自行转写）。可勾选多个关联的线程或项目；' +
+    'AI 会整理摘要并归入各线程。模型不可用时只存原文，绝不丢。</p>' +
+    '<form id="log-form">' +
+    '<div class="log-projs">' + (boxes || '<span class="hint">还没有已建档的项目，先在「项目」页建档。</span>') + '</div>' +
+    '<textarea id="log-text" rows="8" required placeholder="今天和木子/冯老师沟通了什么、定了什么、下一步做什么…"></textarea>' +
+    '<div class="row"><button class="primary" type="submit">保存日志</button>' +
+    '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
+    '</form>'
+  );
+  document.getElementById('log-form')?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    void submitLog();
+  });
+}
+
+async function submitLog(): Promise<void> {
+  const text = ((document.getElementById('log-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
+  const projects = Array.from(
+    document.querySelectorAll<HTMLInputElement>('#log-form input[name="log-proj"]:checked')
+  ).map((i) => i.value);
+  if (!text) {
+    toast('日志内容为空', 'err');
+    return;
+  }
+  if (projects.length === 0) {
+    toast('至少勾选一个线程/项目', 'err');
+    return;
+  }
+  try {
+    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projects, text }),
+    }));
+    closeModal();
+    toast(r.message, r.ok ? 'ok' : 'err');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+/** AI 产物入库弹窗：选线程 + 粘贴阶段总结/PRD/背景包全文 → 自动命名与摘要索引。 */
+function openArtifactModal(defaultProject: string): void {
+  const registered = (state?.projects ?? []).filter((p) => p.registered);
+  const options = registered
+    .map((p) =>
+      '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') + '>' +
+      esc(dispName(p)) + (dispName(p) !== p.name ? '（' + esc(p.name) + '）' : '') + '</option>'
+    )
+    .join('');
+  openModal(
+    '<h3>存入 AI 产物 / 导入文档</h3>' +
+    '<p class="hint">粘贴和 AI 长对话产出的阶段总结 / 背景包 / PRD / 时间线全文，<strong>或直接选择本地 .md/.txt 文件</strong>；' +
+    '系统自动命名、生成摘要索引并归入所选线程档案。<strong>也可以直接把文件从访达拖进本窗口</strong>。</p>' +
+    '<form id="artifact-form">' +
+    '<div class="form-row"><label>归入线程/项目</label>' +
+    '<select id="artifact-project">' + (options || '<option value="">（无已建档项目）</option>') + '</select></div>' +
+    '<input id="artifact-title" placeholder="标题（可选；留空则 AI 自动起）">' +
+    '<div class="form-row artifact-file-row"><label class="ghost artifact-pick" for="artifact-file">📄 选择本地文件' +
+    '<input id="artifact-file" type="file" accept=".md,.txt" class="visually-hidden"></label>' +
+    '<span class="hint" id="artifact-file-name"></span></div>' +
+    '<textarea id="artifact-text" rows="10" required placeholder="把整份文档粘贴在这里，或点上方按钮读入本地文件…"></textarea>' +
+    '<label class="hint artifact-to-state"><input type="checkbox" id="artifact-to-state"> ' +
+    '保存后同步更新主档案「当前状态」为本文档摘要（覆盖原内容，旧版可在 vault git 找回）</label>' +
+    '<div class="row"><button class="primary" type="submit">存入档案</button>' +
+    '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
+    '</form>'
+  );
+  document.getElementById('artifact-form')?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    void submitArtifact();
+  });
+  const readArtifactFile = (file: File): void => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = String(reader.result ?? '');
+      const titleInput = document.getElementById('artifact-title') as HTMLInputElement | null;
+      const textArea = document.getElementById('artifact-text') as HTMLTextAreaElement | null;
+      if (titleInput && !titleInput.value.trim()) {
+        titleInput.value = file.name.replace(/\.(md|txt)$/i, '');
+      }
+      if (textArea) textArea.value = content;
+      const nameEl = document.getElementById('artifact-file-name');
+      if (nameEl) nameEl.textContent = '已读入：' + file.name + '（' + content.length + ' 字符）';
+    };
+    reader.onerror = () => toast('读取文件失败', 'err');
+    reader.readAsText(file, 'utf-8');
+  };
+  const fileInput = document.getElementById('artifact-file') as HTMLInputElement | null;
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) readArtifactFile(file);
+  });
+  // 拖放读入（绕过系统文件选择框：WKWebView 对 picker 的兼容问题）
+  const dropTarget = document.getElementById('artifact-form') as HTMLElement | null;
+  dropTarget?.addEventListener('dragover', (ev) => {
+    ev.preventDefault();
+    dropTarget.classList.add('artifact-drop');
+  });
+  dropTarget?.addEventListener('dragleave', () => dropTarget.classList.remove('artifact-drop'));
+  dropTarget?.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    dropTarget.classList.remove('artifact-drop');
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) {
+      readArtifactFile(file);
+      toast('已读取文件：' + file.name, 'ok');
+    }
+  });
+}
+
+async function submitArtifact(): Promise<void> {
+  const text = ((document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
+  const project = ((document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '').trim();
+  const title = ((document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '').trim();
+  const syncState = !!((document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked);
+  if (!text) {
+    toast('产物内容为空', 'err');
+    return;
+  }
+  if (!project) {
+    toast('请选择归入的线程/项目', 'err');
+    return;
+  }
+  try {
+    const r = await mutation(() => api<{ ok: boolean; message: string; summary?: string }>('/api/threads/artifacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project, text, title: title || null }),
+    }));
+    if (!r.ok) {
+      toast(r.message, 'err');
+      return;
+    }
+    let extra = '';
+    if (syncState) {
+      const stateText = r.summary || title || text.slice(0, 80).replace(/\s+/g, ' ');
+      const s = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project, text: stateText }),
+      }));
+      extra = s.ok ? ' · 已同步当前状态' : '（当前状态同步失败：' + s.message + '）';
+    }
+    closeModal();
+    toast(r.message + extra, r.ok ? 'ok' : 'err');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+/** 线视图（P2）：渲染项目/线程的档案区块 + 时间线。 */
+function projectViewHtml(v: ProjectView): string {
+  const order = ['当前状态', '下一步', '阻塞', '跟进事项', '决策记录'];
+  const blockSections = order.map((label) => {
+    const lines = v.blocks[label] ?? [];
+    if (lines.length === 0) return '';
+    const rows = lines.map((raw) => {
+      let text = raw;
+      let mark = '';
+      if (text.startsWith('- [ ] ')) { mark = '☐ '; text = text.slice(6); }
+      else if (text.startsWith('- [x] ')) { mark = '☑ '; text = text.slice(6); }
+      else if (text.startsWith('- ')) { text = text.slice(2); }
+      return '<li>' + mark + esc(text) + '</li>';
+    }).join('');
+    const extra = label === '跟进事项' && v.followup_pending > 0
+      ? ' <span class="badge warn">' + v.followup_pending + ' 条待闭环</span>'
+      : (label === '下一步' && lines.length === 0 ? '' : '');
+    return '<div class="pv-block"><h4>' + esc(label) + extra + '</h4><ul>' + rows + '</ul></div>';
+  }).join('');
+  const timeline = v.timeline.length
+    ? '<ul class="pv-timeline">' + v.timeline.map((t) =>
+        '<li class="tl-kind-' + esc(t.kind) + '">' +
+        '<span class="tl-date">' + esc(t.date) + '</span>' +
+        '<span class="tl-label">' + esc(t.label) + '</span>' +
+        '<span class="tl-title">' + esc(t.title) + '</span>' +
+        (t.snippet ? '<div class="tl-snippet">' + esc(t.snippet) + '</div>' : '') +
+        '</li>'
+      ).join('') + '</ul>'
+    : '<p class="hint">还没有推进日志/产物/关联会议——用下方「✎ 日志」「存产物」开始积累。</p>';
+  const inboxNote = v.inbox_pending > 0
+    ? '<p class="hint">📥 线程 inbox 有 ' + v.inbox_pending + ' 条待处理</p>' : '';
+  const statusBadge = v.status === 'archived' ? '已归档' : '在工作台';
+  const disp = (v.title && v.title.trim()) || v.name;
+  return (
+    '<div class="pv">' +
+    '<div class="pv-head">' +
+    '<div><h3 class="project-name" id="pv-title">' + esc(disp) + '</h3>' +
+    (disp !== v.name ? '<div class="hint">档案 ID：' + esc(v.name) + '</div>' : '') +
+    '<div class="hint">状态：' + esc(statusBadge) + (v.updated ? ' · 更新于 ' + esc(v.updated) : '') + '</div>' +
+    inboxNote + '</div>' +
+    '<div class="row">' +
+    '<button class="ok" data-action="pv-log" title="追加推进日志">✎ 日志</button>' +
+    '<button class="ghost" id="pv-rename" title="修改显示名（不改档案 ID / 文件夹 / git）">✎ 显示名</button>' +
+    '<button class="ghost" data-action="pv-artifact" title="把 AI 产物存入本档案">存产物</button>' +
+    '<button class="ghost" data-action="pv-refresh" title="重新加载">↻ 刷新</button>' +
+    '</div></div>' +
+    '<div class="pv-blocks">' + blockSections + '</div>' +
+    '<div class="pv-timeline-wrap"><h4>时间线</h4>' + timeline + '</div>' +
+    '<div class="row"><button class="primary" data-action="pv-close">关闭</button></div>' +
+    '</div>'
+  );
+}
+
+/** 打开某项目/线程的线视图（模态内展示，含 日志/产物/刷新/关闭 操作）。 */
+async function showProjectView(name: string): Promise<void> {
+  if (!name) return;
+  let view: ProjectView;
+  try {
+    view = await api<ProjectView>('/api/projects/view?name=' + encodeURIComponent(name));
+  } catch (err) {
+    toast(String(err), 'err');
+    return;
+  }
+  if (!view.ok) {
+    toast(view.message ?? '打开失败', 'err');
+    return;
+  }
+  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
+  const modal = document.getElementById('modal') as HTMLElement;
+  modal.innerHTML = projectViewHtml(view);
+  backdrop.hidden = false;
+  modal.querySelector('[data-action="pv-close"]')?.addEventListener('click', closeModal);
+  modal.querySelector('[data-action="pv-refresh"]')?.addEventListener('click', () => { void showProjectView(name); });
+  modal.querySelector('[data-action="pv-log"]')?.addEventListener('click', () => openLogModal(name));
+  modal.querySelector('[data-action="pv-artifact"]')?.addEventListener('click', () => openArtifactModal(name));
+
+  const renameBtn = modal.querySelector<HTMLButtonElement>('#pv-rename');
+  renameBtn?.addEventListener('click', () => {
+    const titleBox = modal.querySelector('#pv-title');
+    if (!titleBox) return;
+    const cur = (view.title && view.title.trim()) || view.name;
+    const wrap = document.createElement('div');
+    wrap.className = 'pv-rename';
+    const input = document.createElement('input');
+    input.value = cur;
+    input.maxLength = 60;
+    input.placeholder = '显示名（如：活满报名系统）';
+    const save = document.createElement('button');
+    save.className = 'ok';
+    save.type = 'button';
+    save.textContent = '保存';
+    const cancel = document.createElement('button');
+    cancel.className = 'ghost';
+    cancel.type = 'button';
+    cancel.textContent = '取消';
+    wrap.append(input, save, cancel);
+    titleBox.replaceWith(wrap);
+    input.focus();
+    input.select();
+    const commit = (): void => {
+      const value = input.value.trim();
+      if (!value) {
+        toast('显示名不能为空', 'err');
+        return;
+      }
+      void mutation(async () => {
+        const r = await api<{ ok: boolean; message: string }>('/api/projects/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: view.name, title: value }),
+        });
+        toast(r.message, r.ok ? 'ok' : 'err');
+        if (r.ok) {
+          void showProjectView(view.name);
+          void refreshState();
+        }
+      }).catch((err: unknown) => toast(String(err), 'err'));
+    };
+    save.addEventListener('click', commit);
+    cancel.addEventListener('click', () => { void showProjectView(view.name); });
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        commit();
+      } else if (ev.key === 'Escape') {
+        void showProjectView(view.name);
+      }
+    });
+  });
 }
 
 async function runBrief(): Promise<void> {

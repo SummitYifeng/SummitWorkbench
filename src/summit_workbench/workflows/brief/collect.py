@@ -25,7 +25,11 @@ from summit_workbench.domain.brief import (
 )
 from summit_workbench.providers.feishu.calendar import CalendarEvent
 from summit_workbench.providers.feishu.tasks import TaskItem
-from summit_workbench.repositories.project_scan import ProjectState, scan_projects
+from summit_workbench.repositories.project_scan import (
+    ProjectState,
+    scan_all_projects,
+)
+from summit_workbench.repositories.project_view import project_archive_state
 
 
 class FactsSource(Protocol):
@@ -155,6 +159,44 @@ def _anti_stall_signal(project: ProjectState) -> ActionSignal | None:
     return None
 
 
+def _thread_extra_signals(vault_dir: Path, project: ProjectState) -> list[ActionSignal]:
+    """知识线程（及带档案的仓库项目）的内容信号：阻塞 → 防停摆；未闭环跟进 → 主线推进。
+
+    仓库项目以 git 状态为主、内容信号为补充；线程项目没有 git，内容信号就是它的
+    「推进/停摆」事实来源。只对已建档且 active 的项目取档案内容。
+    """
+    if not project.registered or project.status != "active":
+        return []
+    blocked, followup_open = project_archive_state(vault_dir, project.name)
+    signals: list[ActionSignal] = []
+    if blocked:
+        signals.append(
+            ActionSignal(
+                signal_id=f"block-{project.name}",
+                title=f"{project.name} 阻塞：{blocked}",
+                category=ActionCategory.ANTI_STALL,
+                evidence=EvidenceLevel.E2,
+                source_ref=f"projects/{project.name}.md#阻塞",
+                project=project.name,
+            )
+        )
+    if followup_open:
+        signals.append(
+            ActionSignal(
+                signal_id=f"follow-{project.name}",
+                title=f"跟进 {project.name}：{followup_open[0]}",
+                category=ActionCategory.MAIN_PUSH,
+                evidence=EvidenceLevel.E2,
+                source_ref=f"projects/{project.name}.md#跟进事项",
+                project=project.name,
+                detail=f"共 {len(followup_open)} 条待闭环跟进"
+                if len(followup_open) > 1
+                else "他人承诺待闭环",
+            )
+        )
+    return signals
+
+
 def collect_signals(
     work_root: Path,
     vault_dir: Path,
@@ -190,10 +232,14 @@ def collect_signals(
     else:
         collected.source_failures.append("飞书未配置（纯本地降级）")
 
-    # —— 本地项目扫描 —— （scan_projects 内部已把 git 失败转成 project.git_error）
+    # —— 本地项目全集扫描（仓库项目 + 知识线程）——
+    # scan_all_projects 内部已把 git 失败转成 project.git_error。
     try:
-        for project in scan_projects(work_root, vault_dir):
-            collected.candidates.extend(_project_signals(project))
+        for project in scan_all_projects(work_root, vault_dir):
+            # 已归档项目不产生行动信号（退出工作台 = 不再推进提醒）。
+            if project.status != "archived":
+                collected.candidates.extend(_project_signals(project))
+                collected.candidates.extend(_thread_extra_signals(vault_dir, project))
             if project.git_error:
                 collected.source_failures.append(f"{project.name} git（{project.git_error}）")
     except OSError as exc:

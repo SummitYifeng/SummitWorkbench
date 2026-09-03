@@ -71,6 +71,42 @@ class ProjectPayload(BaseModel):
     name: str
 
 
+class ProjectCreatePayload(BaseModel):
+    """新建知识线程项目（无 Work 文件夹的 vault 档案）。"""
+
+    project_id: str
+    aliases: list[str] = []
+
+
+class ProjectRenamePayload(BaseModel):
+    """设置项目/线程的显示名（frontmatter ``title``；不影响规范 ID、别名与文件夹）。"""
+
+    name: str
+    title: str
+
+
+class LogAppendPayload(BaseModel):
+    """追加一条推进日志：可关联 1..n 个线程/项目；AI 摘要是加分项，模型不可用只存原文。"""
+
+    projects: list[str]
+    text: str
+
+
+class ArtifactSavePayload(BaseModel):
+    """把一段 AI 产物（阶段总结/PRD/背景包等）存入某个线程档案。"""
+
+    project: str
+    text: str
+    title: str | None = None
+
+
+class ProjectStatePayload(BaseModel):
+    """把主档案「当前状态」区块替换为一段文本（产物摘要 → 状态草案）。"""
+
+    project: str
+    text: str
+
+
 class AskHistoryTurn(BaseModel):
     """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
 
@@ -84,6 +120,8 @@ class AskHistoryTurn(BaseModel):
 class AskPayload(BaseModel):
     question: str
     history: list[AskHistoryTurn] = []
+    # 可选的检索范围：限定到某个项目/线程（其档案+日志+产物+关联会议）。
+    project: str | None = None
 
 
 # ---- 序列化 ----

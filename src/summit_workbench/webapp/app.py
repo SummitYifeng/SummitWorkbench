@@ -35,13 +35,21 @@ if TYPE_CHECKING:
 
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
+from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.repositories.project_registry import (
     archive_project,
+    create_project_note,
     ensure_project_active,
+    load_project_registry,
 )
-from summit_workbench.repositories.project_scan import count_inbox_pending, scan_projects
+from summit_workbench.repositories.project_scan import (
+    count_inbox_pending,
+    is_internal_dirname,
+    scan_all_projects,
+)
+from summit_workbench.repositories.project_view import build_project_view
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -55,14 +63,23 @@ from summit_workbench.repositories.signal_snapshot import (
     mark_task_edited,
     read_snapshot,
 )
+from summit_workbench.repositories.thread_notes import (
+    append_work_log,
+    save_thread_artifact,
+)
 from summit_workbench.webapp.api import (
+    ArtifactSavePayload,
     AskPayload,
     BatchDecidePayload,
     CapturePayload,
     DecidePayload,
     EditPayload,
+    LogAppendPayload,
     MeetingEditPayload,
+    ProjectCreatePayload,
     ProjectPayload,
+    ProjectRenamePayload,
+    ProjectStatePayload,
     TaskCompletePayload,
     TaskEditPayload,
     brief_payload,
@@ -193,9 +210,12 @@ def _build_meeting_creator(ctx: WebContext) -> MeetingCreator:
 
 
 def _ask_html(
-    vault_dir: Path, question: str, history: tuple[AskTurn, ...] = ()
+    vault_dir: Path,
+    question: str,
+    history: tuple[AskTurn, ...] = (),
+    project: str | None = None,
 ) -> tuple[str, list[str]]:
-    """跑一次 wb ask（可带追问上下文）并渲染为 HTML；返回 (HTML, 本次来源 id 列表)。
+    """跑一次 wb ask（可带追问上下文与项目/线程范围）并渲染为 HTML。
 
     模型不可用时返回可见错误；source_ids 供前端存进会话，追问时回传给后端。
     """
@@ -208,7 +228,9 @@ def _ask_html(
         cfg = load_model_config("qa")
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("qa-answer")
-        result = answer_question(vault_dir, question, cfg, api_key, prompt=prompt, history=history)
+        result = answer_question(
+            vault_dir, question, cfg, api_key, prompt=prompt, history=history, project=project
+        )
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
         return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', []
 
@@ -407,8 +429,11 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 "git_error": p.git_error,
                 "registered": p.registered,
                 "status": p.status,
+                "is_thread": p.is_thread,
+                "updated": p.updated,
+                "title": p.title,
             }
-            for p in scan_projects(ctx.work_root, ctx.vault_dir)
+            for p in scan_all_projects(ctx.work_root, ctx.vault_dir)
         ]
         payload: dict[str, object] = {
             "day": day,
@@ -435,21 +460,55 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             }
         return payload
 
-    def _project_dir(name: str) -> Path | None:
-        """校验工作台精选的目标：必须是 ``work_root`` 的直接子目录（非 _vault、无路径分隔符）。"""
+    def _project_target(name: str) -> tuple[bool, str]:
+        """校验「加入/归档工作台」的目标：Work 仓库文件夹 或 已建档的知识线程。
+
+        返回 (ok, 错误消息)。下划线前缀目录是系统内部目录，一律不允许操作。
+        """
         if not name or name in (".", "..") or "/" in name or "\\" in name:
-            return None
-        path = ctx.work_root / name
-        if path.parent != ctx.work_root or path.name == "_vault" or not path.is_dir():
-            return None
-        return path
+            return False, f"非法项目名：{name}"
+        if is_internal_dirname(name):
+            return False, f"{name} 是系统内部目录，不能作为项目操作"
+        folder = ctx.work_root / name
+        if folder.is_dir():
+            return True, ""
+        registry = load_project_registry(ctx.vault_dir)
+        if name in registry.canonical:
+            return True, ""
+        return False, f"work_root 下没有该项目文件夹，vault 中也没有 {name} 的档案"
+
+    @app.post("/api/projects/rename")
+    def api_project_rename(payload: ProjectRenamePayload) -> dict[str, object]:
+        """设置项目/线程的显示名（写档案 frontmatter ``title``；不影响 ID/别名/文件夹）。"""
+        name = payload.name.strip()
+        title = payload.title.strip()
+        if not title:
+            return {"ok": False, "message": "显示名不能为空"}
+        registry = load_project_registry(ctx.vault_dir)
+        project = registry.resolve(name)
+        if project is None:
+            return {"ok": False, "message": f"项目未建档：{name}"}
+        path = ctx.vault_dir / "projects" / f"{project}.md"
+        try:
+            from summit_workbench.repositories.note_status import update_note_status
+            from summit_workbench.repositories.vault import load_note as _load_note
+
+            note = _load_note(path)
+            status = note.meta.get("status")
+            if not isinstance(status, str):
+                return {"ok": False, "message": f"项目档案无效：{project}"}
+            update_note_status(path, status, extra={"title": title, "updated": ctx.today()})
+        except ValueError as exc:
+            return {"ok": False, "message": f"改名失败：{exc}"}
+        return {"ok": True, "message": f"{project} 显示名已设为「{title}」"}
 
     @app.post("/api/projects/activate")
     def api_project_activate(payload: ProjectPayload) -> dict[str, object]:
         """把项目加入工作台（幂等）：无档案则建档；archived 则恢复为 active。"""
         name = payload.name.strip()
-        if _project_dir(name) is None:
-            return {"ok": False, "message": f"work_root 下没有该项目文件夹：{name}"}
+        ok, message = _project_target(name)
+        if not ok:
+            return {"ok": False, "message": message}
         try:
             path = ensure_project_active(ctx.vault_dir, name)
         except (ValueError, FileExistsError) as exc:
@@ -460,13 +519,34 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     def api_project_archive(payload: ProjectPayload) -> dict[str, object]:
         """把项目归档（幂等）：置 status: archived，不在首页显示；可随时恢复。"""
         name = payload.name.strip()
-        if _project_dir(name) is None:
-            return {"ok": False, "message": f"work_root 下没有该项目文件夹：{name}"}
+        ok, message = _project_target(name)
+        if not ok:
+            return {"ok": False, "message": message}
         try:
             path = archive_project(ctx.vault_dir, name)
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"归档失败：{exc}"}
         return {"ok": True, "message": f"已归档：{name}", "path": str(path)}
+
+    @app.post("/api/projects/create")
+    def api_project_create(payload: ProjectCreatePayload) -> dict[str, object]:
+        """新建知识线程项目：在 vault 建档（不创建任何 Work 文件夹 / git 仓库）。"""
+        project_id = payload.project_id.strip()
+        if not project_id:
+            return {"ok": False, "message": "请输入项目 ID"}
+        if is_internal_dirname(project_id):
+            return {"ok": False, "message": "项目 ID 不能以下划线开头（保留给系统内部目录）"}
+        if (ctx.work_root / project_id).is_dir():
+            return {
+                "ok": False,
+                "message": f"Work 下已有同名文件夹 {project_id}，请用「加入工作台」建档",
+            }
+        aliases = [alias.strip() for alias in payload.aliases if alias.strip()]
+        try:
+            path = create_project_note(ctx.vault_dir, project_id, aliases=aliases or None)
+        except (ValueError, FileExistsError) as exc:
+            return {"ok": False, "message": f"新建失败：{exc}"}
+        return {"ok": True, "message": f"已建档知识线程：{project_id}", "path": str(path)}
 
     @app.get("/api/review")
     def api_review() -> dict[str, object]:
@@ -533,6 +613,157 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
         return {"ok": True, "plan_text": _plan_text(report), "executed": True}
+
+    @app.post("/api/threads/state")
+    def api_set_project_state(payload: ProjectStatePayload) -> dict[str, object]:
+        """把主档案「当前状态」区块替换为一段文本（产物摘要 → 状态草案，显式确认后写回）。"""
+        text = payload.text.strip()
+        if not text:
+            return {"ok": False, "message": "状态内容为空"}
+        registry = load_project_registry(ctx.vault_dir)
+        project = registry.resolve(payload.project.strip())
+        if project is None:
+            return {"ok": False, "message": f"项目未建档：{payload.project.strip()}"}
+        try:
+            from summit_workbench.repositories.note_status import update_note_status
+            from summit_workbench.repositories.vault import load_note as _load_note
+            from summit_workbench.repositories.writeback import set_project_status
+
+            set_project_status(ctx.vault_dir, project, text)
+            note = _load_note(ctx.vault_dir / "projects" / f"{project}.md")
+            status = note.meta.get("status")
+            if isinstance(status, str):
+                update_note_status(
+                    ctx.vault_dir / "projects" / f"{project}.md",
+                    status,
+                    extra={"updated": ctx.today()},
+                )
+        except ValueError as exc:
+            return {"ok": False, "message": f"更新失败：{exc}"}
+        return {"ok": True, "message": f"已更新 {project} 当前状态", "project": project}
+
+    @app.get("/api/projects/view")
+    def api_project_view(name: str) -> dict[str, object]:
+        """线视图：某项目/线程的档案区块 + 时间线（logs/artifacts/meetings 聚合）。"""
+        registry = load_project_registry(ctx.vault_dir)
+        project = registry.resolve(name)
+        if project is None:
+            return {"ok": False, "message": f"项目未建档：{name}"}
+        try:
+            view = build_project_view(ctx.vault_dir, project)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        return {"ok": True, **view}
+
+    @app.post("/api/threads/logs")
+    def api_append_log(payload: LogAppendPayload) -> dict[str, object]:
+        """追加推进日志（可关联多线程）；AI 消化是加分项，任何失败只存原文。"""
+        text = payload.text.strip()
+        if not text:
+            return {"ok": False, "message": "日志内容为空"}
+        registry = load_project_registry(ctx.vault_dir)
+        resolved: list[str] = []
+        for name in payload.projects:
+            cid = registry.resolve(name) or name
+            if cid and cid in registry.canonical and cid not in resolved:
+                resolved.append(cid)
+        if not resolved:
+            return {"ok": False, "message": "没有可关联的项目/线程（先在「项目」页建档）"}
+
+        digest: LogDigest | None = None
+        enriched = False
+        try:
+            from summit_workbench.config.secrets import CredentialError, resolve_credential
+            from summit_workbench.prompts import load_prompt
+            from summit_workbench.providers.llm import LLMError, load_model_config
+            from summit_workbench.workflows.threadnotes import digest_log
+
+            cfg = load_model_config("capture")
+            api_key = resolve_credential(cfg.api_key_ref)
+            prompt = load_prompt("log-digest")
+            digest = digest_log(cfg, api_key, prompt, text, project_hints=resolved)
+            enriched = True
+        except (LLMError, CredentialError, FileNotFoundError, ValueError):
+            digest = None
+
+        summary = digest.summary if digest else ""
+        involved = digest.involved if digest else []
+        tags = digest.tags if digest else []
+        try:
+            path = append_work_log(
+                ctx.vault_dir,
+                projects=resolved,
+                text=text,
+                summary=summary,
+                involved=involved,
+                tags=tags,
+                next_step=digest.next_step if digest else None,
+                decision=digest.decision if digest else None,
+            )
+        except ValueError as exc:
+            return {"ok": False, "message": f"保存失败：{exc}"}
+        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
+        return {
+            "ok": True,
+            "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}",
+            "path": str(path),
+            "summary": summary,
+            "enriched": enriched,
+        }
+
+    @app.post("/api/threads/artifacts")
+    def api_save_artifact(payload: ArtifactSavePayload) -> dict[str, object]:
+        """把 AI 产物（阶段总结/PRD/背景包等）存入线程档案并生成索引。"""
+        text = payload.text.strip()
+        if not text:
+            return {"ok": False, "message": "产物内容为空"}
+        registry = load_project_registry(ctx.vault_dir)
+        project = registry.resolve(payload.project.strip())
+        if project is None:
+            return {
+                "ok": False,
+                "message": f"项目未建档：{payload.project.strip()}（先在「项目」页建档再存产物）",
+            }
+        title_hint = (payload.title or "").strip()
+        index: ArtifactIndex | None = None
+        enriched = False
+        try:
+            from summit_workbench.config.secrets import CredentialError, resolve_credential
+            from summit_workbench.prompts import load_prompt
+            from summit_workbench.providers.llm import LLMError, load_model_config
+            from summit_workbench.workflows.threadnotes import index_artifact
+
+            cfg = load_model_config("capture")
+            api_key = resolve_credential(cfg.api_key_ref)
+            prompt = load_prompt("artifact-index")
+            index = index_artifact(cfg, api_key, prompt, text, title_hint=title_hint)
+            enriched = True
+        except (LLMError, CredentialError, FileNotFoundError, ValueError):
+            index = None
+
+        title = (index.title if index and index.title else title_hint) or ""
+        summary = index.summary if index else ""
+        kind = index.kind if index else ArtifactKind.OTHER
+        try:
+            path = save_thread_artifact(
+                ctx.vault_dir,
+                project=project,
+                text=text,
+                title=title,
+                summary=summary,
+                kind=kind,
+            )
+        except ValueError as exc:
+            return {"ok": False, "message": f"保存失败：{exc}"}
+        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
+        return {
+            "ok": True,
+            "message": f"已存入 {project} 档案 · {tail}",
+            "path": str(path),
+            "title": title,
+            "summary": summary,
+            "enriched": enriched,
+        }
 
     @app.post("/api/capture")
     def api_capture(payload: CapturePayload) -> dict[str, object]:
@@ -765,7 +996,10 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             for t in payload.history
             if t.question.strip()
         )
-        html, source_ids = _ask_html(ctx.vault_dir, question, history=history)
+        project = None
+        if payload.project:
+            project = load_project_registry(ctx.vault_dir).resolve(payload.project)
+        html, source_ids = _ask_html(ctx.vault_dir, question, history=history, project=project)
         return {"ok": True, "answer_html": html, "source_ids": source_ids}
 
     @app.post("/api/meetings/import")

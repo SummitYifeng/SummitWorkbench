@@ -35,8 +35,10 @@ from summit_workbench.repositories.review_page import (
 )
 from summit_workbench.repositories.writeback import (
     append_global_inbox,
+    append_project_followup,
     append_project_inbox,
     append_project_main,
+    append_thread_inbox,
 )
 
 TaskCreator = Callable[[str, str | None, str], str]
@@ -63,12 +65,27 @@ class ApplyReport:
     archive_path: Path | None = None
 
 
+def _project_has_folder(work_root: Path, project: str) -> bool:
+    """目标项目是否对应 Work 目录下的真实文件夹（仓库项目）——决定 inbox 落点。"""
+    return (work_root / project).is_dir()
+
+
+def _project_inbox_destination(vault_dir: Path, work_root: Path, project: str) -> str:
+    """项目 inbox 落点：仓库项目 → 文件夹 inbox；知识线程（无文件夹）→ vault inbox。"""
+    if _project_has_folder(work_root, project):
+        return str(work_root / project / "input" / "inbox.md")
+    return str(vault_dir / "inboxes" / f"{project}.md")
+
+
 def _destination(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> str:
     item = entry.candidate
     if item.route is RouteTarget.PROJECT_MAIN:
         return str(vault_dir / "projects" / f"{item.target_project}.md")
+    if item.route is RouteTarget.PROJECT_FOLLOWUP:
+        # 跟进事项写回主档案本体（同 project-main 文件，区块不同）。
+        return str(vault_dir / "projects" / f"{item.target_project}.md")
     if item.route is RouteTarget.PROJECT_INBOX:
-        return str(work_root / str(item.target_project) / "input" / "inbox.md")
+        return _project_inbox_destination(vault_dir, work_root, str(item.target_project))
     if item.route is RouteTarget.GLOBAL_INBOX:
         return str(vault_dir / "inbox.md")
     if item.route is RouteTarget.FEISHU_TASK:
@@ -104,11 +121,27 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
         elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
             reason = "新建会议需要开始时间（在「修改」里填开始时间）"
         elif (
-            item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_INBOX)
+            item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_FOLLOWUP)
             and not Path(destination).is_file()
         ):
-            # 项目落点必须已存在（用 `wb project new` 创建）；全局 inbox 会按需自建。
+            # 主档案落点必须已存在（用 `wb project new` 创建）；全局 inbox 会按需自建。
             reason = f"写回目标不存在：{destination}（可用 wb project new 创建后再批准）"
+        elif (
+            item.route is RouteTarget.PROJECT_INBOX
+            and _project_has_folder(work_root, str(item.target_project))
+            and not Path(destination).is_file()
+        ):
+            # 仓库项目的 inbox 必须已存在（沿用既有约定）。
+            reason = f"写回目标不存在：{destination}"
+        elif (
+            item.route is RouteTarget.PROJECT_INBOX
+            and not _project_has_folder(work_root, str(item.target_project))
+            and not (vault_dir / "projects" / f"{item.target_project}.md").is_file()
+        ):
+            # 知识线程（无文件夹）的 inbox 由 vault 自建，但要求线程已建档。
+            reason = (
+                f"线程未建档，无法写入 inbox：{item.target_project}（可用 wb project new 创建）"
+            )
         actions.append(
             ApplyAction(item.candidate_id, item.decision, destination, reason is None, reason)
         )
@@ -127,13 +160,29 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
             item.kind,
         )
         return str(path), None
-    if item.route is RouteTarget.PROJECT_INBOX:
-        path, _written = append_project_inbox(
-            work_root,
+    if item.route is RouteTarget.PROJECT_FOLLOWUP:
+        path, _written = append_project_followup(
+            vault_dir,
             str(item.target_project),
             item.description,
             item.candidate_id,
         )
+        return str(path), None
+    if item.route is RouteTarget.PROJECT_INBOX:
+        if _project_has_folder(work_root, str(item.target_project)):
+            path, _written = append_project_inbox(
+                work_root,
+                str(item.target_project),
+                item.description,
+                item.candidate_id,
+            )
+        else:
+            path, _written = append_thread_inbox(
+                vault_dir,
+                str(item.target_project),
+                item.description,
+                item.candidate_id,
+            )
         return str(path), None
     if item.route is RouteTarget.GLOBAL_INBOX:
         path, _written = append_global_inbox(vault_dir, item.description, item.candidate_id)

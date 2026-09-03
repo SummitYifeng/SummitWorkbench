@@ -51,7 +51,13 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
         scope="single",
         required_blocks=("## 当前状态", "## 下一步", "## 阻塞", "## 决策记录"),
     ),
-    "work-log": NoteTypeSpec(scope="single"),
+    # 知识线程项目（无 Work 文件夹）的收件箱：_vault/inboxes/<project>.md。
+    # 仓库项目沿用各仓库文件夹内的 input/inbox.md，不属于 vault schema 校验范围。
+    "project-inbox": NoteTypeSpec(scope="single"),
+    # 推进日志：可关联 1..n 个线程/项目（R3 工作日志总结多个工作），projects 必填。
+    "work-log": NoteTypeSpec(scope="multi"),
+    # AI 产物（阶段总结/PRD/背景包/timeline）：绑定单一线程，project 必填。
+    "thread-doc": NoteTypeSpec(scope="single"),
     "meeting-note": NoteTypeSpec(
         scope="multi",
         required_blocks=(

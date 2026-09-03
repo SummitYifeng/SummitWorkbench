@@ -34,6 +34,7 @@ class RouteTarget(StrEnum):
     FEISHU_TASK = "feishu-task"  # 有期限或涉及他人
     FEISHU_MEETING = "feishu-meeting"  # 会议结论落成未来日历日程（新建飞书日历事件）
     PROJECT_MAIN = "project-main"  # 明确内部下一步
+    PROJECT_FOLLOWUP = "project-followup"  # 他人行动项 → 主档案「跟进事项」责任记录（不进本人待办）
     PROJECT_INBOX = "project-inbox"  # 未成熟想法
     GLOBAL_INBOX = "global-inbox"  # 目标项目不明
 
@@ -88,7 +89,7 @@ class ApprovalCandidate:
         目标可写的判定按 route 区分（贴合真实场景：多数会议未必对应已建项目）：
         - 全局 inbox 与新建日历会议（个人日程排期）正是「目标项目不明」的兜底，
           不需要已解析项目即可捕获/落日程；
-        - 其余落点（项目主笔记 / 项目 inbox / 飞书任务 / 未定 route）需已解析目标项目。
+        - 其余落点（项目主笔记 / 跟进事项 / 项目 inbox / 飞书任务 / 未定 route）需已解析目标项目。
         """
         if self.evidence is None or not self.evidence.is_valid():
             return False
@@ -121,6 +122,9 @@ def route_candidate(
 
     优先级：目标不明 → 全局 inbox；有期限或涉及他人 → 飞书任务；明确内部下一步 → 项目
     主笔记；否则（未成熟想法）→ 项目 inbox。
+
+    说明：「跟进事项」（他人行动项的责任记录）**不自动选定**——是否属于「我该跟进别人」
+    还是「我要做的下一步」，由用户在审批页裁决（这是产品边界：不把模型推断冒充事实）。
     """
     if not _has_project(target_project):
         return RouteTarget.GLOBAL_INBOX

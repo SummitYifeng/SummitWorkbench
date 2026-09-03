@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 import WebKit
 
 final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSWindowDelegate {
@@ -63,6 +64,7 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
     func show() {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(webView)
         NSApp.activate(ignoringOtherApps: true)
         logger.log("window_presented")
     }
@@ -145,6 +147,25 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
         alert.addButton(withTitle: "确定")
         alert.addButton(withTitle: "取消")
         completionHandler(alert.runModal() == .alertFirstButtonReturn)
+    }
+
+    // LSUIElement（纯菜单栏应用）下系统默认文件面板不会自动弹出，
+    // 必须自绘 NSOpenPanel 承接 <input type="file">（P3 存产物/导入本地文件）。
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.allowedContentTypes = [.item]  // 放行任意扩展名，前端按 .md/.txt 语义使用
+        panel.message = "选择要读入工作台的文档（.md / .txt）"
+        panel.begin { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

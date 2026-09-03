@@ -110,7 +110,7 @@ def create_project_note(
     day = (now or datetime.now(UTC)).date().isoformat()
     clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
     alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
-    blocks = NOTE_TYPES["project-main"].required_blocks
+    blocks = (*NOTE_TYPES["project-main"].required_blocks, "## 跟进事项")
     frontmatter = (
         f"---\nproject: {project_id}\ndate: {day}\ntype: project-main\n"
         f"status: active\nupdated: {day}\n{alias_line}---\n"

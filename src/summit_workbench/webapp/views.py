@@ -17,6 +17,7 @@ _ROUTE_LABELS = {
     RouteTarget.FEISHU_TASK: "飞书任务",
     RouteTarget.FEISHU_MEETING: "新建会议",
     RouteTarget.PROJECT_MAIN: "项目主笔记",
+    RouteTarget.PROJECT_FOLLOWUP: "跟进事项",
     RouteTarget.PROJECT_INBOX: "项目 inbox",
     RouteTarget.GLOBAL_INBOX: "全局 inbox",
 }
