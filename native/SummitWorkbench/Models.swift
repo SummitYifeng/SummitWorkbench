@@ -50,18 +50,35 @@ struct AppConfiguration {
     let mode: PanelMode
     let workRoot: String
     let wbBinary: String
+    let staticDirectory: String?
+    let promptsDirectory: String?
 
     var panelURL: URL {
         URL(string: "http://127.0.0.1:\(manifest.port)/?build=\(manifest.frontendBuild)")!
+    }
+
+    var serverArguments: [String] {
+        if URL(fileURLWithPath: wbBinary).lastPathComponent == "SummitWorkbenchServer" {
+            return ["--host", "127.0.0.1", "--port", String(manifest.port),
+                    "--work-root", workRoot, "--static-dir", staticDirectory ?? ""]
+        }
+        return ["web", "--host", "127.0.0.1", "--port", String(manifest.port)]
     }
 
     static func load() throws -> AppConfiguration {
         let manifest = try BuildManifest.load()
         let environment = ProcessInfo.processInfo.environment
         let workRoot = environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")
-        let wbBinary = environment["WB_BIN"] ?? "__WB_BIN__"
-        return AppConfiguration(manifest: manifest, mode: .current,
-                                workRoot: workRoot, wbBinary: wbBinary)
+        let resources = Bundle.main.resourceURL
+        let bundledServer = resources?.appendingPathComponent("server/SummitWorkbenchServer").path
+        let bundledStatic = resources?.appendingPathComponent("web/static").path
+        let bundledPrompts = resources?.appendingPathComponent("prompts").path
+        let wbBinary = environment["WB_SERVER_BINARY"] ?? bundledServer ?? "__WB_BIN__"
+        let staticDirectory = environment["WB_STATIC_DIR"] ?? bundledStatic
+        let promptsDirectory = environment["WB_PROMPTS_DIR"] ?? bundledPrompts
+        return AppConfiguration(manifest: manifest, mode: .current, workRoot: workRoot,
+                                wbBinary: wbBinary, staticDirectory: staticDirectory,
+                                promptsDirectory: promptsDirectory)
     }
 }
 
@@ -119,4 +136,3 @@ enum NativeMessage {
 enum SupervisorState: String {
     case idle, probing, starting, ready, degraded, restarting, crashLoop, conflict, stopping, stopped
 }
-

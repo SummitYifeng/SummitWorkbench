@@ -89,11 +89,17 @@ final class ServiceSupervisor {
         setState(.starting)
         let child = Process()
         child.executableURL = URL(fileURLWithPath: configuration.wbBinary)
-        child.arguments = ["web", "--host", "127.0.0.1", "--port", String(configuration.manifest.port)]
+        child.arguments = configuration.serverArguments
         var environment = ProcessInfo.processInfo.environment
         environment["WORK_ROOT"] = configuration.workRoot
         environment["WB_PANEL_MODE"] = configuration.mode.rawValue
         environment["WB_LAUNCH_SESSION"] = UUID().uuidString
+        if let staticDirectory = configuration.staticDirectory {
+            environment["WB_STATIC_DIR"] = staticDirectory
+        }
+        if let promptsDirectory = configuration.promptsDirectory {
+            environment["WB_PROMPTS_DIR"] = promptsDirectory
+        }
         child.environment = environment
         let logURL = URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Library/Logs/summitworkbench-panel.log")
@@ -206,4 +212,3 @@ final class ServiceSupervisor {
         return formatter.date(from: value)
     }
 }
-

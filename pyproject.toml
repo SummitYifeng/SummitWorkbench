@@ -44,6 +44,9 @@ dev = [
     "uvicorn>=0.30,<1",
     "python-multipart>=0.0.9,<1",
 ]
+packaging = [
+    "pyinstaller>=6.6,<7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/summit_workbench"]
@@ -85,6 +88,9 @@ disallow_untyped_calls = false
 testpaths = ["tests"]
 addopts = "-ra"
 pythonpath = ["src"]
+markers = [
+    "integration: tests that exercise a built external application bundle",
+]
 
 # 覆盖率体检（非强制门；按需 `uv run pytest --cov`）。webapp/views 是内联 HTML 模板，
 # 非逻辑，排除以免稀释信号。
