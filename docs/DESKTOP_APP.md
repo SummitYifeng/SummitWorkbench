@@ -1,5 +1,10 @@
 # 桌面 App（macOS）
 
+> 当前页面描述现有 Chrome App Mode 启动器。已经确认的 WKWebView、版本握手、服务监督与
+> 自包含打包改造，请按
+> [面板生命周期、版本一致性与 macOS 原生壳实施文档](plans/PANEL_LIFECYCLE_AND_UPDATE_IMPLEMENTATION.md)
+> 分阶段实施；改造完成后再用最终行为整体更新本页。
+
 把本地 Web 面板包成一个原生 `.app`：双击启动 `wb web` 并在独立应用窗口
 （Chrome app 模式，无 Chrome 时退化为默认浏览器）打开面板。
 
