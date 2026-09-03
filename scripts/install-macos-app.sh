@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 校验并原子安装一个已构建的 SummitWorkbench.app。
 # 默认不触碰正在运行的实例；--replace-running 只终止 runtime record 严格匹配的进程。
+# 备份自动处理：安装前清理遗留 .previous，安装成功后不再保留备份（失败回滚仍用
+# 本轮 mv 出的备份），下次安装无需任何手动步骤。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -83,9 +85,12 @@ codesign --verify --deep --strict "$STAGED_APP"
 
 mkdir -p "$(dirname "$DEST_APP")"
 BACKUP_APP="$DEST_APP.previous"
+# 旧备份自动清理：.previous 只会来自上一轮安装留下的「被替换版本」；本轮即将用
+# $SOURCE_APP 原子替换 $DEST_APP，旧 .previous 无保留价值（回滚用的是本轮 mv 出的备份），
+# 直接清掉，避免阻塞下次安装。
 if [[ -e "$BACKUP_APP" ]]; then
-  echo "✗ 已存在旧备份：${BACKUP_APP}，请先处理后重试" >&2
-  exit 1
+  echo "↻ 清理上次安装的旧备份：$BACKUP_APP"
+  rm -rf "$BACKUP_APP"
 fi
 if [[ -d "$DEST_APP" ]]; then mv "$DEST_APP" "$BACKUP_APP"; fi
 if ! mv "$STAGED_APP" "$DEST_APP"; then
@@ -103,6 +108,8 @@ PY
 )"
 for _ in {1..40}; do
   if curl -fsS --max-time 1 "http://127.0.0.1:$PORT/api/version" >/dev/null 2>&1; then
+    # 安装成功即不再保留本轮备份（被替换的旧版），下次安装无需手动清理。
+    rm -rf "$BACKUP_APP" || true
     echo "✓ 已安装并启动 $DEST_APP"
     exit 0
   fi
