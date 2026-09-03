@@ -5,10 +5,11 @@
 
 写回部分（Web 工作台「新建会议 / 编辑会议」）：创建/更新主日历日程事件。日历事件的时间戳
 按官方契约使用 **unix 秒的字符串**（``start_time.timestamp``）；创建事件不支持直接传参会人
-（如需邀请走 attendees 二次调用，MVP 不做）。所需写 scope ``calendar:calendar`` 需在开放平台
-开通并重新授权后才能真机验证（读 scope ``calendar:calendar:readonly`` 已开通）。
+（如需邀请走 attendees 二次调用，MVP 不做）。写 scope ``calendar:calendar`` 已开通并重新授权，
+2026-09-03 真机核实：创建 / 更新（标题与起止时间）均可写回且可回读一致（读 scope
+``calendar:calendar:readonly`` 随写 scope 一并授予）。
 
-端点为**预期端点，依官方文档给出，待真机冒烟核实后固定**（沿用 M0-4/M0-10 范式）：
+端点已经真机冒烟核实后固定（沿用 M0-4/M0-10 范式）：
 - 主日历：``POST /open-apis/calendar/v4/calendars/primary``（应用/用户主日历）；
 - 事件列表：``GET /open-apis/calendar/v4/calendars/{calendar_id}/events``（起止为 unix 秒）；
 - 创建事件：``POST /open-apis/calendar/v4/calendars/{calendar_id}/events``；
