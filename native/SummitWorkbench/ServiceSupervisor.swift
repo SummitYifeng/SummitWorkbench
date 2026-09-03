@@ -13,6 +13,10 @@ final class ServiceSupervisor {
     private var failures: [Date] = []
     private var restartWork: DispatchWorkItem?
     var onStateChange: ((SupervisorState) -> Void)?
+    /// 服务在**无进行中 ensureReady 周期**的后台恢复中到达 ready 时回调（如崩溃重启、
+    /// 服务实例变化），供生命周期层重新装载面板。初始启动由 ensureReady 的 completion
+    /// 负责，此处不重复触发。
+    var onIdentityChange: ((ServiceIdentity) -> Void)?
 
     init(configuration: AppConfiguration, logger: StructuredLogger) {
         self.configuration = configuration
@@ -68,6 +72,19 @@ final class ServiceSupervisor {
         process.terminate()
     }
 
+    /// App 进程终止时的同步收尾：取消重启、终止自管服务并清理 runtime record。
+    /// 不做等待（进程即将退出），与用户主动 quit 的异步 stop() 语义区分。
+    func shutdownForApplicationTermination() {
+        desiredStop = true
+        restartWork?.cancel()
+        logger.log("service_shutdown_for_termination")
+        if let process, process.isRunning {
+            process.terminationHandler = nil
+            process.terminate()
+        }
+        RuntimeRecord.remove()
+    }
+
     private func accept(_ identity: ServiceIdentity) {
         self.identity = identity
         logger.log("service_identity_verified", fields: ["server_instance": identity.serverInstance])
@@ -81,6 +98,7 @@ final class ServiceSupervisor {
             return
         }
         setState(.ready)
+        ready(with: identity)
         finish(identity)
     }
 
@@ -139,6 +157,7 @@ final class ServiceSupervisor {
                 self.identity = identity
                 self.logger.log("service_ready", fields: ["server_instance": identity.serverInstance])
                 self.setState(.ready)
+                self.ready(with: identity)
                 self.finish(identity)
                 return
             }
@@ -185,6 +204,14 @@ final class ServiceSupervisor {
         logger.log("service_conflict", level: "error", fields: ["message": message])
         setState(.conflict)
         finish(nil)
+    }
+
+    private func ready(with identity: ServiceIdentity) {
+        // 进行中的 ensureReady 周期会经 completion 汇报 identity（含协调器自身的
+        // 恢复流程），避免重复触发；仅后台自发恢复（崩溃重启等）时通知监听者。
+        if !ensureInFlight {
+            onIdentityChange?(identity)
+        }
     }
 
     private func finish(_ identity: ServiceIdentity?) {
