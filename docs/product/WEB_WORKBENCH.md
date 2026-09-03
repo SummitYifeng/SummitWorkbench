@@ -1,6 +1,6 @@
 # Web 工作台（wb web）设计说明
 
-> 状态：v0.2 已交付 · 配套 PRD L45–L48 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
+> 状态：v0.2 已交付 · 配套 PRD L45–L49 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
 >
 > 本文回答「为什么这样设计」：形态、信息架构、边界与技术取舍。
 
@@ -33,7 +33,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
         ③ 会议逐字稿拖拽导入区（全自动归档+结构化+生成候选）
         ④ 项目推进卡（ADR 0023：只显示已建档 active 项目；卡片右下角「归档」按钮；
            未建档文件夹以邀请横幅出现）
-        ⑤ 今日简报（未生成 → 空状态引导「现在生成」）
+        ⑤ 今日简报（L49：日程优先的组件化视图——会议时间列 + 待办任务截止语义色/
+           倒计时 + AI 选中任务行「分类 · 排名」注解；未生成 → 空状态引导「现在生成」）
 
 审批页  工具栏（待确认数 + 预演应用 + 应用写回）
         按会议分组的候选卡片：即时批准/拒绝/改回/修改
@@ -82,16 +83,18 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
   排序为 在工作台 → 新 → 已归档；行内「加入工作台 / 归档」即改 `_vault` 档案状态，与
   `#项目` 标签解析、审批路由共用同一份项目账本。
 
-### 4.5 今日简报 / 问答
+### 4.5 今日简报（v2）/ 问答
 
-- 简报读当日笔记锚点区块（与 CLI 同一实现），未生成给空状态引导，可一键触发 `wb brief`。
+- **数据通路（ADR 0024）**：`/api/state.brief` 是结构化载荷（来自当日信号快照 `_signals/YYYY-MM-DD.json` 的 `*_list` 明细），前端 `web/src/brief-card.ts` 组件化渲染；快照是**附加演进**（计数键保留），旧快照缺明细时 `brief=null`，前端自动回退 Markdown 视图（重跑一次 `wb brief` 即写入新快照）。vault 当日笔记的简报 Markdown 版式不变——Obsidian 侧与 G1 回归的唯一真源。
+- **呈现语义（L49）**：日程优先——会议（时间列，过去淡化）与待办任务（截止紧迫度排序 + 语义色倒计时徽章）是主区；AI 选中的任务按 `task_id`↔`feishu-task:{guid}` 精确合并到对应行上叠加「分类 · 排名」注解（消除事实区/行动区重复）；清单之外的行动单列「需要行动 · 任务清单之外」；AI 提议与最近完成默认折叠带计数。
+- 未生成给空状态引导，可一键触发 `wb brief`。
 - 问答走 `wb ask` 全链路，回答带来源；模型不可用时显示可见错误而非空页。
 
 ## 5. JSON API（FastAPI，复用既有领域逻辑）
 
 | 端点 | 用途 |
 |---|---|
-| `GET /api/state` | 日期、状态速览（StatusReport.as_dict）、今日简报、inbox 积压、项目推进 |
+| `GET /api/state` | 日期、状态速览（StatusReport.as_dict）、今日简报（`brief_md` + 结构化 `brief`，ADR 0024）、inbox 积压、项目推进 |
 | `GET /api/review` | 审批页分组 JSON（meetings.md 事实源） |
 | `POST /api/review/decide` / `POST /api/review/edit` | 即时批准/拒绝/修改（review_edit） |
 | `POST /api/review/plan` / `POST /api/review/apply` | 预演 / 显式应用（apply_meeting_review） |
@@ -104,7 +107,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 
 ## 6. 技术实现
 
-- 前端：Vite + 原生 TypeScript（无组件库，产物 JS ≈ 17KB）；`web/` 目录，`npm run build` 输出到 `src/summit_workbench/webapp/static/`（随 Python 包分发，`wb web` 开箱即用）。
+- 前端：Vite + 原生 TypeScript（无组件库）；`web/` 目录，`npm run build`（tsc --noEmit + vite）输出到 `src/summit_workbench/webapp/static/`（随 Python 包分发，`wb web` 开箱即用）。
+- 简报 v2 渲染为纯字符串模块 `web/src/brief-card.ts`（无 DOM 依赖，可独立生成静态预览：`node web/scripts/preview-brief.mjs` → `docs/design/brief-v2-preview.html`）；全局设计令牌（zinc + indigo、深浅双色）集中在 `web/src/style.css` 的 CSS 变量。
 - 开发：`npm run dev` 经 Vite 代理直连本机 `wb web`（8787），热更新。
 - 后端：FastAPI 新增 `/api/*`；`/` 在 static/index.html 存在时服务 SPA，否则回退 SSR（views.py 保留，旧路由 `/review`、`/run/*`、`/ask` 全部可用）。
 - 通知闭环（L48）：`wb status --notify` 真正投递 macOS 通知中心（osascript）；`wb web --open` 服务未运行时后台拉起 + 打开浏览器。
@@ -112,28 +116,27 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 ## 7. 用户入口与交付注意（开发必读）
 
 - **用户的日常入口是 Web 面板，不是 CLI。** 真人用户只打开 `/Applications` 里的桌面 App
-  （Swift 启动器 → `wb web`）或浏览器访问 `http://127.0.0.1:8787` 完成全部日常工作；CLI 只
-  用于自动化（launchd/脚本）与深度操作。因此**任何「用户可见」的功能改动，默认交付到
-  Web 面板**，并同时保证 CLI 语义不倒退（两者共用 repositories/workflows）。
-- **Web 改动必须重建产物 + 重启服务才生效**：`cd web && npm run build`（tsc + vite，产物写进
-  `src/summit_workbench/webapp/static/`，随 Python 包分发）→ 退出旧面板进程后重新打开
-  App（或直接重跑 `wb web`）。没有常驻守护进程，也不会热加载已运行的服务。
-- **桌面 App 只是启动器，Web 更新无需重装 .app**：启动器烘焙 `$REPO_ROOT/.venv/bin/wb`
-  （`uv sync` editable 安装，运行时直接读仓库 `src/` 下的 static），所以换 UI 只需
-  「重建 + 重启服务」——**/Applications 里的 App 与仓库自动链接**，不必重新安装或重新链接；
-  只有 `wb` 路径 / `WORK_ROOT` / 端口 / 仓库路径变化时才需要重跑
-  `scripts/build-macos-app.sh` 并重装到 `/Applications`（安装命令见 DESKTOP_APP.md）。
+  （自包含 bundle：PyInstaller server + 原生 Swift/AppKit + 受管 WKWebView，加载同一套面板）
+  或浏览器访问 `http://127.0.0.1:8787` 完成全部日常工作；CLI 只用于自动化（launchd/脚本）
+  与深度操作。因此**任何「用户可见」的功能改动，默认交付到 Web 面板**，并同时保证 CLI
+  语义不倒退（两者共用 repositories/workflows）。
+- **两种运行形态，更新路径不同**：
+  - 从仓库直跑 `wb web`：读仓库 `src/summit_workbench/webapp/static/`——`cd web && npm run build`
+    后重启服务即生效；
+  - 桌面 App（`/Applications/SummitWorkbench.app`）：**自包含且版本锁定**（bundle 内烘焙 server +
+    static + 前端构建身份），更新需重跑 `scripts/build-macos-app.sh` 并
+    `scripts/install-macos-app.sh <dist>.app --replace-running`（详见 `docs/DESKTOP_APP.md`）；
+    App 启动时校验 frontend_build 与自身 manifest 一致，不一致会重启自带服务。
 - **「改了版本但点开没更新」的排查顺序**：
   1. 面板服务是不是在本次构建**之后**重启的？（服务读的是磁盘上的 static，重启即新版本）
   2. 浏览器是否缓存了旧 `index.html`——它引用的旧哈希资源已从磁盘删除，会呈现旧界面或
      白屏；**⌘⇧R 强刷**一次。
   3. 打开的是不是当前构建的 App？`/Applications` 里的 `SummitKnowledge.app`、
      `SummitServerAI.app` 是历史遗留的旧名/旧前端产品（内嵌冻结运行时），**不是本仓库的
-     产物**；请打开 `/Applications/SummitWorkbench.app`（唯一正式安装位，桌面副本已弃用），
-     它烘焙的 wb 指向本仓库 `.venv`。
+     产物**；请打开 `/Applications/SummitWorkbench.app`（唯一正式安装位，桌面副本已弃用）。
 
 ## 8. 边界与约束（与 PRD 一致）
 
 - 纯本地 `127.0.0.1`、按需启动；不引入服务端、常驻守护进程、向量库或 RAG。
 - 会议内容上云边界（L33）、写回需确认（L13）、软预算提醒线（L42）全部不变。
-- 质量门：ruff + format + mypy strict + pytest（387 项）；前端 tsc --noEmit 纳入构建。
+- 质量门：ruff + format + mypy strict + pytest（433 项）；前端 tsc --noEmit 纳入构建。

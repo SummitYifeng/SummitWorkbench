@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "summit-workbench"
-version = "0.1.0"
-description = "外置执行管理层 + 第二大脑（M1 会议知识链路开发中）"
+version = "0.2.0"
+description = "外置执行管理层 + 第二大脑（本地 Web 工作台 + macOS 桌面 App）"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }

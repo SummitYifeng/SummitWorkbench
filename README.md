@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> **当前状态：`v0.1.0` · 首个发布版。** M0 / M1 / M2 全部完成并经真实数据/真机验证：会议发现归档、云端结构化、集中审批写回（项目别名解析 + 未匹配项目零摩擦捕获）、`wb status` 状态/费用/提醒、`wb ask` 第二大脑问答、`wb meeting import`/`backfill` 手动与历史补导、`wb brief` 晨间简报、`wb weekly` 周复盘，以及可选的本地 Web 审批面板（`wb web`）与 macOS 启动器 App。底层做过三项韧性加固（工作区锁 / JSONL 容错读 / 飞书退避重试，ADR 0016–0018）与四项正式使用前加固（schema 版本号 / 运行心跳健康度 / `wb doctor` 预检 / 飞书授权可见性，ADR 0019–0022）。质量门（ruff + mypy strict + pytest）360 项全绿。仓库不含凭据或真实会议内容。
+> **当前状态：`v0.2.0` · 发布版。** 在 v0.1.0（M0 / M1 / M2 全部完成并经真实数据/真机验证）基础上，v0.2.0 把用户日常入口收敛为**原生 macOS 桌面 App + 本地 Web 工作台**（SPA「今日工作台」，纯本地按需启动）：快速捕捉 AI 分类、拖拽导入全自动链路、审批批量操作与 `wb review sweep`、项目推进精选（ADR 0023）、第二大脑对话化、内置「指南」页签，并把**晨间简报升级为组件化日程视图**（会议时间列 / 任务截止语义色 + AI 优先注解 / 折叠次级区，ADR 0024，vault Markdown 版式不变）。桌面 App 为自包含 bundle（PyInstaller server + 原生 Swift + 受管 WKWebView），支持原子安装与版本握手自更新。底层韧性加固（ADR 0016–0018）与正式使用前加固（ADR 0019–0022）在 v0.1.0 完成。质量门（ruff + mypy strict + pytest）433 项全绿。仓库不含凭据或真实会议内容。
 
 ## 产品解决的问题
 
@@ -17,7 +17,7 @@ SummitWorkbench 将这套工作方式收敛为两层能力：
 
 Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文和结构化笔记自动归档，可能改变项目或任务状态的内容进入集中待确认页。用户只需勾选、忽略或原地修改候选项，再批量应用。
 
-> **用户日常入口 = Web 面板，不用 CLI。** 真人用户只打开桌面 App（或浏览器访问
+> **用户日常入口 = 桌面 App 内的 Web 面板，不用 CLI。** 真人用户只打开桌面 App（或浏览器访问
 > `http://127.0.0.1:8787`）完成全部日常工作（捕捉/审批/导入/项目/问答，见
 > [WEB_USAGE_GUIDE](docs/product/WEB_USAGE_GUIDE.md)）；CLI 保留给自动化（launchd、脚本、
 > `wb review sweep` 等）与深度操作。因此**开发任何用户可见功能都以 Web 面板为默认交付面**，
@@ -45,7 +45,8 @@ SummitWorkbench/
 ├── docs/
 │   ├── product/          # 权威 PRD
 │   ├── plans/            # 开发计划与验收记录
-│   ├── decisions/        # 架构决策记录（ADR 0001–0023）
+│   ├── decisions/        # 架构决策记录（ADR 0001–0024）
+│   ├── design/           # 设计预览产物（晨间简报 v2 静态预览）
 │   ├── architecture/     # 架构资料；当前 HTML 为历史版本
 │   ├── background/       # 非权威需求背景
 │   └── DESKTOP_APP.md    # macOS .app 打包说明
@@ -57,7 +58,7 @@ SummitWorkbench/
 │   ├── repositories/     # vault / 状态账本 / 用量账本 / 原子写 / JSONL 容错读
 │   ├── workflows/        # meetings·review·ask·brief·weekly·sync 编排
 │   ├── observability/    # status·运行心跳健康度·通知·预算/积压告警
-│   └── webapp/           # 可选本地 Web 面板（FastAPI，服务端渲染，复用领域逻辑）
+│   └── webapp/           # 本地 Web 工作台（FastAPI：/api/* JSON + 静态托管 + SSR 回退）
 ├── prompts/              # 版本化 prompt，禁止内联到业务实现
 ├── templates/vault/      # Obsidian 笔记模板
 ├── deploy/launchd/       # Mac Studio 定时任务 plist 模板
@@ -84,7 +85,7 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PR
 - 产品进程本地运行，模型推理全部使用可配置的云端模型 API；不引入本地模型。
 - 所有会议内容可进入已配置的云端模型；录像不下载、不发送。
 - 未经用户确认的会议提取项不得写入项目状态或创建飞书任务。
-- **不建云端服务端、常驻守护进程、向量库或 RAG。** 后加入的本地 Web 面板（`wb web`）与 macOS 启动器 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 只是双击启动同一套本地面板）。
+- **不建云端服务端、常驻守护进程、向量库或 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。
 - 凭据只进入 macOS Keychain 或运行时环境，禁止进入 Git、vault、日志、fixture 和模型上下文。
 
 ## 安装与使用
@@ -113,7 +114,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 - `wb meeting backfill <目录|文件> --since --until [--include-actions] [--yes]`：按显式日期范围补导本地逐字稿，开始前预估会议数/token/费用、预计跨软预算再确认，逐场幂等续跑；默认只沉淀知识，`--include-actions` 才生成带 historical 标记的候选。
 - `wb project new | list`：在第二大脑侧为新项目建档（不碰 GitHub 仓库）并查看已建项目及别名。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID，未匹配项目的候选零摩擦落入全局 inbox。
-- `wb web [--host --port] [--open]`：在 `127.0.0.1:8787` 启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）——「今日」页：快速捕捉（AI 区分承诺/想法 + `#项目` 关联 + 截止日期，失败兜底不丢数据）、待确认审批卡片、会议逐字稿**拖拽导入**（全自动归档+结构化+生成候选）、项目推进卡（未提交/落后/下一步）、今日简报、问第二大脑；「审批」页即时批准/拒绝/修改 + 预演/应用。交互走 `/api/*` JSON 端点；未构建前端时自动回退服务端渲染面板；`--open` 可在服务未运行时后台拉起并打开浏览器直达。
+- `wb web [--host --port] [--open]`：在 `127.0.0.1:8787` 启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）——五个页签：**今日**（快速捕捉 AI 分类 + `#项目` 关联、待确认审批卡片、会议逐字稿拖拽导入、项目推进精选、**晨间简报 v2 组件化日程视图**、快速提问）、**审批**（即时批准/拒绝/修改 + 批量操作 + 预演/应用）、**第二大脑**（会话式问答）、**项目**（全部项目管理）、**指南**（内置使用指南）。交互走 `/api/*` JSON 端点；未构建前端时自动回退服务端渲染面板；`--open` 可在服务未运行时后台拉起并打开浏览器直达。
 - `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。
 - `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
 - `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
@@ -127,4 +128,4 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 ## 版本
 
-`v0.1.0` 为首个发布版；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。下一步 M3（带上下文启动与收尾）。
+`v0.1.0`（首个发布版）→ `v0.2.0`（当前发布版：Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。下一步 M3（带上下文启动与收尾）。

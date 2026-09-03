@@ -28,8 +28,10 @@
 | [0021](0021-doctor-preflight.md) | 正式使用前加固 | 统一预检 `wb doctor`：底座/vault/飞书/模型/launchd 端到端就绪表，默认离线无副作用（加固 #3）|
 | [0022](0022-feishu-reauth-visibility.md) | 正式使用前加固 | 飞书 token 失效降级 + 可见性（`_signals/feishu-auth.json`）：失效醒目提示 `wb feishu login`，简报仍降级照出（加固 #4）|
 | [0023](0023-workbench-project-curation.md) | v0.2.0 Web 工作台 | 首页「项目推进」精选清单 + 「全部项目」页（`_vault/projects/*.md` 建档 status 驱动，解决百级文件夹平铺）|
+| [0024](0024-morning-brief-v2-web-rendering.md) | v0.2.0 晨间简报 v2 | Web 面板简报组件化日程视图（信号快照附加演进下发明细 + 清单合一 AI 注解 + 全局设计令牌换新；vault Markdown 版式不变）|
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
 配套的写侧原子写归并（`repositories/_atomic.py`）随 LHF #2 一并完成。
-正式使用前再做四项加固（ADR 0019–0022）+ CI 质量门/覆盖率体检，`v0.1.0` 首发。
+正式使用前再做四项加固（ADR 0019–0022）+ CI 质量门/覆盖率体检，`v0.1.0` 首发；
+随后 Web 工作台产品化、macOS 桌面 App 正式化与晨间简报 v2（ADR 0023–0024），`v0.2.0` 发布版。

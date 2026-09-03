@@ -1,6 +1,11 @@
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-09-03
+
+发布版。核心问题不变（外置执行管理层 + 第二大脑），交付面收敛：**用户日常入口 = 原生 macOS 桌面 App 内的本地 Web 工作台**。在 v0.1.0（M0/M1/M2 + 韧性/正式使用前加固）之上完成 Web 工作台产品化、桌面 App 正式化与晨间简报 v2 呈现改版；vault 内简报 Markdown 版式不变（Obsidian 侧与 G1 回归的唯一真源）。质量门 433 项全绿。
 
 ### 新增
+
+- **macOS 桌面 App（自包含正式版）**：`.app` 从「Swift 启动器 + 外部 Chrome 面板」演进为**自包含 bundle**——PyInstaller 打包 bundle server + 原生 Swift/AppKit 壳 + **受管 WKWebView 面板**（同源加载本地面板，生命周期受监督：服务就绪握手、面板自动恢复、退出即优雅停服）。构建/安装/自更新原子化（`scripts/build-macos-app.sh` + `install-macos-app.sh`，替换失败自动回滚），前端构建身份（frontend_build + server_instance）随版本握手校验，面板不匹配自动重启自带服务；`wb web` 独立直跑形态保留（读仓库 static，重建+重启即生效）。安装位 `/Applications/SummitWorkbench.app`（桌面副本弃用，详见 `docs/DESKTOP_APP.md` 与 ADR 生命周期方案）。
+- **晨间简报 v2（ADR 0024 / PRD L49）**：Web 面板把简报从纯文本清单升级为**日程优先的组件化视图**——会议时间列（过去淡化）+ 待办任务按截止紧迫度排序（今天到期红 / 剩 1–2 天琥珀 / 一周内蓝 / 更远灰，语义色倒计时徽章）；AI 选中的任务行叠加「分类 · 排名」注解并与待办清单**合一**（精确关联 `task_id`↔`feishu-task:{guid}`，消除事实区/行动区重复展示）；清单之外的行动（git 未提交 / 项目下一步 / inbox 积压）单列「需要行动 · 任务清单之外」；AI 提议与最近完成默认折叠带计数。数据经**信号快照附加演进**（`as_snapshot()` 增 `meeting_list/task_list/proposal_list/completion_list/health_reasons` 等明细）由 `/api/state.brief` 下发；旧快照自动回退 Markdown 视图、存量零迁移。前端设计令牌全局换新（Linear 型 zinc + 靛紫主色，深浅双色精修，`web/src/style.css` CSS 变量集中）。`web/src/brief-card.ts` 纯字符串渲染模块 + 静态预览生成（`web/scripts/preview-brief.mjs` → `docs/design/brief-v2-preview.html`）。
 
 - **首页卡片一键归档 + 内置「指南」页签**：首页每个项目推进卡右下角新增「归档」按钮（带确认，归档即离开首页、可在「项目」页恢复）；顶部新增第 5 个页签「指南」，把 `WEB_USAGE_GUIDE.md`（日常使用 + FAQ）在构建时同步内置进前端（`npm run sync-guide`），离线可看，FAQ 折叠为可展开条目——用户日常入口是 Web 面板，不必翻仓库文档。
 - **项目推进精选（ADR 0023）**：首页「项目推进」不再平铺 `work_root` 全部文件夹，只显示已建档（`_vault/projects/*.md`）且 `status: active` 的项目；未建档的新文件夹在项目区顶部以邀请横幅出现（逐条「加入工作台 / 归档」）；新增第 4 页签「项目」= 全部项目视图（搜索 + 排序 + 行内加入/归档/恢复）。`/api/state` projects 增 `registered/status` 字段；新增 `POST /api/projects/activate`、`POST /api/projects/archive`（写 `_vault` 档案 status，幂等，校验必须是 work_root 直接子目录）。归档/恢复只动 frontmatter，文件夹与 git 历史零触碰。
@@ -18,7 +23,7 @@
 
 - **入口页禁缓存（根治“点了没更新”）**：`/` 响应加 `Cache-Control: no-cache`——前端每次改版都换带哈希的资源名，若入口 index.html 被浏览器启发式缓存会一直指向旧资源，呈现旧界面/旧标签；现在刷新或重开 App 必取最新入口。
 - **弹窗遮罩常驻屏幕（亮条 + 整页变灰 + 点击无效）**：`.modal-backdrop` 的 `display: grid` 覆盖了 `hidden` 属性（作者样式优先于 UA 的 `[hidden]{display:none}`），导致未打开的弹窗遮罩从一开始就铺满全屏——中间的空白弹窗呈「很亮的矩形条」，背后整页被 45% 黑色遮罩压灰，且遮罩拦截所有点击（`closeModal` 因样式覆盖而失效）。已在 `web/src/style.css` 加 `[hidden]{display:none!important}` 防御规则并重建前端产物。
-- **程序坞图标无限弹跳 / 打开报「无响应」**：`.app` 主程序原本是 bash 脚本，常驻进程从不向系统报告「启动完成」——前台形态 Dock 图标无限弹跳，改 `LSUIElement` 后台形态后 macOS 又报「不能打开…没有响应」。根治方案：主程序换成**原生 Swift/AppKit 启动器**（`scripts/summit_launcher.swift`，构建时 `swiftc` 编译），注册正常的应用生命周期；`LSUIElement=true` 不占 Dock，打开/退出全部由原生进程管理（拉起 `wb web` 子进程 + 打开 Chrome 面板窗口，周期探测 `/api/state`，服务停止即自动退出）。退出面板用网页顶栏「退出」按钮 → `POST /api/shutdown`（带 `X-WB-Shutdown` 自定义头防任意网页误关，跨站预检被无 CORS 配置拦截）优雅停服并关窗。
+- **程序坞图标无限弹跳 / 打开报「无响应」**：`.app` 主程序原本是 bash 脚本，常驻进程从不向系统报告「启动完成」——前台形态 Dock 图标无限弹跳，改 `LSUIElement` 后台形态后 macOS 又报「不能打开…没有响应」。根治方案：主程序换成**原生 Swift/AppKit 启动器**（`scripts/summit_launcher.swift`，构建时 `swiftc` 编译），注册正常的应用生命周期；`LSUIElement=true` 不占 Dock，打开/退出全部由原生进程管理（拉起 `wb web` 子进程 + 打开 Chrome 面板窗口，周期探测 `/api/state`，服务停止即自动退出）。退出面板用网页顶栏「退出」按钮 → `POST /api/shutdown`（带 `X-WB-Shutdown` 自定义头防任意网页误关，跨站预检被无 CORS 配置拦截）优雅停服并关窗。（该「启动器 + Chrome 面板」形态随后被**自包含原生 App（受管 WKWebView）**取代：删除 `scripts/summit_launcher.swift`，`.app` 直接烘焙 bundle server 与面板，见上方「macOS 桌面 App（自包含正式版）」条目。）
 
 ### 构建
 
@@ -29,6 +34,7 @@
 - 项目精选（ADR 0023）补齐单测：建档状态读写与幂等、`ProjectState` 分类（新/归档）、`/api/state` 字段、activate/archive 端点（含非法名/越界/幂等），全套 **374 项全绿**；ruff + format + mypy strict 通过（新增 Web API / SPA 测试见 `tests/unit/test_webapi.py`、`test_project_registry.py`、`test_brief_repositories.py`）。
 - 新增 14 项 Web API / SPA 测试（`tests/unit/test_webapi.py`）与 2 项 `/api/shutdown` 测试，全套 389 项全绿；ruff + format + mypy strict 通过。
 - 批量裁决（`set_decisions`）、`/api/review/batch`、`wb review sweep` 补齐单测，全套 397 项全绿；ruff + format + mypy strict 通过。
+- 晨间简报 v2（ADR 0024）补齐快照附加演进与 `/api/state.brief` 契约测试（`test_brief_domain.py` / `test_webapi.py`），全套 **433 项全绿**；ruff + format + mypy strict 通过；前端 strict TS（tsc --noEmit）+ Vite 构建通过，预览页 headless DOM 抽查确认。
 
 ## [0.1.0] - 2026-09-02
 

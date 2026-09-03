@@ -6,13 +6,13 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.1.0` 首发：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6，见 `docs/plans/M1_ACCEPTANCE.md`）+ 三项韧性加固 + 四项正式使用前加固（ADR 0016–0022）；下一步 M3 带上下文启动与收尾 |
+| 当前阶段 | `v0.2.0` 发布版：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6）+ 三项韧性加固 + 四项正式使用前加固（ADR 0016–0022）；v0.2 把用户日常入口收敛到**本地 Web 工作台**（SPA）与**原生 macOS 桌面 App**，并完成晨间简报 v2 呈现改版（ADR 0024）；下一步 M3 带上下文启动与收尾 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | `wb` CLI（已就绪）、本地 Web 工作台 `wb web`（SPA：今日页 + 审批页 + 问答，纯本地按需启动）、Obsidian 待确认页与每日笔记 |
-| 权威规格 | `docs/product/PRD.md` v1.1 |
+| 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/第二大脑/项目/指南）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
+| 权威规格 | `docs/product/PRD.md` v1.2 |
 
 ## Mission
 
@@ -67,7 +67,7 @@
 
 ## 非目标
 
-- 云端服务端、常驻守护进程或多用户部署。（后加入的 `wb web` 本地面板与 macOS 启动器 App 是**纯本地、按需启动**的可选便利层，复用同一套领域逻辑，不引入服务端、不改变数据边界——`.app` 只是双击启动本地面板。）
+- 云端服务端、常驻守护进程或多用户部署。（后加入的 `wb web` 本地面板与原生 macOS 桌面 App 是**纯本地、按需启动**的可选便利层，复用同一套领域逻辑，不引入服务端、不改变数据边界——`.app` 双击启动 bundle 内 server + WKWebView 面板。）
 - 本地模型、敏感会议分流或多模型自动切换。
 - 向量数据库、Embedding、RAG 或在本项目重建 SummitKnowledge。
 - 下载飞书会议录像。
@@ -83,14 +83,18 @@
 
 不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.1.0）
+## 当前交付边界（v0.2.0）
 
-已交付可安装的 Python 工程、`wb` CLI 与可选本地 Web 面板。M0 / M1 / M2 全部完成并经真实数据/真机验证：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证：
 
 - **M0** 地基：工作目录与 vault、项目档案、飞书身份与最小权限、`wb sync` 非破坏性同步、云端模型与用量账本冒烟。
 - **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb ask` 带来源问答、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
 - **M2** 晨间简报：`wb brief` 全链路（飞书日历/任务 + 项目扫描 → 模型排序/确定性回退 → 幂等写当日笔记）与 `wb weekly` 周复盘，均由 launchd 定时触发。
 - **加固**：工作区跨进程锁、JSONL 容错读、飞书退避重试（ADR 0016–0018）；schema 版本号、运行心跳健康度、`wb doctor` 预检、飞书授权可见性（ADR 0019–0022）；GitHub Actions 质量门（macOS，360 项全绿）。
-- **Web 工作台（v0.2）**：`wb web` 升级为 SPA「今日工作台」——快速捕捉（AI 承诺/想法分类 + `#项目` 本地解析 + 失败兜底）、拖拽导入逐字稿全自动链路、待确认审批卡片、项目推进卡、简报与问答；审批页即时批准/拒绝/修改 + 预演/应用；`wb status --notify` 真正投递 macOS 通知；`wb web --open` 直达面板。质量门 387 项全绿。设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
+- **v0.2 · Web 工作台（SPA）**：`wb web` 升级为「今日工作台」——快速捕捉（AI 承诺/想法分类 + `#项目` 本地解析 + 失败兜底）、拖拽导入逐字稿全自动链路、待确认审批卡片、项目推进精选与「项目」页（ADR 0023）、简报与问答、内置「指南」页签；审批页即时批准/拒绝/修改 + 批量操作 + 预演/应用；`wb review sweep` 清理命令；`wb status --notify` 真正投递 macOS 通知。
+- **v0.2 · 晨间简报 v2（ADR 0024）**：Web 面板把简报从纯文本清单升级为**组件化日程视图**——会议时间列、任务截止语义色 + 倒计时徽章、AI 选中任务行「分类 · 排名」注解（与待办清单合一）、非任务行动单列、提议/最近完成折叠；前端设计令牌全局换新（Linear 型 zinc + 靛紫，深浅双色）。数据经信号快照**附加演进**下发（`*_list` 明细字段），vault 内简报 Markdown 版式不变，旧快照自动回退旧视图。质量门 433 项全绿。
+- **v0.2 · macOS 桌面 App**：自包含 `.app`（PyInstaller bundle server + 原生 Swift/AppKit + 受管 WKWebView），原子构建/安装/自更新、版本握手与构建身份校验（打包说明见 `docs/DESKTOP_APP.md`，生命周期方案见 `docs/plans/PANEL_LIFECYCLE_AND_UPDATE_IMPLEMENTATION.md`）。
+
+设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
 下一步 M3（带上下文启动与收尾）。变更记录见 `CHANGELOG.md`。
