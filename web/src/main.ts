@@ -432,6 +432,7 @@ function renderShell(): void {
     '<span class="version-status checking" id="version-status">正在检查版本</span>' +
     '<span class="day-pill" id="day-pill">—</span>' +
     '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
+    '<button class="ghost" id="btn-undo" title="撤销系统改动（只作用于 vault 文件）">↩ 撤销</button>' +
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
     '<div class="version-error-banner" id="version-error-banner" hidden>' +
@@ -464,6 +465,9 @@ function renderShell(): void {
   });
   (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
     void refreshAll().then(() => toast('已刷新', 'ok'));
+  });
+  (document.getElementById('btn-undo') as HTMLButtonElement)?.addEventListener('click', () => {
+    void openUndoModal();
   });
   (document.getElementById('btn-quit') as HTMLButtonElement).addEventListener('click', () => {
     if (!window.confirm('确定退出工作台并停止本地服务？')) return;
@@ -1826,6 +1830,116 @@ async function showProjectView(name: string): Promise<void> {
   });
 }
 
+// ---------- 撤销系统改动（P0'） ----------
+
+interface WbCommitItem {
+  sha: string;
+  short_sha: string;
+  message: string;
+  time: string;
+  files: string[];
+}
+
+interface UndoHistoryPayload {
+  ok: boolean;
+  commits?: WbCommitItem[];
+  note?: string | null;
+  message?: string;
+}
+
+interface UndoDiffPayload {
+  ok: boolean;
+  diff?: string;
+  message?: string;
+}
+
+const UNDO_FLYNOTE =
+  '还原只作用于 vault 文件；飞书侧已产生的副作用（已建任务/会议、已完成状态）不可撤销、不受本次还原影响。';
+
+async function openUndoModal(): Promise<void> {
+  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
+  const modal = document.getElementById('modal') as HTMLElement;
+  modal.innerHTML = '<div class="loading">正在读取系统自动提交…</div>';
+  backdrop.hidden = false;
+  let history: UndoHistoryPayload;
+  try {
+    history = await api<UndoHistoryPayload>('/api/undo/history');
+  } catch (err) {
+    modal.innerHTML = '<h3>撤销系统改动</h3><p class="msg err">' + esc(String(err)) + '</p>';
+    return;
+  }
+  if (!history.ok || !history.commits) {
+    modal.innerHTML =
+      '<h3>撤销系统改动</h3><p class="msg err">' + esc(history.message ?? '读取失败') + '</p>';
+    return;
+  }
+  if (history.commits.length === 0) {
+    modal.innerHTML =
+      '<h3>撤销系统改动</h3>' +
+      '<p>' + esc(history.note ?? '暂无系统自动提交') + '</p>' +
+      '<p class="hint">每次系统写回成功都会自动留痕（git 提交，消息以 wb: 开头），可在此一键还原。' + UNDO_FLYNOTE + '</p>';
+    return;
+  }
+  const rows = history.commits.map((c) =>
+    '<div class="undo-commit">' +
+    '<div class="undo-head"><strong>' + esc(c.message) + '</strong>' +
+    '<span class="hint">' + esc(c.short_sha) + ' · ' + esc(c.time.replace('T', ' ').slice(0, 16)) + '</span></div>' +
+    '<div class="hint undo-files">触碰文件：' + esc(c.files.join('、')) + '</div>' +
+    '<button class="ghost" data-undo="diff" data-sha="' + c.sha + '">查看差异</button> ' +
+    '<button class="ok" data-undo="revert" data-sha="' + c.sha + '">还原此提交</button>' +
+    '<pre class="undo-diff" hidden></pre>' +
+    '</div>'
+  ).join('');
+  modal.innerHTML =
+    '<h3>撤销系统改动</h3>' +
+    '<p class="hint">' + UNDO_FLYNOTE + ' 工作树有未提交人工改动的文件会被拒绝还原。</p>' + rows;
+  modal.querySelectorAll<HTMLElement>('[data-undo]').forEach((btn) => {
+    const sha = btn.dataset.sha ?? '';
+    if (btn.dataset.undo === 'diff') {
+      btn.addEventListener('click', () => { void loadUndoDiff(btn, sha); });
+    } else if (btn.dataset.undo === 'revert') {
+      btn.addEventListener('click', () => { void doUndoRevert(sha); });
+    }
+  });
+}
+
+async function loadUndoDiff(btn: HTMLElement, sha: string): Promise<void> {
+  const row = btn.closest<HTMLElement>('.undo-commit');
+  const pre = row?.querySelector<HTMLElement>('.undo-diff');
+  if (!pre) return;
+  if (!pre.hidden && pre.textContent) {
+    pre.hidden = true;
+    return;
+  }
+  pre.hidden = false;
+  pre.textContent = '正在读取差异…';
+  try {
+    const r = await api<UndoDiffPayload>('/api/undo/diff?sha=' + encodeURIComponent(sha));
+    pre.textContent = r.ok ? (r.diff ?? '') : ('读取失败：' + (r.message ?? ''));
+  } catch (err) {
+    pre.textContent = String(err);
+  }
+}
+
+async function doUndoRevert(sha: string): Promise<void> {
+  if (!window.confirm('确定还原该次系统改动？' + UNDO_FLYNOTE)) return;
+  try {
+    const r = await mutation(() =>
+      api<{ ok: boolean; message: string }>('/api/undo/revert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sha }),
+      })
+    );
+    toast(r.message, r.ok ? 'ok' : 'err');
+    if (r.ok) {
+      closeModal();
+      void refreshAll();
+    }
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
 async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
   try {

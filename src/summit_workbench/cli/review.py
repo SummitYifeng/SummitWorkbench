@@ -129,6 +129,20 @@ def sweep_review(
     except (ValueError, ReviewEditError) as exc:
         typer.echo(f"✗ 清扫失败：{exc}")
         raise typer.Exit(code=1) from exc
+    if execute and report.notes:
+        # 顺带收口（P0'）：清扫成功后自动留痕（笔记状态 + 审批页），失败可见不阻断。
+        from summit_workbench.repositories.autocommit import commit_paths
+        from summit_workbench.repositories.review_page import review_path
+
+        commit_result = commit_paths(
+            paths.vault_dir,
+            [*report.notes, review_path(paths.vault_dir)],
+            message=f"wb: review sweep 退役 {len(report.notes)} 篇笔记",
+        )
+        if commit_result.status.value.startswith(("committed", "reverted")):
+            typer.echo(f"✓ git：已自动留痕（{commit_result.status.value}）")
+        elif commit_result.status.value not in ("not-git", "nothing-to-commit"):
+            typer.echo(f"⚠ git 留痕失败：{commit_result.detail or commit_result.status.value}")
     typer.echo("DRY-RUN（零写入）" if report.dry_run else "已清扫（正文原文保留）")
     for path in report.notes:
         typer.echo(f"  {path.name}")

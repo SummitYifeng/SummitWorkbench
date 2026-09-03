@@ -17,7 +17,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -37,6 +37,13 @@ from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.observability.status import build_status
+from summit_workbench.repositories.autocommit import (
+    CommitStatus,
+    commit_diff_text,
+    commit_paths,
+    list_wb_commits,
+    revert_commit,
+)
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.repositories.project_registry import (
     archive_project,
@@ -62,6 +69,7 @@ from summit_workbench.repositories.signal_snapshot import (
     mark_task_completed,
     mark_task_edited,
     read_snapshot,
+    snapshot_path,
 )
 from summit_workbench.repositories.thread_notes import (
     append_work_log,
@@ -82,6 +90,7 @@ from summit_workbench.webapp.api import (
     ProjectStatePayload,
     TaskCompletePayload,
     TaskEditPayload,
+    UndoRevertPayload,
     brief_payload,
     review_payload,
 )
@@ -134,6 +143,22 @@ def _plan_text(report: ApplyReport) -> str:
     if report.archive_path is not None:
         lines.append(f"审计：{report.archive_path}")
     return "\n".join(lines)
+
+
+def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -> str:
+    """系统写回成功后自动留痕（消息带 ``wb:`` 前缀，P0'）。
+
+    返回需要追加进响应 ``message`` 的可见说明：非 git 仓库 / 内容未变是正常态（静默，
+    撤销面板会提示 not-git）；commit 失败或锁忙返回说明，但绝不阻断业务写回。
+    """
+    result = commit_paths(
+        ctx.vault_dir,
+        [Path(p) for p in paths if p],
+        message=f"wb: {summary}",
+    )
+    if result.status is CommitStatus.FAILED or result.status is CommitStatus.BUSY:
+        return f"（git 留痕失败：{result.detail or result.status.value}）"
+    return ""
 
 
 def _build_task_creator(ctx: WebContext) -> TaskCreator:
@@ -304,9 +329,29 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     for result in report.results:
         if result.action == "failed":
             lines.append(f"✗ {result.item.date} {result.item.title}：{result.reason}")
+    # 自动留痕：逐字稿证据 + 结构化笔记 + 审批页（P0' 埋点；失败/跳过无新文件 → 静默）
+    from summit_workbench.repositories.meeting_archive import (
+        slugify,
+        transcript_stem,
+        transcripts_dir,
+    )
+
+    imported: list[Path] = []
+    for result in report.results:
+        if result.action == "failed":
+            continue
+        transcript = transcripts_dir(ctx.vault_dir) / (
+            f"{transcript_stem(result.item.date, slugify(result.item.title))}.md"
+        )
+        if transcript.is_file():
+            imported.append(transcript)
+        if result.note_path is not None and result.note_path.is_file():
+            imported.append(result.note_path)
+    imported.append(review_path(ctx.vault_dir))
+    git_note = _commit_suffix(ctx, imported, "导入会议逐字稿")
     return {
         "ok": True,
-        "message": "导入完成：" + "；".join(lines),
+        "message": "导入完成：" + "；".join(lines) + git_note,
         "details": lines,
         "estimate": {
             "pending": est.pending,
@@ -502,7 +547,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             )
         except ValueError as exc:
             return {"ok": False, "message": f"改名失败：{exc}"}
-        return {"ok": True, "message": f"{project} 显示名已设为「{title}」"}
+        git_note = _commit_suffix(ctx, [path], "设置项目显示名")
+        return {"ok": True, "message": f"{project} 显示名已设为「{title}」{git_note}"}
 
     @app.post("/api/projects/activate")
     def api_project_activate(payload: ProjectPayload) -> dict[str, object]:
@@ -515,7 +561,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             path = ensure_project_active(ctx.vault_dir, name)
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"加入工作台失败：{exc}"}
-        return {"ok": True, "message": f"已加入工作台：{name}", "path": str(path)}
+        git_note = _commit_suffix(ctx, [path], "项目加入工作台")
+        return {"ok": True, "message": f"已加入工作台：{name}{git_note}", "path": str(path)}
 
     @app.post("/api/projects/archive")
     def api_project_archive(payload: ProjectPayload) -> dict[str, object]:
@@ -528,7 +575,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             path = archive_project(ctx.vault_dir, name)
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"归档失败：{exc}"}
-        return {"ok": True, "message": f"已归档：{name}", "path": str(path)}
+        git_note = _commit_suffix(ctx, [path], "项目归档")
+        return {"ok": True, "message": f"已归档：{name}{git_note}", "path": str(path)}
 
     @app.post("/api/projects/create")
     def api_project_create(payload: ProjectCreatePayload) -> dict[str, object]:
@@ -548,7 +596,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             path = create_project_note(ctx.vault_dir, project_id, aliases=aliases or None)
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"新建失败：{exc}"}
-        return {"ok": True, "message": f"已建档知识线程：{project_id}", "path": str(path)}
+        git_note = _commit_suffix(ctx, [path], "建档知识线程")
+        return {"ok": True, "message": f"已建档知识线程：{project_id}{git_note}", "path": str(path)}
 
     @app.get("/api/review")
     def api_review() -> dict[str, object]:
@@ -614,7 +663,15 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
-        return {"ok": True, "plan_text": _plan_text(report), "executed": True}
+        # 自动留痕：写回目标文件 + 审批页 + 审计归档（P0' 埋点；库外文件自动跳过）
+        touched: list[Path | str] = [review_path(ctx.vault_dir)]
+        if report.archive_path is not None:
+            touched.append(report.archive_path)
+        touched.extend(
+            a.destination for a in report.actions if not a.destination.startswith("feishu-")
+        )
+        git_note = _commit_suffix(ctx, touched, "审批应用写回")
+        return {"ok": True, "plan_text": _plan_text(report), "executed": True, "git_note": git_note}
 
     @app.post("/api/threads/state")
     def api_set_project_state(payload: ProjectStatePayload) -> dict[str, object]:
@@ -643,7 +700,14 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 )
         except ValueError as exc:
             return {"ok": False, "message": f"更新失败：{exc}"}
-        return {"ok": True, "message": f"已更新 {project} 当前状态", "project": project}
+        git_note = _commit_suffix(
+            ctx, [ctx.vault_dir / "projects" / f"{project}.md"], "确认线程当前状态"
+        )
+        return {
+            "ok": True,
+            "message": f"已更新 {project} 当前状态{git_note}",
+            "project": project,
+        }
 
     @app.get("/api/projects/view")
     def api_project_view(name: str) -> dict[str, object]:
@@ -706,9 +770,12 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
+        # 自动留痕：新建日志文件 + 关联档案（updated 刷新）
+        archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
+        git_note = _commit_suffix(ctx, [path, *archives], "追加推进日志")
         return {
             "ok": True,
-            "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}",
+            "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}{git_note}",
             "path": str(path),
             "summary": summary,
             "enriched": enriched,
@@ -759,9 +826,12 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
+        git_note = _commit_suffix(
+            ctx, [path, ctx.vault_dir / "projects" / f"{project}.md"], "存档线程产物"
+        )
         return {
             "ok": True,
-            "message": f"已存入 {project} 档案 · {tail}",
+            "message": f"已存入 {project} 档案 · {tail}{git_note}",
             "path": str(path),
             "title": title,
             "summary": summary,
@@ -813,9 +883,10 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         label = "承诺" if kind is CaptureKind.TASK else "想法"
         tail = f"（截止 {due_date}）" if due_date else ""
         project_tail = f" · 关联 {project}" if project else ""
+        git_note = _commit_suffix(ctx, [path], "快速捕捉入 inbox")
         return {
             "ok": True,
-            "message": f"已记入全局 inbox · {label}{tail}{project_tail}",
+            "message": f"已记入全局 inbox · {label}{tail}{project_tail}{git_note}",
             "path": str(path),
             "kind": kind.value,
             "due_date": due_date,
@@ -848,7 +919,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
         summary = mark_task_completed(ctx.vault_dir, ctx.today(), guid)
         tail = f"：{summary}" if summary else ""
-        return {"ok": True, "message": f"任务已完成{tail}", "task_id": guid}
+        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "任务完成镜像")
+        return {"ok": True, "message": f"任务已完成{tail}{git_note}", "task_id": guid}
 
     @app.post("/api/tasks/update")
     def api_task_update(payload: TaskEditPayload) -> dict[str, object]:
@@ -897,7 +969,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             due_date=due_value,
             clear_due=clear_due,
         )
-        return {"ok": True, "message": "任务已更新", "task_id": guid}
+        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "任务编辑镜像")
+        return {"ok": True, "message": f"任务已更新{git_note}", "task_id": guid}
 
     @app.post("/api/meetings/update")
     def api_meeting_update(payload: MeetingEditPayload) -> dict[str, object]:
@@ -950,7 +1023,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             start_ts=local_iso_to_epoch_seconds(start_at, ctx.timezone) if start_at else None,
             end_ts=local_iso_to_epoch_seconds(end_at, ctx.timezone) if end_at else None,
         )
-        return {"ok": True, "message": "会议已更新", "event_id": event_id}
+        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "会议编辑镜像")
+        return {"ok": True, "message": f"会议已更新{git_note}", "event_id": event_id}
 
     @app.post("/api/run/brief")
     def api_run_brief() -> dict[str, object]:
@@ -1022,6 +1096,48 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return _run_web_import(ctx, target)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # ---- 撤销系统自动提交（P0'） ----
+
+    @app.get("/api/undo/history")
+    def api_undo_history() -> dict[str, object]:
+        """最近 ``wb:`` 自动提交列表（含每提交触碰文件与仓库状态）。"""
+        commits, error = list_wb_commits(ctx.vault_dir, limit=20)
+        if error == "not-git":
+            return {
+                "ok": True,
+                "commits": [],
+                "note": "vault 不是 git 仓库：系统写回不会自动留痕，也无法撤销",
+            }
+        if error is not None:
+            return {"ok": False, "message": f"读取提交历史失败：{error}"}
+        return {"ok": True, "commits": [c.as_dict() for c in commits], "note": None}
+
+    @app.get("/api/undo/diff")
+    def api_undo_diff(sha: str) -> dict[str, object]:
+        """某次 wb 提交的 before/after 差异（git show 输出），供撤销前预览。"""
+        text, error = commit_diff_text(ctx.vault_dir, sha)
+        if error is not None:
+            return {"ok": False, "message": f"无法读取差异：{error}"}
+        return {"ok": True, "diff": text}
+
+    @app.post("/api/undo/revert")
+    def api_undo_revert(payload: UndoRevertPayload) -> dict[str, object]:
+        """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
+        sha = payload.sha.strip()
+        if not sha:
+            return {"ok": False, "message": "缺少提交 sha"}
+        result = revert_commit(ctx.vault_dir, sha)
+        if result.status is CommitStatus.REVERTED:
+            # 明示边界：飞书侧副作用（已建任务/会议、已完成状态）不可撤销。
+            return {
+                "ok": True,
+                "message": "已还原 vault 文件。注意：飞书侧已产生的副作用（已建任务/会议、"
+                "已完成状态）不可撤销、不受本次还原影响。" + (result.detail or ""),
+            }
+        if result.status is CommitStatus.NOT_GIT:
+            return {"ok": False, "message": "vault 不是 git 仓库，无法撤销"}
+        return {"ok": False, "message": f"还原失败：{result.detail or result.status.value}"}
 
     @app.post("/api/shutdown")
     def api_shutdown(

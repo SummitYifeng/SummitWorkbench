@@ -102,6 +102,49 @@ class GitRepo:
         if cp.returncode != 0:
             raise GitError("git commit 失败", stderr=cp.stderr)
 
+    def files_changed_by(self, sha: str) -> list[str]:
+        """某提交触碰的文件（相对仓库根，去重排序）；非提交 sha → :class:`GitError`。"""
+        cp = self._run("show", "--name-only", "--pretty=format:", sha)
+        if cp.returncode != 0:
+            raise GitError(f"git show {sha} 失败", stderr=cp.stderr)
+        return sorted({line for line in cp.stdout.splitlines() if line.strip()})
+
+    def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
+        """grep 提交主题的最近提交，返回 ``(sha, ISO 时间, 主题)``（供 wb 撤销历史）。"""
+        cp = self._run("log", f"--grep={pattern}", f"-n{limit}", "--pretty=%H%x09%aI%x09%s")
+        if cp.returncode != 0:
+            raise GitError("git log --grep 失败", stderr=cp.stderr)
+        rows: list[tuple[str, str, str]] = []
+        for line in cp.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                rows.append((parts[0], parts[1], "\t".join(parts[2:])))
+        return rows
+
+    def is_dirty_paths(self, rel_paths: list[str]) -> bool:
+        """显式列出的相对路径是否有未提交改动（只查这些路径，绝不扫全库）。"""
+        if not rel_paths:
+            return False
+        cp = self._run("status", "--porcelain", "--", *rel_paths)
+        return bool(cp.stdout.strip())
+
+    def revert(self, sha: str) -> None:
+        """用 ``git revert --no-edit`` 撤销某提交（生成一个新提交）；冲突/失败抛错。
+
+        失败时尽力 ``revert --abort`` 清理冲突态，让仓库回到可继续工作的状态。
+        """
+        cp = self._run("revert", "--no-edit", sha)
+        if cp.returncode != 0:
+            self._run("revert", "--abort")  # 冲突/失败后清理，返回码忽略
+            raise GitError(f"git revert {sha} 失败", stderr=cp.stderr)
+
+    def show_patch(self, sha: str) -> str:
+        """某提交的完整差异输出（``git show --stat --patch``），供撤销面板预览。"""
+        cp = self._run("show", "--stat", "--patch", sha)
+        if cp.returncode != 0:
+            raise GitError(f"git show {sha} 失败", stderr=cp.stderr)
+        return cp.stdout
+
     def commits_between(self, since_iso: str, until_iso: str) -> list[tuple[str, str]]:
         """列出 [since, until] 内本地提交的 (短 hash, 主题)。只读，不联网。
 
