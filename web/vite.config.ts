@@ -4,6 +4,10 @@ import { defineConfig } from 'vite';
 // 开发模式直连本机 FastAPI（/api 代理到 wb web 的 8787 端口）。
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? '/static/' : '/',
+  define: {
+    __WB_BUILD__: JSON.stringify(process.env.WB_FRONTEND_BUILD ?? 'dev-local'),
+    __WB_BUILD_TIME__: JSON.stringify(process.env.WB_BUILD_TIME ?? ''),
+  },
   build: {
     outDir: '../src/summit_workbench/webapp/static',
     emptyOutDir: true,

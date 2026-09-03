@@ -67,6 +67,20 @@ body {
 .brand h1 { font-size: 16px; margin: 0; }
 .tagline { font-size: 11px; color: var(--muted); margin: 0; }
 .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.version-status {
+  max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--muted);
+}
+.version-status.synced { color: var(--ok); }
+.version-status.update-pending { color: var(--warn); }
+.version-status.reconnecting { color: var(--warn); }
+.version-status.failed { color: var(--bad); }
+.version-error-banner {
+  display: flex; align-items: center; gap: 8px; padding: 8px 20px;
+  background: var(--bad-soft); color: var(--bad); border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.version-error-banner span { margin-right: auto; }
 .day-pill {
   font-size: 13px; color: var(--muted);
   padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px;

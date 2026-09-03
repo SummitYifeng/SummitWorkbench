@@ -7,7 +7,8 @@
   "scripts": {
     "sync-guide": "node scripts/sync-guide.mjs",
     "dev": "npm run sync-guide && vite",
-    "build": "npm run sync-guide && tsc --noEmit && vite build"
+    "test:build": "node scripts/test-build.mjs",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

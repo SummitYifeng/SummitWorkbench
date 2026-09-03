@@ -8,6 +8,8 @@ SSR 路径的既有覆盖在 test_webapp.py；本文件覆盖：
 
 from __future__ import annotations
 
+import json
+import shutil
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -30,6 +32,8 @@ from summit_workbench.repositories.review_page import (
 )
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
+
+_STATIC_DIR = Path(__file__).resolve().parents[2] / "src" / "summit_workbench" / "webapp" / "static"
 
 
 def _entry() -> ReviewEntry:
@@ -60,6 +64,77 @@ def _client(tmp_path: Path, *, seed_review: bool = True) -> tuple[TestClient, Pa
         path.write_text(render_review_page([_entry()]), encoding="utf-8")
     ctx = WebContext(vault_dir=vault, work_root=tmp_path, timezone="Asia/Shanghai")
     return TestClient(create_app(ctx, static_dir=tmp_path / "no-static")), vault
+
+
+def _spa_client(tmp_path: Path) -> TestClient:
+    static_dir = tmp_path / "static"
+    shutil.copytree(_STATIC_DIR, static_dir)
+    ctx = WebContext(vault_dir=tmp_path / "_vault", work_root=tmp_path, timezone="Asia/Shanghai")
+    return TestClient(create_app(ctx, static_dir=static_dir))
+
+
+def test_api_version_returns_actual_static_build(tmp_path: Path) -> None:
+    client = _spa_client(tmp_path)
+    expected = json.loads((_STATIC_DIR / "build-meta.json").read_text(encoding="utf-8"))[
+        "frontend_build"
+    ]
+    response = client.get("/api/version")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["product_id"] == "com.summitworkbench.panel"
+    assert data["api_protocol"] == 2
+    assert data["frontend_build"] == expected
+    assert data["server_instance"]
+    assert data["server_version"]
+
+
+def test_api_version_has_no_store_headers(tmp_path: Path) -> None:
+    response = _spa_client(tmp_path).get("/api/version")
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
+
+
+def test_api_version_changes_server_instance_per_app_instance(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    shutil.copytree(_STATIC_DIR, static_dir)
+    ctx = WebContext(vault_dir=tmp_path / "_vault", work_root=tmp_path, timezone="Asia/Shanghai")
+    first = TestClient(create_app(ctx, static_dir=static_dir)).get("/api/version").json()
+    second = TestClient(create_app(ctx, static_dir=static_dir)).get("/api/version").json()
+    assert first["server_instance"] != second["server_instance"]
+
+
+def test_api_version_returns_503_for_invalid_manifest(tmp_path: Path) -> None:
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    ctx = WebContext(vault_dir=tmp_path / "_vault", work_root=tmp_path, timezone="Asia/Shanghai")
+    response = TestClient(create_app(ctx, static_dir=static_dir)).get("/api/version")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "invalid_build_manifest"
+
+
+def test_spa_home_uses_no_store(tmp_path: Path) -> None:
+    response = _spa_client(tmp_path).get("/")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, max-age=0, must-revalidate"
+
+
+def test_hashed_assets_are_immutable(tmp_path: Path) -> None:
+    client = _spa_client(tmp_path)
+    meta = json.loads((_STATIC_DIR / "build-meta.json").read_text(encoding="utf-8"))
+    for name in meta["assets"]:
+        response = client.get("/static/" + name)
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_api_state_includes_runtime_build_identity(tmp_path: Path) -> None:
+    response = _spa_client(tmp_path).get("/api/state")
+    assert response.status_code == 200
+    runtime = response.json()["runtime"]
+    assert runtime["frontend_build"]
+    assert runtime["server_version"]
+    assert runtime["server_instance"]
 
 
 # ---------- /api/state ----------

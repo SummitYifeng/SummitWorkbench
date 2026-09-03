@@ -133,10 +133,13 @@ def test_ensure_project_active_creates_schema_valid_note(tmp_path):
 def test_archive_restore_roundtrip_refreshes_updated(tmp_path):
     _project(tmp_path, "P1")
     archive_project(tmp_path, "P1", now=datetime(2026, 9, 3, tzinfo=UTC))
-    assert _note_meta(tmp_path, "P1")["status"] == "archived"
-    assert _note_meta(tmp_path, "P1")["updated"] == "2026-09-03"
+    meta = _note_meta(tmp_path, "P1")
+    assert meta is not None
+    assert meta["status"] == "archived"
+    assert meta["updated"] == "2026-09-03"
     ensure_project_active(tmp_path, "P1", now=datetime(2026, 9, 4, tzinfo=UTC))
     meta = _note_meta(tmp_path, "P1")
+    assert meta is not None
     assert meta["status"] == "active"
     assert meta["updated"] == "2026-09-04"
 
@@ -159,7 +162,9 @@ def test_archive_creates_note_for_unregistered_folder(tmp_path):
     meta = _note_meta(tmp_path, "FreshFolder")
     assert meta is not None and meta["status"] == "archived"
     ensure_project_active(tmp_path, "FreshFolder")
-    assert _note_meta(tmp_path, "FreshFolder")["status"] == "active"
+    meta = _note_meta(tmp_path, "FreshFolder")
+    assert meta is not None
+    assert meta["status"] == "active"
 
 
 def test_curation_helpers_reject_invalid_same_name_file(tmp_path):

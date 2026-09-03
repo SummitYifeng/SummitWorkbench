@@ -17,6 +17,7 @@ import shutil
 import tempfile
 import threading
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -24,9 +25,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, File, Form, Header, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     from summit_workbench.workflows.ask.ask import AskTurn
@@ -55,6 +57,12 @@ from summit_workbench.webapp.api import (
     EditPayload,
     ProjectPayload,
     review_payload,
+)
+from summit_workbench.webapp.build_info import (
+    BuildInfoError,
+    WebBuildInfo,
+    mode_from_environment,
+    new_server_instance,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
 from summit_workbench.workflows.review_apply import (
@@ -237,6 +245,29 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
 
 def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="SummitWorkbench 面板")
+    spa_dir = static_dir or _STATIC_DIR
+    server_instance = new_server_instance()
+    started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
+
+    def _build_info() -> WebBuildInfo:
+        return WebBuildInfo.from_static_dir(spa_dir)
+
+    @app.middleware("http")
+    async def _cache_policy(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        path = request.url.path
+        if path == "/api/version":
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+        elif path == "/" or path == "/static/build-meta.json":
+            response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        elif path.startswith("/static/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     def _dashboard(
         msg: str | None = None, ask_q: str = "", ask_html: str | None = None
@@ -256,16 +287,13 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         )
 
     # ---- 首页：SPA（已构建）或 SSR 回退 ----
-    spa_dir = static_dir or _STATIC_DIR
     spa_index = spa_dir / "index.html"
     if spa_index.is_file():
         app.mount("/static", StaticFiles(directory=str(spa_dir)), name="static")
 
         @app.get("/", response_class=FileResponse, include_in_schema=False)
         def spa_home() -> FileResponse:
-            # index.html 禁止启发式缓存：前端每次改版都换带哈希的资源名，
-            # 若入口被浏览器缓存会一直指向旧资源，呈现「点了没更新」的旧界面。
-            return FileResponse(spa_index, headers={"Cache-Control": "no-cache"})
+            return FileResponse(spa_index)
 
     else:
 
@@ -274,6 +302,29 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return _dashboard(msg=msg)
 
     # ---- JSON API（SPA 工作台） ----
+
+    @app.get("/api/version")
+    def api_version() -> JSONResponse:
+        """轻量 readiness + build handshake；静态构建无效时明确返回 503。"""
+        try:
+            info = _build_info()
+        except BuildInfoError as exc:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "ok": False,
+                    "error": {"code": "invalid_build_manifest", "message": str(exc)},
+                },
+                headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+            )
+        return JSONResponse(
+            content=info.version_payload(
+                server_instance=server_instance,
+                started_at=started_at,
+                mode=panel_mode,
+            ),
+            headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+        )
 
     @app.get("/api/state")
     def api_state() -> dict[str, object]:
@@ -302,7 +353,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             }
             for p in scan_projects(ctx.work_root, ctx.vault_dir)
         ]
-        return {
+        payload: dict[str, object] = {
             "day": day,
             "status": status.as_dict(),
             "brief_md": brief_md,
@@ -310,6 +361,21 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "inbox_pending": inbox_pending,
             "projects": projects,
         }
+        try:
+            info = _build_info()
+        except BuildInfoError:
+            info = None
+        if info is not None:
+            payload["runtime"] = {
+                "frontend_build": info.frontend_build,
+                "server_version": info.version_payload(
+                    server_instance=server_instance,
+                    started_at=started_at,
+                    mode=panel_mode,
+                )["server_version"],
+                "server_instance": server_instance,
+            }
+        return payload
 
     def _project_dir(name: str) -> Path | None:
         """校验工作台精选的目标：必须是 ``work_root`` 的直接子目录（非 _vault、无路径分隔符）。"""

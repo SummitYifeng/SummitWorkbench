@@ -1,5 +1,21 @@
 import './style.css';
 
+import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
+import {
+  clearDraftSnapshot,
+  loadDraftSnapshot,
+  saveDraftSnapshot as persistDraftSnapshot,
+  type DraftSnapshot,
+  type ReviewDraftFields,
+} from './lifecycle/drafts';
+import {
+  canonicalPanelUrl,
+  CLIENT_BUILD,
+  shouldPreventReload,
+  validateVersionPayload,
+  type VersionPayload,
+  type VersionStatus,
+} from './lifecycle/version';
 import { esc, mdToHtml } from './md';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
@@ -55,6 +71,11 @@ interface StatePayload {
   brief_generated: boolean;
   inbox_pending: number;
   projects: ProjectState[];
+  runtime?: {
+    frontend_build: string;
+    server_version: string;
+    server_instance: string;
+  };
 }
 interface ReviewEntry {
   candidate_id: string;
@@ -106,6 +127,12 @@ let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
 let tab: Tab = 'today';
 let importing = false;
+let versionStatus: VersionStatus = 'checking';
+let remoteVersion: VersionPayload | null = null;
+let lastServerInstance: string | null = null;
+let versionCheckPromise: Promise<void> | null = null;
+let connectionHadFailure = false;
+let restoredDraft: DraftSnapshot | null = null;
 
 // ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
 
@@ -150,11 +177,21 @@ const app = document.getElementById('app') as HTMLElement;
 const toasts = document.getElementById('toasts') as HTMLElement;
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(url, init);
-  if (!resp.ok) {
-    throw new Error('请求失败：HTTP ' + resp.status);
+  try {
+    const resp = await fetch(url, init);
+    if (!resp.ok) {
+      connectionHadFailure = true;
+      throw new Error('请求失败：HTTP ' + resp.status);
+    }
+    if (connectionHadFailure && url !== '/api/version') {
+      connectionHadFailure = false;
+      void checkVersion('connection-restored');
+    }
+    return (await resp.json()) as T;
+  } catch (err) {
+    connectionHadFailure = true;
+    throw err;
   }
-  return (await resp.json()) as T;
 }
 
 function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info'): void {
@@ -180,6 +217,145 @@ function healthTone(): { tone: string; label: string } {
 function fmtCost(v: number, cur: string): string {
   if (cur === 'CNY') return '¥' + v.toFixed(2);
   return v.toFixed(4) + ' ' + cur;
+}
+
+function versionStatusLabel(status: VersionStatus): string {
+  if (status === 'checking') return '正在检查版本';
+  if (status === 'synced') {
+    return remoteVersion
+      ? '界面 ' + CLIENT_BUILD + ' · 服务 ' + remoteVersion.server_version + ' · 已同步'
+      : '已同步';
+  }
+  if (status === 'update-pending') return '新版本已就绪';
+  if (status === 'reconnecting') return '正在重新连接';
+  return '更新未完成';
+}
+
+function setVersionStatus(status: VersionStatus): void {
+  versionStatus = status;
+  const el = document.getElementById('version-status');
+  if (el) {
+    el.className = 'version-status ' + status;
+    el.textContent = versionStatusLabel(status);
+  }
+  const banner = document.getElementById('version-error-banner');
+  if (banner) banner.hidden = status !== 'failed';
+}
+
+function saveCurrentDraftSnapshot(): void {
+  const reviewForms: Record<string, ReviewDraftFields> = {};
+  document.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
+    const data = new FormData(form);
+    const candidateId = String(data.get('candidate_id') ?? '');
+    if (!candidateId) return;
+    reviewForms[candidateId] = {
+      description: String(data.get('description') ?? ''),
+      target_project: String(data.get('target_project') ?? ''),
+      route: String(data.get('route') ?? ''),
+      due_date: String(data.get('due_date') ?? ''),
+    };
+  });
+  const capture = document.getElementById('capture-input') as HTMLInputElement | null;
+  const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (ask) askDraft = ask.value;
+  persistDraftSnapshot({
+    schema: 1,
+    saved_at: new Date().toISOString(),
+    source_build: CLIENT_BUILD,
+    tab,
+    scroll_y: window.scrollY,
+    capture_text: capture?.value ?? '',
+    ask_draft: askDraft,
+    review_forms: reviewForms,
+  });
+}
+
+function applyRestoredDraft(): void {
+  const draft = restoredDraft;
+  if (!draft) return;
+  const capture = document.getElementById('capture-input') as HTMLInputElement | null;
+  if (capture) capture.value = draft.capture_text;
+  askDraft = draft.ask_draft;
+  const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
+  if (ask) ask.value = draft.ask_draft;
+  document.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
+    const candidateId = String(new FormData(form).get('candidate_id') ?? '');
+    const fields = draft.review_forms[candidateId];
+    if (!fields) return;
+    for (const [name, value] of Object.entries(fields)) {
+      const input = form.elements.namedItem(name);
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+        input.value = value;
+      }
+    }
+  });
+  window.scrollTo({ top: draft.scroll_y, behavior: 'instant' as ScrollBehavior });
+  clearDraftSnapshot();
+  toast('已恢复更新前草稿（未自动提交）', 'info');
+  restoredDraft = null;
+}
+
+function reloadToBuild(targetBuild: string): void {
+  try {
+    window.sessionStorage.setItem('wb.update.last-target', targetBuild);
+    window.sessionStorage.setItem('wb.update.last-attempt-at', new Date().toISOString());
+  } catch {
+    // sessionStorage 不可用时仍尝试导航；页面自身会通过 URL 继续握手。
+  }
+  setVersionStatus('update-pending');
+  window.location.assign(canonicalPanelUrl(window.location.href, targetBuild));
+}
+
+async function copyDiagnostics(): Promise<void> {
+  const lines = [
+    'App frontend client build: ' + CLIENT_BUILD,
+    'Served frontend build: ' + (remoteVersion?.frontend_build ?? 'unknown'),
+    'Server version/instance: ' + (remoteVersion?.server_version ?? 'unknown') +
+      '/' + (remoteVersion?.server_instance ?? 'unknown'),
+    'Panel mode: ' + (remoteVersion?.mode ?? 'unknown'),
+    'API protocol: ' + (remoteVersion?.api_protocol ?? 'unknown'),
+  ];
+  try {
+    await navigator.clipboard.writeText(lines.join('\n'));
+    toast('诊断信息已复制', 'ok');
+  } catch {
+    toast(lines.join(' · '), 'info');
+  }
+}
+
+async function doCheckVersion(reason: string): Promise<void> {
+  setVersionStatus('checking');
+  const response = await fetch('/api/version', { cache: 'no-store' });
+  if (!response.ok) throw new Error('version HTTP ' + response.status + ' (' + reason + ')');
+  const remote = validateVersionPayload(await response.json());
+  const instanceChanged = lastServerInstance !== null && lastServerInstance !== remote.server_instance;
+  lastServerInstance = remote.server_instance;
+  remoteVersion = remote;
+  if (remote.frontend_build === CLIENT_BUILD) {
+    setVersionStatus('synced');
+    if (instanceChanged) await refreshAll();
+    return;
+  }
+
+  saveCurrentDraftSnapshot();
+  if (shouldPreventReload(window.sessionStorage, remote.frontend_build, Date.now())) {
+    setVersionStatus('failed');
+    return;
+  }
+  if (isMutationInFlight()) {
+    setVersionStatus('update-pending');
+    deferReloadUntilMutationsComplete(remote.frontend_build);
+    return;
+  }
+  reloadToBuild(remote.frontend_build);
+}
+
+function checkVersion(reason: string): Promise<void> {
+  if (versionCheckPromise) return versionCheckPromise;
+  versionCheckPromise = doCheckVersion(reason)
+    .catch(() => setVersionStatus('reconnecting'))
+    .finally(() => { versionCheckPromise = null; });
+  return versionCheckPromise;
 }
 
 // ---------- 渲染 ----------
@@ -211,6 +387,7 @@ function render(): void {
   } else {
     renderAsk(askView);
   }
+  applyRestoredDraft();
 }
 
 function renderShell(): void {
@@ -219,10 +396,16 @@ function renderShell(): void {
     '<div class="brand"><span class="logo">SW</span><div><h1>SummitWorkbench</h1>' +
     '<p class="tagline">外置执行管理层 · 第二大脑</p></div></div>' +
     '<div class="header-right">' +
+    '<span class="version-status checking" id="version-status">正在检查版本</span>' +
     '<span class="day-pill" id="day-pill">—</span>' +
     '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
+    '<div class="version-error-banner" id="version-error-banner" hidden>' +
+    '<span>工作台更新未完成。你的草稿已保留。</span>' +
+    '<button class="ghost" data-action="retry-update">重试更新</button>' +
+    '<button class="ghost" data-action="copy-diagnostics">复制诊断信息</button>' +
+    '</div>' +
     '<nav class="tabs" role="tablist">' +
     '<button class="tab" data-tab="today" role="tab">今日</button>' +
     '<button class="tab" data-tab="review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
@@ -334,11 +517,11 @@ function renderToday(view: HTMLElement): void {
     const input = document.getElementById('capture-input') as HTMLInputElement;
     const text = input.value.trim();
     if (!text) return;
-    void api<{ ok: boolean; message: string }>('/api/capture', {
+    void mutation(() => api<{ ok: boolean; message: string }>('/api/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
-    }).then((r) => {
+    })).then((r) => {
       if (r.ok) {
         input.value = '';
         toast(r.message, 'ok');
@@ -387,12 +570,12 @@ async function doImport(file: File): Promise<void> {
   form.append('file', file);
   const resultBox = document.getElementById('import-result') as HTMLElement;
   try {
-    const r = await api<{
+    const r = await mutation(() => api<{
       ok: boolean;
       message: string;
       details?: string[];
       estimate?: { est_cost: number; currency: string; crosses_soft_budget: boolean };
-    }>('/api/meetings/import', { method: 'POST', body: form });
+    }>('/api/meetings/import', { method: 'POST', body: form }));
     if (r.ok && resultBox) {
       const est = r.estimate;
       const costLine = est
@@ -609,11 +792,11 @@ async function askSubmit(): Promise<void> {
   renderAskSide();
   renderAskChat();
   try {
-    const r = await api<AskResponse>('/api/ask', {
+    const r = await mutation(() => api<AskResponse>('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, history }),
-    });
+    }));
     const html = r.ok && r.answer_html
       ? r.answer_html
       : '<p class="err-text">' + esc(r.message ?? '提问失败') + '</p>';
@@ -978,6 +1161,22 @@ document.addEventListener('click', (ev) => {
     render();
     return;
   }
+  if (action === 'retry-update') {
+    if (!remoteVersion || remoteVersion.frontend_build === CLIENT_BUILD) return;
+    try {
+      window.sessionStorage.removeItem('wb.update.last-target');
+      window.sessionStorage.removeItem('wb.update.last-attempt-at');
+    } catch {
+      // 存储不可用时仍允许再次尝试导航。
+    }
+    saveCurrentDraftSnapshot();
+    reloadToBuild(remoteVersion.frontend_build);
+    return;
+  }
+  if (action === 'copy-diagnostics') {
+    void copyDiagnostics();
+    return;
+  }
   if (action === 'goto-projects') {
     tab = 'projects';
     render();
@@ -1069,11 +1268,12 @@ document.addEventListener('submit', (ev) => {
   const body: Record<string, string> = {};
   data.forEach((v, k) => { body[k] = String(v); });
   const saveAndApprove = (ev.submitter as HTMLElement | null)?.dataset?.action === 'save-approve';
-  void api<{ ok: boolean; message: string }>('/api/review/edit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  }).then(async (r) => {
+  void mutation(async () => {
+    const r = await api<{ ok: boolean; message: string }>('/api/review/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     if (!r.ok) {
       toast(r.message, 'err');
       return;
@@ -1110,11 +1310,11 @@ document.addEventListener('submit', (ev) => {
 
 async function decide(candidateId: string, decision: string): Promise<void> {
   try {
-    const r = await api<{ ok: boolean; message: string }>('/api/review/decide', {
+    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/review/decide', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ candidate_id: candidateId, decision }),
-    });
+    }));
     if (r.ok) {
       const verb = decision === 'approved' ? '已批准' : decision === 'rejected' ? '已拒绝' : '已改回待确认';
       const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
@@ -1135,11 +1335,11 @@ async function batchDecide(candidateIds: string[], decision: string): Promise<vo
     return;
   }
   try {
-    const r = await api<{ ok: boolean; message: string; updated?: number }>('/api/review/batch', {
+    const r = await mutation(() => api<{ ok: boolean; message: string; updated?: number }>('/api/review/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ candidate_ids: candidateIds, decision }),
-    });
+    }));
     if (r.ok) {
       const verb = decision === 'approved' ? '批准' : decision === 'rejected' ? '拒绝' : '改回待确认';
       const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
@@ -1157,11 +1357,11 @@ async function batchDecide(candidateIds: string[], decision: string): Promise<vo
 async function setProjectState(action: 'activate' | 'archive', name: string): Promise<void> {
   if (!name) return;
   try {
-    const r = await api<{ ok: boolean; message: string }>('/api/projects/' + action, {
+    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/projects/' + action, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
-    });
+    }));
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(String(err), 'err');
@@ -1172,7 +1372,7 @@ async function setProjectState(action: 'activate' | 'archive', name: string): Pr
 async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
   try {
-    const r = await api<{ ok: boolean; message: string }>('/api/run/brief', { method: 'POST' });
+    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/run/brief', { method: 'POST' }));
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(String(err), 'err');
@@ -1183,10 +1383,10 @@ async function runBrief(): Promise<void> {
 async function planApply(exec: boolean): Promise<void> {
   const planResult = document.getElementById('plan-result');
   try {
-    const r = await api<{ ok: boolean; message?: string; plan_text?: string; executed?: boolean }>(
+    const r = await mutation(() => api<{ ok: boolean; message?: string; plan_text?: string; executed?: boolean }>(
       exec ? '/api/review/apply' : '/api/review/plan',
       { method: 'POST' },
-    );
+    ));
     if (!r.ok) {
       toast(r.message ?? '操作失败', 'err');
       return;
@@ -1266,5 +1466,21 @@ async function refreshAll(): Promise<void> {
 
 loadAskStore();
 renderShell();
-void refreshAll();
-window.setInterval(() => { void refreshState(); }, 60000);
+setMutationIdleHandler(async (targetBuild) => {
+  saveCurrentDraftSnapshot();
+  reloadToBuild(targetBuild);
+});
+window.addEventListener('focus', () => { void checkVersion('focus'); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') void checkVersion('visible');
+});
+
+async function startApp(): Promise<void> {
+  restoredDraft = loadDraftSnapshot();
+  await checkVersion('startup');
+  await refreshAll();
+  if (restoredDraft) render();
+}
+
+void startApp();
+window.setInterval(() => { void checkVersion('interval'); }, 60000);
