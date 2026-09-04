@@ -10,12 +10,14 @@ from pathlib import Path
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
+    UNRESOLVED,
     CandidateDecision,
     ReviewEntry,
     RouteTarget,
 )
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.meeting_state import latest_task, record_task
+from summit_workbench.repositories.note_projects import merge_note_project
 from summit_workbench.repositories.note_status import update_note_status
 from summit_workbench.repositories.project_registry import (
     ProjectRegistry,
@@ -234,6 +236,26 @@ def _note_path(vault_dir: Path, note_link: str) -> Path | None:
     return vault_dir / f"{relative}.md"
 
 
+def _queue_note_project(
+    vault_dir: Path, note_project_adds: dict[Path, list[str]], entry: ReviewEntry
+) -> None:
+    """审批「已批准且目标项目已解析」成功后，登记来源会议笔记要并入的项目（改进 2）。
+
+    收尾阶段（工作区锁内）统一把 ``unresolved`` 解析为实际写回项目——会议笔记由此
+    进入该项目的时间线与 Obsidian 图谱。目标不明（unresolved / 缺省）不登记；
+    全局 inbox / 新建会议等无项目落点的写回不产生关联。
+    """
+    target = entry.candidate.target_project
+    if not target or target == UNRESOLVED:
+        return
+    note_path = _note_path(vault_dir, entry.note_link)
+    if note_path is None:
+        return
+    projects = note_project_adds.setdefault(note_path, [])
+    if target not in projects:
+        projects.append(target)
+
+
 def _update_meeting_states(
     vault_dir: Path,
     handled: list[ReviewEntry],
@@ -298,11 +320,15 @@ def apply_meeting_review(
     handled: list[ReviewEntry] = []
     records: list[ExecutionRecord] = []
     failure_reasons: dict[str, str] = {}
+    note_project_adds: dict[Path, list[str]] = {}
     failures = 0
     applied_count = rejected_count = 0
     for action in actions:
         entry = by_id[action.candidate_id]
         if action.reason == "already-completed":
+            # 历史已应用条目同样补登记：旧版本落库的候选没做过会议回链解析。
+            if action.decision is CandidateDecision.APPROVED:
+                _queue_note_project(vault_dir, note_project_adds, entry)
             handled.append(entry)
             continue
         if not action.executable:
@@ -350,6 +376,7 @@ def apply_meeting_review(
                 failure_reasons[action.candidate_id] = str(exc)
                 continue
             applied_count += 1
+            _queue_note_project(vault_dir, note_project_adds, entry)
         append_execution(vault_dir, record)
         records.append(record)
         handled.append(entry)
@@ -388,6 +415,11 @@ def apply_meeting_review(
                 merged.append(entry)
             atomic_write_text(page, render_review_page(merged))
         _update_meeting_states(vault_dir, handled, remaining, now=now)
+        # 改进 2：已批准且目标已解析的写回 → 把来源会议笔记的 unresolved 解析为项目
+        # （幂等合并，进该项目时间线与 Obsidian 图谱）。merge 内部同锁重入，安全。
+        for note_path, projects in note_project_adds.items():
+            for project in projects:
+                merge_note_project(vault_dir, note_path, project)
     return ApplyReport(
         False,
         actions,

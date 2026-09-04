@@ -65,6 +65,16 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
+def _project_links(projects: Sequence[str]) -> str:
+    """正文的「关联项目」回链：每条 ``- [[projects/<id>]]``。
+
+    vault 以 ``_vault`` 为 Obsidian 库根，``[[projects/<id>]]`` 即指向
+    ``_vault/projects/<id>.md`` 主档案——日志/产物由此在 Obsidian 图谱里
+    连回项目（frontmatter 关联之外的实体双链）。
+    """
+    return "\n".join(f"- [[projects/{project}]]" for project in projects)
+
+
 def _touch_projects_activity(vault_dir: Path, projects: Iterable[str], day: str) -> None:
     """日志/产物入库后，刷新关联项目档案 frontmatter 的 ``activity_at``（活动痕迹）。
 
@@ -130,6 +140,8 @@ def append_work_log(
     body += "## 原文\n\n" + body_text + "\n"
     if summary:
         body += "\n## AI 摘要\n\n" + summary + "\n"
+    # 实体双链（改进 1）：正文回链到所关联项目的主档案，供 Obsidian 图谱/反链使用。
+    body += "\n## 关联项目\n\n" + _project_links(projects_list) + "\n"
     # 序号分配 + 落盘 + 关联档案 touch 整体持锁（P0-4）：两个并发写入不会算出同一
     # 序号互相静默覆盖；写前若目标已被占（如人工预占名）则重取序号，绝不覆盖既有文件。
     with workspace_lock(vault_dir.parent):
@@ -183,6 +195,8 @@ def save_thread_artifact(
             path = artifacts_dir / f"{project}-{seq:03d}.md"
         heading = title or f"{project} 产物 {seq}"
         body = f"# {heading}\n\n" + body_text + "\n"
+        # 实体双链（改进 1）：产物回链到所属项目的主档案（Obsidian 图谱/反链）。
+        body += "\n## 关联项目\n\n" + _project_links([project]) + "\n"
         _write_note(path, meta, body)
         _check(path)
         _touch_projects_activity(vault_dir, [project], day)

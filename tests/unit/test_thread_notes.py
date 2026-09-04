@@ -54,6 +54,10 @@ def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
     assert note.meta["projects"] == ["FinanceOps", "CoachFinance"]
     assert note.meta["status"] == "generated"
     assert "和木子对齐 Coach 结算" in note.body  # 原文必存
+    # 改进 1：日志正文带 [[projects/<id>]] 实体回链（Obsidian 图谱边）
+    assert "## 关联项目" in note.body
+    assert "- [[projects/FinanceOps]]" in note.body
+    assert "- [[projects/CoachFinance]]" in note.body
     # 同一天第二条递增序号
     path2 = append_work_log(
         vault, projects=["FinanceOps"], text="第二条", now=datetime(2026, 9, 3, 13, tzinfo=UTC)
@@ -91,6 +95,9 @@ def test_save_thread_artifact_single_project_schema(tmp_path: Path) -> None:
     assert note.meta["project"] == "FinanceOps"
     assert note.meta["title"] == "Finance Ops 阶段总结 V2"
     assert note.meta["kind"] == "summary"
+    # 改进 1：产物正文带 [[projects/<id>]] 实体回链
+    assert "## 关联项目" in note.body
+    assert "- [[projects/FinanceOps]]" in note.body
 
 
 def _client_with_offline_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
