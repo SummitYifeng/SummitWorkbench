@@ -1,3 +1,17 @@
+## [0.4.1] - 2026-09-04
+
+维护加固发布（稳定性审计 P0/P0'/P1，ADR 0027）。核心问题不变（外置执行管理层 + 第二大脑）；本版收掉三类真问题：**写路径并发丢更新、全库无撤销、停滞点名被机器活动刷失明**。
+
+### 修复
+
+- **写路径并发加固（P0）**：全库所有「读文件 → 变换 → 整文件原子重写」的 RMW 原语（审批页裁决/批量/修改与 refresh、inbox 与项目档案追加、set_project_status、当日笔记与周复盘、当日快照镜像、线程日志/产物、项目建档/激活/归档、review sweep、审批页状态收口）整体放入工作区锁（workspace_lock(vault_dir.parent)，与 publish_brief / sync 同一把 .wb.lock；**锁只包文件临界区，绝不跨 LLM/网络调用**；锁忙对用户可见——CLI 输出「工作区忙，稍后重试」并 exit(1)，面板返回可见失败）。裸 write_text 全量改 atomic_write_text（当日笔记可能含用户锚点外手写内容，断电/kill 不再留半截文件）。审批 apply_meeting_review 收尾改**乐观合并**（P0-5）：apply 执行外部写回期间用户在审批页的并发勾选/编辑不再被整页重写吞掉——收尾重读最新页，只移除本次执行且最新页中未变的候选，被并发改动的候选留在页上（账本幂等，下次 apply 清理不重复执行）。幂等账本（_signals/review-actions/log.jsonl）改逐行 Pydantic 容错读（ExecutionRecordRow），一条半截行只告警并隔离进 .quarantine，不再让 apply 幂等判定整体崩溃。线程日志/产物序号分配与落盘同锁且写前重查目标存在，并发写入不再算出同一序号静默覆盖。
+- **系统写回自动留痕 + 面板撤销（P0'）**：每次系统侧写回成功后自动 git 提交（**显式路径**、绝不 add -A、消息带 wb: 前缀、非 git 仓库优雅降级不抛错、失败转可见状态不阻断写回）——覆盖面板捕捉（inbox）、推进日志/产物与关联档案、状态确认、审批应用（写回目标 + 审批页 + 审计归档）、项目建档/激活/归档/改名、任务完成/编辑与会议编辑（当日快照镜像）、逐字稿导入，以及 wb review sweep --apply（CLI 顺带）；launchd brief/weekly 沿用既有 publish，不重复提交。顶栏新增 **「↩ 撤销」**：最近 N 次 wb: 自动提交（含触碰文件）→ 单提交 before/after 差异预览 → 一键还原（等价 git revert，只作用于 vault 文件；**飞书侧已产生的副作用——已建任务/会议、已完成状态——不可撤销**，按钮旁与确认弹层文案明示；目标文件有未提交人工改动时拒绝还原）。新增 repositories/autocommit.py 与 GET /api/undo/history、GET /api/undo/diff、POST /api/undo/revert。
+- **停滞信号语义修复（P1）**：档案 frontmatter updated 收窄为**实质更新**，只在建档/激活/归档/改名与用户显式确认的状态写回（threads/state）时刷新；日志/产物等机器活动改刷新新字段 **activity_at**（活动痕迹，读侧经 meta_date_iso 归一，project_scan / project_view / /api/state 载荷与前端同步）。首页线程卡「最近活跃」读 activity_at（缺省回退 updated）；「>14 天未更新」提示与周复盘停滞点名继续读 updated——AI 收尾的高频自刷新不再让停滞点名失明。
+
+### 质量
+
+- 新增并发写（T1–T6：并发裁决/apply 乐观合并/inbox 追加/线程序号/简报×完成镜像/坏账本行）、自动提交与撤销（U1–U4）与停滞语义（S1/S2）测试，另加**跨进程互斥**集成测试（两个真实子进程并发写当日笔记 + 快照，无交错）；全套 **514 项全绿**（较 491 净增 23）。ruff + format + mypy strict（200 文件）+ 前端 strict TS + Vite 构建通过；桌面 App 已重新打包装机。M3（带上下文启动与收尾）仍是下一步。
+
 ## [0.4.0] - 2026-09-03
 
 发布版。核心问题不变（外置执行管理层 + 第二大脑），v0.4.0 完成需求再梳理结论 R2-A+ 的落地：**业务线程 = vault 一等公民**——知识线程（FinanceOps / CoachFinance / EnrollmentProduct / ERPExplore 等试点）不再依赖 Work 文件夹与 git，以 `_vault/projects/*.md` 档案建档即入工作台；线程有自己的推进日志（work-log）、AI 产物（thread-doc）、收件箱与**线视图**（档案区块 + 时间线聚合），信号（下一步 / 阻塞 / 未闭环跟进 / 长期无更新）进入晨间简报与**周复盘停滞点名**，第二大脑可按线程检索。桌面 App（LSUIElement）补上原生文件选择与编辑快捷键。质量门 491 项全绿。M3（带上下文启动与收尾）仍是下一步，未在本版开始。

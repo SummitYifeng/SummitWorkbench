@@ -1,6 +1,6 @@
 # Web 工作台（wb web）设计说明
 
-> 状态：v0.4 已交付 · 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
+> 状态：v0.4.1 已交付（v0.4 知识线程 + v0.4.1 写路径加固/撤销/停滞语义修复，ADR 0026/0027）· 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
 >
 > 本文回答「为什么这样设计」：形态、信息架构、边界与技术取舍。
 
@@ -76,7 +76,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - **显示集合是「工作台精选」而非全量文件夹（ADR 0023），且项目全集含知识线程（ADR 0026）**：
   `work_root` 下已建档（`_vault/projects/<name>.md` 存在、`type: project-main`）且
   `status: active` 的**文件夹项目**与**无文件夹的知识线程档案**（`scan_all_projects` =
-  文件夹项目 + 线程合并；线程卡显示「知识线程」徽标 + 档案 `updated`，>14 天无更新提示）
+  文件夹项目 + 线程合并；线程卡显示「知识线程」徽标 + 「最近活跃」（档案 `activity_at`，日志/产物等  机器活动刷新）+ >14 天无**实质更新**提示（档案 `updated`，只由建档/激活/归档/改名/状态确认刷新））
   一起渲染推进卡；**未建档的新文件夹**在项目区顶部以一条邀请横幅出现（逐条
   「加入工作台 / 归档」，不占卡片位），处理完即消失；归档项目（`status: archived`）不上
   首页但可在「项目」页一键恢复。每张首页卡片右下角有「归档」按钮（带确认），可直接把
@@ -109,9 +109,12 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 | `GET /api/projects/view` | 线视图：档案区块 + 时间线聚合（ADR 0026）|
 | `POST /api/threads/logs` / `POST /api/threads/artifacts` / `POST /api/threads/state` | ✎ 推进日志 / 存产物（含本地文件导入）/ 产物摘要 → 当前状态草案（v0.4）|
 | `POST /api/meetings/import` | 拖拽上传逐字稿全自动导入（multipart） |
+| `GET /api/undo/history` / `GET /api/undo/diff` / `POST /api/undo/revert` | 系统自动写回留痕的撤销（v0.4.1：最近 `wb:` 提交 / 差异 / git revert 一键还原；只作用于 vault 文件） |
 | `POST /api/run/brief` / `POST /api/run/weekly` / `POST /api/ask` | 一键触发简报/周复盘/问答 |
 
 所有端点与 CLI 共用 repositories/workflows，**meetings.md 永远是唯一事实源**。
+
+> v0.4.1 起，面板写路径全部经过工作区锁（repository 级 RMW 原子化）并在成功后自动 git 留痕（显式路径、消息 `wb:` 前缀，非 git 仓库优雅降级）；「↩ 撤销」读取这些自动提交并提供差异与一键还原。
 
 ## 6. 技术实现
 

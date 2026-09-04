@@ -6,7 +6,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.0` 发布版：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6）+ 韧性/使用前加固（ADR 0016–0022）；v0.2 把用户日常入口收敛到**本地 Web 工作台**（SPA）与**原生 macOS 桌面 App** 并完成晨间简报 v2（ADR 0024）；v0.3 补全「工作台 → 飞书」双向写回（ADR 0025：一键完成/行内编辑任务与会议、审批新建日历日程，真机核实）；v0.4 落地「业务线程 = vault 一等公民」（ADR 0026：知识线程建档/线视图/推进日志/产物入库/简报与周复盘信号/显示名，P0–P3）；下一步 M3 带上下文启动与收尾 |
+| 当前阶段 | `v0.4.1` 维护加固发布（ADR 0027：写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复，514 项全绿），前身 `v0.4.0` 发布版：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6）+ 韧性/使用前加固（ADR 0016–0022）；v0.2 把用户日常入口收敛到**本地 Web 工作台**（SPA）与**原生 macOS 桌面 App** 并完成晨间简报 v2（ADR 0024）；v0.3 补全「工作台 → 飞书」双向写回（ADR 0025：一键完成/行内编辑任务与会议、审批新建日历日程，真机核实）；v0.4 落地「业务线程 = vault 一等公民」（ADR 0026：知识线程建档/线视图/推进日志/产物入库/简报与周复盘信号/显示名，P0–P3）；v0.4.1 维护加固发布（ADR 0027：写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义 updated↔activity_at 拆分，质量门 514 项全绿）；下一步 M3 带上下文启动与收尾 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -83,9 +83,11 @@
 
 不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.0）
+## 当前交付边界（v0.4.1）
 
-已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；v0.3 双向写回经真机核实；v0.4 完成知识线程改造（P0–P3）并经真机验收：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；v0.3 双向写回经真机核实；v0.4 完成知识线程改造（P0–P3）并经真机验收；v0.4.1 完成稳定性审计加固（写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复）：
+
+- **v0.4.1 · 写路径并发加固 + 撤销 + 停滞语义（ADR 0027，P0/P0'/P1）**：全库「读 → 变换 → 整文件原子重写」RMW 原语（审批页/inbox/档案追加/当日笔记与快照/线程日志产物/项目建档激活归档/清扫）整体放入工作区锁（与 publish_brief / sync 同一把 .wb.lock；锁只包文件临界区，绝不跨 LLM/网络调用）；裸写全量改原子写；审批 apply 收尾乐观合并（并发勾选/编辑不被整页重写吞掉）；幂等账本容错读（坏行隔离 .quarantine）；线程日志/产物序号分配同锁防静默覆盖。系统侧写回成功后自动 git 留痕（显式路径 + `wb:` 前缀，非 git 优雅降级），面板顶栏新增 **「↩ 撤销」**（最近 `wb:` 提交差异预览 → git revert 一键还原；只作用于 vault 文件，飞书侧副作用不可撤销，界面文案明示）。档案 frontmatter `updated` 收窄为实质更新，日志/产物只刷新 **`activity_at`**：首页「最近活跃」读 activity_at，「>14 天未更新」与周复盘停滞点名读 updated，不再被机器高频活动刷失明。质量门 **514 项全绿**（ruff + format + mypy strict + pytest），前端重新构建并重新装机。
 
 - **v0.4 · 业务线程 = vault 一等公民（ADR 0026，P0–P3）**：知识线程（FinanceOps / CoachFinance / EnrollmentProduct / ERPExplore 试点）无需 Work 文件夹与 git——`_vault/projects/*.md` 建档即入工作台，registry 全集（文件夹项目 + 线程）统一进首页/项目页/审批下拉；内部目录（下划线前缀）不进项目视野。审批路由扩展：**「跟进事项」落点**（他人行动项 → 主档案 `## 跟进事项` `- [ ] ` 责任记录，人工闭环）+ 线程 inbox（`_vault/inboxes/`）。**✎ 推进日志**（多线程 work-log + AI 摘要，模型不可用只存原文）与**存产物**（thread-doc：阶段总结/PRD/背景包/timeline，本地文件导入 + 拖放，可一键转「当前状态」草案）入库自动刷新档案 `updated`。**线视图** = 档案区块 + 时间线聚合（logs/artifacts/meetings），视图内直接日志/产物/刷新。线程信号（下一步/阻塞/未闭环跟进）进晨间简报；**>14 天无更新且有未决/未闭环跟进 → 周复盘「停滞项目」点名**（`weekly/collect.py::_collect_thread_stalls`，`THREAD_STALL_DAYS=14` 与卡片同口径）。项目显示名 = 档案 frontmatter `title`（`POST /api/projects/rename`）。第二大脑按线程检索（`answer_question(project=...)`）。顺带修复：未加引号 `updated`（YAML date 对象）读取归一（`vault.meta_date_iso`）。质量门 **491 项全绿**；P0/P1/P2 与 P3 第一批真机验收并装机，P3 停滞检测随本版装机后生效。
 - **v0.3 · 工作台 → 飞书双向写回（ADR 0025）**：待办任务行尾 **✓ 一键完成**（`PATCH completed_at` 完成形态，真机核实 `update_fields` 白名单不含 `completed`）/ **✎ 行内编辑**（标题/截止，`PATCH summary/due`）；会议行尾 **✎ 行内编辑**（标题/起止时间，日历写 scope `calendar:calendar` 升级并重新授权）；审批候选落点新增 **「新建会议」**（`RouteTarget.FEISHU_MEETING` + 起止时间字段，批准 + 应用即在主日历新建定时日程事件，`MeetingCreator` 注入 + 候选 ID 审计幂等）。飞书 = 任务与日程唯一真源；本地只把当日渲染快照镜像一致（`signal_snapshot.mark_task_completed/mark_task_edited/mark_meeting_edited`），vault 简报 Markdown 一字不动。质量门 458 项全绿；日历/任务写回 2026-09-03 真机核实（建日程/改会议时间/改任务标题截止/一键完成闭环）。
