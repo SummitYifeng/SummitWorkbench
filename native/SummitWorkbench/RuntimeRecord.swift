@@ -37,7 +37,9 @@ struct RuntimeRecord: Codable {
         let fm = FileManager.default
         let directory = Self.url.deletingLastPathComponent()
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(self) else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(self) else { return }
         let temp = directory.appendingPathComponent(".runtime-\(UUID().uuidString).tmp")
         do {
             try data.write(to: temp, options: .atomic)
@@ -52,7 +54,11 @@ struct RuntimeRecord: Codable {
     static func load() -> RuntimeRecord? {
         candidateURLs
             .compactMap { try? Data(contentsOf: $0) }
-            .compactMap { try? JSONDecoder().decode(RuntimeRecord.self, from: $0) }
+            .compactMap { data in
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                return try? decoder.decode(RuntimeRecord.self, from: data)
+            }
             .sorted { $0.startedAt > $1.startedAt }
             .first
     }

@@ -25,12 +25,15 @@ def test_production_native_shell_is_webkit_and_single_window() -> None:
 
 def test_service_supervisor_has_identity_gate_and_recovery_states() -> None:
     source = _source("ServiceSupervisor.swift")
+    runtime = _source("RuntimeRecord.swift")
     assert "apiProtocol >= panelAPIProtocol" in _source("Models.swift")
     assert "frontendBuild != configuration.manifest.frontendBuild" in source
     assert "service_crash_loop" in source
     assert "service_restart_scheduled" in source
+    assert "terminateOwnedProcessBeforeRetry" in source
     assert "desiredStop" in source
     assert "RuntimeRecord" in source
+    assert "dateDecodingStrategy = .iso8601" in runtime
 
 
 def test_navigation_policy_rejects_non_panel_loopback() -> None:

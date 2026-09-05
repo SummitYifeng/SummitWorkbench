@@ -25,11 +25,15 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
 
 ## 验证
 
-- `tests/unit/test_packaging_contract.py` 覆盖版本来源、显式 build/架构、unsigned-dev、签名工具、
+- `tests/unit/test_packaging_contract.py` 覆盖版本来源、显式 build/架构、内部 ad-hoc、签名工具、
   metadata、SBOM、entitlement 和隐私验证契约。
+- 原生启动器已修复跨语言运行记录的 ISO-8601 日期解码；readiness 超时重试前会终止当前 App
+  自己创建的子进程，避免孤儿 server 继续占用端口或阻塞后续 runtime record。对应契约测试先失败后通过。
 - `BUILD_NUMBER=1 ARCH=arm64 scripts/build-macos-app.sh` 在当前 Apple Silicon 机器通过：前端构建、
   47 项 packaged/native 回归、PyInstaller、Swift 离线编译、自包含 server 动态端口 smoke。
-- `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：ad-hoc unsigned-dev strict codesign、
+- 修复后重新编译的 arm64 App 在当前 Mac Studio 真实用户环境中约 1 秒完成 `service_ready`，未再进入
+  `crashLoop`；此前失败包的残留测试进程已清理。
+- `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和
   notary `not-applicable` 摘要。

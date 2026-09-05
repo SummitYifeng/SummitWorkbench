@@ -170,6 +170,7 @@ final class ServiceSupervisor {
             let delays: [Double] = [0, 0.1, 0.25, 0.5, 1, 1, 2, 2, 2, 2, 2]
             guard attempt < delays.count else {
                 self.logger.log("service_exited", level: "error", fields: ["reason": "readiness_timeout"])
+                self.terminateOwnedProcessBeforeRetry()
                 self.registerFailureAndMaybeRetry()
                 return
             }
@@ -185,6 +186,20 @@ final class ServiceSupervisor {
         logger.log("service_exited", fields: ["status": String(status)])
         guard !desiredStop else { setState(.stopped); return }
         registerFailureAndMaybeRetry()
+    }
+
+    /// A child can remain alive when its readiness record is unreadable or a
+    /// compatible response never arrives. Always stop that exact Process
+    /// instance before scheduling another one, otherwise retries can leave
+    /// orphan servers listening on random ports and collide on runtime.json.
+    private func terminateOwnedProcessBeforeRetry() {
+        guard let child = process, child.isRunning else {
+            process = nil
+            return
+        }
+        child.terminationHandler = nil
+        child.terminate()
+        process = nil
     }
 
     private func registerFailureAndMaybeRetry() {
