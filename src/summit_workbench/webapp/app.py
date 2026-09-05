@@ -12,6 +12,7 @@ review_edit、应用用 apply_meeting_review；看板状态用 build_status、�
 
 from __future__ import annotations
 
+import inspect
 import os
 import shutil
 import tempfile
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from summit_workbench.providers.llm.config import ModelConfig
     from summit_workbench.workflows.ask.ask import AskTurn
 
+from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
@@ -90,6 +92,7 @@ from summit_workbench.repositories.thread_notes import (
 from summit_workbench.webapp.api import (
     ArtifactSavePayload,
     AskPayload,
+    AutomationPrimaryPayload,
     BatchDecidePayload,
     CapturePayload,
     DecidePayload,
@@ -135,6 +138,7 @@ from summit_workbench.workflows.external_actions import (
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
     LocalMutationResult,
+    MutationBlocked,
     run_local_mutation,
 )
 from summit_workbench.workflows.review_apply import (
@@ -186,6 +190,11 @@ class WebContext:
 
     def today(self) -> str:
         return datetime.now(ZoneInfo(self.timezone)).date().isoformat()
+
+    @property
+    def git_backend_kind(self) -> str | None:
+        """production active profile 固定 Dulwich；旧兼容 context 不覆盖默认 backend。"""
+        return "dulwich" if self.active_workspace is not None else None
 
 
 def _load_model_config_for_context(ctx: WebContext, capability: str) -> ModelConfig:
@@ -295,7 +304,23 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
         ctx.vault_dir,
         [Path(p) for p in paths if p],
         message=f"wb: {summary}",
+        backend_kind=ctx.git_backend_kind,
+        author=(
+            profile_identity(ctx.active_workspace.profile)
+            if ctx.active_workspace is not None and ctx.active_workspace.profile is not None
+            else None
+        ),
     )
+    if result.status is CommitStatus.COMMITTED and ctx.active_workspace is not None:
+        from summit_workbench.workflows import sync_coordinator
+
+        sync_coordinator.push_after_commit(
+            ctx.vault_dir,
+            home=ctx.active_workspace.home,
+            workspace_id=ctx.workspace_id,
+            backend_kind=ctx.git_backend_kind,
+            context=ctx.active_workspace,
+        )
     return _commit_note(result)
 
 
@@ -449,7 +474,12 @@ def _ask_html(
     return "\n".join(parts), source_ids
 
 
-def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]:
+def _run_web_import(
+    ctx: WebContext,
+    transcript_path: Path,
+    *,
+    local_mutation: Callable[..., object] | None = None,
+) -> dict[str, object]:
     """把一份本地逐字稿全自动归档 + 结构化 + 生成审批候选（复用 backfill 链路）。
 
     与 wb meeting import 同一套幂等逻辑；Web 侧按产品约定走全自动（不二次确认），
@@ -491,7 +521,7 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
         prompt=prompt,
         merger_prompt=merger_prompt,
         include_actions=True,
-        local_mutation=run_local_mutation,
+        local_mutation=local_mutation or run_local_mutation,
     )
     lines = [
         f"处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}、"
@@ -776,6 +806,17 @@ def create_app(
             ),
         )
 
+    @app.exception_handler(MutationBlocked)
+    async def _mutation_blocked_error(request: Request, exc: MutationBlocked) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=error_payload(
+                code="sync_diverged",
+                message=str(exc),
+                operation_id=_operation_id(request),
+            ),
+        )
+
     @app.exception_handler(Exception)
     async def _unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
         return JSONResponse(
@@ -937,7 +978,7 @@ def create_app(
         """看板数据：日期、状态速览、今日简报、inbox 积压。"""
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
-        sync_state = sync_coordinator.current_snapshot(ctx.vault_dir).state.value
+        sync_state = _current_sync_snapshot().state.value
         brief_md = read_brief_block(ctx.vault_dir, day)
         inbox_path = ctx.vault_dir / "inbox.md"
         inbox_pending = (
@@ -1034,7 +1075,7 @@ def create_app(
             return LocalMutationOutcome(path, (path,))
 
         try:
-            result = run_local_mutation(ctx.vault_dir, "projects/rename", mutate)
+            result = _run_web_mutation("projects/rename", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"改名失败：{exc}"}
         git_note = _commit_note(result.commit_result)
@@ -1052,8 +1093,7 @@ def create_app(
         if not ok:
             return {"ok": False, "message": message}
         try:
-            result = run_local_mutation(
-                ctx.vault_dir,
+            result = _run_web_mutation(
                 "projects/activate",
                 lambda _operation_id: LocalMutationOutcome(
                     (path := ensure_project_active(ctx.vault_dir, name)), (path,)
@@ -1078,8 +1118,7 @@ def create_app(
         if not ok:
             return {"ok": False, "message": message}
         try:
-            result = run_local_mutation(
-                ctx.vault_dir,
+            result = _run_web_mutation(
                 "projects/archive",
                 lambda _operation_id: LocalMutationOutcome(
                     (path := archive_project(ctx.vault_dir, name)), (path,)
@@ -1111,8 +1150,7 @@ def create_app(
             }
         aliases = [alias.strip() for alias in payload.aliases if alias.strip()]
         try:
-            result = run_local_mutation(
-                ctx.vault_dir,
+            result = _run_web_mutation(
                 "projects/create",
                 lambda _operation_id: LocalMutationOutcome(
                     (
@@ -1139,44 +1177,80 @@ def create_app(
         entries, errors = _load(ctx.vault_dir)
         return review_payload(entries, errors)
 
-    @app.post("/api/review/decide")
+    @app.post("/api/review/decide", response_model=None)
     def api_decide(payload: DecidePayload) -> dict[str, object]:
         try:
-            set_decision(ctx.vault_dir, payload.candidate_id, CandidateDecision(payload.decision))
-        except (ReviewEditError, ValueError) as exc:
-            return {"ok": False, "message": f"操作失败：{exc}"}
-        return {"ok": True, "message": f"已更新 → {payload.decision}"}
 
-    @app.post("/api/review/batch")
-    def api_batch_decide(payload: BatchDecidePayload) -> dict[str, object]:
-        try:
-            updated = set_decisions(
-                ctx.vault_dir, payload.candidate_ids, CandidateDecision(payload.decision)
+            def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
+                set_decision(
+                    ctx.vault_dir, payload.candidate_id, CandidateDecision(payload.decision)
+                )
+                return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
+
+            result = _run_web_mutation(
+                "review/decide",
+                mutate,
             )
         except (ReviewEditError, ValueError) as exc:
             return {"ok": False, "message": f"操作失败：{exc}"}
         return {
             "ok": True,
-            "message": f"已批量更新 {updated} 条 → {payload.decision}",
-            "updated": updated,
+            "message": f"已更新 → {payload.decision}{_commit_note(result.commit_result)}",
+            **_mutation_fields(result),
         }
 
-    @app.post("/api/review/edit")
+    @app.post("/api/review/batch", response_model=None)
+    def api_batch_decide(payload: BatchDecidePayload) -> dict[str, object]:
+        try:
+            result = _run_web_mutation(
+                "review/batch",
+                lambda _operation_id: LocalMutationOutcome(
+                    set_decisions(
+                        ctx.vault_dir,
+                        payload.candidate_ids,
+                        CandidateDecision(payload.decision),
+                    ),
+                    (review_path(ctx.vault_dir),),
+                ),
+            )
+        except (ReviewEditError, ValueError) as exc:
+            return {"ok": False, "message": f"操作失败：{exc}"}
+        return {
+            "ok": True,
+            "message": f"已批量更新 {result.business_return} 条 → {payload.decision}"
+            f"{_commit_note(result.commit_result)}",
+            "updated": result.business_return,
+            **_mutation_fields(result),
+        }
+
+    @app.post("/api/review/edit", response_model=None)
     def api_edit(payload: EditPayload) -> dict[str, object]:
         try:
-            update_fields(
-                ctx.vault_dir,
-                payload.candidate_id,
-                description=payload.description,
-                target_project=payload.target_project,
-                route=RouteTarget(payload.route) if payload.route else None,
-                due_date=payload.due_date,
-                start_at=payload.start_at,
-                end_at=payload.end_at,
+
+            def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
+                update_fields(
+                    ctx.vault_dir,
+                    payload.candidate_id,
+                    description=payload.description,
+                    target_project=payload.target_project,
+                    route=RouteTarget(payload.route) if payload.route else None,
+                    due_date=payload.due_date,
+                    start_at=payload.start_at,
+                    end_at=payload.end_at,
+                )
+                return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
+
+            result = _run_web_mutation(
+                "review/edit",
+                mutate,
             )
         except (ReviewEditError, ValueError) as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
-        return {"ok": True, "message": "已保存修改"}
+        return {
+            "ok": True,
+            "message": f"已保存修改{_commit_note(result.commit_result)}",
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/review/plan")
     def api_plan() -> dict[str, object]:
@@ -1199,6 +1273,7 @@ def create_app(
         action = latest_action(ctx.vault_dir, operation_id)
         if action is None or action.workspace_id != workspace_id_for_vault(ctx.vault_dir):
             return {"ok": False, "message": "外部动作不存在或不属于当前工作区"}
+        current_action = action
         try:
             if payload.decision == "recheck":
                 return {
@@ -1207,11 +1282,34 @@ def create_app(
                     "message": "当前适配器不支持可靠远端检索，请人工确认是否已创建",
                 }
             if payload.decision == "succeeded":
-                action = reconcile_succeeded(ctx.vault_dir, action, payload.remote_id or "")
+                result = _run_web_mutation(
+                    "external-actions/reconcile",
+                    lambda _operation_id: LocalMutationOutcome(
+                        reconcile_succeeded(ctx.vault_dir, current_action, payload.remote_id or ""),
+                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
+                    ),
+                )
+                action = result.business_return
             elif payload.decision == "not-found":
-                action = reconcile_not_found(ctx.vault_dir, action)
+                result = _run_web_mutation(
+                    "external-actions/reconcile",
+                    lambda _operation_id: LocalMutationOutcome(
+                        reconcile_not_found(ctx.vault_dir, current_action),
+                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
+                    ),
+                )
+                action = result.business_return
             elif payload.decision == "retry":
-                action = authorize_retry(ctx.vault_dir, action, confirm=payload.confirm_retry)
+                result = _run_web_mutation(
+                    "external-actions/reconcile",
+                    lambda _operation_id: LocalMutationOutcome(
+                        authorize_retry(
+                            ctx.vault_dir, current_action, confirm=payload.confirm_retry
+                        ),
+                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
+                    ),
+                )
+                action = result.business_return
             else:
                 return {
                     "ok": False,
@@ -1221,8 +1319,11 @@ def create_app(
             return {"ok": False, "message": str(exc)}
         return {"ok": True, "action": external_action_payload(action)}
 
-    @app.post("/api/review/apply")
-    def api_apply() -> dict[str, object]:
+    @app.post("/api/review/apply", response_model=None)
+    def api_apply(request: Request) -> dict[str, object] | JSONResponse:
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             report = apply_meeting_review(
                 ctx.vault_dir,
@@ -1276,7 +1377,7 @@ def create_app(
             return LocalMutationOutcome(path, (path,))
 
         try:
-            result = run_local_mutation(ctx.vault_dir, "threads/state", mutate)
+            result = _run_web_mutation("threads/state", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"更新失败：{exc}"}
         git_note = _commit_note(result.commit_result)
@@ -1351,7 +1452,7 @@ def create_app(
             return LocalMutationOutcome(path, (path, *archives))
 
         try:
-            result = run_local_mutation(ctx.vault_dir, "threads/logs", mutate)
+            result = _run_web_mutation("threads/logs", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
@@ -1412,7 +1513,7 @@ def create_app(
             return LocalMutationOutcome(path, (path, ctx.vault_dir / "projects" / f"{project}.md"))
 
         try:
-            result = run_local_mutation(ctx.vault_dir, "threads/artifacts", mutate)
+            result = _run_web_mutation("threads/artifacts", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
@@ -1435,9 +1536,6 @@ def create_app(
         模型不可用/超时/输出非法时按「想法」兜底，绝不丢数据；#项目 标签本地解析，
         不经模型，避免臆造项目名。分类以稳定标记写回 inbox，供 M4 wb task 承接路由。
         """
-        blocked = _mutation_blocked(request)
-        if blocked is not None:
-            return blocked
         text = payload.text.strip()
         if not text:
             return {"ok": False, "message": "输入为空"}
@@ -1477,7 +1575,7 @@ def create_app(
             path, written = append_global_inbox(ctx.vault_dir, text, candidate_id, markers=markers)
             return LocalMutationOutcome((path, written), (path,))
 
-        result = run_local_mutation(ctx.vault_dir, "capture", mutate)
+        result = _run_web_mutation("capture", mutate)
         path, written = result.business_return
         label = "承诺" if kind is CaptureKind.TASK else "想法"
         tail = f"（截止 {due_date}）" if due_date else ""
@@ -1511,8 +1609,7 @@ def create_app(
             complete_task(feishu_clients.user_client(), guid)  # type: ignore[arg-type]
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化（授权过期/任务已删等）
             return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
-        result = run_local_mutation(
-            ctx.vault_dir,
+        result = _run_web_mutation(
             "tasks/complete",
             lambda _operation_id: LocalMutationOutcome(
                 mark_task_completed(ctx.vault_dir, ctx.today(), guid),
@@ -1562,8 +1659,7 @@ def create_app(
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
-        result = run_local_mutation(
-            ctx.vault_dir,
+        result = _run_web_mutation(
             "tasks/update",
             lambda _operation_id: LocalMutationOutcome(
                 mark_task_edited(
@@ -1621,8 +1717,7 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
         display_start = start_at[11:16] if start_at else None
-        result = run_local_mutation(
-            ctx.vault_dir,
+        result = _run_web_mutation(
             "meetings/update",
             lambda _operation_id: LocalMutationOutcome(
                 mark_meeting_edited(
@@ -1654,6 +1749,9 @@ def create_app(
         blocked = _sync_blocked(request)
         if blocked is not None:
             return blocked
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             run = run_brief(
                 work_root=ctx.work_root,
@@ -1677,6 +1775,9 @@ def create_app(
         from summit_workbench.workflows.weekly.weekly import generate_weekly
 
         blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
+        blocked = _mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -1756,6 +1857,9 @@ def create_app(
         try:
             target = tmp_dir / Path(name).name
             target.write_text(text, encoding="utf-8")
+            if "local_mutation" in inspect.signature(_run_web_import).parameters:
+                return _run_web_import(ctx, target, local_mutation=_run_web_mutation)
+            # 保持旧版/测试注入器的二参数兼容性；正式实现始终走集中式写入门。
             return _run_web_import(ctx, target)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -1792,6 +1896,9 @@ def create_app(
         request: Request, payload: UndoRevertPayload
     ) -> dict[str, object] | JSONResponse:
         """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         sha = payload.sha.strip()
         if not sha:
             return _undo_error_response(
@@ -1842,10 +1949,16 @@ def create_app(
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
-    @app.post("/run/brief", response_class=RedirectResponse)
-    def run_brief_endpoint() -> RedirectResponse:
+    @app.post("/run/brief", response_class=RedirectResponse, response_model=None)
+    def run_brief_endpoint(request: Request) -> RedirectResponse | JSONResponse:
         from summit_workbench.workflows.brief.runner import run_brief
 
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             run = run_brief(
                 work_root=ctx.work_root,
@@ -1860,10 +1973,16 @@ def create_app(
             msg = f"生成失败：{type(exc).__name__}: {exc}"
         return RedirectResponse(url=f"/?msg={msg}", status_code=303)
 
-    @app.post("/run/weekly", response_class=RedirectResponse)
-    def run_weekly_endpoint() -> RedirectResponse:
+    @app.post("/run/weekly", response_class=RedirectResponse, response_model=None)
+    def run_weekly_endpoint(request: Request) -> RedirectResponse | JSONResponse:
         from summit_workbench.workflows.weekly.weekly import generate_weekly
 
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             result = generate_weekly(
                 ctx.work_root,
@@ -1894,19 +2013,27 @@ def create_app(
         entries, errors = _load(ctx.vault_dir)
         return HTMLResponse(render_review(entries, errors, message=msg))
 
-    @app.post("/review/decide", response_class=RedirectResponse)
+    @app.post("/review/decide", response_class=RedirectResponse, response_model=None)
     def decide(
         candidate_id: str = Form(..., min_length=1, max_length=200),
         decision: str = Form(..., max_length=32),
     ) -> RedirectResponse:
         try:
-            set_decision(ctx.vault_dir, candidate_id, CandidateDecision(decision))
-            msg = f"已更新 {candidate_id} → {decision}"
+
+            def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
+                set_decision(ctx.vault_dir, candidate_id, CandidateDecision(decision))
+                return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
+
+            result = _run_web_mutation(
+                "review/decide",
+                mutate,
+            )
+            msg = f"已更新 {candidate_id} → {decision}{_commit_note(result.commit_result)}"
         except (ReviewEditError, ValueError) as exc:
             msg = f"操作失败：{exc}"
         return RedirectResponse(url=f"/review?msg={msg}", status_code=303)
 
-    @app.post("/review/edit", response_class=RedirectResponse)
+    @app.post("/review/edit", response_class=RedirectResponse, response_model=None)
     def edit(
         candidate_id: str = Form(..., min_length=1, max_length=200),
         description: str = Form("", max_length=100_000),
@@ -1915,15 +2042,23 @@ def create_app(
         due_date: str = Form("", max_length=32),
     ) -> RedirectResponse:
         try:
-            update_fields(
-                ctx.vault_dir,
-                candidate_id,
-                description=description.strip() or None,
-                target_project=target_project.strip() or None,
-                route=RouteTarget(route) if route else None,
-                due_date=due_date.strip() or None,
+
+            def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
+                update_fields(
+                    ctx.vault_dir,
+                    candidate_id,
+                    description=description.strip() or None,
+                    target_project=target_project.strip() or None,
+                    route=RouteTarget(route) if route else None,
+                    due_date=due_date.strip() or None,
+                )
+                return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
+
+            result = _run_web_mutation(
+                "review/edit",
+                mutate,
             )
-            msg = f"已保存修改：{candidate_id}"
+            msg = f"已保存修改：{candidate_id}{_commit_note(result.commit_result)}"
         except (ReviewEditError, ValueError) as exc:
             msg = f"保存失败：{exc}"
         return RedirectResponse(url=f"/review?msg={msg}", status_code=303)
@@ -1936,8 +2071,11 @@ def create_app(
             return HTMLResponse(render_plan(f"预演失败：{exc}", executed=False))
         return HTMLResponse(render_plan(_plan_text(report), executed=False))
 
-    @app.post("/review/apply", response_class=HTMLResponse)
-    def apply() -> HTMLResponse:
+    @app.post("/review/apply", response_class=HTMLResponse, response_model=None)
+    def apply(request: Request) -> HTMLResponse | JSONResponse:
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             report = apply_meeting_review(
                 ctx.vault_dir,
@@ -2044,8 +2182,43 @@ def create_app(
 
     # ---- 多设备同步（P0-10）----
 
-    from summit_workbench.domain.sync import AutomationOutcome
+    from summit_workbench.domain.sync import AutomationOutcome, SyncSnapshot
+    from summit_workbench.repositories.automation_primary import load_automation_primary
     from summit_workbench.workflows import sync_coordinator
+
+    def _current_sync_snapshot() -> SyncSnapshot:
+        return sync_coordinator.current_snapshot(
+            ctx.vault_dir,
+            home=ctx.active_workspace.home if ctx.active_workspace else None,
+            workspace_id=ctx.workspace_id,
+            backend_kind=ctx.git_backend_kind,
+            context=ctx.active_workspace,
+        )
+
+    def _run_web_mutation[T](
+        action: str, mutation: Callable[[str], LocalMutationOutcome[T]]
+    ) -> LocalMutationResult[T]:
+        profile = ctx.active_workspace.profile if ctx.active_workspace else None
+        return run_local_mutation(
+            ctx.vault_dir,
+            action,
+            mutation,
+            sync_snapshot=_current_sync_snapshot() if ctx.active_workspace else None,
+            compatibility=ctx.compatibility,
+            backend_kind=ctx.git_backend_kind,
+            author=profile_identity(profile) if profile is not None else None,
+            push_after_commit=(
+                lambda: sync_coordinator.push_after_commit(
+                    ctx.vault_dir,
+                    home=ctx.active_workspace.home if ctx.active_workspace else None,
+                    workspace_id=ctx.workspace_id,
+                    backend_kind=ctx.git_backend_kind,
+                    context=ctx.active_workspace,
+                )
+            )
+            if ctx.active_workspace
+            else None,
+        )
 
     def _sync_blocked(request: Request) -> JSONResponse | None:
         """automation 角色门：secondary 上定时 writer 不执行（env-compat 放行）。"""
@@ -2057,7 +2230,20 @@ def create_app(
             from summit_workbench.config.profiles import resolve_active_workspace
 
             profile = resolve_active_workspace(allow_env_fallback=True).profile
-        if sync_coordinator.automation_gate(profile) is AutomationOutcome.NOT_PRIMARY:
+        claim = None
+        device_id = None
+        if ctx.active_workspace is not None:
+            claim = load_automation_primary(ctx.vault_dir)
+            device_id = ctx.active_workspace.device_id
+        if (
+            sync_coordinator.automation_gate(
+                profile,
+                claim=claim,
+                device_id=device_id,
+                require_claim=ctx.active_workspace is not None,
+            )
+            is AutomationOutcome.NOT_PRIMARY
+        ):
             return JSONResponse(
                 status_code=403,
                 content=error_payload(
@@ -2070,7 +2256,7 @@ def create_app(
 
     def _mutation_blocked(request: Request) -> JSONResponse | None:
         """diverged/dirty 保护态：修改共享 vault 的写被拒（读照常）。"""
-        snapshot = sync_coordinator.current_snapshot(ctx.vault_dir)
+        snapshot = _current_sync_snapshot()
         ok, reason = sync_coordinator.mutation_guard(snapshot)
         if ok:
             return None
@@ -2086,7 +2272,8 @@ def create_app(
         )
 
     def _sync_payload() -> dict[str, object]:
-        snapshot = sync_coordinator.current_snapshot(ctx.vault_dir)
+        snapshot = _current_sync_snapshot()
+        claim = load_automation_primary(ctx.vault_dir)
         return {
             "ok": True,
             "workspace_id": snapshot.workspace_id,
@@ -2098,6 +2285,10 @@ def create_app(
             "ahead": snapshot.ahead,
             "behind": snapshot.behind,
             "branch": snapshot.branch,
+            "remote_host": snapshot.remote_host,
+            "repo_states": snapshot.repo_states,
+            "automation_primary_device_id": claim.device_id if claim is not None else None,
+            "automation_primary_generation": claim.generation if claim is not None else None,
         }
 
     @app.get("/api/sync/status", response_model=None)
@@ -2105,13 +2296,66 @@ def create_app(
         """当前 workspace 同步状态（供 UI banner；不执行任何 git 写）。"""
         return _sync_payload()
 
+    @app.get("/api/sync/export", response_model=None)
+    def api_sync_export() -> dict[str, object]:
+        """导出脱敏的本机同步状态副本，不读 token、不修改共享 vault。"""
+        return _sync_payload()
+
+    @app.post("/api/sync/primary/claim", response_model=None)
+    def api_claim_primary(
+        request: Request, payload: AutomationPrimaryPayload
+    ) -> dict[str, object] | JSONResponse:
+        """显式声明/接管 automation-primary，并作为 wb 提交同步。"""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active profile 可以声明 workspace 主设备",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        from summit_workbench.repositories.automation_primary import claim_automation_primary
+
+        try:
+            result = _run_web_mutation(
+                "sync/primary",
+                lambda _operation_id: LocalMutationOutcome(
+                    claim_automation_primary(
+                        ctx.vault_dir,
+                        ctx.workspace_id or "",
+                        payload.device_id,
+                        expected_generation=payload.expected_generation,
+                        takeover=payload.takeover,
+                    ),
+                    (ctx.vault_dir / ".summit-workbench" / "automation-primary.json",),
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - stable API envelope
+            code = getattr(exc, "code", "primary_claim_failed")
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=code, message=str(exc), operation_id=_operation_id(request)
+                ),
+            )
+        return {
+            "ok": True,
+            "claim": result.business_return.model_dump(mode="json"),
+            **_mutation_fields(result),
+        }
+
     @app.post("/api/sync/run", response_model=None)
     def api_sync_run(request: Request) -> dict[str, object] | JSONResponse:
         """手动触发一次同步（fetch → ff → push，绝不 force）。"""
-        blocked = _sync_blocked(request)
-        if blocked is not None:
-            return blocked
-        state, outcomes, _ = sync_coordinator.sync_workspace(ctx.vault_dir, work_root=ctx.work_root)
+        state, outcomes, _ = sync_coordinator.sync_workspace(
+            ctx.vault_dir,
+            work_root=ctx.work_root,
+            home=ctx.active_workspace.home if ctx.active_workspace else None,
+            workspace_id=ctx.workspace_id,
+            backend_kind=ctx.git_backend_kind,
+            context=ctx.active_workspace,
+        )
         return {
             "ok": True,
             "state": state.value,

@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
@@ -22,12 +24,24 @@ from summit_workbench.repositories.git_backend import (
 from summit_workbench.repositories.git_backend import GitError as GitError  # noqa: F401, PLC0414
 
 
-def _new_backend(path: Path, kind: str | None = None) -> GitBackend:
+def _new_backend(
+    path: Path,
+    kind: str | None = None,
+    *,
+    workspace_id: str | None = None,
+    username: str | None = None,
+    credential_resolver: Callable[[str, str, str], Any] | None = None,
+) -> GitBackend:
     chosen = kind or backend_kind()
     if chosen == "dulwich":
         from summit_workbench.repositories.dulwich_git import DulwichGitBackend
 
-        return DulwichGitBackend(path)
+        return DulwichGitBackend(
+            path,
+            workspace_id=workspace_id,
+            username=username,
+            credential_resolver=credential_resolver,
+        )
     from summit_workbench.repositories.system_git import SystemGitBackend
 
     return SystemGitBackend(path)
@@ -48,6 +62,9 @@ class GitRepo:
         *,
         backend_kind: str | None = None,
         backend: GitBackend | None = None,
+        workspace_id: str | None = None,
+        username: str | None = None,
+        credential_resolver: Callable[[str, str, str], Any] | None = None,
     ) -> None:
         self.path = path
         if backend is not None:
@@ -57,7 +74,13 @@ class GitRepo:
         else:
             if backend_kind is not None and backend_kind not in ("system", "dulwich"):
                 raise ValueError(f"未知 git backend：{backend_kind!r}")
-            self._backend = _new_backend(path, backend_kind)
+            self._backend = _new_backend(
+                path,
+                backend_kind,
+                workspace_id=workspace_id,
+                username=username,
+                credential_resolver=credential_resolver,
+            )
 
     @property
     def backend(self) -> GitBackend:
@@ -96,6 +119,9 @@ class GitRepo:
 
     def ahead_behind(self) -> AheadBehind:
         return self._backend.ahead_behind()
+
+    def pending_wb_commits(self) -> int:
+        return self._backend.pending_wb_commits()
 
     def ff_merge_upstream(self) -> None:
         self._backend.ff_merge_upstream()

@@ -75,8 +75,8 @@ uv run pytest -m integration
 2. 当前全量质量门通过：ruff、format、mypy（240 files）、pytest（677 passed，1 skipped）以及前端 build/verify-build。测试全绿证明现有行为稳定，不等于未覆盖的产品契约已经完成。
 3. P0-06 与 P0-08 保持 `[x]`。P0-07C 已收口 P0-07 的 production 缺口：active profile/runtime context、onboarding-required 受限控制面、compatibility 写门与 workspace-scoped provider 配置已接线；P0-07 现为 `[x]`。
 4. P0-09C 已收口 P0-09 的 production 缺口：Dulwich HTTPS transport 使用 workspace-scoped 凭据回调，remote clone 具备 staging/marker/兼容性/确认回滚，production backend 选择改为显式注入；P0-09 现为 `[x]`。
-5. P0-10 改为 `[~]`：状态机、基础协调器、API 与 banner 已落地，但 active-profile 状态持久化、准确 pending 计数与 last-success 保留、全部共享 vault 写入口保护/提交后推送、完整 UI 字段、remote clone 与主设备唯一声明尚未闭环。
-6. 不把上述缺口塞进一个超大的 P0-11。先执行 P0-07C → P0-09C → P0-10C，再执行 P0-11A → P0-12 → P0-11B。
+5. P0-10C 已收口 P0-10 的复核缺口：状态持久化、真实 pending/ahead/behind、失败时 last-success 保留、统一写前保护与 commit 后 push、完整状态详情、主设备声明均已接线；P0-10 现为 `[x]`。
+6. 不把上述缺口塞进一个超大的 P0-11。已按固定顺序完成 P0-07C → P0-09C → P0-10C，下一包为 P0-11A。
 
 ## 1. 已确认的现状与主要缺口
 
@@ -208,10 +208,10 @@ account = git:<host>:<username>
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
 | 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [x] |
-| 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [~] |
+| 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [x] |
 | 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [x] |
-| 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [ ] |
-| 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [ ] |
+| 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [x] |
+| 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [x] |
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [ ] |
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [ ] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [ ] |
@@ -1465,7 +1465,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-05 · P0-07C
 
 - 状态：完成
-- Git commit：待提交（本包完成后提交并推送）
+- Git commit：d423bfa（已推送至 `origin/main`）
 - 变更摘要：新增 `ActiveWorkspaceContext`，把 active profile、WorkspacePaths、workspace/device id、compatibility、Application Support 与 profile config 冻结为 production 唯一运行时上下文；打包 `server_entry` 与 `wb web` 禁止 production `WORK_ROOT` 回退，空安装启动受限 onboarding 控制面；Web、doctor/status、brief runner、Feishu/LLM provider 配置接入 profile 路径与 workspace-scoped Keychain 引用；read-only/cannot-open 写门统一；profile TOML 未知字段读写保留。
 - 目标测试：`uv run pytest tests/unit/test_active_profile_runtime.py`（6 passed）；覆盖 active context/marker、空安装、未知字段、provider 作用域、兼容性与受限控制面。
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（241 files）通过；`uv run pytest`（683 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）。
@@ -1475,12 +1475,22 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-05 · P0-09C
 
 - 状态：完成
-- Git commit：待提交（本包完成后提交并推送）
+- Git commit：b6c5c7f（已推送至 `origin/main`）
 - 变更摘要：GitRepo 支持单次调用显式 backend 注入；Dulwich clone/fetch/push 接入 workspace-scoped HTTPS credential resolver 并统一脱敏错误；新增 remote clone staging/confirm/cancel 服务，完成 HTTPS/userinfo、marker、workspace id、compatibility、目标冲突与失败回滚边界；profile 持久化 Git username；补齐 CA bundle 与 PATH 为空的 packaged backend smoke 证据。
 - 目标测试：`uv run pytest tests/unit/test_remote_onboarding.py tests/unit/test_git_backends.py tests/unit/test_git_credentials.py tests/unit/test_packaging_contract.py -q`（28 passed）。
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（243 files）通过；`uv run pytest -q`（694 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）。
 - 真机验证：未执行（使用 fake backend、临时目录与离线凭据回调；未访问真实私有 HTTPS、代理、自签证书、真实 Keychain、clean-account 或 Apple 真机）。
 - 遗留：P0-10C 负责把显式 production backend/context 接入同步状态、全部写边界与主设备声明；P0-13 负责真实打包/签名门。
+
+### 2026-09-05 · P0-10C
+
+- 状态：完成
+- Git commit：待提交（本包完成后提交并推送）
+- 变更摘要：同步协调器接入 active profile 的显式 context/Dulwich backend 与 profile-scoped `sync-state.json`；pending 改为实际未推送 `wb:` 提交计数，失败保留 last success；统一 Web 本地 mutation 的 compatibility/sync 写门与提交后 push，补齐审批、outbox、undo、SSR 写路径及会议导入；新增 automation-primary 声明/显式 generation takeover；同步详情 API 与 SPA banner 展示状态、计数、分支、远端主机、逐仓库状态、主设备和下一步，并提供重试/脱敏导出。
+- 目标测试：`uv run pytest tests/unit/test_sync_hardening.py tests/unit/test_sync_coordinator.py tests/unit/test_webapi_sync.py tests/unit/test_webapi.py tests/unit/test_web_security.py`（目标集合通过）；覆盖连续 pending、last-success 保留、统一 mutation guard、secondary 手动同步/定时门、primary takeover generation 与写路由。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（699 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，2 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（使用临时目录、fake backend 与离线双设备逻辑验证；未访问真实远端、真实 Keychain、第二台 Mac 或 Apple 签名/notarization）。
+- 遗留：P0-11A 负责首次使用向导；launchd/P1-01 helper 的租约与真实双设备 alpha、设置中心角色切换和真实分发门留给后续包。
 
 ## 16. 外部实现依据
 

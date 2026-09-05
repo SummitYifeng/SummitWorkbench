@@ -129,6 +129,22 @@ interface ExternalAction {
   error: string | null;
   retry_allowed: boolean;
 }
+interface SyncStatusPayload {
+  ok: boolean;
+  workspace_id?: string;
+  state: string;
+  pending_commits?: number;
+  last_sync_at?: string | null;
+  ahead?: number;
+  behind?: number;
+  branch?: string | null;
+  remote_host?: string | null;
+  repo_states?: string[];
+  automation_primary_device_id?: string | null;
+  automation_primary_generation?: number | null;
+  detail?: string;
+  next_step?: string;
+}
 
 /** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
 interface ProjectView {
@@ -1349,6 +1365,14 @@ document.addEventListener('click', (ev) => {
     void copyDiagnostics();
     return;
   }
+  if (action === 'sync-retry') {
+    void retrySync();
+    return;
+  }
+  if (action === 'sync-export') {
+    void exportSyncSnapshot();
+    return;
+  }
   if (action === 'goto-projects') {
     tab = 'projects';
     render();
@@ -2255,20 +2279,57 @@ async function refreshSyncBanner(): Promise<void> {
   const el = document.getElementById('sync-banner') as HTMLElement | null;
   if (!el) return;
   try {
-    const data = await api<{
-      ok: boolean;
-      state: string;
-      pending_commits?: number;
-      next_step?: string;
-    }>('/api/sync/status');
+    const data = await api<SyncStatusPayload>('/api/sync/status');
     const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
     el.hidden = !interesting;
     if (interesting) {
-      const pending = data.pending_commits ? `（待推送 ${data.pending_commits}）` : '';
-      el.textContent = `同步：${data.state}${pending}` + (data.next_step ? ` — ${data.next_step}` : '');
+      const rows = [
+        ['状态', data.state],
+        ['待推送', String(data.pending_commits ?? 0)],
+        ['最后成功', data.last_sync_at ?? '—'],
+        ['本地领先', String(data.ahead ?? 0)],
+        ['远端领先', String(data.behind ?? 0)],
+        ['分支', data.branch ?? '—'],
+        ['远端主机', data.remote_host ?? '—'],
+        ['仓库', (data.repo_states ?? []).join('、') || '—'],
+        ['主设备', data.automation_primary_device_id ?? '—'],
+        ['主设备代际', String(data.automation_primary_generation ?? '—')],
+        ['下一步', data.next_step ?? '—'],
+      ];
+      el.innerHTML = '<div class="sync-title">同步状态</div>' +
+        '<div class="sync-grid">' + rows.map(([label, value]) =>
+          '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
+        '</div>' +
+        (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
+        '<div class="sync-actions"><button class="ghost" data-action="sync-retry">立即重试</button>' +
+        '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
     }
   } catch {
     el.hidden = true;
+  }
+}
+
+async function retrySync(): Promise<void> {
+  try {
+    const data = await mutation(() => api<{ ok: boolean; message?: string }>('/api/sync/run', { method: 'POST' }));
+    toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
+    await Promise.all([refreshSyncBanner(), refreshState()]);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function exportSyncSnapshot(): Promise<void> {
+  try {
+    const data = await api<SyncStatusPayload>('/api/sync/export');
+    const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'summitworkbench-sync-status.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (err) {
+    toast(String(err), 'err');
   }
 }
 

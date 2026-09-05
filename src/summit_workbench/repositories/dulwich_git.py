@@ -463,6 +463,20 @@ class DulwichGitBackend:
             behind=self._ancestor_count(repo, upstream, head),
         )
 
+    def pending_wb_commits(self) -> int:
+        repo = self._open()
+        head = self._head_sha(repo)
+        if head is None:
+            return 0
+        exclude: list[bytes] = []
+        if self.has_upstream():
+            exclude.append(self._upstream_sha(repo))
+        return sum(
+            1
+            for entry in repo.get_walker(include=[head], exclude=exclude)
+            if entry.commit.message.decode("utf-8", "replace").lstrip().startswith("wb:")
+        )
+
     def ff_merge_upstream(self) -> None:
         repo = self._open()
         upstream = self._upstream_sha(repo)

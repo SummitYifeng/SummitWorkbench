@@ -79,12 +79,15 @@ def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> N
 def test_run_brief_and_weekly_blocked_on_secondary(tmp_path, monkeypatch, client) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     _profile(tmp_path / "fake-home", DeviceRole.SECONDARY)
-    for path in ("/api/run/brief", "/api/run/weekly", "/api/sync/run"):
+    for path in ("/api/run/brief", "/api/run/weekly"):
         resp = client.post(path)
         assert resp.status_code == 403, path
         body = resp.json()
         assert body["ok"] is False
         assert body["code"] == "not_automation_primary"
+    sync = client.post("/api/sync/run")
+    assert sync.status_code == 200
+    assert sync.json()["ok"] is True
 
 
 def test_run_brief_allowed_on_primary_even_if_model_offline(tmp_path, monkeypatch, client) -> None:

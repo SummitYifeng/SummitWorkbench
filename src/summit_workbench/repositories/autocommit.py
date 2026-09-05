@@ -24,6 +24,7 @@ from pathlib import Path
 
 from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.repositories.git import GitError, GitRepo
+from summit_workbench.repositories.git_backend import CommitIdentity
 
 # 撤销历史只认本系统的自动提交（消息以 wb: 开头），不把人工/其它提交混进撤销列表。
 _WB_PREFIX_GREP = "^wb:"
@@ -124,7 +125,14 @@ def _vault_relative(vault_dir: Path, paths: list[Path]) -> list[str]:
     return sorted(set(rel))
 
 
-def commit_paths(vault_dir: Path, paths: list[Path], message: str) -> CommitResult:
+def commit_paths(
+    vault_dir: Path,
+    paths: list[Path],
+    message: str,
+    *,
+    backend_kind: str | None = None,
+    author: CommitIdentity | None = None,
+) -> CommitResult:
     """把显式列出的 vault 文件提交（消息带 ``wb:`` 前缀），返回可见状态、绝不抛出。
 
     :param message: 提交主题，应自带 ``wb:`` 前缀（撤销历史按它检索）。
@@ -136,7 +144,7 @@ def commit_paths(vault_dir: Path, paths: list[Path], message: str) -> CommitResu
             "系统提交主题必须是单行且以 wb: 开头",
             error_code="invalid-message",
         )
-    repo = GitRepo(vault_dir)
+    repo = GitRepo(vault_dir, backend_kind=backend_kind)
     if not repo.is_git_repo():
         return CommitResult(CommitStatus.NOT_GIT, f"{vault_dir} 不是 git 仓库")
     try:
@@ -154,7 +162,7 @@ def commit_paths(vault_dir: Path, paths: list[Path], message: str) -> CommitResu
             repo.add(rel)
             if not repo.has_staged_changes(rel):
                 return CommitResult(CommitStatus.NOTHING_TO_COMMIT, "内容未变，无需提交")
-            repo.commit(normalized_message)
+            repo.commit(normalized_message, author=author)
     except LockBusy as exc:
         return CommitResult(CommitStatus.BUSY, str(exc), error_code="workspace-locked")
     except GitError as exc:

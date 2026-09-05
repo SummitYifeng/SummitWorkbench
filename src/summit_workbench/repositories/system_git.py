@@ -198,6 +198,12 @@ class SystemGitBackend:
         behind_str, ahead_str = out.split()
         return AheadBehind(ahead=int(ahead_str), behind=int(behind_str))
 
+    def pending_wb_commits(self) -> int:
+        args = ["log", "--format=%s", "HEAD"]
+        if self.has_upstream():
+            args.extend(["--not", "@{u}"])
+        return sum(line.startswith("wb:") for line in self._must(*args).splitlines())
+
     def ff_merge_upstream(self) -> None:
         cp = self._run("merge", "--ff-only", "@{u}")
         if cp.returncode != 0:

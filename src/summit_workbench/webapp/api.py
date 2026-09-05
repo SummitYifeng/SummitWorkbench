@@ -179,6 +179,14 @@ class OnboardingVaultPayload(BaseModel):
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
 
 
+class AutomationPrimaryPayload(BaseModel):
+    """显式声明/接管 workspace 的 automation-primary。"""
+
+    device_id: str = Field(min_length=1, max_length=200)
+    expected_generation: int | None = Field(default=None, ge=1)
+    takeover: bool = False
+
+
 # ---- 序列化 ----
 
 
