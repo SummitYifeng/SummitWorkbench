@@ -3,11 +3,11 @@
 #
 # 生产路径：bundle 内 server + bundle 内静态资源 + WKWebView 原生壳。
 # 构建先完成临时 bundle、签名与 smoke test，最后才替换 dist 产物。
-# 用法：scripts/build-macos-app.sh [PORT 默认 8787]
+# 用法：scripts/build-macos-app.sh [smoke port；默认动态端口]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="${1:-8787}"
+PORT="${1:-0}"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 STATIC_DIR="$REPO_ROOT/src/summit_workbench/webapp/static"
 FINAL_APP="$REPO_ROOT/dist/SummitWorkbench.app"
@@ -105,10 +105,10 @@ $ICON_KEY
 PLIST
 cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "product_id": "com.summitworkbench.panel",
   "frontend_build": "$FRONTEND_BUILD",
-  "port": $PORT
+  "api_protocol": 2
 }
 MANIFEST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
@@ -119,18 +119,23 @@ codesign --force --sign "$SIGNING_IDENTITY" "$APP"
 codesign --verify --deep --strict "$APP"
 
 # 不依赖仓库 .venv 的 bundle server smoke：直接运行嵌套 server 与 bundle static。
-SMOKE_PORT="$($PYTHON -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+SMOKE_PORT="$PORT"
+if [[ "$SMOKE_PORT" == 0 ]]; then
+  SMOKE_PORT="$($PYTHON -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+fi
+WB_SESSION_TOKEN="$($PYTHON -c 'import secrets; print(secrets.token_urlsafe(32))')"
 SMOKE_ROOT="$BUILD_ROOT/smoke-work"
 mkdir -p "$SMOKE_ROOT"
 SMOKE_SERVER="$APP/Contents/Resources/server/SummitWorkbenchServer"
 WORK_ROOT="$SMOKE_ROOT" WB_PANEL_MODE=production \
+  WB_SESSION_TOKEN="$WB_SESSION_TOKEN" \
   WB_STATIC_DIR="$APP/Contents/Resources/web/static" \
   WB_PROMPTS_DIR="$APP/Contents/Resources/prompts" \
   "$SMOKE_SERVER" --host 127.0.0.1 --port "$SMOKE_PORT" --work-root "$SMOKE_ROOT" \
   --static-dir "$APP/Contents/Resources/web/static" >"$BUILD_ROOT/smoke.log" 2>&1 &
 SMOKE_PID=$!
 for attempt in {1..40}; do
-  if curl -fsS --max-time 1 "http://127.0.0.1:$SMOKE_PORT/api/version" >"$BUILD_ROOT/version.json" 2>/dev/null; then break; fi
+  if curl -fsS --max-time 1 -H "X-WB-Session-Token: $WB_SESSION_TOKEN" "http://127.0.0.1:$SMOKE_PORT/api/version" >"$BUILD_ROOT/version.json" 2>/dev/null; then break; fi
   sleep 0.25
 done
 "$PYTHON" - "$BUILD_ROOT/version.json" "$FRONTEND_BUILD" <<'PY'

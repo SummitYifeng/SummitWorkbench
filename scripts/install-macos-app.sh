@@ -22,7 +22,8 @@ STATIC="$SOURCE_APP/Contents/Resources/web/static"
   exit 1
 }
 
-if [[ "$REPLACE_RUNNING" != true && -f "$HOME/Library/Application Support/SummitWorkbench/runtime.json" ]]; then
+RUNTIME_ROOT="$HOME/Library/Application Support/SummitWorkbench"
+if [[ "$REPLACE_RUNNING" != true && -n "$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)" ]]; then
   echo "✗ 检测到 SummitWorkbench runtime record；请先退出 App，或明确传入 --replace-running" >&2
   exit 1
 fi
@@ -55,26 +56,29 @@ if [[ "$REPLACE_RUNNING" == true && -n "$LEGACY_LAUNCHER_PID" ]]; then
   fi
 fi
 
-if [[ "$REPLACE_RUNNING" == true && -f "$HOME/Library/Application Support/SummitWorkbench/runtime.json" ]]; then
-  read -r LAUNCHER_PID SERVICE_PID < <("$REPO_ROOT/.venv/bin/python" - "$HOME/Library/Application Support/SummitWorkbench/runtime.json" <<'PY'
+if [[ "$REPLACE_RUNNING" == true ]]; then
+  RUNTIME_FILE="$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)"
+  if [[ -n "$RUNTIME_FILE" ]]; then
+  read -r SERVICE_PID < <("$REPO_ROOT/.venv/bin/python" - "$RUNTIME_FILE" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-print(record.get("launcher_pid", ""), record.get("service_pid", ""))
+print(record.get("pid", ""))
 PY
   )
-  for pid in "$LAUNCHER_PID" "$SERVICE_PID"; do
+  for pid in "$SERVICE_PID"; do
     if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
       command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
       if [[ "$command_line" == *"SummitWorkbench"* ]]; then kill -TERM "$pid"; fi
     fi
   done
   for _ in {1..40}; do
-    if ! kill -0 "${LAUNCHER_PID:-0}" 2>/dev/null && ! kill -0 "${SERVICE_PID:-0}" 2>/dev/null; then break; fi
+    if ! kill -0 "${SERVICE_PID:-0}" 2>/dev/null; then break; fi
     sleep 0.25
   done
+  fi
 fi
 
 INSTALL_ROOT="$(mktemp -d "/tmp/summitworkbench-install.XXXXXX")"
@@ -100,14 +104,18 @@ if ! mv "$STAGED_APP" "$DEST_APP"; then
 fi
 
 open "$DEST_APP"
-PORT="$($REPO_ROOT/.venv/bin/python - "$DEST_APP/Contents/Resources/build-manifest.json" <<'PY'
+for _ in {1..40}; do
+  RUNTIME_FILE="$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)"
+  PORT=""
+  if [[ -n "$RUNTIME_FILE" ]]; then
+    PORT="$($REPO_ROOT/.venv/bin/python - "$RUNTIME_FILE" <<'PY'
 import json
 import sys
-print(json.load(open(sys.argv[1], encoding="utf-8"))["port"])
+print(json.loads(open(sys.argv[1], encoding="utf-8").read())["port"])
 PY
-)"
-for _ in {1..40}; do
-  if curl -fsS --max-time 1 "http://127.0.0.1:$PORT/api/version" >/dev/null 2>&1; then
+    )"
+  fi
+  if [[ "$PORT" =~ ^[0-9]+$ ]] && curl -fsS --max-time 1 "http://127.0.0.1:$PORT/api/version" >/dev/null 2>&1; then
     # 安装成功即不再保留本轮备份（被替换的旧版），下次安装无需手动清理。
     rm -rf "$BACKUP_APP" || true
     echo "✓ 已安装并启动 $DEST_APP"

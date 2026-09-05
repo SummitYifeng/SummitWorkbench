@@ -210,6 +210,9 @@ class SystemGitBackend:
             raise _classify("ff_merge_upstream", "无法快进合并（存在分叉，需人工处理）", cp.stderr)
 
     def push(self, remote: str = "origin") -> None:
+        remote_url = self.remote_url(remote)
+        if remote_url and "://" not in remote_url and not Path(remote_url).is_dir():
+            raise GitRemoteUnavailable(f"push {remote} 失败", stderr="远端仓库不存在")
         cp = self._run("push", remote, "HEAD")
         if cp.returncode != 0:
             raise _classify("push", f"push {remote} 失败", cp.stderr)

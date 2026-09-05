@@ -125,6 +125,7 @@ from summit_workbench.webapp.build_info import (
     new_server_instance,
 )
 from summit_workbench.webapp.security import (
+    SESSION_COOKIE,
     SESSION_HEADER,
     allowed_hosts,
     error_payload,
@@ -618,6 +619,10 @@ def _create_restricted_app(
     static_dir: Path | None = None,
     bind_host: str = "127.0.0.1",
     port: int = 8787,
+    session_token: str | None = None,
+    workspace_id: str | None = None,
+    device_id: str | None = None,
+    server_instance: str | None = None,
 ) -> FastAPI:
     """Create the empty-install control plane without constructing a vault context."""
     panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
@@ -625,7 +630,7 @@ def _create_restricted_app(
     normalized_bind_host = bind_host.strip().strip("[]").lower()
     external_bind = normalized_bind_host not in {"127.0.0.1", "::1"}
     host_allowlist = allowed_hosts(bind_host, port, include_test_alias=panel_mode != "production")
-    server_instance = new_server_instance()
+    server_instance = server_instance or new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     app = FastAPI(title="SummitWorkbench onboarding", lifespan=None)
     app.state.active_workspace_context = active_workspace
@@ -657,7 +662,12 @@ def _create_restricted_app(
 
         operation_id = str(uuid4())
         host = request.headers.get("host", "").lower()
-        if host not in host_allowlist:
+        dynamic_loopback_host = (
+            port == 0
+            and (host.startswith("127.0.0.1:") or host.startswith("localhost:"))
+            and host.rsplit(":", 1)[-1].isdigit()
+        )
+        if host not in host_allowlist and not dynamic_loopback_host:
             return JSONResponse(
                 status_code=403,
                 content=error_payload(
@@ -666,7 +676,14 @@ def _create_restricted_app(
                     operation_id=operation_id,
                 ),
             )
-        if request.method in {"POST", "PATCH", "DELETE"}:
+        session_required = panel_mode == "production" or external_bind or session_token is not None
+        expected_token = session_token or os.environ.get("WB_SESSION_TOKEN")
+        supplied_token = request.cookies.get(SESSION_COOKIE) or request.headers.get(SESSION_HEADER)
+        if request.method in {"POST", "PATCH", "DELETE"} or (
+            request.url.path.startswith("/api/")
+            and session_required
+            and request.url.path != "/api/session/bootstrap"
+        ):
             origin = request.headers.get("origin")
             if origin is not None and not origin_matches(
                 origin, request.url.scheme, host_allowlist
@@ -679,7 +696,7 @@ def _create_restricted_app(
                         operation_id=operation_id,
                     ),
                 )
-            if external_bind and not session_token_matches(request.headers.get(SESSION_HEADER)):
+            if session_required and not session_token_matches(supplied_token, expected_token):
                 return JSONResponse(
                     status_code=401,
                     content=error_payload(
@@ -714,8 +731,30 @@ def _create_restricted_app(
                 server_instance=server_instance,
                 started_at=started_at,
                 mode=panel_mode,
+                workspace_id=workspace_id,
+                device_id=device_id,
+                port=getattr(app.state, "bound_port", None),
             )
         )
+
+    @app.get("/api/session/bootstrap", include_in_schema=False)
+    def restricted_session_bootstrap(request: Request, token: str) -> Response:
+        if panel_mode == "production" or not session_token_matches(
+            token, session_token or os.environ.get("WB_SESSION_TOKEN")
+        ):
+            return JSONResponse(
+                status_code=401,
+                content=error_payload(
+                    code="authentication_required",
+                    message="一次性会话令牌无效",
+                    operation_id=request.headers.get("x-wb-operation-id", "unknown"),
+                ),
+            )
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE, token, httponly=True, samesite="strict", secure=False, path="/"
+        )
+        return response
 
     from summit_workbench.config.profiles import resolve_workspace
     from summit_workbench.domain.onboarding import OnboardingFlow
@@ -959,6 +998,10 @@ def create_app(
     static_dir: Path | None = None,
     bind_host: str = "127.0.0.1",
     port: int = 8787,
+    session_token: str | None = None,
+    workspace_id: str | None = None,
+    device_id: str | None = None,
+    server_instance: str | None = None,
 ) -> FastAPI:
     if ctx is None:
         context = getattr(ctx, "active_workspace", None)
@@ -967,7 +1010,14 @@ def create_app(
 
             context = resolve_active_workspace(allow_env_fallback=False)
         return _create_restricted_app(
-            context, static_dir=static_dir, bind_host=bind_host, port=port
+            context,
+            static_dir=static_dir,
+            bind_host=bind_host,
+            port=port,
+            session_token=session_token,
+            workspace_id=workspace_id,
+            device_id=device_id,
+            server_instance=server_instance,
         )
 
     feishu_clients = _FeishuClientPool(
@@ -994,7 +1044,7 @@ def create_app(
     app = FastAPI(title="SummitWorkbench 面板", lifespan=lifespan)
     app.state.feishu_clients = feishu_clients
     spa_dir = static_dir or _STATIC_DIR
-    server_instance = new_server_instance()
+    server_instance = server_instance or new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     def _operation_id(request: Request) -> str:
@@ -1068,7 +1118,12 @@ def create_app(
         operation_id = str(uuid4())
         request.state.operation_id = operation_id
         host = request.headers.get("host", "").lower()
-        if host not in host_allowlist:
+        dynamic_loopback_host = (
+            port == 0
+            and (host.startswith("127.0.0.1:") or host.startswith("localhost:"))
+            and host.rsplit(":", 1)[-1].isdigit()
+        )
+        if host not in host_allowlist and not dynamic_loopback_host:
             return JSONResponse(
                 status_code=403,
                 content=error_payload(
@@ -1077,9 +1132,18 @@ def create_app(
                     operation_id=operation_id,
                 ),
             )
-        if request.method in {"POST", "PATCH", "DELETE"}:
-            if ctx.compatibility is Compatibility.CANNOT_OPEN and not request.url.path.startswith(
-                "/api/onboarding"
+        session_required = panel_mode == "production" or external_bind or session_token is not None
+        expected_token = session_token or os.environ.get("WB_SESSION_TOKEN")
+        supplied_token = request.cookies.get(SESSION_COOKIE) or request.headers.get(SESSION_HEADER)
+        if request.method in {"POST", "PATCH", "DELETE"} or (
+            request.url.path.startswith("/api/")
+            and session_required
+            and request.url.path != "/api/session/bootstrap"
+        ):
+            if (
+                request.method in {"POST", "PATCH", "DELETE"}
+                and ctx.compatibility is Compatibility.CANNOT_OPEN
+                and not request.url.path.startswith("/api/onboarding")
             ):
                 return JSONResponse(
                     status_code=409,
@@ -1090,7 +1154,8 @@ def create_app(
                     ),
                 )
             if (
-                ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
+                request.method in {"POST", "PATCH", "DELETE"}
+                and ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
                 and not request.url.path.startswith("/api/onboarding")
             ):
                 return JSONResponse(
@@ -1113,8 +1178,8 @@ def create_app(
                         operation_id=operation_id,
                     ),
                 )
-            if external_bind or (origin is None and panel_mode == "production"):
-                if not session_token_matches(request.headers.get(SESSION_HEADER)):
+            if session_required:
+                if not session_token_matches(supplied_token, expected_token):
                     return JSONResponse(
                         status_code=401,
                         content=error_payload(
@@ -1200,9 +1265,31 @@ def create_app(
                 server_instance=server_instance,
                 started_at=started_at,
                 mode=panel_mode,
+                workspace_id=workspace_id or ctx.workspace_id,
+                device_id=device_id
+                or (ctx.active_workspace.device_id if ctx.active_workspace else None),
+                port=getattr(app.state, "bound_port", None),
             ),
             headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
         )
+
+    @app.get("/api/session/bootstrap", include_in_schema=False)
+    def session_bootstrap(request: Request, token: str) -> Response:
+        expected_token = session_token or os.environ.get("WB_SESSION_TOKEN")
+        if panel_mode == "production" or not session_token_matches(token, expected_token):
+            return JSONResponse(
+                status_code=401,
+                content=error_payload(
+                    code="authentication_required",
+                    message="一次性会话令牌无效",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        response = RedirectResponse(url="/", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE, token, httponly=True, samesite="strict", secure=False, path="/"
+        )
+        return response
 
     @app.get("/api/state")
     def api_state() -> dict[str, object]:

@@ -7,9 +7,15 @@ enum VersionProbeResult {
 }
 
 final class ServiceClient {
-    let port: Int
+    private(set) var port: Int
+    let sessionToken: String
 
-    init(port: Int) { self.port = port }
+    init(port: Int, sessionToken: String) {
+        self.port = port
+        self.sessionToken = sessionToken
+    }
+
+    func update(port: Int) { self.port = port }
 
     var baseURL: URL { URL(string: "http://127.0.0.1:\(port)/")! }
 
@@ -17,6 +23,7 @@ final class ServiceClient {
         var request = URLRequest(url: baseURL.appendingPathComponent("api/version"))
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 1.0
+        request.setValue(sessionToken, forHTTPHeaderField: "X-WB-Session-Token")
         URLSession.shared.dataTask(with: request) { data, response, _ in
             guard let http = response as? HTTPURLResponse else {
                 DispatchQueue.main.async { completion(.unavailable) }
@@ -39,4 +46,3 @@ final class ServiceClient {
         if case .valid(let identity) = result { completion(identity) } else { completion(nil) }
     }}
 }
-

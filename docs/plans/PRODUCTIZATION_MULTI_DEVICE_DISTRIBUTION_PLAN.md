@@ -213,7 +213,7 @@ account = git:<host>:<username>
 | 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [x] |
 | 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [x] |
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [x] |
-| 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [ ] |
+| 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [x] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [ ] |
 | 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [ ] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [ ] |
@@ -1485,7 +1485,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-05 · P0-10C
 
 - 状态：完成
-- Git commit：待提交（本包完成后提交并推送）
+- Git commit：bd00f0b（已推送至 `origin/main`）
 - 变更摘要：同步协调器接入 active profile 的显式 context/Dulwich backend 与 profile-scoped `sync-state.json`；pending 改为实际未推送 `wb:` 提交计数，失败保留 last success；统一 Web 本地 mutation 的 compatibility/sync 写门与提交后 push，补齐审批、outbox、undo、SSR 写路径及会议导入；新增 automation-primary 声明/显式 generation takeover；同步详情 API 与 SPA banner 展示状态、计数、分支、远端主机、逐仓库状态、主设备和下一步，并提供重试/脱敏导出。
 - 目标测试：`uv run pytest tests/unit/test_sync_hardening.py tests/unit/test_sync_coordinator.py tests/unit/test_webapi_sync.py tests/unit/test_webapi.py tests/unit/test_web_security.py`（目标集合通过）；覆盖连续 pending、last-success 保留、统一 mutation guard、secondary 手动同步/定时门、primary takeover generation 与写路由。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（699 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，2 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
@@ -1495,12 +1495,22 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-05 · P0-11A
 
 - 状态：完成
-- Git commit：待提交（本包完成后提交并推送）
+- Git commit：eae333d（已推送至 `origin/main`）
 - 变更摘要：空安装受限控制面渲染可恢复首次使用向导，覆盖新建、连接已有本地工作区、升级旧 vault、私有 HTTPS remote staging/confirm/cancel、Git 本地/跳过、模型/飞书跳过和设备角色选择；新增安装级原子 `onboarding-draft.json`，仅保存非秘密进度，完成/取消清理；创建新工作区默认写入 automation-primary 声明，连接已有 workspace 默认 secondary；验证错误脱敏且不回显秘密字段。
 - 目标测试：`uv run pytest tests/unit/test_onboarding_wizard.py tests/unit/test_webapi_onboarding.py tests/unit/test_onboarding.py`（22 passed）；覆盖草稿权限/无秘密、关闭恢复、空安装向导、create/upgrade/connect 服务与安全错误 envelope。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（702 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，2 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
 - 真机验证：未执行（使用临时 Home、临时目录、离线 fake；未访问真实 Keychain、真实私有 remote、真实账号或第二台 Mac）。
 - 遗留：模型实际连接、飞书 OAuth、remote 真实凭据和 settings/profile 切换留给后续设置中心/真实分发门；P0-11 总包继续未完成，下一包为 P0-12。
+
+### 2026-09-05 · P0-12
+
+- 状态：完成
+- Git commit：a1ca7d6（已推送至 `origin/main`）
+- 变更摘要：production 服务入口改为先绑定 loopback 动态端口并把已绑定 socket 交给 Uvicorn；新增 0600 原子 runtime record（产品/API/frontend/server instance/workspace/device/pid/port/start time）及 pid-only 陈旧清理；原生壳生成 256-bit session token，经环境变量传给自管服务，probe 校验动态端口、实例与会话，WKWebView 导航前写入 HttpOnly SameSite=Strict cookie，退出带有限等待且不凭端口终止未知进程；API production 对全部 API 读写边界启用 cookie/受控 header 会话认证，development 保留一次性 bootstrap redirect；build manifest 升级 schema 并删除固定端口职责，安装/构建 smoke 改读 runtime record。
+- 目标测试：`uv run pytest tests/unit/test_runtime_record.py tests/unit/test_web_session.py tests/unit/test_packaging_contract.py tests/unit/test_web_security.py tests/unit/test_webapi.py -q`（63 passed）；覆盖动态端口运行记录权限/原子性、陈旧/正常进程、无错跨 workspace 会话、合法 Cookie/Header、bootstrap 清 query、manifest/native 契约。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（710 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke；5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/install-macos-app.sh` 通过；Swift native sources 离线编译通过（仅既有 Selector 警告）。
+- 真机验证：未执行（使用临时 Home、临时端口、临时 runtime record、离线 TestClient/fake 与 Swift 编译；未访问真实 Keychain、真实账号、第二台 Mac、真实 DMG/Gatekeeper 或 Apple 签名/notarization）。
+- 遗留：真实 App 黑盒/WKWebView GUI、双设备 clean-account 与发布签名门留给 P0-13 真机矩阵；下一工作包为 P0-11B。
 
 ## 16. 外部实现依据
 

@@ -11,6 +11,7 @@ from summit_workbench.webapp.build_info import BuildMode
 
 LOOPBACK_BIND_HOSTS = {"127.0.0.1", "::1"}
 SESSION_HEADER = "X-WB-Session-Token"
+SESSION_COOKIE = "wb_session"
 
 
 def validate_bind_host(host: str, mode: BuildMode) -> None:
@@ -56,8 +57,8 @@ def origin_matches(origin: str, scheme: str, hosts: set[str]) -> bool:
     return parsed.scheme == scheme and bool(parsed.netloc) and parsed.netloc.lower() in hosts
 
 
-def session_token_matches(value: str | None) -> bool:
-    expected = os.environ.get("WB_SESSION_TOKEN")
+def session_token_matches(value: str | None, expected: str | None = None) -> bool:
+    expected = expected if expected is not None else os.environ.get("WB_SESSION_TOKEN")
     return bool(expected and value and value == expected)
 
 

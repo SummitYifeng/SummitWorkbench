@@ -1,9 +1,11 @@
 import Foundation
+import Security
 
 final class ServiceSupervisor {
     let configuration: AppConfiguration
     let logger: StructuredLogger
     private let client: ServiceClient
+    let sessionToken: String
     private(set) var state: SupervisorState = .idle
     private(set) var identity: ServiceIdentity?
     private var process: Process?
@@ -21,7 +23,8 @@ final class ServiceSupervisor {
     init(configuration: AppConfiguration, logger: StructuredLogger) {
         self.configuration = configuration
         self.logger = logger
-        self.client = ServiceClient(port: configuration.manifest.port)
+        self.sessionToken = Self.newSessionToken()
+        self.client = ServiceClient(port: 0, sessionToken: sessionToken)
     }
 
     func ensureReady(completion: @escaping (ServiceIdentity?) -> Void) {
@@ -70,6 +73,12 @@ final class ServiceSupervisor {
             }
         }
         process.terminate()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak process] in
+            guard let process, process.isRunning else { return }
+            guard let record = RuntimeRecord.load(), record.pid == process.processIdentifier,
+                  record.owns(process) else { return }
+            kill(process.processIdentifier, SIGTERM)
+        }
     }
 
     /// App 进程终止时的同步收尾：取消重启、终止自管服务并清理 runtime record。
@@ -89,7 +98,8 @@ final class ServiceSupervisor {
         self.identity = identity
         logger.log("service_identity_verified", fields: ["server_instance": identity.serverInstance])
         if configuration.mode == .production && identity.frontendBuild != configuration.manifest.frontendBuild {
-            if let record = RuntimeRecord.load(), let process, record.owns(process) {
+            if let record = RuntimeRecord.load(), record.serverInstance == identity.serverInstance,
+               let process, record.owns(process) {
                 logger.log("service_restart_scheduled", fields: ["reason": "frontend_build_mismatch"])
                 stop { [weak self] in self?.desiredStop = false; self?.startOwnedService() }
             } else {
@@ -112,6 +122,7 @@ final class ServiceSupervisor {
         environment["WORK_ROOT"] = configuration.workRoot
         environment["WB_PANEL_MODE"] = configuration.mode.rawValue
         environment["WB_LAUNCH_SESSION"] = UUID().uuidString
+        environment["WB_SESSION_TOKEN"] = sessionToken
         if let staticDirectory = configuration.staticDirectory {
             environment["WB_STATIC_DIR"] = staticDirectory
         }
@@ -131,15 +142,6 @@ final class ServiceSupervisor {
             try child.run()
             process = child
             logger.log("service_spawned", fields: ["pid": String(child.processIdentifier)])
-            let record = RuntimeRecord(
-                schema: 1, productID: panelProductID,
-                launcherPID: ProcessInfo.processInfo.processIdentifier,
-                launcherStartedAt: Date(), servicePID: child.processIdentifier,
-                serviceStartedAt: processStartDate(child.processIdentifier) ?? Date(),
-                launchSession: environment["WB_LAUNCH_SESSION"] ?? "",
-                frontendBuild: configuration.manifest.frontendBuild,
-                serverExecutable: configuration.wbBinary, port: configuration.manifest.port)
-            record.writeAtomically()
             child.terminationHandler = { [weak self] child in
                 DispatchQueue.main.async { self?.serviceExited(child.terminationStatus) }
             }
@@ -151,6 +153,10 @@ final class ServiceSupervisor {
     }
 
     private func waitForReadiness(attempt: Int) {
+        if let record = RuntimeRecord.load(), record.productID == panelProductID,
+           record.apiProtocol >= panelAPIProtocol, record.pid == process?.processIdentifier {
+            client.update(port: record.port)
+        }
         client.probe { [weak self] result in
             guard let self else { return }
             if case .valid(let identity) = result {
@@ -224,6 +230,15 @@ final class ServiceSupervisor {
     private func setState(_ next: SupervisorState) {
         state = next
         onStateChange?(next)
+    }
+
+    private static func newSessionToken() -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return Data(bytes).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 
     private func processStartDate(_ pid: Int32) -> Date? {

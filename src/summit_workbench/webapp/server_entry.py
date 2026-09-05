@@ -4,22 +4,36 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
+import socket
+from datetime import UTC, datetime
 from pathlib import Path
 
 import uvicorn
 
 from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.webapp.app import WebContext, create_app
-from summit_workbench.webapp.build_info import mode_from_environment
+from summit_workbench.webapp.build_info import (
+    WebBuildInfo,
+    mode_from_environment,
+    new_server_instance,
+)
+from summit_workbench.webapp.runtime import (
+    RuntimeRecord,
+    cleanup_stale_runtime_record,
+    load_runtime_record,
+    write_runtime_record,
+)
 from summit_workbench.webapp.security import validate_bind_host
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="SummitWorkbench bundled web server")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--work-root", default=os.environ.get("WORK_ROOT"))
     parser.add_argument("--static-dir", default=os.environ.get("WB_STATIC_DIR"))
+    parser.add_argument("--runtime-record", default=os.environ.get("WB_RUNTIME_RECORD"))
     return parser
 
 
@@ -34,22 +48,76 @@ def main(argv: list[str] | None = None) -> None:
     # the legacy default vault.
     active_workspace = resolve_active_workspace(allow_env_fallback=False)
     ctx = WebContext.from_active_workspace(active_workspace)
+    server_instance = new_server_instance()
+    session_token = os.environ.setdefault("WB_SESSION_TOKEN", secrets.token_urlsafe(32))
+    started_at = datetime.now(UTC)
     if ctx is None:
         application = create_app(
             None,
             static_dir=static_dir,
             bind_host=args.host,
             port=args.port,
+            session_token=session_token,
+            workspace_id=active_workspace.workspace_id,
+            device_id=active_workspace.device_id,
+            server_instance=server_instance,
         )
     else:
         # Keep the explicit call shape visible to packaging contract checks.
-        application = create_app(ctx, static_dir=static_dir, bind_host=args.host, port=args.port)
-    uvicorn.run(
-        application,
-        host=args.host,
-        port=args.port,
-        log_level="warning",
+        application = create_app(
+            ctx,
+            static_dir=static_dir,
+            bind_host=args.host,
+            port=args.port,
+            session_token=session_token,
+            workspace_id=active_workspace.workspace_id,
+            device_id=active_workspace.device_id,
+            server_instance=server_instance,
+        )
+
+    family = socket.AF_INET6 if ":" in args.host else socket.AF_INET
+    sock = socket.socket(family, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((args.host, args.port))
+    sock.listen(2048)
+    bound_port = int(sock.getsockname()[1])
+    if args.runtime_record:
+        record_path = Path(args.runtime_record).expanduser()
+    else:
+        record_dir = active_workspace.runtime_dir or active_workspace.application_support
+        record_path = record_dir / "runtime.json"
+    cleanup_stale_runtime_record(record_path)
+    existing = load_runtime_record(record_path)
+    if existing is not None and existing.pid != os.getpid():
+        raise SystemExit("已有 SummitWorkbench 服务实例正在运行；未终止未知进程")
+    try:
+        info = WebBuildInfo.from_static_dir(static_dir)
+        frontend_build = info.frontend_build
+    except Exception as exc:
+        sock.close()
+        raise SystemExit(f"静态构建元数据无效：{exc}") from exc
+    write_runtime_record(
+        RuntimeRecord(
+            product_id="com.summitworkbench.panel",
+            api_protocol=2,
+            frontend_build=frontend_build,
+            server_instance=server_instance,
+            workspace_id=active_workspace.workspace_id,
+            device_id=active_workspace.device_id,
+            pid=os.getpid(),
+            port=bound_port,
+            started_at=started_at,
+        ),
+        path=record_path,
     )
+    application.state.bound_port = bound_port
+    config = uvicorn.Config(application, host=args.host, port=bound_port, log_level="warning")
+    server = uvicorn.Server(config)
+    try:
+        server.run(sockets=[sock])
+    finally:
+        sock.close()
+        record_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

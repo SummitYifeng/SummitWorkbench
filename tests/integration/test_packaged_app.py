@@ -8,7 +8,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -43,6 +43,7 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         "WB_PANEL_MODE": "production",
         "WB_STATIC_DIR": str(static_dir),
         "WB_PROMPTS_DIR": str(resources / "prompts"),
+        "WB_SESSION_TOKEN": "integration-session-token",
     }
     process = subprocess.Popen(
         [
@@ -67,7 +68,11 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         payload: dict[str, object] | None = None
         while time.monotonic() < deadline:
             try:
-                with urlopen(f"http://127.0.0.1:{port}/api/version", timeout=1) as response:
+                request = Request(
+                    f"http://127.0.0.1:{port}/api/version",
+                    headers={"X-WB-Session-Token": "integration-session-token"},
+                )
+                with urlopen(request, timeout=1) as response:
                     payload = json.load(response)
                     break
             except Exception:

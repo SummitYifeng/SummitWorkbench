@@ -17,18 +17,18 @@ struct BuildManifest: Decodable {
     let schemaVersion: Int
     let productID: String
     let frontendBuild: String
-    let port: Int
+    let apiProtocol: Int
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case productID = "product_id"
         case frontendBuild = "frontend_build"
-        case port
+        case apiProtocol = "api_protocol"
     }
 
     func validate() throws {
-        guard schemaVersion == 1, productID == panelProductID,
-              !frontendBuild.isEmpty, (1...65535).contains(port) else {
+        guard schemaVersion == 2, productID == panelProductID,
+              apiProtocol >= panelAPIProtocol, !frontendBuild.isEmpty else {
             throw NSError(domain: "SummitWorkbench.Manifest", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "build manifest 字段无效"])
         }
@@ -53,11 +53,11 @@ struct AppConfiguration {
     let staticDirectory: String?
     let promptsDirectory: String?
 
-    func panelURL(for frontendBuild: String) -> URL {
+    func panelURL(for frontendBuild: String, port: Int) -> URL {
         var components = URLComponents()
         components.scheme = "http"
         components.host = "127.0.0.1"
-        components.port = manifest.port
+        components.port = port
         components.path = "/"
         components.queryItems = [URLQueryItem(name: "build", value: frontendBuild)]
         return components.url!
@@ -65,10 +65,10 @@ struct AppConfiguration {
 
     var serverArguments: [String] {
         if URL(fileURLWithPath: wbBinary).lastPathComponent == "SummitWorkbenchServer" {
-            return ["--host", "127.0.0.1", "--port", String(manifest.port),
+            return ["--host", "127.0.0.1", "--port", "0",
                     "--work-root", workRoot, "--static-dir", staticDirectory ?? ""]
         }
-        return ["web", "--host", "127.0.0.1", "--port", String(manifest.port)]
+        return ["web", "--host", "127.0.0.1", "--port", "0"]
     }
 
     static func load() throws -> AppConfiguration {
@@ -104,6 +104,9 @@ struct ServiceIdentity: Decodable {
     let serverInstance: String
     let startedAt: String
     let mode: String
+    let workspaceID: String?
+    let deviceID: String?
+    let port: Int?
 
     enum CodingKeys: String, CodingKey {
         case productID = "product_id"
@@ -113,11 +116,14 @@ struct ServiceIdentity: Decodable {
         case serverInstance = "server_instance"
         case startedAt = "started_at"
         case mode
+        case workspaceID = "workspace_id"
+        case deviceID = "device_id"
+        case port
     }
 
     var isCompatible: Bool {
         productID == panelProductID && apiProtocol >= panelAPIProtocol &&
-        !frontendBuild.isEmpty && !serverInstance.isEmpty
+        !frontendBuild.isEmpty && !serverInstance.isEmpty && (port ?? 0) > 0
     }
 }
 

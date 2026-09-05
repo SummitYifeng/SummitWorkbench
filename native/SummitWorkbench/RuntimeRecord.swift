@@ -2,27 +2,35 @@ import Foundation
 import Darwin
 
 struct RuntimeRecord: Codable {
-    let schema: Int
+    let schemaVersion: Int
     let productID: String
-    let launcherPID: Int32
-    let launcherStartedAt: Date
-    let servicePID: Int32
-    let serviceStartedAt: Date
-    let launchSession: String
+    let apiProtocol: Int
     let frontendBuild: String
-    let serverExecutable: String
+    let serverInstance: String
+    let workspaceID: String?
+    let deviceID: String?
+    let pid: Int32
     let port: Int
+    let startedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case schema, productID = "product_id", launcherPID = "launcher_pid",
-             launcherStartedAt = "launcher_started_at", servicePID = "service_pid",
-             serviceStartedAt = "service_started_at", launchSession = "launch_session",
-             frontendBuild = "frontend_build", serverExecutable = "server_executable", port
+        case schemaVersion = "schema_version", productID = "product_id",
+             apiProtocol = "api_protocol", frontendBuild = "frontend_build",
+             serverInstance = "server_instance", workspaceID = "workspace_id",
+             deviceID = "device_id", pid, port, startedAt = "started_at"
     }
 
     static var url: URL {
         URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("Library/Application Support/SummitWorkbench/runtime.json")
+    }
+
+    static var candidateURLs: [URL] {
+        let root = url.deletingLastPathComponent()
+        let profileRoot = root.appendingPathComponent("profiles")
+        let profileRecords = (FileManager.default.enumerator(at: profileRoot, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+            .filter { $0.lastPathComponent == "runtime.json" }
+        return [url] + profileRecords
     }
 
     func writeAtomically() {
@@ -34,6 +42,7 @@ struct RuntimeRecord: Codable {
         do {
             try data.write(to: temp, options: .atomic)
             _ = try fm.replaceItemAt(Self.url, withItemAt: temp, backupItemName: nil, options: .usingNewMetadataOnly)
+            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.url.path)
         } catch {
             try? data.write(to: Self.url, options: .atomic)
             try? fm.removeItem(at: temp)
@@ -41,18 +50,20 @@ struct RuntimeRecord: Codable {
     }
 
     static func load() -> RuntimeRecord? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(RuntimeRecord.self, from: data)
+        candidateURLs
+            .compactMap { try? Data(contentsOf: $0) }
+            .compactMap { try? JSONDecoder().decode(RuntimeRecord.self, from: $0) }
+            .sorted { $0.startedAt > $1.startedAt }
+            .first
     }
 
     static func remove() { try? FileManager.default.removeItem(at: url) }
 
     func owns(_ process: Process) -> Bool {
-        guard process.processIdentifier == servicePID,
+        guard process.processIdentifier == pid,
               process.isRunning,
-              kill(servicePID, 0) == 0 else { return false }
-        return executablePath(for: servicePID) == serverExecutable &&
-            processStartedAt(servicePID).map { abs($0.timeIntervalSince(serviceStartedAt)) < 2.0 } == true
+              kill(pid, 0) == 0 else { return false }
+        return true
     }
 
     private func executablePath(for pid: Int32) -> String? {

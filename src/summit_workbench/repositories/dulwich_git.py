@@ -520,6 +520,8 @@ class DulwichGitBackend:
     def push(self, remote: str = "origin") -> None:
         repo = self._open()
         url = self._remote_url(repo, remote)
+        if url and "://" not in url and not Path(url).is_dir():
+            raise GitRemoteUnavailable(f"push {remote} 失败")
         head = self._head_sha(repo)
         if head is None:
             raise GitError("没有可推送的提交")

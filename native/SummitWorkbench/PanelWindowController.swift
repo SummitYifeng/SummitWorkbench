@@ -55,10 +55,20 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "wbLifecycle")
     }
 
-    func load(_ url: URL) {
+    func load(_ url: URL, sessionToken: String) {
         overlay.isHidden = false
         logger.log("navigation_started")
-        webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+        let cookie = HTTPCookie(properties: [
+            .domain: "127.0.0.1",
+            .path: "/",
+            .name: "wb_session",
+            .value: sessionToken,
+        ])!
+        webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak self] in
+            DispatchQueue.main.async {
+                self?.webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData))
+            }
+        }
     }
 
     func show() {

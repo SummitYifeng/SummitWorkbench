@@ -100,8 +100,11 @@ class WebBuildInfo:
         server_instance: str,
         started_at: str,
         mode: BuildMode,
+        workspace_id: str | None = None,
+        device_id: str | None = None,
+        port: int | None = None,
     ) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "product_id": self.product_id,
             "api_protocol": API_PROTOCOL,
             "frontend_build": self.frontend_build,
@@ -110,6 +113,13 @@ class WebBuildInfo:
             "started_at": started_at,
             "mode": mode,
         }
+        if workspace_id is not None:
+            payload["workspace_id"] = workspace_id
+        if device_id is not None:
+            payload["device_id"] = device_id
+        if port is not None:
+            payload["port"] = port
+        return payload
 
 
 def new_server_instance() -> str:

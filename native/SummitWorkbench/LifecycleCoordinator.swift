@@ -26,7 +26,7 @@ final class LifecycleCoordinator {
                 log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
                 log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
                 let window = PanelWindowController(logger: log)
-                window.configurationPort = config.manifest.port
+                window.configurationPort = 0
                 panel = window
                 let service = ServiceSupervisor(configuration: config, logger: log)
                 supervisor = service
@@ -96,7 +96,9 @@ final class LifecycleCoordinator {
         currentClientServerInstance = nil
         panel.showStatus("正在加载工作台…")
         logger.log("navigation_started", fields: ["frontend_build": identity.frontendBuild])
-        panel.load(config.panelURL(for: identity.frontendBuild))
+        guard let port = identity.port else { return }
+        panel.configurationPort = port
+        panel.load(config.panelURL(for: identity.frontendBuild, port: port), sessionToken: supervisor?.sessionToken ?? "")
     }
 
     private func handle(_ message: NativeMessage) {
@@ -211,7 +213,7 @@ final class LifecycleCoordinator {
             "Served frontend build: \(identity?.frontendBuild ?? "unknown")",
             "Server version/instance: \(identity?.serverVersion ?? "unknown")/\(identity?.serverInstance ?? "unknown")",
             "Panel mode: \(config.mode.rawValue)",
-            "Port: \(config.manifest.port)",
+            "Port: \(supervisor?.identity?.port ?? 0)",
             "Service state: \(supervisor?.state.rawValue ?? "unknown")",
             "Recent lifecycle events:",
         ] + (logger?.recentEvents() ?? []) + [
