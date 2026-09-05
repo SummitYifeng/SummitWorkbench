@@ -689,3 +689,18 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 @media (prefers-color-scheme: dark) {
   .brief2 .bf-due.today { color: #18181b; }
 }
+
+/* P0-10 同步状态 banner：仅在有状态时显示（ready/unconfigured 隐藏） */
+.sync-banner {
+  margin: 0 auto;
+  max-width: 900px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fde68a;
+  color: #713f12;
+  text-align: center;
+}
+@media (prefers-color-scheme: dark) {
+  .sync-banner { background: #422006; color: #fde68a; }
+}

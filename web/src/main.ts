@@ -457,6 +457,7 @@ function renderShell(): void {
     '<button class="ghost" id="btn-undo" title="撤销系统改动（只作用于 vault 文件）">↩ 撤销</button>' +
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
+    '<div class="sync-banner" id="sync-banner" hidden></div>' +
     '<div class="version-error-banner" id="version-error-banner" hidden>' +
     '<span>工作台更新未完成。你的草稿已保留。</span>' +
     '<button class="ghost" data-action="retry-update">重试更新</button>' +
@@ -2250,6 +2251,27 @@ async function refreshAll(): Promise<void> {
   await Promise.all([refreshState(), refreshReview()]);
 }
 
+async function refreshSyncBanner(): Promise<void> {
+  const el = document.getElementById('sync-banner') as HTMLElement | null;
+  if (!el) return;
+  try {
+    const data = await api<{
+      ok: boolean;
+      state: string;
+      pending_commits?: number;
+      next_step?: string;
+    }>('/api/sync/status');
+    const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
+    el.hidden = !interesting;
+    if (interesting) {
+      const pending = data.pending_commits ? `（待推送 ${data.pending_commits}）` : '';
+      el.textContent = `同步：${data.state}${pending}` + (data.next_step ? ` — ${data.next_step}` : '');
+    }
+  } catch {
+    el.hidden = true;
+  }
+}
+
 // ---------- 启动 ----------
 
 loadAskStore();
@@ -2271,4 +2293,6 @@ async function startApp(): Promise<void> {
 }
 
 void startApp();
+void refreshSyncBanner();
 window.setInterval(() => { void checkVersion('interval'); }, 60000);
+window.setInterval(() => { void refreshSyncBanner(); }, 60000);

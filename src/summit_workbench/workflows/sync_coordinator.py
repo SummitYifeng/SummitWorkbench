@@ -240,7 +240,7 @@ def current_snapshot(
     *,
     home: Path | None = None,
     workspace_id: str | None = None,
-) -> SyncSnapshot | None:
+) -> SyncSnapshot:
     """读取/内存构建当前状态快照（不落盘）。"""
     ws_id = workspace_id or _workspace_id_of(vault_dir)
     if home is not None:
@@ -250,10 +250,12 @@ def current_snapshot(
         if saved is not None:
             return saved
     repo = GitRepo(vault_dir)
+    if not repo.has_remote():
+        return _snapshot(ws_id, state=SyncState.UNCONFIGURED, pending=0, detail="未配置 Git 远端")
     try:
         reachable = True
         ahead = behind = 0
-        if repo.has_remote() and repo.has_upstream():
+        if repo.has_upstream():
             counts = repo.ahead_behind()
             ahead, behind = counts.ahead, counts.behind
     except GitError:

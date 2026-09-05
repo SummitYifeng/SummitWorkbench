@@ -664,6 +664,7 @@ def create_app(
         """看板数据：日期、状态速览、今日简报、inbox 积压。"""
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=default_config_file())
+        sync_state = sync_coordinator.current_snapshot(ctx.vault_dir).state.value
         brief_md = read_brief_block(ctx.vault_dir, day)
         inbox_path = ctx.vault_dir / "inbox.md"
         inbox_pending = (
@@ -698,6 +699,7 @@ def create_app(
             "brief": brief_payload(read_snapshot(ctx.vault_dir, day)),
             "inbox_pending": inbox_pending,
             "projects": projects,
+            "sync_state": sync_state,
         }
         try:
             info = _build_info()
@@ -1153,13 +1155,16 @@ def create_app(
             **_mutation_fields(result),
         }
 
-    @app.post("/api/capture")
-    def api_capture(payload: CapturePayload) -> dict[str, object]:
+    @app.post("/api/capture", response_model=None)
+    def api_capture(request: Request, payload: CapturePayload) -> dict[str, object] | JSONResponse:
         """快速捕捉：AI 分类（承诺/想法 + 截止 + #项目）后记入全局 inbox。
 
         模型不可用/超时/输出非法时按「想法」兜底，绝不丢数据；#项目 标签本地解析，
         不经模型，避免臆造项目名。分类以稳定标记写回 inbox，供 M4 wb task 承接路由。
         """
+        blocked = _mutation_blocked(request)
+        if blocked is not None:
+            return blocked
         text = payload.text.strip()
         if not text:
             return {"ok": False, "message": "输入为空"}
@@ -1369,10 +1374,13 @@ def create_app(
             **_mutation_fields(result),
         }
 
-    @app.post("/api/run/brief")
-    def api_run_brief() -> dict[str, object]:
+    @app.post("/api/run/brief", response_model=None)
+    def api_run_brief(request: Request) -> dict[str, object] | JSONResponse:
         from summit_workbench.workflows.brief.runner import run_brief
 
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             run = run_brief(
                 work_root=ctx.work_root,
@@ -1389,10 +1397,13 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
             return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
 
-    @app.post("/api/run/weekly")
-    def api_run_weekly() -> dict[str, object]:
+    @app.post("/api/run/weekly", response_model=None)
+    def api_run_weekly(request: Request) -> dict[str, object] | JSONResponse:
         from summit_workbench.workflows.weekly.weekly import generate_weekly
 
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
         try:
             result = generate_weekly(
                 ctx.work_root,
@@ -1743,5 +1754,75 @@ def create_app(
         except onboarding_service.OnboardingError as exc:
             return _onboarding_rejected(request, exc)
         return {"ok": True, **result.model_dump(mode="json")}
+
+    # ---- 多设备同步（P0-10）----
+
+    from summit_workbench.config.profiles import resolve_workspace
+    from summit_workbench.domain.sync import AutomationOutcome
+    from summit_workbench.workflows import sync_coordinator
+
+    def _sync_blocked(request: Request) -> JSONResponse | None:
+        """automation 角色门：secondary 上定时 writer 不执行（env-compat 放行）。"""
+        resolution = resolve_workspace()
+        if sync_coordinator.automation_gate(resolution.profile) is AutomationOutcome.NOT_PRIMARY:
+            return JSONResponse(
+                status_code=403,
+                content=error_payload(
+                    code="not_automation_primary",
+                    message="本机不是该 workspace 的 automation-primary，定时任务不执行",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        return None
+
+    def _mutation_blocked(request: Request) -> JSONResponse | None:
+        """diverged/dirty 保护态：修改共享 vault 的写被拒（读照常）。"""
+        snapshot = sync_coordinator.current_snapshot(ctx.vault_dir)
+        ok, reason = sync_coordinator.mutation_guard(snapshot)
+        if ok:
+            return None
+        state = snapshot.state.value if snapshot is not None else "protected"
+        return JSONResponse(
+            status_code=409,
+            content=error_payload(
+                code="sync_diverged",
+                message=reason,
+                operation_id=_operation_id(request),
+                details={"state": state},
+            ),
+        )
+
+    def _sync_payload() -> dict[str, object]:
+        snapshot = sync_coordinator.current_snapshot(ctx.vault_dir)
+        return {
+            "ok": True,
+            "workspace_id": snapshot.workspace_id,
+            "state": snapshot.state.value,
+            "pending_commits": snapshot.pending_commits,
+            "last_sync_at": snapshot.last_sync_at,
+            "next_step": snapshot.next_step,
+            "detail": snapshot.detail,
+            "ahead": snapshot.ahead,
+            "behind": snapshot.behind,
+            "branch": snapshot.branch,
+        }
+
+    @app.get("/api/sync/status", response_model=None)
+    def api_sync_status() -> dict[str, object]:
+        """当前 workspace 同步状态（供 UI banner；不执行任何 git 写）。"""
+        return _sync_payload()
+
+    @app.post("/api/sync/run", response_model=None)
+    def api_sync_run(request: Request) -> dict[str, object] | JSONResponse:
+        """手动触发一次同步（fetch → ff → push，绝不 force）。"""
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
+        state, outcomes, _ = sync_coordinator.sync_workspace(ctx.vault_dir, work_root=ctx.work_root)
+        return {
+            "ok": True,
+            "state": state.value,
+            "repos": [{"name": name, "state": repo_state.value} for name, repo_state in outcomes],
+        }
 
     return app

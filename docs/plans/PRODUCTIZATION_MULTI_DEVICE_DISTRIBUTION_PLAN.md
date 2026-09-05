@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08、P0-09 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01 至 P0-10 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -1267,6 +1267,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（235 files）通过；`uv run pytest`（665 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（使用临时仓库/本地 bare remote/fake 离线验证；真实私有 HTTPS 远端、证书/代理、clean-account 打包运行属 P0-13 真机门；认证/TLS 仅以确定性分类 unit 覆盖，dulwich 0.22 无 WSGI 服务端故未建本地 HTTP 假远端矩阵——已在 ADR 0030 如实记录）
 - 遗留：生产运行固定选 dulwich + 凭据 callback 接线、新工作区 git init/远端 clone 的业务接入随 P0-10/P0-13；下一工作包为 P0-10，本次未开始。
+
+### 2026-09-05 · P0-10
+
+- 状态：完成
+- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- 变更摘要：
+  - 新增 `domain/sync.py`（10 态 SyncState + SyncSnapshot + 纯函数：离线/认证/TLS/分叉/脏态分类、状态合并、state_from_counts、next_step 建议）。
+  - 新增 `repositories/local_sync_state.py`（profiles/<id>/sync-state.json，原子写 0600/0700，仅 ACTIVE profile/显式 home 落盘，env-compat 不写盘）。
+  - 新增 `workflows/sync_coordinator.py`：workspace 锁内 fetch→(clean)ff→push 编排（绝不 force/rebase/stash/reset；ff 失败非离线/auth 即 diverged、push non-ff → diverged、auth → auth-required、网络不可达 → offline-local-ahead）；`push_after_commit`（失败不回滚、pending 保留、联网再同步清零）；`automation_gate`（secondary → not-primary，env-compat 放行）；`mutation_guard`（diverged/dirty 拒绝修改共享 vault 的交互写）；`current_snapshot` 状态构建（轻量）。
+  - Web：`GET /api/sync/status`、`POST /api/sync/run`；`/api/state` 增加 `sync_state` 摘要；`/api/run/brief|weekly` 过 automation 门（secondary → 403 `not_automation_primary`）；`/api/capture` 过保护态 guard（diverged/dirty → 409 `sync_diverged`）；SPA 顶部最小 sync banner（非 ready/unconfigured 时显示状态+待推送+下一步，60s 轮询），前端静态产物重建。
+  - 后端基建：GitRepo.commit 支持可选 author（与 Backend Protocol 对齐）。
+  - 新增 ADR 0031 并登记索引。
+- 目标测试：新增 12 项（`test_sync_coordinator.py` 8 + `test_webapi_sync.py` 4）：A push/B ff（同 workspace_id 异 device_id）、双端离线写 diverged 两侧不 force 不丢文件、offline pending 重启保留+联网 push 清零、auth 与 offline 区分、secondary scheduler 403 not-primary 且交互（primary）放行、三连并发 sync 仅一次实际 push、mutation guard、sync-state 往返、/api/sync/status|run、/api/state 摘要
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（240 files）通过；`uv run pytest`（677 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过
+- 真机验证：未执行（本地 bare remote + 双 clone/双 HOME 离线模拟 Studio/Air；未访问真实远端、真实 `~/Documents/Work`、打包 App 或第二台 Mac）
+- 遗留：production 固定 dulwich + 凭据接线、remote clone、pending push 逐端点触发、launchd/P1-01 helper 接角色门与租约、设置中心角色切换（P0-11/P0-13/P1-01）；SSR 回退路径不展示 SPA banner；下一工作包为 P0-11，本次未开始。
 
 ## 16. 外部实现依据
 
