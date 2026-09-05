@@ -63,7 +63,8 @@ def apply_review(
     @lru_cache(maxsize=1)
     def task_client() -> FeishuClient:
         cfg = load_feishu_config()
-        return FeishuClient(cfg, FeishuSession(cfg).access_token())
+        # P0-06：Feishu refresh 锁根取本 workspace 单一解析入口的 lock_root。
+        return FeishuClient(cfg, FeishuSession(cfg, lock_root=paths.lock_root).access_token())
 
     def create(summary: str, due_date: str | None, candidate_id: str) -> str:
         return create_task(

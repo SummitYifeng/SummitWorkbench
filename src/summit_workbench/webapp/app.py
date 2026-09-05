@@ -146,17 +146,24 @@ class WebContext:
     vault_dir: Path
     work_root: Path
     timezone: str
+    # P0-06：工作区锁根（WorkspacePaths.lock_root）。None 时回退旧语义（env 默认）。
+    lock_root: Path | None = None
 
     def today(self) -> str:
         return datetime.now(ZoneInfo(self.timezone)).date().isoformat()
 
 
 class _FeishuClientPool:
-    """按身份复用飞书客户端，并由 App lifespan 统一释放。"""
+    """按身份复用飞书客户端，并由 App lifespan 统一释放。
 
-    def __init__(self) -> None:
+    P0-06：会话携带本工作区 lock root，Feishu refresh 与同 workspace 写者锁同一把
+    ``.wb.lock``，不再默认落到 ``~/Documents/Work``。
+    """
+
+    def __init__(self, lock_root: Path | None = None) -> None:
         self._clients: dict[str, object] = {}
         self._lock = threading.Lock()
+        self._lock_root = lock_root
 
     def _get(self, identity: str) -> object:
         with self._lock:
@@ -170,7 +177,7 @@ class _FeishuClientPool:
             )
 
             cfg = load_feishu_config()
-            session = FeishuSession(cfg)
+            session = FeishuSession(cfg, lock_root=self._lock_root)
             token = session.access_token() if identity == "user" else session.tenant_access_token()
             client = FeishuClient(cfg, token)
             self._clients[identity] = client
@@ -453,7 +460,7 @@ def create_app(
     bind_host: str = "127.0.0.1",
     port: int = 8787,
 ) -> FastAPI:
-    feishu_clients = _FeishuClientPool()
+    feishu_clients = _FeishuClientPool(lock_root=ctx.lock_root)
     panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
     validate_bind_host(bind_host, panel_mode)
     normalized_bind_host = bind_host.strip().strip("[]").lower()

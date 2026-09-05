@@ -2,9 +2,16 @@
 
 职责：读 app_secret 与 refresh_token（Keychain）→ 刷新出 access_token →
 把轮换出的新 refresh_token 回写 Keychain。凭据只在内存中短暂存在，不落日志。
+
+P0-06：token 轮换的工作区锁根不再默默取默认 ``resolve_work_root()``，而是接受调用方
+从 :class:`~summit_workbench.config.paths.WorkspacePaths` 传入的 lock root——web、
+brief 等带 vault/workspace 上下文的调用方传入实际锁根，保证与同一 workspace 的写者
+锁在同一 ``.wb.lock``；机器级 CLI 命令（login/smoke/doctor 等）不传时保持兼容回退。
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import httpx
 from pydantic import SecretStr
@@ -21,8 +28,14 @@ from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConf
 
 
 class FeishuSession:
-    def __init__(self, cfg: FeishuConfig) -> None:
+    def __init__(self, cfg: FeishuConfig, *, lock_root: Path | None = None) -> None:
+        """构造飞书会话。
+
+        :param lock_root: 工作区锁根（``WorkspacePaths.lock_root``）；为 ``None`` 时
+            回退 :func:`resolve_work_root`（机器级命令的兼容默认）。
+        """
         self.cfg = cfg
+        self._lock_root = lock_root
 
     def _app_secret(self) -> SecretStr:
         try:
@@ -46,7 +59,7 @@ class FeishuSession:
                 "换取成功但未返回 refresh_token：请确认授权 scope 含 offline_access"
             )
         # 与 access_token() 的轮换共用工作区锁：授权写回与并发刷新互斥，避免覆盖竞态。
-        with workspace_lock():
+        with workspace_lock(self._lock_root):
             store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
         return tokens
 
@@ -62,9 +75,10 @@ class FeishuSession:
 
         飞书 refresh_token 单次轮换：``读 RT → 刷新 → 写回新 RT`` 必须作为一个整体
         对并发进程互斥，否则两个触发源会互相作废对方的 token，把 Keychain 存成死
-        token（LHF #1）。这里用工作区锁把整段 read-modify-write 圈成临界区。
+        token（LHF #1）。这里用工作区锁把整段 read-modify-write 圈成临界区；锁根
+        取构造时传入的 lock root（P0-06），不再默认落到 env work root。
         """
-        with workspace_lock():
+        with workspace_lock(self._lock_root):
             try:
                 current_rt = resolve_credential(self.cfg.refresh_token_ref)
             except CredentialError as exc:

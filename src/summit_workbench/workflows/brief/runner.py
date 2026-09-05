@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import CredentialError, resolve_credential
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.brief import ActionSignal, fallback_ranking
@@ -42,15 +43,23 @@ class FeishuOutcome:
     needs_reauthorize: bool = False
 
 
-def build_facts_source(day: str, timezone: str) -> tuple[FactsSource | None, FeishuOutcome]:
+def build_facts_source(
+    day: str,
+    timezone: str,
+    *,
+    lock_root: Path | None = None,
+) -> tuple[FactsSource | None, FeishuOutcome]:
     """尽力构建飞书事实源；不可用时返回 (None, 原因)。
 
     token 失效（refresh_token 过期/被吊销）会被识别为 ``needs_reauthorize``，供上层
     降级出简报的同时把「请重新授权」这件事持久化并推到 ``wb status``（加固 #4）。
+
+    :param lock_root: 工作区锁根（``WorkspacePaths.lock_root``）。Feishu refresh 的
+        token 轮换临界区锁在这里，与同 workspace 的写者共用同一 ``.wb.lock``（P0-06）。
     """
     try:
         cfg = load_feishu_config()
-        access = FeishuSession(cfg).access_token()
+        access = FeishuSession(cfg, lock_root=lock_root).access_token()
         client = FeishuClient(cfg, access)
     except FeishuAuthError as exc:
         return None, FeishuOutcome(f"{type(exc).__name__}: {exc}", exc.needs_reauthorize)
@@ -96,7 +105,9 @@ def run_brief(
     *, work_root: Path, vault_dir: Path, timezone: str, day: str, write: bool, notify: bool
 ) -> BriefRun:
     """装配默认输入并生成简报；记录排序模型用量与飞书授权健康度。"""
-    facts, feishu = build_facts_source(day, timezone)
+    # P0-06：Feishu refresh 的锁根来自单一解析入口（默认形态 = vault 容器 = work_root）。
+    lock_root = resolve_work_paths(work_root=work_root, vault_dir=vault_dir).lock_root
+    facts, feishu = build_facts_source(day, timezone, lock_root=lock_root)
     ranker, _ = build_ranker()
     result = generate_brief(
         work_root,

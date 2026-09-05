@@ -10,6 +10,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry
+from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories._jsonl import append_row, read_models
 
 REVIEW_ACTIONS_SUBDIR = ("_signals", "review-actions")
@@ -139,5 +140,6 @@ def archive_executions(
         )
     fm = yaml.safe_dump(front, allow_unicode=True, sort_keys=False).strip()
     content = f"---\n{fm}\n---\n\n# 会议审批审计\n\n" + "\n\n".join(blocks) + "\n"
-    path.write_text(content, encoding="utf-8")
+    # P0-06：持久化审计归档走原子写（唯一临时文件 + fsync + replace），不留半截文件。
+    atomic_write_text(path, content)
     return path

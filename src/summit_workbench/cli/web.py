@@ -103,7 +103,10 @@ def web_command(
     settings = load_settings()
     paths = settings.work_paths()
     ctx = WebContext(
-        vault_dir=paths.vault_dir, work_root=paths.work_root, timezone=settings.timezone
+        vault_dir=paths.vault_dir,
+        work_root=paths.work_root,
+        timezone=settings.timezone,
+        lock_root=paths.lock_root,
     )
     typer.echo(f"工作台：http://{host}:{port}/  （Ctrl+C 停止）")
     typer.echo(f"vault：{paths.vault_dir}")

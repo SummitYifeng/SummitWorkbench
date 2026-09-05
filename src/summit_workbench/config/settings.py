@@ -23,7 +23,7 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from summit_workbench.config.paths import WorkPaths, resolve_work_paths
+from summit_workbench.config.paths import WorkspacePaths, resolve_work_paths
 
 _CONFIG_FILE_ENV = "WB_CONFIG_FILE"
 
@@ -66,8 +66,8 @@ class Settings(BaseSettings):
         toml_source = TomlConfigSettingsSource(settings_cls, toml_file=default_config_file())
         return (init_settings, env_settings, toml_source)
 
-    def work_paths(self) -> WorkPaths:
-        """基于当前配置派生稳定路径集合。"""
+    def work_paths(self) -> WorkspacePaths:
+        """基于当前配置派生稳定路径集合（work_root / vault_dir / lock_root）。"""
         return resolve_work_paths(work_root=self.work_root, vault_dir=self.vault_dir)
 
 

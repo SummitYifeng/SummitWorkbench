@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> None:
         vault_dir=paths.vault_dir,
         work_root=paths.work_root,
         timezone=settings.timezone,
+        lock_root=paths.lock_root,
     )
     uvicorn.run(
         create_app(ctx, static_dir=static_dir, bind_host=args.host, port=args.port),

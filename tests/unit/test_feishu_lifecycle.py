@@ -13,8 +13,9 @@ def test_app_lifespan_closes_cached_feishu_clients(tmp_path: Path, monkeypatch) 
     closed = {"n": 0}
 
     class FakeSession:
-        def __init__(self, _cfg: object) -> None:
-            pass
+        def __init__(self, _cfg: object, lock_root: Path | None = None) -> None:
+            # P0-06：池会传入 ctx.lock_root（此处为 None → 兼容旧语义）
+            assert lock_root is None
 
         def access_token(self):
             return "token"

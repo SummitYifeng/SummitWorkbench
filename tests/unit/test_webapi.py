@@ -666,7 +666,7 @@ def _patch_feishu_task_api(monkeypatch, fake_complete) -> None:
     """把 /api/tasks/complete 内部的飞书调用替换为离线替身（真源写回点不动）。"""
 
     class _FakeSession:
-        def __init__(self, cfg: object) -> None:
+        def __init__(self, cfg: object, lock_root: Path | None = None) -> None:
             self.cfg = cfg
 
         def access_token(self) -> SecretStr:
@@ -835,7 +835,7 @@ def _stub_feishu_writes(monkeypatch) -> None:
     """把 /api/tasks|meetings/update 的飞书调用替换为离线替身（写回点不动）。"""
 
     class _FakeSession:
-        def __init__(self, cfg: object) -> None:
+        def __init__(self, cfg: object, lock_root: Path | None = None) -> None:
             self.cfg = cfg
 
         def access_token(self) -> SecretStr:

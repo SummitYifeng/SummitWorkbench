@@ -58,6 +58,15 @@ def _lock_key(work_root: Path | None) -> str:
     return os.path.normpath(str(path if path.is_absolute() else path.absolute()))
 
 
+def lock_file_path(work_root: Path | None = None) -> Path:
+    """返回某锁根对应的 ``.wb.lock`` 规范路径（不创建文件）。
+
+    供诊断与测试断言：web / brief / Feishu refresh / sync 是否解析到同一把锁。
+    ``work_root`` 省略时取 :func:`resolve_work_root`（默认/env work root）。
+    """
+    return Path(_lock_key(work_root))
+
+
 def _acquire(fd: int, timeout: float | None, sleep: Callable[[float], None]) -> None:
     """在 ``timeout`` 内取得 ``LOCK_EX``；超时抛 :class:`LockBusy`。
 

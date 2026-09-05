@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -188,7 +188,7 @@ account = git:<host>:<username>
 | 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [x] |
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
-| 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [ ] |
+| 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [ ] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [ ] |
 | 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [ ] |
@@ -1193,6 +1193,21 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（565 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
 - 真机验证：未执行（使用临时目录和 TestClient 离线验证；未在真实非 loopback 网卡、真实浏览器会话、真实凭据或打包 App 中进行手工安全 smoke）。
 - 遗留：无；下一工作包为 P0-06，本次未开始。
+
+### 2026-09-05 · P0-06
+
+- 状态：完成
+- Git commit：85d3470（已推送至 `origin/main`）
+- 变更摘要：
+  - `repositories/_atomic.py`：原子写改为目标**同目录唯一临时文件**（`.目标名.<随机hex>.tmp`，`O_CREAT|O_EXCL` 防并发撞名，无固定 `.tmp` 名）；写入后 `flush + fsync(file)`，`os.replace` 后在支持的平台 `fsync(parent directory)`；替换已有文件保留原 mode，新建文件沿用普通创建语义（`0666 & ~umask`）；异常路径只清理本次临时文件。
+  - 高风险生产路径的直接 `write_text` 迁移：`repositories/review_audit.py` 审计归档改走原子原语；webapp 上传暂存文件（`mkdtemp` 私有目录、finally 整目录删除）判定为非持久状态未迁移；fixture 生成代码未改动。
+  - `repositories/_jsonl.py`：隔离记录改为逐行 JSON 格式，含 `id`（`sha256(source + 行号 + 完整 raw)` 稳定 id，跨机器稳定）、`source`（默认日志名，可显式传）、`line`、`reason`、`first_seen`、截断后 `raw`（上限 2000 字符）；写入前读回既有 id 去重，同一坏行重复读取只写一条 quarantine，隔离文件不再随每次 status 刷新无限增长；旧版注释格式行容忍跳过。
+  - `config/paths.py`：新增 `WorkspacePaths`（`work_root`/`vault_dir`/`lock_root`/`lock_file`）作为单一解析入口，`lock_root` = vault 容器目录（默认形态即 `work_root`）；`resolve_work_paths` 返回该对象，`settings.work_paths()` 同源；`config/locking.py` 公开 `lock_file_path()`。
+  - 锁根统一：`providers/feishu/session.py` 的 `FeishuSession` 接受 `lock_root`（token 轮换临界区锁在配置的工作区锁根而非默认 `resolve_work_root()`）；webapp 的 `WebContext`/Feishu client 池、brief runner 的 `build_facts_source`、`cli/review.py` apply 均从 `WorkspacePaths.lock_root` 取锁根；自定义 vault 路径下 web/brief/Feishu refresh/sync 解析出同一 `.wb.lock`。
+- 目标测试：`uv run pytest tests/unit/test_atomic.py tests/unit/test_jsonl.py tests/unit/test_lock_root_unified.py tests/unit/test_feishu_lifecycle.py tests/unit/test_webapi.py`（新增 21 项：并发 atomic writer 最终文件为任一完整版本无拼接/半截、replace 失败原文件完整且只清理本次临时文件（含不删其他进程残留）、mock fsync 验证 file→replace→dir 耐久顺序、已有文件 mode 保留、同一坏 JSONL 行读三次 quarantine 仅一条且新增坏行为两条、raw 截断上限与基于完整 raw 的稳定 id、WorkspacePaths 默认/自定义 vault 下 lock root 单一、web 池与 brief 的 Feishu refresh 携带 ctx/workspace lock root、Feishu refresh 锁在配置根而非 env 默认）
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（214 files）通过；`uv run pytest`（586 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（使用临时目录、临时仓库、fake/MockTransport 离线验证；未访问真实飞书、模型、Keychain、真实 `~/Documents/Work` 或第二台 Mac）
+- 遗留：无；嵌套/脱离 work_root 的自定义 vault 布局与 profile/device 身份属 P0-07 范围（届时 vault 与 workspace 关系被显式建模），本包统一了受支持形态（vault 为 work_root 下目录，`lock_root` 恒 = vault 容器 = 默认形态的 work_root）；下一工作包为 P0-07，本次未开始。
 
 ## 16. 外部实现依据
 

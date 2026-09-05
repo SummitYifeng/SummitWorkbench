@@ -4,14 +4,14 @@
 （见 NFR-4 与开发计划模块边界）。
 """
 
-from summit_workbench.config.paths import WorkPaths, resolve_work_paths
+from summit_workbench.config.paths import WorkspacePaths, resolve_work_paths
 from summit_workbench.config.secrets import CredentialRef, resolve_credential, store_credential
 from summit_workbench.config.settings import Settings, load_settings
 
 __all__ = [
     "CredentialRef",
     "Settings",
-    "WorkPaths",
+    "WorkspacePaths",
     "load_settings",
     "resolve_credential",
     "resolve_work_paths",
