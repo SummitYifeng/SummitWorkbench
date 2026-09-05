@@ -18,6 +18,7 @@ from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.repositories.meeting_state import record_task
 from summit_workbench.repositories.review_page import parse_review_page, review_path
+from summit_workbench.workflows.local_mutation import run_local_mutation
 from summit_workbench.workflows.meetings.backfill import (
     run_backfill,
     scan_for_import,
@@ -180,3 +181,25 @@ def test_failed_processing_is_reported(tmp_path):
     )
     assert report.failed == 1
     assert report.processed == 0
+
+
+def test_backfill_reports_local_transaction_ids_and_keeps_model_call_outside_lock(tmp_path):
+    vault = tmp_path / "vault"
+    src = _src(tmp_path)
+    items = scan_local_transcripts(vault, src, since="2026-08-01", until="2026-08-31")
+
+    report = run_backfill(
+        vault,
+        items,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_ok_client(),
+        sleep=lambda _: None,
+        local_mutation=run_local_mutation,
+    )
+
+    assert report.processed == 1
+    assert len(report.operation_ids) == 2
+    assert len(set(report.operation_ids)) == 2

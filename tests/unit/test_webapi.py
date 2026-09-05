@@ -362,6 +362,8 @@ def test_api_capture_appends_inbox(tmp_path: Path) -> None:
     data = resp.json()
     assert data["ok"] is True
     assert "已记入全局 inbox" in data["message"]
+    assert data["operation_id"]
+    assert data["commit"]["status"] == "not-git"
     text = (vault / "inbox.md").read_text(encoding="utf-8")
     assert "- [ ] 给老王回邮件 #网课" in text
 

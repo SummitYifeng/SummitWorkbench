@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 import httpx
 from pydantic import SecretStr
@@ -20,6 +22,10 @@ from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.model_errors import clear_model_error, record_model_error
 from summit_workbench.repositories.usage_ledger import append_usage
 from summit_workbench.repositories.vault import load_note
+from summit_workbench.workflows.local_mutation import (
+    LocalMutationOutcome,
+    LocalMutationResult,
+)
 from summit_workbench.workflows.meetings.processor import ProcessingFailure, process_transcript
 
 _DONE_STATES = frozenset(
@@ -41,6 +47,26 @@ class ProcessReport:
     model_calls: int = 0
     chunks: int = 0
     reason: str | None = None
+    operation_id: str | None = None
+
+
+type ProcessMutationRunner = Callable[
+    [Path, str, Callable[[str], LocalMutationOutcome["ProcessReport"]]],
+    LocalMutationResult["ProcessReport"],
+]
+
+
+def _finish_local[T](
+    vault_dir: Path,
+    action: str,
+    mutation: Callable[[str], LocalMutationOutcome[T]],
+    runner: Callable[..., object] | None,
+) -> T:
+    """在 Web/backfill 需要时提交本地收尾；CLI 保持原有无自动提交行为。"""
+    if runner is None:
+        return mutation("").business_return
+    result = cast(LocalMutationResult[T], runner(vault_dir, action, mutation))
+    return result.business_return
 
 
 def _clean_transcript(body: str) -> str:
@@ -76,6 +102,7 @@ def process_archived_transcript(
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] | None = None,
     now: datetime | None = None,
+    local_mutation: ProcessMutationRunner | None = None,
 ) -> ProcessReport:
     """只在完整原文已归档后处理；任何失败只记队列，不写半成品笔记。"""
     note = load_note(transcript_path)
@@ -98,11 +125,13 @@ def process_archived_transcript(
     if task.state not in {ProcessingState.ARCHIVED, ProcessingState.FAILED}:
         raise ValueError(f"任务状态 {task.state.value} 不能开始结构化处理")
 
+    usage_records: list[UsageRecord] = []
+
+    def save_usage(usage: UsageRecord) -> None:
+        # 模型调用期间只收集到内存；账本写入属于本地收尾，交给事务编排器。
+        usage_records.append(usage)
+
     try:
-
-        def save_usage(usage: UsageRecord) -> None:
-            append_usage(vault_dir, usage)
-
         processed = process_transcript(
             cfg,
             api_key,
@@ -119,7 +148,48 @@ def process_archived_transcript(
         date = str(note.meta.get("date"))
         slug = transcript_path.stem.removesuffix("-transcript").removeprefix(f"{date}-")
         stem = transcript_stem(date, slug)
-        outcome = archive_meeting_note(
+    except ProcessingFailure as failure:
+        failure_reason = str(failure)
+        failure_stage = failure.stage
+        failure_attempts = failure.attempts
+
+        def save_failure(operation_id: str) -> LocalMutationOutcome[ProcessReport]:
+            failed = task.advanced_to(ProcessingState.FAILED, reason=failure_reason)
+            paths = [record_task(vault_dir, failed, now=now)]
+            paths.extend(append_usage(vault_dir, usage) for usage in usage_records)
+            error_path = record_model_error(
+                vault_dir,
+                task_key=resolved_key,
+                model_id=cfg.model_id,
+                prompt_version=prompt.version_label,
+                stage=failure_stage,
+                attempts=failure_attempts,
+                reason=failure_reason,
+                transcript_path=transcript_path,
+                now=now,
+            )
+            paths.append(error_path)
+            return LocalMutationOutcome(
+                ProcessReport(
+                    resolved_key,
+                    failed.state,
+                    "failed",
+                    error_path=error_path,
+                    reason=failure_reason,
+                    operation_id=operation_id or None,
+                ),
+                paths,
+            )
+
+        return _finish_local(
+            vault_dir,
+            "meetings/process",
+            save_failure,
+            local_mutation,
+        )
+
+    def save_success(operation_id: str) -> LocalMutationOutcome[ProcessReport]:
+        note_outcome = archive_meeting_note(
             vault_dir,
             MeetingNoteInput(
                 date=date,
@@ -135,38 +205,41 @@ def process_archived_transcript(
                 projects=_projects(note.meta),
             ),
         )
-    except ProcessingFailure as exc:
-        failed = task.advanced_to(ProcessingState.FAILED, reason=str(exc))
-        record_task(vault_dir, failed, now=now)
-        error_path = record_model_error(
-            vault_dir,
-            task_key=resolved_key,
-            model_id=cfg.model_id,
-            prompt_version=prompt.version_label,
-            stage=exc.stage,
-            attempts=exc.attempts,
-            reason=str(exc),
-            transcript_path=transcript_path,
-            now=now,
+        processed_task = task.advanced_to(ProcessingState.PROCESSED)
+        pending = processed_task.advanced_to(ProcessingState.PENDING_REVIEW)
+        paths = [note_outcome.path, *[append_usage(vault_dir, usage) for usage in usage_records]]
+        paths.extend(
+            [
+                record_task(vault_dir, processed_task, now=now),
+                record_task(vault_dir, pending, now=now),
+            ]
         )
-        return ProcessReport(
-            resolved_key,
-            failed.state,
-            "failed",
-            error_path=error_path,
-            reason=str(exc),
+        error_path = (
+            vault_dir
+            / "_signals"
+            / "model-errors"
+            / (f"{hashlib.sha256(resolved_key.encode('utf-8')).hexdigest()[:24]}.json")
+        )
+        had_error = error_path.is_file()
+        clear_model_error(vault_dir, resolved_key)
+        if had_error:
+            paths.append(error_path)
+        return LocalMutationOutcome(
+            ProcessReport(
+                resolved_key,
+                pending.state,
+                "processed" if note_outcome.written else "skipped-existing",
+                note_path=note_outcome.path,
+                model_calls=len(processed.usage_records),
+                chunks=processed.chunk_count,
+                operation_id=operation_id or None,
+            ),
+            paths,
         )
 
-    processed_task = task.advanced_to(ProcessingState.PROCESSED)
-    record_task(vault_dir, processed_task, now=now)
-    pending = processed_task.advanced_to(ProcessingState.PENDING_REVIEW)
-    record_task(vault_dir, pending, now=now)
-    clear_model_error(vault_dir, resolved_key)
-    return ProcessReport(
-        resolved_key,
-        pending.state,
-        "processed" if outcome.written else "skipped-existing",
-        note_path=outcome.path,
-        model_calls=len(processed.usage_records),
-        chunks=processed.chunk_count,
+    return _finish_local(
+        vault_dir,
+        "meetings/process",
+        save_success,
+        local_mutation,
     )

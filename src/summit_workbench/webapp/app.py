@@ -38,6 +38,7 @@ from summit_workbench.domain.review import CandidateDecision, ReviewEntry, Route
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
+    CommitResult,
     CommitStatus,
     commit_diff_text,
     commit_paths,
@@ -102,6 +103,11 @@ from summit_workbench.webapp.build_info import (
     new_server_instance,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
+from summit_workbench.workflows.local_mutation import (
+    LocalMutationOutcome,
+    LocalMutationResult,
+    run_local_mutation,
+)
 from summit_workbench.workflows.review_apply import (
     ApplyReport,
     MeetingCreator,
@@ -157,9 +163,25 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
         [Path(p) for p in paths if p],
         message=f"wb: {summary}",
     )
-    if result.status is CommitStatus.FAILED or result.status is CommitStatus.BUSY:
+    return _commit_note(result)
+
+
+def _commit_note(result: CommitResult) -> str:
+    if result.status in {
+        CommitStatus.FAILED,
+        CommitStatus.BUSY,
+        CommitStatus.INDEX_NOT_CLEAN,
+    }:
         return f"（git 留痕失败：{result.detail or result.status.value}）"
     return ""
+
+
+def _mutation_fields[T](result: LocalMutationResult[T]) -> dict[str, object]:
+    """把本地事务的 operation id 与可见提交状态加入 API 响应。"""
+    return {
+        "operation_id": result.operation_id,
+        "commit": result.commit_result.as_dict(),
+    }
 
 
 def _undo_error_response(code: str, message: str) -> JSONResponse:
@@ -336,6 +358,7 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
         prompt=prompt,
         merger_prompt=merger_prompt,
         include_actions=True,
+        local_mutation=run_local_mutation,
     )
     lines = [
         f"处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}、"
@@ -344,30 +367,13 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     for result in report.results:
         if result.action == "failed":
             lines.append(f"✗ {result.item.date} {result.item.title}：{result.reason}")
-    # 自动留痕：逐字稿证据 + 结构化笔记 + 审批页（P0' 埋点；失败/跳过无新文件 → 静默）
-    from summit_workbench.repositories.meeting_archive import (
-        slugify,
-        transcript_stem,
-        transcripts_dir,
-    )
-
-    imported: list[Path] = []
-    for result in report.results:
-        if result.action == "failed":
-            continue
-        transcript = transcripts_dir(ctx.vault_dir) / (
-            f"{transcript_stem(result.item.date, slugify(result.item.title))}.md"
-        )
-        if transcript.is_file():
-            imported.append(transcript)
-        if result.note_path is not None and result.note_path.is_file():
-            imported.append(result.note_path)
-    imported.append(review_path(ctx.vault_dir))
-    git_note = _commit_suffix(ctx, imported, "导入会议逐字稿")
+    operation_ids = list(report.operation_ids)
+    operation_note = f" · operation_id：{operation_ids[-1]}" if operation_ids else ""
     return {
         "ok": True,
-        "message": "导入完成：" + "；".join(lines) + git_note,
+        "message": "导入完成：" + "；".join(lines) + operation_note,
         "details": lines,
+        "operation_ids": operation_ids,
         "estimate": {
             "pending": est.pending,
             "already_done": est.already_done,
@@ -550,21 +556,30 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         if project is None:
             return {"ok": False, "message": f"项目未建档：{name}"}
         path = ctx.vault_dir / "projects" / f"{project}.md"
-        try:
+
+        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             from summit_workbench.repositories.note_status import update_note_status
             from summit_workbench.repositories.vault import load_note as _load_note
 
             note = _load_note(path)
             status = note.meta.get("status")
             if not isinstance(status, str):
-                return {"ok": False, "message": f"项目档案无效：{project}"}
+                raise ValueError(f"项目档案无效：{project}")
             update_note_status(
                 ctx.vault_dir, path, status, extra={"title": title, "updated": ctx.today()}
             )
+            return LocalMutationOutcome(path, (path,))
+
+        try:
+            result = run_local_mutation(ctx.vault_dir, "projects/rename", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"改名失败：{exc}"}
-        git_note = _commit_suffix(ctx, [path], "设置项目显示名")
-        return {"ok": True, "message": f"{project} 显示名已设为「{title}」{git_note}"}
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"{project} 显示名已设为「{title}」{git_note}",
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/projects/activate")
     def api_project_activate(payload: ProjectPayload) -> dict[str, object]:
@@ -574,11 +589,23 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         if not ok:
             return {"ok": False, "message": message}
         try:
-            path = ensure_project_active(ctx.vault_dir, name)
+            result = run_local_mutation(
+                ctx.vault_dir,
+                "projects/activate",
+                lambda _operation_id: LocalMutationOutcome(
+                    (path := ensure_project_active(ctx.vault_dir, name)), (path,)
+                ),
+            )
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"加入工作台失败：{exc}"}
-        git_note = _commit_suffix(ctx, [path], "项目加入工作台")
-        return {"ok": True, "message": f"已加入工作台：{name}{git_note}", "path": str(path)}
+        path = result.business_return
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"已加入工作台：{name}{git_note}",
+            "path": str(path),
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/projects/archive")
     def api_project_archive(payload: ProjectPayload) -> dict[str, object]:
@@ -588,11 +615,23 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         if not ok:
             return {"ok": False, "message": message}
         try:
-            path = archive_project(ctx.vault_dir, name)
+            result = run_local_mutation(
+                ctx.vault_dir,
+                "projects/archive",
+                lambda _operation_id: LocalMutationOutcome(
+                    (path := archive_project(ctx.vault_dir, name)), (path,)
+                ),
+            )
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"归档失败：{exc}"}
-        git_note = _commit_suffix(ctx, [path], "项目归档")
-        return {"ok": True, "message": f"已归档：{name}{git_note}", "path": str(path)}
+        path = result.business_return
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"已归档：{name}{git_note}",
+            "path": str(path),
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/projects/create")
     def api_project_create(payload: ProjectCreatePayload) -> dict[str, object]:
@@ -609,11 +648,28 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             }
         aliases = [alias.strip() for alias in payload.aliases if alias.strip()]
         try:
-            path = create_project_note(ctx.vault_dir, project_id, aliases=aliases or None)
+            result = run_local_mutation(
+                ctx.vault_dir,
+                "projects/create",
+                lambda _operation_id: LocalMutationOutcome(
+                    (
+                        path := create_project_note(
+                            ctx.vault_dir, project_id, aliases=aliases or None
+                        )
+                    ),
+                    (path,),
+                ),
+            )
         except (ValueError, FileExistsError) as exc:
             return {"ok": False, "message": f"新建失败：{exc}"}
-        git_note = _commit_suffix(ctx, [path], "建档知识线程")
-        return {"ok": True, "message": f"已建档知识线程：{project_id}{git_note}", "path": str(path)}
+        path = result.business_return
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"已建档知识线程：{project_id}{git_note}",
+            "path": str(path),
+            **_mutation_fields(result),
+        }
 
     @app.get("/api/review")
     def api_review() -> dict[str, object]:
@@ -699,30 +755,29 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         project = registry.resolve(payload.project.strip())
         if project is None:
             return {"ok": False, "message": f"项目未建档：{payload.project.strip()}"}
-        try:
+
+        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             from summit_workbench.repositories.note_status import update_note_status
             from summit_workbench.repositories.vault import load_note as _load_note
             from summit_workbench.repositories.writeback import set_project_status
 
-            set_project_status(ctx.vault_dir, project, text)
-            note = _load_note(ctx.vault_dir / "projects" / f"{project}.md")
+            path, _written = set_project_status(ctx.vault_dir, project, text)
+            note = _load_note(path)
             status = note.meta.get("status")
             if isinstance(status, str):
-                update_note_status(
-                    ctx.vault_dir,
-                    ctx.vault_dir / "projects" / f"{project}.md",
-                    status,
-                    extra={"updated": ctx.today()},
-                )
+                update_note_status(ctx.vault_dir, path, status, extra={"updated": ctx.today()})
+            return LocalMutationOutcome(path, (path,))
+
+        try:
+            result = run_local_mutation(ctx.vault_dir, "threads/state", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"更新失败：{exc}"}
-        git_note = _commit_suffix(
-            ctx, [ctx.vault_dir / "projects" / f"{project}.md"], "确认线程当前状态"
-        )
+        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
             "message": f"已更新 {project} 当前状态{git_note}",
             "project": project,
+            **_mutation_fields(result),
         }
 
     @app.get("/api/projects/view")
@@ -772,7 +827,10 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         summary = digest.summary if digest else ""
         involved = digest.involved if digest else []
         tags = digest.tags if digest else []
-        try:
+
+        archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
+
+        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = append_work_log(
                 ctx.vault_dir,
                 projects=resolved,
@@ -783,18 +841,22 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 next_step=digest.next_step if digest else None,
                 decision=digest.decision if digest else None,
             )
+            return LocalMutationOutcome(path, (path, *archives))
+
+        try:
+            result = run_local_mutation(ctx.vault_dir, "threads/logs", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
+        path = result.business_return
         tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        # 自动留痕：新建日志文件 + 关联档案（updated 刷新）
-        archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
-        git_note = _commit_suffix(ctx, [path, *archives], "追加推进日志")
+        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
             "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}{git_note}",
             "path": str(path),
             "summary": summary,
             "enriched": enriched,
+            **_mutation_fields(result),
         }
 
     @app.post("/api/threads/artifacts")
@@ -830,7 +892,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         title = (index.title if index and index.title else title_hint) or ""
         summary = index.summary if index else ""
         kind = index.kind if index else ArtifactKind.OTHER
-        try:
+
+        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = save_thread_artifact(
                 ctx.vault_dir,
                 project=project,
@@ -839,12 +902,15 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 summary=summary,
                 kind=kind,
             )
+            return LocalMutationOutcome(path, (path, ctx.vault_dir / "projects" / f"{project}.md"))
+
+        try:
+            result = run_local_mutation(ctx.vault_dir, "threads/artifacts", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
+        path = result.business_return
         tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        git_note = _commit_suffix(
-            ctx, [path, ctx.vault_dir / "projects" / f"{project}.md"], "存档线程产物"
-        )
+        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
             "message": f"已存入 {project} 档案 · {tail}{git_note}",
@@ -852,6 +918,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "title": title,
             "summary": summary,
             "enriched": enriched,
+            **_mutation_fields(result),
         }
 
     @app.post("/api/capture")
@@ -895,11 +962,17 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             markers.append(f"wb-capture-due: {due_date}")
         if project:
             markers.append(f"wb-capture-project: {project}")
-        path, written = append_global_inbox(ctx.vault_dir, text, candidate_id, markers=markers)
+
+        def mutate(_operation_id: str) -> LocalMutationOutcome[tuple[Path, bool]]:
+            path, written = append_global_inbox(ctx.vault_dir, text, candidate_id, markers=markers)
+            return LocalMutationOutcome((path, written), (path,))
+
+        result = run_local_mutation(ctx.vault_dir, "capture", mutate)
+        path, written = result.business_return
         label = "承诺" if kind is CaptureKind.TASK else "想法"
         tail = f"（截止 {due_date}）" if due_date else ""
         project_tail = f" · 关联 {project}" if project else ""
-        git_note = _commit_suffix(ctx, [path], "快速捕捉入 inbox")
+        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
             "message": f"已记入全局 inbox · {label}{tail}{project_tail}{git_note}",
@@ -908,6 +981,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             "due_date": due_date,
             "project": project,
             "model_used": model_used,
+            **_mutation_fields(result),
         }
 
     @app.post("/api/tasks/complete")
@@ -933,10 +1007,23 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             complete_task(FeishuClient(cfg, FeishuSession(cfg).access_token()), guid)
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化（授权过期/任务已删等）
             return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
-        summary = mark_task_completed(ctx.vault_dir, ctx.today(), guid)
+        result = run_local_mutation(
+            ctx.vault_dir,
+            "tasks/complete",
+            lambda _operation_id: LocalMutationOutcome(
+                mark_task_completed(ctx.vault_dir, ctx.today(), guid),
+                (snapshot_path(ctx.vault_dir, ctx.today()),),
+            ),
+        )
+        summary = result.business_return
         tail = f"：{summary}" if summary else ""
-        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "任务完成镜像")
-        return {"ok": True, "message": f"任务已完成{tail}{git_note}", "task_id": guid}
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"任务已完成{tail}{git_note}",
+            "task_id": guid,
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/tasks/update")
     def api_task_update(payload: TaskEditPayload) -> dict[str, object]:
@@ -977,16 +1064,28 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
-        mark_task_edited(
+        result = run_local_mutation(
             ctx.vault_dir,
-            ctx.today(),
-            guid,
-            summary=summary,
-            due_date=due_value,
-            clear_due=clear_due,
+            "tasks/update",
+            lambda _operation_id: LocalMutationOutcome(
+                mark_task_edited(
+                    ctx.vault_dir,
+                    ctx.today(),
+                    guid,
+                    summary=summary,
+                    due_date=due_value,
+                    clear_due=clear_due,
+                ),
+                (snapshot_path(ctx.vault_dir, ctx.today()),),
+            ),
         )
-        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "任务编辑镜像")
-        return {"ok": True, "message": f"任务已更新{git_note}", "task_id": guid}
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"任务已更新{git_note}",
+            "task_id": guid,
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/meetings/update")
     def api_meeting_update(payload: MeetingEditPayload) -> dict[str, object]:
@@ -1030,17 +1129,31 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
         display_start = start_at[11:16] if start_at else None
-        mark_meeting_edited(
+        result = run_local_mutation(
             ctx.vault_dir,
-            ctx.today(),
-            event_id,
-            summary=summary,
-            start_time=display_start,
-            start_ts=local_iso_to_epoch_seconds(start_at, ctx.timezone) if start_at else None,
-            end_ts=local_iso_to_epoch_seconds(end_at, ctx.timezone) if end_at else None,
+            "meetings/update",
+            lambda _operation_id: LocalMutationOutcome(
+                mark_meeting_edited(
+                    ctx.vault_dir,
+                    ctx.today(),
+                    event_id,
+                    summary=summary,
+                    start_time=display_start,
+                    start_ts=local_iso_to_epoch_seconds(start_at, ctx.timezone)
+                    if start_at
+                    else None,
+                    end_ts=local_iso_to_epoch_seconds(end_at, ctx.timezone) if end_at else None,
+                ),
+                (snapshot_path(ctx.vault_dir, ctx.today()),),
+            ),
         )
-        git_note = _commit_suffix(ctx, [snapshot_path(ctx.vault_dir, ctx.today())], "会议编辑镜像")
-        return {"ok": True, "message": f"会议已更新{git_note}", "event_id": event_id}
+        git_note = _commit_note(result.commit_result)
+        return {
+            "ok": True,
+            "message": f"会议已更新{git_note}",
+            "event_id": event_id,
+            **_mutation_fields(result),
+        }
 
     @app.post("/api/run/brief")
     def api_run_brief() -> dict[str, object]:

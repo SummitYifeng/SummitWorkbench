@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import cast
 
 import httpx
 from pydantic import SecretStr
@@ -24,12 +25,23 @@ from summit_workbench.domain.pipeline import (
     SourceKind,
     local_idempotency_key,
 )
+from summit_workbench.domain.review import ReviewEntry
 from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.config import ModelConfig
+from summit_workbench.repositories.meeting_archive import slugify, transcript_stem
 from summit_workbench.repositories.meeting_state import latest_task
-from summit_workbench.repositories.review_page import refresh_review_page
+from summit_workbench.repositories.review_page import (
+    RefreshOutcome,
+    refresh_review_page,
+    review_path,
+)
 from summit_workbench.repositories.vault import load_note
-from summit_workbench.workflows.meetings.archive import DiscoveredMeeting, archive_meeting
+from summit_workbench.workflows.local_mutation import LocalMutationOutcome, LocalMutationResult
+from summit_workbench.workflows.meetings.archive import (
+    ArchiveReport,
+    DiscoveredMeeting,
+    archive_meeting,
+)
 from summit_workbench.workflows.meetings.process_archived import process_archived_transcript
 from summit_workbench.workflows.meetings.processor import estimate_tokens
 from summit_workbench.workflows.meetings.review_candidates import candidates_from_note
@@ -72,6 +84,19 @@ class BackfillRunReport:
     skipped: int
     failed: int
     candidates: int
+    operation_ids: tuple[str, ...] = ()
+
+
+def _run_local[T](
+    vault_dir: Path,
+    action: str,
+    mutation: Callable[[str], LocalMutationOutcome[T]],
+    runner: Callable[..., object] | None,
+) -> tuple[T, str | None]:
+    if runner is None:
+        return mutation("").business_return, None
+    typed = cast(LocalMutationResult[T], runner(vault_dir, action, mutation))
+    return typed.business_return, typed.operation_id
 
 
 def _derive_date(meta: dict[str, object], path: Path) -> str | None:
@@ -204,9 +229,11 @@ def run_backfill(
     now: datetime | None = None,
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] | None = None,
+    local_mutation: Callable[..., object] | None = None,
 ) -> BackfillRunReport:
     """逐场补导；已完成的跳过（可续跑）。默认只沉淀知识，不生成行动候选。"""
     results: list[BackfillItemResult] = []
+    operation_ids: list[str] = []
     processed = skipped = failed = candidates_total = 0
     for item in items:
         if item.done:
@@ -219,7 +246,31 @@ def run_backfill(
         def _fetch(_meeting: DiscoveredMeeting, _text: str = text) -> str:
             return _text
 
-        archived = archive_meeting(vault_dir, meeting, _fetch, now=now)
+        def save_archive(
+            _operation_id: str,
+            archive_meeting_item: DiscoveredMeeting = meeting,
+            archive_item: BackfillItem = item,
+            archive_fetch: Callable[[DiscoveredMeeting], str] = _fetch,
+        ) -> LocalMutationOutcome[ArchiveReport]:
+            return LocalMutationOutcome(
+                archive_meeting(vault_dir, archive_meeting_item, archive_fetch, now=now),
+                (
+                    vault_dir / "_signals" / "meeting-state" / "log.jsonl",
+                    vault_dir
+                    / "meetings"
+                    / "transcripts"
+                    / f"{transcript_stem(archive_item.date, slugify(archive_item.title))}.md",
+                ),
+            )
+
+        archived, operation_id = _run_local(
+            vault_dir,
+            "meetings/archive",
+            save_archive,
+            local_mutation,
+        )
+        if operation_id is not None:
+            operation_ids.append(operation_id)
         if archived.path is None:
             failed += 1
             results.append(BackfillItemResult(item, "failed", reason="归档未产生逐字稿"))
@@ -235,7 +286,10 @@ def run_backfill(
             client=client,
             sleep=sleep,
             now=now,
+            local_mutation=local_mutation,  # type: ignore[arg-type]
         )
+        if report.operation_id is not None:
+            operation_ids.append(report.operation_id)
         if report.action == "failed":
             failed += 1
             results.append(BackfillItemResult(item, "failed", reason=report.reason))
@@ -244,7 +298,22 @@ def run_backfill(
         if include_actions and report.note_path is not None:
             entries = candidates_from_note(report.note_path, vault_dir, historical=True)
             if entries:
-                refresh_review_page(vault_dir, entries)
+
+                def save_review(
+                    _operation_id: str, review_entries: list[ReviewEntry] = entries
+                ) -> LocalMutationOutcome[RefreshOutcome]:
+                    return LocalMutationOutcome(
+                        refresh_review_page(vault_dir, review_entries), (review_path(vault_dir),)
+                    )
+
+                _refresh, operation_id = _run_local(
+                    vault_dir,
+                    "meetings/review",
+                    save_review,
+                    local_mutation,
+                )
+                if operation_id is not None:
+                    operation_ids.append(operation_id)
                 count = len(entries)
         candidates_total += count
         if report.action == "skipped-existing":
@@ -260,4 +329,5 @@ def run_backfill(
         skipped=skipped,
         failed=failed,
         candidates=candidates_total,
+        operation_ids=tuple(operation_ids),
     )

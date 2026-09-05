@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -184,7 +184,7 @@ account = git:<host>:<username>
 | 顺序 | 工作包 | 优先级 | 依赖 | 复杂度 | 状态 |
 |---:|---|---|---|---|---|
 | 1 | P0-01 Git 自动提交与撤销信任边界 | P0 | 无 | M | [x] |
-| 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [ ] |
+| 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [x] |
 | 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [ ] |
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [ ] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [ ] |
@@ -1109,6 +1109,16 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（528 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（本工作包使用临时 Git 仓库离线验证，无 Apple Developer 证书、第二台 Mac 或真实远端门）
 - 遗留：无；P0-02 及后续工作包未开始。
+
+### 2026-09-05 · P0-02
+
+- 状态：完成
+- Git commit：未提交
+- 变更摘要：新增本地 mutation 单一编排器，在工作区锁内串行完成本地写入、路径收集与 `wb: <action> [<operation_id>]` 自动提交；迁移 capture、线程日志/产物/状态、项目创建/激活/归档/改名、任务/会议本地镜像，以及会议导入的原文归档、结构化收尾和审批页刷新阶段；网络、LLM 与飞书调用均位于锁外；API 返回 operation id、操作列表及可见 Git 提交状态。
+- 目标测试：`uv run pytest tests/unit/test_local_mutation.py tests/unit/test_backfill_workflow.py tests/unit/test_process_archived_workflow.py tests/unit/test_webapi.py`（56 passed）
+- 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（535 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（本工作包使用临时目录/临时 Git 仓库和 fake/MockTransport 离线验证，无真实飞书、模型、Keychain、工作目录或第二台 Mac）
+- 遗留：无；P0-03 及后续工作包未开始。
 
 ## 16. 外部实现依据
 
