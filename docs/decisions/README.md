@@ -33,9 +33,9 @@
 | [0026](0026-knowledge-thread-projects.md) | v0.4.0 知识线程项目 | 业务线程 = vault 一等公民（P0–P3）：线程无 Work 文件夹建档入工作台、审批「跟进事项」落点 + 线程 inbox、✎ 日志/存产物（本地文件导入/拖放/一键转当前状态）、线视图（档案区块 + 时间线）、线程信号进简报 + >14 天停滞进周复盘点名、显示名（frontmatter title）、updated 归一 |
 | [0027](0027-write-path-hardening-undo-activity.md) | v0.4.1 维护加固 | 写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复（P0/P0'/P1）：全库 RMW 加工作区锁与原子写、apply 乐观合并、幂等账本容错读、线程序号防撞；autocommit（wb: 提交）+ /api/undo/* 一键还原（只作用 vault 文件）；updated=实质更新 / activity_at=活动痕迹拆分（>14 天停滞点名不再被机器活动刷失明）|
 | [0028](0028-external-action-outbox.md) | v0.4.1 加固 P0-04 | 飞书外部动作 Outbox 与不确定态：prepared/sending/succeeded/failed/unknown/reconciled 状态机、请求指纹、unknown 禁止自动重试、人工核对 |
-| [0029](0029-workspace-profile-device.md) | v0.4.1 加固 P0-07 | Workspace/Profile/Device 领域与存储：manifest 随 vault 同步（UUID v4）、本机 profile registry/device.json（0600/0700、原子写）、active workspace 解析三态（active/env-compat/onboarding-required）、schema 版本兼容门、凭据 workspace 作用域（service=com.summitworkbench.credentials.<id>）|
-| [0031](0031-multi-device-sync.md) | v0.4.1 加固 P0-10 | 多设备同步协调器与自动化主设备规则：十态状态机（offline/diverged/dirty/auth 明确区分）、sync-state.json 持久化、workspace 锁内 fetch-ff-push（绝不 force）、automation 角色门（secondary→not-primary）、mutation guard、/api/sync/status+run 与 SPA banner |
-| [0030](0030-packaged-git-backend.md) | v0.4.1 加固 P0-09 | 可打包 Git 后端：GitBackend Protocol + conformance suite，system（subprocess，开发默认）↔ dulwich（纯 Python，生产、PATH 为空可跑），typed errors（non-ff/conflict/auth/TLS/remote-missing/invalid-revision）；git 凭据 workspace-scoped Keychain、绝不进 URL/日志/repr；author=profile 显示名+user_email（缺省 wb@local）|
+| [0029](0029-workspace-profile-device.md) | v0.4.1 加固 P0-07 / P0-07C | 🟡 部分完成：Workspace/Profile/Device 基础领域与存储已落地；production active-profile 接线等待 P0-07C |
+| [0030](0030-packaged-git-backend.md) | v0.4.1 加固 P0-09 / P0-09C | 🟡 部分完成：双 Git backend 与凭据模型已落地；HTTPS transport、remote clone、production 接线等待 P0-09C |
+| [0031](0031-multi-device-sync.md) | v0.4.1 加固 P0-10 / P0-10C | 🟡 部分完成：十态同步基础已落地；production 持久化、全写边界与主设备声明等待 P0-10C |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

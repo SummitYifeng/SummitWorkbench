@@ -1,16 +1,16 @@
 # SummitWorkbench 多设备与可分发产品化开发计划
 
-> 版本：1.0
+> 版本：1.1
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01 至 P0-10 已完成，其余工作包尚未开始
+> 状态：可执行；P0-01 至 P0-06、P0-08 已完成，P0-07/P0-09/P0-10 部分完成；下一工作包为 P0-07C
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
 > 目标执行模型：Codex `gpt-5.6-luna`；每个新任务只实施一个工作包
 >
-> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0028
+> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0031
 
 ## 0. 这份计划怎么用
 
@@ -34,6 +34,7 @@
 8. 完成目标测试和全量质量门后，才能把工作包状态由 `[ ]` 改成 `[x]`，并在第 15 节实施记录中追加证据。
 9. 缺少 Apple Developer 证书、第二台 Mac、真实私有远端或飞书测试账号时，完成可离线验证部分，但不得把真机门标为通过。
 10. 交付回复固定包含：完成范围、用户可见变化、主要文件、测试结果、尚未验证项、下一工作包；不要只回复“完成”。
+11. 工作包状态按原始实现要求、测试矩阵与验收逐项判定，不按“已有提交”或“测试全绿”自动判定完成；任一必需契约未接入生产路径时只能标为 `[~]`。
 
 ### 0.2 每包完成后的通用质量门
 
@@ -61,6 +62,21 @@ uv run pytest -m integration
 ```
 
 只有发布工作包可以使用签名、notarization 和安装命令。普通代码包只做 ad-hoc 构建验证。
+
+### 0.3 状态标记与 2026-09-05 基线复核
+
+- `[x]`：实现要求与可离线验证的测试矩阵全部完成；真机门若受外部条件限制，必须在实施记录中明确写“未验证”。
+- `[~]`：已有可用实现和测试，但至少一项原始生产契约、生产接线或验收仍未完成。
+- `[ ]`：尚未开始，或只有不足以构成工作包交付的零散准备。
+
+对基线 `bf734d8` 的复核结论如下；本结论覆盖第 15 节早期实施记录中的旧“完成”判定，但不改写历史提交事实：
+
+1. 仓库为 `main = origin/main = bf734d8`，复核前工作树干净；提交 `70dfae6..bf734d8` 线性存在。
+2. 当前全量质量门通过：ruff、format、mypy（240 files）、pytest（677 passed，1 skipped）以及前端 build/verify-build。测试全绿证明现有行为稳定，不等于未覆盖的产品契约已经完成。
+3. P0-06 与 P0-08 保持 `[x]`。P0-07 改为 `[~]`：领域模型、Application Support 与 profile registry 已落地，但 production Web/server/doctor/provider 仍未统一以 active profile 为权威上下文。
+4. P0-09 改为 `[~]`：双 backend、typed error 与凭据模型已落地，但 Dulwich 的 clone/fetch/push 尚未接入 workspace-scoped HTTPS 凭据，打包入口也未固定使用生产 backend。
+5. P0-10 改为 `[~]`：状态机、基础协调器、API 与 banner 已落地，但 active-profile 状态持久化、准确 pending 计数与 last-success 保留、全部共享 vault 写入口保护/提交后推送、完整 UI 字段、remote clone 与主设备唯一声明尚未闭环。
+6. 不把上述缺口塞进一个超大的 P0-11。先执行 P0-07C → P0-09C → P0-10C，再执行 P0-11A → P0-12 → P0-11B。
 
 ## 1. 已确认的现状与主要缺口
 
@@ -189,23 +205,27 @@ account = git:<host>:<username>
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
-| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
+| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [~] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
-| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [x] |
-| 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [ ] |
-| 11 | P0-11 首次使用向导与设置中心 | P0 | P0-04、P0-08、P0-10 | L | [ ] |
-| 12 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07 | L | [ ] |
-| 13 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11、P0-12 | L | [ ] |
-| 14 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10、P0-13 | L | [ ] |
-| 15 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07 | M | [ ] |
-| 16 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
-| 17 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
-| 18 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07、P1-03 | M | [ ] |
-| 19 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
-| 20 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
-| 21 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
-| 22 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
-| 23 | P2-03 组织级 OAuth Broker（可选） | P2 | 明确扩展产品边界 | XL | [ ] |
+| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [~] |
+| 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [~] |
+| 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [ ] |
+| 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [ ] |
+| 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [ ] |
+| 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [ ] |
+| 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [ ] |
+| 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [ ] |
+| 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [ ] |
+| 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [ ] |
+| 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
+| 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
+| 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
+| 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [ ] |
+| 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
+| 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
+| 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
+| 26 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
+| 27 | P2-03 组织级 OAuth Broker（可选） | P2 | 明确扩展产品边界 | XL | [ ] |
 
 复杂度说明：S 为单一小改动，M 为一个清晰模块，L 需要跨 Python/前端/原生中的两个层，XL 必须再拆成子包。
 
@@ -213,7 +233,7 @@ account = git:<host>:<username>
 
 以下条件全部满足后，才可以把 App 发给同事：
 
-- P0-01 至 P0-13 全部通过；不得跳过数据安全包直接打发布包。
+- 表中全部 P0 工作包（含 P0-07C/P0-09C/P0-10C、P0-11A/P0-11B）通过；不得跳过收口包直接打发布包。
 - 在干净 macOS 用户账户中，拖入 `/Applications` 后首次启动不需要仓库源码、Python、Node、`uv` 或 `wb` 命令。
 - Gatekeeper 验证通过；App 已 Developer ID 签名、notarized、stapled。
 - 同事可只通过图形界面创建自己的新工作区，完成一条 capture，重启后数据仍在。
@@ -516,6 +536,8 @@ P0-08 追加（onboarding 服务 API，无 UI；create/upgrade/connect 均为全
 
 **验收**：核心业务获得路径必须经 active profile/`WorkspacePaths`；固定 home 路径只剩兼容迁移代码和测试。
 
+**复核状态（`bf734d8`）**：`[~]`。模型、registry、Application Support 和解析器已完成；生产 `server_entry`/`wb web`、doctor/status、provider 配置与凭据仍存在旧 settings/默认路径入口，交由 P0-07C 收口。历史提交 `6076a01` 保留，不把已有实现推倒重写。
+
 ### P0-08 · 新建、升级与连接工作区服务
 
 **目的**：让新同事无需终端即可得到自己的知识库，让当前使用者可把旧 vault 升级为带身份的工作区。
@@ -592,6 +614,8 @@ P0-08 追加（onboarding 服务 API，无 UI；create/upgrade/connect 均为全
 
 **验收**：clean account 使用打包 App 能操作本地/HTTPS Git，不触发 CLT 安装弹窗。
 
+**复核状态（`bf734d8`）**：`[~]`。双 backend 与本地 bare-remote conformance 已完成；workspace-scoped 凭据尚未进入 Dulwich remote transport，production backend 仍依赖环境变量选择，clone staging/marker 确认与 packaged CA smoke 尚未完成，交由 P0-09C 收口。
+
 ### P0-10 · 多设备同步协调器与自动化主设备规则
 
 **目的**：将当前“手动 work-sync”升级为每个 workspace 可观察、非破坏的同步状态机。
@@ -643,9 +667,90 @@ error
 
 **验收**：所有 Git 分支路径最终都落在状态机中的一个可解释状态；代码中无 force/rebase/stash/reset。
 
-### P0-11 · 首次使用向导与设置中心
+**复核状态（`bf734d8`）**：`[~]`。十态模型、基础 fetch/ff/push、API 与最小 banner 已完成；生产调用未携带 active profile/home，pending 仅是 0/1 而非真实累计，失败同步可能覆盖持久状态，写前保护与提交后 push 未统一接入所有本地 mutation，状态字段与 remote clone/主设备唯一声明不完整，交由 P0-10C 收口。
 
-**目的**：不懂终端的同事可以完成安装和自己的工作台配置；当前使用者可以连接 Air。
+### P0-07C · Active Profile 生产运行时收口
+
+**目的**：让 P0-07 的 profile 不再只是旁路存储，而成为 production 所有路径、兼容性和 provider 作用域的唯一运行时上下文。
+
+**必读文件**：P0-07/P0-08 全节与实施记录、ADR 0029、`config/profiles.py`、`config/settings.py`、`repositories/profile_registry.py`、`cli/web.py`、`webapp/server_entry.py`、`webapp/app.py::WebContext`、`cli/doctor.py`、provider 配置与 secrets 模块。
+
+**实现要求**：
+
+1. production 入口必须调用 `resolve_workspace(allow_env_fallback=False)`；有 active profile 时只从其 `WorkspacePaths` 构建运行上下文，不能再回落到默认 `~/Documents/Work` 或普通 `WORK_ROOT`。
+2. onboarding-required 时启动只含版本、onboarding 与脱敏诊断能力的受限控制面；不得先构造旧默认 vault，不得让主界面读取或创建默认目录。development/测试兼容入口必须显式声明允许 env fallback。
+3. 建立单一 `ActiveWorkspaceContext`（或等价对象），至少携带 profile、workspace/device id、compatibility、paths、Application Support home；Web、doctor、sync 和 provider 只消费该上下文，不在调用点重新解析全局配置。
+4. `read-only-upgrade-required` 与 `cannot-open` 在后端统一门控：前者允许浏览/导出/诊断但拒绝所有共享 vault 写，后者只展示升级提示；前端不得靠中文字符串决定权限。
+5. 飞书、模型和 Git 的运行时配置/凭据引用必须以 workspace id 为作用域；旧全局凭据只允许显式迁移，不得静默回退。doctor 提取可复用领域检查，不再绑定 CLI 输出。
+6. `LocalProfile` 的未知字段在读写往返中不得丢失；如果 TOML writer 不能安全保留，必须以版本迁移或明确拒绝替代静默丢字段。
+
+**测试矩阵**：
+
+- 两个临时 Home、两个 profile 交替启动，Web/API/doctor/provider 全部只读取当前 active workspace；旧 workspace 的路径、缓存与凭据引用不出现。
+- 空安装 production 启动只进入 onboarding-required，监控证明未访问/创建模拟 `~/Documents/Work`。
+- env fallback 只在显式 development/test 模式有效；production 即使设置 `WORK_ROOT` 也不采用。
+- read-write/read-only/cannot-open 三态覆盖所有写中间层；只读态仍能浏览和导出。
+- 带未知 profile 字段读写一次后字段仍保留，或得到稳定的版本不兼容错误。
+
+**验收**：production 核心路径不再直接调用旧 `load_settings().work_paths()` 获取 workspace；active profile 是唯一路径与 workspace/provider 作用域来源。完成后同步更新 ADR 0029，并把 P0-07 改为 `[x]`。
+
+### P0-09C · 私有 HTTPS Git 与 remote clone 收口
+
+**目的**：把“Dulwich 能在临时 bare repo 工作”推进到“打包生产路径可安全使用 workspace-scoped 私有 HTTPS remote”。
+
+**必读文件**：P0-09/P0-10 原始要求与实施记录、ADR 0030、全部 Git backend/credentials 文件、onboarding service、打包 spec/build 脚本和 packaged smoke。
+
+**实现要求**：
+
+1. backend 通过显式运行时依赖注入选择：packaged/production 固定 Dulwich，development 可显式选 system；不得依赖可能跨测试泄漏的进程全局环境变量决定单次业务调用。
+2. 为 clone/fetch/push 建立统一 HTTPS transport/credential callback，从 `workspace_id + host + username` 读取 Keychain；密码不得进入 remote URL、磁盘、异常、日志、进程参数或持久对象 repr。
+3. 新增 remote onboarding 服务：校验仅支持 `https://` 与无 userinfo URL；clone 到目标同文件系统 staging；读取 marker、检查 compatibility 与预期 workspace id；用户确认后原子移动并创建 secondary profile。失败/取消只清理本次 staging。
+4. remote 无 marker 时不得创建或猜测 workspace id；返回稳定错误并提示在原设备显式升级。目标已存在、认证失败、TLS 失败、remote missing、分支异常分别返回稳定错误码。
+5. 本地新工作区若启用 Git，只能通过注入的 production backend init/add/commit；作者身份来自 profile，缺省邮箱明确为 `wb@local`。
+6. packaged server smoke 必须导入 Dulwich HTTP transport 与 CA 资源，并证明 PATH 为空不会调用系统 Git。真实 GitHub/GitLab/代理/证书测试仍按 §0.1-9 记录为 P0-13 真机门，不得伪造通过。
+
+**测试矩阵**：
+
+- fake/注入式 HTTPS transport 覆盖正确凭据、错误凭据、TLS、超时、remote missing；canary secret 不出现在 URL、日志、异常和快照。
+- clone staging 成功确认、取消、marker 缺失、schema too new、目标冲突和中途异常；失败后用户目录与 registry 字节级不变。
+- 两个 workspace 对同 host/user 使用不同凭据，调用记录不串用。
+- packaged smoke 在 PATH 为空时完成 import、本地 init/commit，并验证 CA bundle 可发现。
+
+**验收**：remote clone 服务与 Dulwich HTTPS 凭据链路可被 P0-11A 直接调用；production 路径不调用系统 Git。完成后同步更新 ADR 0030，并把 P0-09 改为 `[x]`；真实远端/clean-account 证据继续留在 P0-13 真机矩阵。
+
+### P0-10C · 同步状态、写边界与主设备声明收口
+
+**目的**：把现有同步原型接入真实 active profile 与全部本地写事务，使状态可恢复、计数可信、保护态不可绕过。
+
+**必读文件**：P0-02/P0-10 全节与实施记录、ADR 0031、`workflows/local_mutation.py`、同步 domain/coordinator/state repo、全部 Web 写路由分类、前端 sync banner、profile/device 模型。
+
+**实现要求**：
+
+1. coordinator 只接受 P0-07C 的 active context/显式 backend；所有持久状态必须落到当前 profile 的 `sync-state.json`，API 不得省略 home 后退化成无持久化模式。
+2. `pending_commits` 必须由实际未推送 wb commits/ahead 结果计算或可靠累计；重复离线写会递增。失败同步保留原 `last_sync_at`，只有成功完成全部目标仓库的 fetch/ff/push 才更新成功时间并清零已确认推送的 pending。
+3. 启动、回到前台、手动同步和共享 vault 写入前复用同一个轻量 preflight；不得在每个端点复制判断。跨进程与同进程并发同步合并为一次实际序列，并向其余调用者返回同一结果或明确 busy/syncing 状态。
+4. 在 `run_local_mutation`（或等价单一事务边界）统一接入 compatibility/sync mutation guard 与 commit 后 push；覆盖 P0-02 已列全部共享 vault 写路径，不只 `/api/capture`。外部网络调用仍不得放进 workspace 文件锁。
+5. 状态快照必须填充并正确恢复 state、last success、pending、ahead、behind、branch、remote host、逐仓库状态和 next step；状态 API 只展示脱敏 host，不展示 URL userinfo/token。
+6. dirty 区分 wb 管理路径与用户手工修改；只有无法安全 ff/写入时进入保护态，不自动 stash/rebase/reset。diverged/dirty/read-only 时允许浏览、问答、诊断与“导出本机副本”，拒绝所有共享 vault 修改。
+7. 新增同步的主设备声明（建议 `.summit-workbench/automation-primary.json` 或 ADR 0031 选定的等价契约）：权威值为一个 device id；更换必须显式确认、比较当前 generation 并提交同步，旧心跳不得自动抢主。`LocalProfile.device_role` 不得单独宣称全局唯一。
+8. banner/详情面板展示原计划第 9 项全部字段和明确下一步；提供手动重试与导出本机副本，不提供 force/覆盖远端按钮。
+
+**测试矩阵**：
+
+- 离线连续三次 mutation 后 pending=3，重启仍为 3；联网成功 push 后清零且保留/更新正确 last success。
+- 表中所有共享 vault 写 API 在 diverged、dirty 与 read-only 下统一拒绝，问答/浏览/诊断/导出仍通过。
+- 同进程三连点击与两个进程并发各只发生一次 fetch/ff/push，结果状态一致。
+- A/B 双 Home 场景覆盖 ff、local ahead、remote ahead、offline、auth、TLS、dirty、diverged；所有分支落入十态之一且不丢文件。
+- A 显式成为 primary，B 默认 secondary；B 未确认不能覆盖声明，显式 takeover 生成更高 generation，旧心跳不反抢。
+- API/DOM 展示完整字段且 secret canary 不出现。
+
+**验收**：原 P0-10 的 10 项实现要求和 6 个测试场景均有代码接线与证据；完成后同步更新 ADR 0031，并把 P0-10 改为 `[x]`。
+
+### P0-11A · 可恢复首次使用向导
+
+**目的**：不懂终端的同事可以完成自己的工作台配置；当前使用者可以通过私有 HTTPS remote 连接 Air。本包只做首次向导，已配置用户的设置中心与 profile 切换留给 P0-11B。
+
+**必读文件**：P0-08/P0-09C/P0-10C 及其测试、前端 `main.ts` 与 `lifecycle/*`、Web onboarding API、模板目录、provider 配置/凭据服务。只允许新增边界清晰的 `web/src/onboarding/*`，不得借机实施 P1-04 全前端重构。
 
 **页面流程**：
 
@@ -660,25 +765,26 @@ error
 **实现要求**：
 
 1. 向导是可恢复状态机；每一步保存非秘密进度，关闭 App 后从安全步骤继续。
-2. UI 不直接写文件/Keychain；只调用 onboarding service API。
-3. 每一步支持后退；对已创建的远端/Keychain 外部状态不假装可回滚，需解释。
-4. 所有 secret 输入默认遮挡，不回显，不保存在前端 store/localStorage，不进入 network log。
-5. 已配置用户启动直接进入主界面；设置中心可查看/切换多个 profile，但一次只激活一个。
-6. 切换 profile 时先停止旧服务任务、清空前端缓存/草稿作用域、重新加载 active context，防止跨 workspace 展示。
-7. GUI doctor 使用现有 `wb doctor` 领域检查，不从前端再实现一套规则。
-8. “重置本机配置”只删除选中的 local profile，默认不删除 vault、不删 remote、不删 Keychain；危险项单独确认并列出精确目标。
-9. 所有文案避免暴露技术细节，但错误详情允许复制脱敏诊断。
+2. 非秘密草稿持久化在本机 Application Support 的 installation-level onboarding draft 中，原子写且 mode 0600；没有 workspace 前不得伪造 workspace id。完成或显式取消后清理草稿。
+3. UI 不直接写文件/Keychain；只调用 onboarding/provider service API。secret 只在用户提交当前步骤时进入一次请求，由后端立即写入 workspace-scoped Keychain。
+4. 每一步支持后退；对已创建的远端/Keychain 外部状态不假装可回滚，需解释并显示精确的本机清理范围。
+5. 所有 secret 输入默认遮挡，不回显，不保存到前端 store、sessionStorage/localStorage、onboarding draft、日志、错误详情或网络调试快照。
+6. 空安装只渲染向导；已配置用户启动直接进入主界面。连接 remote 必须调用 P0-09C 的 staging/confirm 服务，不能在前端拼 Git 操作。
+7. 模型“测试连接”和飞书登录都是显式可跳过步骤；测试结果只持久化非敏感状态。跳过全部 provider/Git 后仍能完成本地 capture。
+8. 连接已有 workspace 时默认 secondary；选择 automation-primary 必须调用 P0-10C 的显式主设备声明流程并展示接管影响。
+9. 最终检查必须来自后端 active context/doctor/sync 领域结果，显示路径、workspace/device 短码、兼容性、同步、凭据是否就绪和自动化角色；不由前端重复推导规则。
+10. 所有文案避免暴露技术细节，但错误详情允许复制脱敏诊断；稳定错误码驱动页面状态。
 
 **测试矩阵**：
 
 - 空安装完整新建流程；跳过 Git/Feishu/model 后仍可本地 capture。
 - 关闭重开后继续向导。
-- 连接已有 workspace 默认 secondary。
-- profile A/B 切换后 API、draft、缓存、Keychain 引用完全隔离。
-- secret 不出现在 DOM 持久化、日志和错误快照。
-- Playwright 或现有前端测试覆盖成功、路径冲突、remote auth、schema too new。
+- 新建、升级本地旧 vault、remote clone 三条人物旅程；连接已有 workspace 默认 secondary。
+- secret canary 不出现在 DOM 持久化、Application Support 草稿、日志、错误和网络快照。
+- 引入最小 Playwright 浏览器门，覆盖成功、后退/恢复、路径冲突、remote auth、marker 缺失、schema too new；不以只测 TypeScript helper 代替真实页面旅程。
+- 向导重复提交、关闭重开与后端成功但前端丢响应均保持幂等，不重复创建 workspace/profile/Keychain 状态。
 
-**验收**：在临时 Home、无终端操作的条件下完成两种人物旅程：同事新建独立 workspace；Air 连接现有 workspace。
+**验收**：在临时 Home、无终端操作的条件下完成两种核心人物旅程：同事新建独立 workspace 并 capture；Air 从私有 HTTPS remote 连接现有 workspace 并默认为 secondary。P0-11 总包仍保持未完成，直至 P0-11B 通过。
 
 ### P0-12 · 动态端口、会话认证与原生生命周期
 
@@ -709,6 +815,33 @@ error
 - native/server/frontend build 不兼容时显示可恢复错误，不无限重连。
 
 **验收**：production 包不再依赖固定端口；任意写 API 都要求当前实例会话。
+
+### P0-11B · 设置中心与安全 profile 切换
+
+**目的**：在 P0-12 已具备受控子服务生命周期后，为已配置用户提供多 profile 管理、provider 设置、doctor 与不会串 workspace 的切换流程。
+
+**必读文件**：P0-07C/P0-10C/P0-11A/P0-12 全节与测试、profile registry、active context、provider 配置/凭据服务、doctor 领域检查、前端 drafts/connection/native bridge、原生进程管理。
+
+**实现要求**：
+
+1. 设置中心列出 profile 显示名、workspace 短码、本机路径、兼容性、设备角色、同步摘要和 provider 就绪状态；一次只允许一个 active profile。
+2. 切换使用后端 prepare/commit 协议：先验证目标 profile 与 compatibility，阻止新 mutation，等待在途 mutation 有界结束，原生壳停止旧子服务，再以目标 profile 启动并完成 workspace/session 握手；任一步失败回到旧 profile 或显示明确可恢复错误。
+3. 前端缓存、草稿、轮询和请求必须按 workspace id 作用域。切换时清除旧作用域的内存状态与无命名空间的旧草稿；任何旧响应到达后不得写入新 workspace 页面。
+4. 模型、飞书与 Git 设置只调用后端服务；secret 更新同 P0-11A，一次请求后进入 workspace-scoped Keychain，不回显。切换后不得读取前一个 profile 的凭据引用。
+5. GUI doctor 复用 P0-07C 提取的领域检查，默认离线、无副作用；在线检查必须由用户显式触发并说明可能发生的 token 轮换/网络访问。
+6. “移除此 Mac 上的工作台”默认只删除选中的 local profile/runtime/draft，不删除 vault、不改 remote、不删 Keychain；执行前列出精确目标。删除 vault、远端或凭据不纳入默认操作，危险清理必须另行显式确认与测试。
+7. 修改 automation-primary 必须走 P0-10C 的显式声明/takeover，不得只改本机 `LocalProfile.device_role`。
+8. 使用稳定错误码和脱敏诊断；UI 不显示完整 workspace/device id、secret、带 userinfo 的 remote 或其它 profile 的绝对路径。
+
+**测试矩阵**：
+
+- profile A/B 往返切换后，API workspace id、页面数据、session token、draft、轮询、Keychain 引用完全隔离；模拟 A 的迟到响应不能污染 B。
+- 切换时存在 mutation、目标 schema too new、子服务启动失败、握手失败和旧服务退出超时，均得到确定状态且不同时运行两个 writer。
+- 移除非 active/active profile 的默认操作只影响本机允许列表；vault、remote、Keychain 字节级/调用级不变。
+- doctor 离线检查无网络/写入；显式在线检查走 fake/MockTransport 且 secret 不泄漏。
+- Playwright + native contract 覆盖设置查看、切换、失败回滚、移除与重新连接。
+
+**验收**：两个 profile 连续切换与重启不发生跨 workspace 展示或写入；默认移除操作不删除用户数据。通过后将 P0-11A/P0-11B 均标 `[x]`，P0-11 总目标才视为完成。
 
 ### P0-13 · Developer ID 签名、notarization 与 DMG
 
@@ -1049,8 +1182,8 @@ _vault/_views/...                         # 可重建投影
 
 ### 10.1 版本建议
 
-- `0.5.0-alpha.*`：P0-01 至 P0-10，仅开发者双设备测试。
-- `0.5.0-beta.*`：P0-11 至 P0-13，邀请同事 clean-account 试用。
+- `0.5.0-alpha.*`：完成 P0-07C/P0-09C/P0-10C 后，仅开发者双设备测试。
+- `0.5.0-beta.*`：完成 P0-11A、P0-12、P0-11B、P0-13 后，邀请同事 clean-account 试用。
 - `0.5.0`：P0 发布门通过。
 - `0.6.0`：P1 自动化、迁移、诊断、CI、更新完成。
 - `0.7.0` 或更高：P2 event store；因持久化模型变化，不混入普通 patch。
@@ -1067,14 +1200,15 @@ _vault/_views/...                         # 可重建投影
 
 | 风险 | 早期信号 | 缓解 | 决策门 |
 |---|---|---|---|
-| Dulwich 与现有 Git 语义不完全一致 | conformance/revert/TLS 失败 | P0-09 time-box spike；改用 libgit2 或明确系统 Git 前置 | P0-09 |
+| Dulwich 与现有 Git 语义不完全一致 | conformance/revert/TLS 失败 | P0-09C time-box；改用 libgit2 或明确系统 Git 前置 | P0-09C |
 | 两台 Mac 离线修改旧 RMW 热点 | non-ff push | P0 保护态；P2 event store 根治 | P0-10/P2-01 |
 | 飞书日历无可靠幂等键 | timeout 后无法判断 | unknown 状态 + 核对，禁止自动重试 | P0-04 |
 | PyInstaller universal2 依赖不全 | lipo/启动验证失败 | 首发按架构分别发布 | P0-13 |
-| Keychain 迁移串 workspace | 相同 app id 读到旧 token | workspace-scoped service + 显式一次性迁移 | P0-07 |
+| Keychain 迁移串 workspace | 相同 app id 读到旧 token | workspace-scoped service + 显式一次性迁移 | P0-07C/P0-11B |
 | helper 签名或路径在升级后失效 | 定时任务不再运行 | SMAppService 状态 UI + 版本握手 | P1-01 |
 | 大文件/日志撑满磁盘 | App 变慢、写失败 | 输入上限、日志轮换、容量诊断 | P0-05/P1-05 |
-| schema 在双设备版本错位时被旧版写坏 | Air 旧版仍能写 | min reader/writer gate，先升级再写 | P0-07/P1-02 |
+| schema 在双设备版本错位时被旧版写坏 | Air 旧版仍能写 | min reader/writer gate，先升级再写 | P0-07C/P1-02 |
+| profile 切换时旧请求污染新工作区 | 切换后出现旧数据或写错 vault | P0-12 受控重启 + P0-11B workspace 作用域缓存/请求代际 | P0-11B |
 | Luna 跨包重构造成回归 | diff 过大、验收不聚焦 | 一任务一包、测试先行、明确停止条件 | 全程 |
 
 ## 12. ADR 交付要求
@@ -1092,6 +1226,8 @@ _vault/_views/...                         # 可重建投影
 | 0034 | P2-01 | event schema、投影、双写迁移与回滚 |
 
 ADR 必须记录最终实现与验证证据，不得只复制本计划。
+
+P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入最终生产接线、被否决方案与新增验证证据。旧 ADR 的“已实现”摘要若与复核结论冲突，必须同步改为“部分完成”，直至对应收口包通过。
 
 ## 13. Luna 单包交付模板
 
@@ -1114,6 +1250,9 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 命令：结果
 - 新增测试：数量与覆盖场景
 
+原始验收逐项对照：
+- 要求/测试 N：完成（文件/测试证据）或未完成（原因）
+
 未验证/阻塞：
 - ...
 
@@ -1122,7 +1261,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 下一工作包（只说明，不实施）
 ```
 
-若任何全量门失败，不得写“完成”；要区分本次引入失败还是基线已有失败，并提供证据。
+若任何全量门失败，或原始实现要求/测试矩阵存在未完成项，不得写“完成”；要区分本次引入失败、基线已有失败与真机待验，并提供证据。只有真机门因 §0.1-9 的外部条件无法执行时，才可在离线实现完成后单独记录“实现完成、真机未验证”。
 
 ## 14. 推荐执行节奏
 
@@ -1132,10 +1271,15 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 2. 第二轮：P0-03、P0-04，封住飞书重复副作用。
 3. 第三轮：P0-05、P0-06，统一 Web/文件基础设施。
 4. 第四轮：P0-07、P0-08，建立用户、工作区和设备模型。
-5. 第五轮：P0-09、P0-10，完成 clean Mac Git 与双设备同步。
-6. 第六轮：P0-11、P0-12，完成无终端 onboarding 和安全原生运行时。
-7. 第七轮：P0-13，签名分发与同事试点。
-8. P0 真实使用一至两周后，再进入 P1；不要在试点前建设 P2 event store。
+5. 第五轮（历史）：P0-09、P0-10 已建立基础实现，但经 `bf734d8` 复核仍为 `[~]`。
+6. 第六轮：P0-07C，只收口 active profile production 上下文；完成后单独提交、验收、更新 ADR 0029。
+7. 第七轮：P0-09C，只收口 Dulwich HTTPS 凭据与 remote clone；完成后单独提交、验收、更新 ADR 0030。
+8. 第八轮：P0-10C，只收口同步持久状态、全写边界和主设备声明；完成后进行开发者双设备 alpha 验收并更新 ADR 0031。
+9. 第九轮：P0-11A，完成可恢复首次向导；不得同时实现设置中心。
+10. 第十轮：P0-12，完成动态端口、会话认证和受控原生服务生命周期。
+11. 第十一轮：P0-11B，基于 P0-12 完成设置中心与安全 profile 切换。
+12. 第十二轮：P0-13，签名分发与同事 clean-account 试点。
+13. P0 真实使用一至两周后，再进入 P1；不要在试点前建设 P2 event store。
 
 每轮两个工作包也应分别开任务、分别验收；这里的“轮”只表示同一主题，不表示一次提交。
 
@@ -1283,6 +1427,17 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（240 files）通过；`uv run pytest`（677 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过
 - 真机验证：未执行（本地 bare remote + 双 clone/双 HOME 离线模拟 Studio/Air；未访问真实远端、真实 `~/Documents/Work`、打包 App 或第二台 Mac）
 - 遗留：production 固定 dulwich + 凭据接线、remote clone、pending push 逐端点触发、launchd/P1-01 helper 接角色门与租约、设置中心角色切换（P0-11/P0-13/P1-01）；SSR 回退路径不展示 SPA banner；下一工作包为 P0-11，本次未开始。
+
+### 2026-09-05 · `bf734d8` P0 基线复核与计划重排
+
+- 状态：完成（只复核与修订计划，未修改产品代码）
+- Git commit：未提交
+- 复核范围：`70dfae6..bf734d8`、P0-06 至 P0-10 实现/测试/ADR、生产入口、同步与 onboarding API、前端构建链。
+- 质量证据：`git diff --check 70dfae6..HEAD` 通过；`UV_CACHE_DIR=/tmp/uvcache-wb uv run ruff check .`、`ruff format --check .`、`mypy`（240 files）通过；`pytest`（677 passed，1 skipped；跳过需 `WB_PACKAGED_APP` 的打包 smoke）通过；前端 `npm --prefix web run build` 与 `verify-build` 通过。复核构建生成的静态文件变化已恢复，进入计划编辑前工作树重新干净。
+- 状态更正：P0-06/P0-08 保持 `[x]`；P0-07/P0-09/P0-10 从早期实施记录的“完成”更正为总表 `[~]`。原因与未闭环契约记录于 §0.3 和各包“复核状态”。
+- 计划决策：采用“先基础收口、再拆分 UI”的方案 A；新增 P0-07C/P0-09C/P0-10C，将原 P0-11 拆为 P0-11A 与 P0-11B，执行顺序固定为 P0-07C → P0-09C → P0-10C → P0-11A → P0-12 → P0-11B → P0-13。
+- 未验证：未访问真实 Keychain、真实私有 HTTPS remote、真实 `~/Documents/Work`、第二台 Mac、Apple 签名/notarization；这些仍按对应工作包和真机门记录，不能写成通过。
+- 下一工作包：P0-07C；本次未开始实现。
 
 ## 16. 外部实现依据
 

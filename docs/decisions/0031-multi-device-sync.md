@@ -1,9 +1,11 @@
 # ADR 0031 · 多设备同步协调器与自动化主设备规则
 
-- 状态：✅ 已实现并全绿（2026-09-05；ruff + format + mypy strict + pytest **677 项全绿**，前端 npm build + verify-build 通过）
+- 状态：🟡 部分完成（状态机与既有质量门全绿；生产持久化/全写边界/主设备声明等待 P0-10C）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-10（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；依赖 P0-02 本地写/自动提交事务边界、P0-09 Git 后端与凭据）
 - 依据：计划 P0-10（状态机/实现要求 1–10/测试场景/验收）；NFR-3（非破坏性）
+
+> 2026-09-05 `bf734d8` 复核：十态模型、基础协调器、API 与 banner 已实现；active-profile 状态持久化、准确 pending/last-success、统一写前保护与提交后 push、完整 UI 字段、remote clone 和主设备唯一声明尚未闭环。以计划 P0-10C 完成证据作为本 ADR 转为“已实现”的条件。
 
 ## 背景与问题
 

@@ -1,9 +1,11 @@
 # ADR 0029 · Workspace / Profile / Device 领域与存储
 
-- 状态：✅ 已实现并全绿（2026-09-05；ruff + format + mypy strict + pytest **632 项全绿**）
+- 状态：🟡 部分完成（基础实现与既有质量门全绿；production active-profile 接线等待 P0-07C）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-07（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；承接 P0-06 WorkspacePaths/原子写/锁根统一）
 - 依据：计划 §2.1（产品边界）、§2.3（数据落点）、§2.4（工作区兼容契约）、P0-07 工作包（领域模型/实现要求 1–8/测试矩阵）；NFR-3（不硬编码路径）、NFR-4（凭据不入文件/仓库）
+
+> 2026-09-05 `bf734d8` 复核：领域模型、registry、Application Support 与解析三态已经实现；production Web/server/doctor/provider 尚未统一消费 active workspace context，兼容性写门和 LocalProfile 未知字段往返也需收口。以计划 P0-07C 完成证据作为本 ADR 转为“已实现”的条件。
 
 ## 背景与问题
 

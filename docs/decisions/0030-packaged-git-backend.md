@@ -1,9 +1,11 @@
 # ADR 0030 · 可打包 Git 后端（system ↔ dulwich）与凭据适配
 
-- 状态：✅ 已实现并全绿（2026-09-05；ruff + format + mypy strict + pytest **665 项全绿**）
+- 状态：🟡 部分完成（双 backend 与既有质量门全绿；HTTPS 凭据/remote clone/production 接线等待 P0-09C）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-09（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；依赖 P0-01 撤销信任边界、P0-07 workspace/profile 与凭据作用域）
 - 依据：计划 P0-09（能力契约 / 实现要求 1–8 / 测试矩阵 / 决策门）；NFR-3（非破坏性）、NFR-4（凭据不入文件/仓库）
+
+> 2026-09-05 `bf734d8` 复核：system/dulwich conformance、typed errors 与 workspace-scoped 凭据模型已经实现；凭据尚未进入 Dulwich clone/fetch/push transport，production backend 仍由环境变量选择，clone staging/marker 确认与 packaged CA smoke 未完成。以计划 P0-09C 完成证据作为本 ADR 转为“已实现”的条件。
 
 ## 背景与问题
 
