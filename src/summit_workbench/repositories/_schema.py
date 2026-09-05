@@ -33,3 +33,6 @@ RUN_HEARTBEAT_VERSION = 1
 
 #: 飞书授权健康度（``_signals/feishu-auth.json``）文件的 schema 版本。
 FEISHU_AUTH_STATE_VERSION = 1
+
+# 外部副作用 outbox（``_signals/external-actions/log.jsonl``）一行的 schema 版本。
+EXTERNAL_ACTION_VERSION = 1

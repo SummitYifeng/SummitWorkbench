@@ -118,6 +118,17 @@ interface ReviewPayload {
   groups: ReviewGroup[];
   errors: string[];
 }
+interface ExternalAction {
+  operation_id: string;
+  candidate_id: string;
+  kind: string;
+  state: string;
+  attempt: number;
+  timestamp: string;
+  remote_id: string | null;
+  error: string | null;
+  retry_allowed: boolean;
+}
 
 /** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
 interface ProjectView {
@@ -155,6 +166,7 @@ const DECISION_LABELS: Record<string, string> = {
 
 let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
+let externalActions: ExternalAction[] = [];
 let tab: Tab = 'today';
 let importing = false;
 let versionStatus: VersionStatus = 'checking';
@@ -947,6 +959,7 @@ function renderReview(view: HTMLElement): void {
       state.projects.map((p) => '<option value="' + esc(p.name) + '">' + esc(dispName(p)) + '</option>').join('') +
       '</datalist>'
     : '';
+  const externalHtml = renderExternalActions();
   view.innerHTML =
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
@@ -957,9 +970,32 @@ function renderReview(view: HTMLElement): void {
     '<button class="primary" data-action="apply">应用（写回）</button>' +
     '</div></div>' +
     errorsHtml +
+    externalHtml +
     '<div id="review-groups">' + groupsHtml + '</div>' +
     projectOptions +
     '<div id="plan-result"></div>';
+}
+
+function renderExternalActions(): string {
+  if (!externalActions.length) return '';
+  const labels: Record<string, string> = {
+    prepared: '已准备', sending: '发送中', succeeded: '已创建', failed: '创建失败',
+    unknown: '结果未知', 'reconciled-succeeded': '已核对创建', 'reconciled-not-found': '已核对未找到',
+  };
+  const rows = externalActions.map((a) => {
+    const label = labels[a.state] ?? a.state;
+    let controls = '';
+    if (a.state === 'unknown') {
+      controls = '<button class="ghost" data-action="external-recheck" data-operation="' + esc(a.operation_id) + '">重新核对</button>' +
+        '<button class="ghost" data-action="external-confirm-created" data-operation="' + esc(a.operation_id) + '">确认已创建</button>' +
+        '<button class="ghost" data-action="external-confirm-not-found" data-operation="' + esc(a.operation_id) + '">确认未创建</button>';
+    } else if (a.state === 'reconciled-not-found') {
+      controls = '<button class="ghost" data-action="external-retry" data-operation="' + esc(a.operation_id) + '">确认后重试</button>';
+    }
+    const detail = a.error ? ' · ' + esc(a.error) : (a.remote_id ? ' · ' + esc(a.remote_id) : '');
+    return '<div class="external-action-row"><span><strong>' + esc(label) + '</strong> · ' + esc(a.candidate_id) + detail + '</span><span class="row">' + controls + '</span></div>';
+  }).join('');
+  return '<section class="external-actions"><h4>外部写回状态</h4>' + rows + '<p class="hint">结果未知时不会自动再次创建；请先核对，只有确认未创建后才能再次重试。</p></section>';
 }
 
 /** 'YYYY-MM-DD' 差值（天）；任一非法返回 -1。 */
@@ -1260,6 +1296,23 @@ function routeOptions(current: string | null): string {
   }).join('');
 }
 
+async function reconcileExternalAction(operationId: string, decision: string, remoteId?: string): Promise<void> {
+  try {
+    const r = await mutation(() => api<{ ok: boolean; message?: string }>(
+      '/api/external-actions/' + encodeURIComponent(operationId) + '/reconcile',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, remote_id: remoteId, confirm_retry: decision === 'retry' }),
+      },
+    ));
+    toast(r.ok ? '外部写回状态已更新' : (r.message ?? '核对失败'), r.ok ? 'ok' : 'err');
+    if (r.ok) await refreshExternalActions();
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
 // ---------- 全局事件（审批页操作） ----------
 
 document.addEventListener('click', (ev) => {
@@ -1351,6 +1404,27 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'apply') {
     void planApply(true);
+    return;
+  }
+  if (action === 'external-recheck') {
+    void reconcileExternalAction(btn.dataset.operation ?? '', 'recheck');
+    return;
+  }
+  if (action === 'external-confirm-created') {
+    const remoteId = window.prompt('请输入飞书侧已创建对象的 ID：');
+    if (remoteId?.trim()) void reconcileExternalAction(btn.dataset.operation ?? '', 'succeeded', remoteId.trim());
+    return;
+  }
+  if (action === 'external-confirm-not-found') {
+    if (window.confirm('确认飞书侧没有创建该对象？确认后仍需再次点击“确认后重试”才能重新创建。')) {
+      void reconcileExternalAction(btn.dataset.operation ?? '', 'not-found');
+    }
+    return;
+  }
+  if (action === 'external-retry') {
+    if (window.confirm('再次确认飞书侧未创建，并允许重新创建？')) {
+      void reconcileExternalAction(btn.dataset.operation ?? '', 'retry');
+    }
     return;
   }
   if (action === 'decide') {
@@ -2076,7 +2150,7 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
 async function planApply(exec: boolean): Promise<void> {
   const planResult = document.getElementById('plan-result');
   try {
-    const r = await mutation(() => api<{ ok: boolean; message?: string; plan_text?: string; executed?: boolean }>(
+    const r = await mutation(() => api<{ ok: boolean; message?: string; plan_text?: string; executed?: boolean; external_actions?: ExternalAction[] }>(
       exec ? '/api/review/apply' : '/api/review/plan',
       { method: 'POST' },
     ));
@@ -2091,6 +2165,7 @@ async function planApply(exec: boolean): Promise<void> {
       (exec ? '' : '<div class="row"><button class="primary" data-action="apply">确认应用（写回项目/建任务/归档）</button></div>')
     );
     if (exec) {
+      if (r.external_actions) externalActions = r.external_actions;
       toast('已应用', 'ok');
       void refreshReview();
       void refreshState();
@@ -2148,7 +2223,19 @@ async function refreshReview(): Promise<void> {
     toast(String(err), 'err');
     return;
   }
+  await refreshExternalActions();
   if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+}
+
+async function refreshExternalActions(): Promise<void> {
+  try {
+    const data = await api<{ ok: boolean; actions?: ExternalAction[] }>('/api/external-actions');
+    if (data.ok) externalActions = data.actions ?? [];
+    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+  } catch (err) {
+    // 外部状态查询失败不阻断审批页本身；下次刷新继续尝试。
+    console.warn('外部写回状态加载失败', err);
+  }
 }
 
 async function refreshAll(): Promise<void> {

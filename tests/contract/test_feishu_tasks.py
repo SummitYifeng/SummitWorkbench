@@ -92,6 +92,31 @@ def test_create_task_retries_with_stable_client_token():
     assert bodies[0]["client_token"] == bodies[1]["client_token"]
 
 
+def test_create_task_adds_operation_marker_when_outbox_managed():
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"code": 0, "data": {"task": {"guid": "id"}}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("token"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    create_task(
+        client,
+        "带标识任务",
+        None,
+        "candidate-1",
+        timezone="Asia/Shanghai",
+        operation_id="op-1",
+    )
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert "WB operation_id=op-1" in body["description"]
+
+
 def test_complete_task_patches_completed_at_official_shape():
     seen: dict[str, object] = {}
 

@@ -4,13 +4,13 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
 > 目标执行模型：Codex `gpt-5.6-luna`；每个新任务只实施一个工作包
 >
-> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0027
+> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0028
 
 ## 0. 这份计划怎么用
 
@@ -186,7 +186,7 @@ account = git:<host>:<username>
 | 1 | P0-01 Git 自动提交与撤销信任边界 | P0 | 无 | M | [x] |
 | 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [x] |
 | 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [x] |
-| 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [ ] |
+| 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [ ] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [ ] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [ ] |
@@ -1103,7 +1103,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-01
 
 - 状态：完成
-- Git commit：db00659（已推送至 `origin/main`）
+- Git commit：4269f36（已推送至 `origin/main`）
 - 变更摘要：GitRepo 新增暂存路径、提交主题、父节点数和 commit 对象校验；自动提交拒绝调用前已有 staged path，主题规范化为单行 `wb:`，只检查本次目标路径；撤销与 diff 仅接受完整 40 位十六进制的 `wb:` 单父提交，并在同一工作区锁内完成撤销前读取、脏检查和执行；undo Web API 拒绝路径返回 4xx 与稳定错误码。
 - 目标测试：`uv run pytest tests/unit/test_autocommit.py tests/unit/test_webapi_undo.py`（20 passed）
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（528 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
@@ -1113,7 +1113,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-02
 
 - 状态：完成
-- Git commit：未提交
+- Git commit：db00659（已推送至 `origin/main`）
 - 变更摘要：新增本地 mutation 单一编排器，在工作区锁内串行完成本地写入、路径收集与 `wb: <action> [<operation_id>]` 自动提交；迁移 capture、线程日志/产物/状态、项目创建/激活/归档/改名、任务/会议本地镜像，以及会议导入的原文归档、结构化收尾和审批页刷新阶段；网络、LLM 与飞书调用均位于锁外；API 返回 operation id、操作列表及可见 Git 提交状态。
 - 目标测试：`uv run pytest tests/unit/test_local_mutation.py tests/unit/test_backfill_workflow.py tests/unit/test_process_archived_workflow.py tests/unit/test_webapi.py`（56 passed）
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（535 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
@@ -1123,12 +1123,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-03
 
 - 状态：完成
-- Git commit：未提交
+- Git commit：a9bee3f（已推送至 `origin/main`）
 - 变更摘要：引入显式 `RetryMode`（`safe`、`idempotency-key`、`never`）；GET 明确使用 safe，任务创建携带稳定 `client_token` 后才允许幂等重试，普通 POST、日历创建、PATCH/DELETE 与 token POST 均禁止自动重放；网络/超时错误保留 `retryable`、`retry_after`、`result_unknown` 机器字段；`FeishuClient` 支持 close/context manager，并由 FastAPI lifespan 复用和确定性释放用户态客户端。
 - 目标测试：`uv run pytest tests/contract/test_feishu_client.py tests/contract/test_feishu_tasks.py tests/contract/test_feishu_calendar.py tests/contract/test_feishu_meetings_list.py tests/unit/test_feishu_session.py tests/unit/test_feishu_lifecycle.py tests/unit/test_resilient.py tests/unit/test_webapi.py tests/unit/test_webapp.py`（98 passed）
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（542 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（本工作包使用 MockTransport/fake 客户端离线验证，未访问真实飞书或真实凭据）
 - 遗留：无；P0-04 及后续工作包未开始。
+
+### 2026-09-05 · P0-04
+
+- 状态：完成
+- Git commit：未提交
+- 变更摘要：新增 schema-versioned 外部动作 outbox 与状态机（prepared/sending/succeeded/failed/unknown/reconciled）；apply 先落 prepared、再落 sending，成功记录 remote id，FeishuError/验证/IO 错误按 action 隔离；unknown 与未二次确认的核对未找到状态禁止自动重试；任务/会议写回贯通 operation id 与最小 WB marker；新增外部动作查询/人工核对/二次确认重试 API 和审批页状态组件；坏行沿用 quarantine，workspace id 与候选指纹隔离；新增 ADR 0028。
+- 目标测试：`uv run pytest tests/unit/test_external_action_outbox.py tests/unit/test_external_actions.py tests/unit/test_review_apply.py tests/unit/test_webapi.py tests/contract/test_feishu_tasks.py tests/contract/test_feishu_calendar.py`（78 passed）；覆盖 timeout-after-received 后第二次 apply 不再 POST、成功态复用 remote id、批量错误隔离、prepared 重启可见、坏行隔离和工作区隔离。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（555 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（本工作包使用 fake/MockTransport/临时目录离线验证；未访问真实飞书、模型、Keychain、真实工作目录或第二台 Mac；当前 provider 的可靠远端查询仍需人工确认）。
+- 遗留：无；下一工作包为 P0-05，但本次未开始。
 
 ## 16. 外部实现依据
 

@@ -189,6 +189,7 @@ def create_task(
     candidate_id: str,
     *,
     timezone: str,
+    operation_id: str | None = None,
 ) -> CreatedTask:
     """创建任务；candidate ID 派生 client_token，让飞书侧也参与幂等防重。"""
     body: dict[str, object] = {
@@ -196,6 +197,10 @@ def create_task(
         "description": f"由 SummitWorkbench 会议审批创建（{candidate_id}）",
         "client_token": _client_token(candidate_id),
     }
+    if operation_id:
+        body["description"] = (
+            f"由 SummitWorkbench 会议审批创建（{candidate_id}；WB operation_id={operation_id}）"
+        )
     if due_date is not None:
         body["due"] = _all_day_due(due_date, timezone)
     data = client.post(

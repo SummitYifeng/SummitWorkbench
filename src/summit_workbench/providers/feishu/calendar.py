@@ -216,6 +216,8 @@ def create_event(
     end_iso: str,
     *,
     timezone: str,
+    candidate_id: str | None = None,
+    operation_id: str | None = None,
 ) -> str:
     """在主日历创建一条定时日程事件，返回 event_id（幂等键由上层 candidate_id 派生）。
 
@@ -226,6 +228,11 @@ def create_event(
         "start_time": {"timestamp": local_iso_to_epoch_seconds(start_iso, timezone)},
         "end_time": {"timestamp": local_iso_to_epoch_seconds(end_iso, timezone)},
     }
+    if operation_id:
+        marker = f"WB operation_id={operation_id}"
+        if candidate_id:
+            marker += f" candidate_id={candidate_id}"
+        body["description"] = marker
     data = client.post(
         EVENTS_PATH.format(calendar_id=calendar_id),
         json=body,

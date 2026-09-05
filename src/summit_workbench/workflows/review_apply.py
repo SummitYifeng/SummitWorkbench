@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
     UNRESOLVED,
@@ -15,7 +17,9 @@ from summit_workbench.domain.review import (
     ReviewEntry,
     RouteTarget,
 )
+from summit_workbench.providers.feishu.errors import FeishuError
 from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.repositories.external_action_outbox import latest_for_candidate
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.note_projects import merge_note_project
 from summit_workbench.repositories.note_status import update_note_status
@@ -43,10 +47,19 @@ from summit_workbench.repositories.writeback import (
     append_project_main,
     append_thread_inbox,
 )
+from summit_workbench.workflows.external_actions import (
+    mark_failed,
+    mark_sending,
+    mark_succeeded,
+    mark_unknown,
+    prepare_action,
+    request_fingerprint,
+    workspace_id_for_vault,
+)
 
-TaskCreator = Callable[[str, str | None, str], str]
+TaskCreator = Callable[..., str]
 # 日历会议创建器：(summary, start_at, end_at, candidate_id) -> event_id
-MeetingCreator = Callable[[str, str | None, str | None, str], str]
+MeetingCreator = Callable[..., str]
 
 
 @dataclass(frozen=True)
@@ -209,6 +222,127 @@ def _task_key(candidate_id: str) -> str:
     return candidate_id.split("#", 1)[0]
 
 
+def _creator_call(creator: Callable[..., str], args: tuple[object, ...], operation_id: str) -> str:
+    """给新版创建器传 operation_id，同时兼容旧的测试/集成回调签名。"""
+    parameters = inspect.signature(creator).parameters
+    accepts_keyword = "operation_id" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
+    if accepts_keyword:
+        return creator(*args, operation_id=operation_id)
+    return creator(*args)
+
+
+def _external_kind(entry: ReviewEntry) -> ExternalActionKind:
+    if entry.candidate.route is RouteTarget.FEISHU_TASK:
+        return ExternalActionKind.FEISHU_TASK
+    return ExternalActionKind.FEISHU_MEETING
+
+
+def _external_request(entry: ReviewEntry) -> dict[str, object]:
+    item = entry.candidate
+    if item.route is RouteTarget.FEISHU_TASK:
+        return {
+            "description": item.description,
+            "target_project": item.target_project,
+            "due_date": item.due_date,
+        }
+    return {
+        "description": item.description,
+        "target_project": item.target_project,
+        "start_at": item.start_at,
+        "end_at": item.end_at,
+    }
+
+
+def _run_external(
+    entry: ReviewEntry,
+    vault_dir: Path,
+    *,
+    task_creator: TaskCreator | None,
+    meeting_creator: MeetingCreator | None,
+) -> tuple[str, str, str]:
+    """准备并执行一个外部动作；未知结果永远停在 outbox，不允许隐式重 POST。"""
+    item = entry.candidate
+    kind = _external_kind(entry)
+    creator: Callable[..., str]
+    args: tuple[object, ...]
+    destination: str
+    if kind is ExternalActionKind.FEISHU_TASK:
+        if task_creator is None:
+            raise ValueError("缺少飞书任务创建器")
+        creator = task_creator
+        args = (item.description, item.due_date, item.candidate_id)
+        destination = "feishu-task"
+    else:
+        if meeting_creator is None:
+            raise ValueError("缺少飞书日历会议创建器")
+        creator = meeting_creator
+        args = (item.description, item.start_at, item.end_at, item.candidate_id)
+        destination = "feishu-meeting"
+
+    workspace_id = workspace_id_for_vault(vault_dir)
+    fingerprint = request_fingerprint(
+        candidate_id=item.candidate_id,
+        kind=kind,
+        business_request=_external_request(entry),
+    )
+    existing = latest_for_candidate(
+        vault_dir,
+        item.candidate_id,
+        workspace_id=workspace_id,
+        kind=kind,
+        request_fingerprint=fingerprint,
+    )
+    if existing is not None:
+        if existing.state in {
+            ExternalActionState.SUCCEEDED,
+            ExternalActionState.RECONCILED_SUCCEEDED,
+        }:
+            if not existing.remote_id:
+                raise ValueError("外部动作已成功但缺少 remote_id，请人工核对")
+            return destination, existing.remote_id, existing.operation_id
+        if existing.state is ExternalActionState.SENDING:
+            raise ValueError("外部动作仍在发送中，请先重新核对，禁止重复创建")
+        if existing.state in {
+            ExternalActionState.UNKNOWN,
+            ExternalActionState.RECONCILED_NOT_FOUND,
+        }:
+            raise ValueError("外部动作结果未知，请先重新核对或确认未创建后再重试")
+        if existing.state is ExternalActionState.PREPARED:
+            action = existing
+        else:
+            action = prepare_action(
+                vault_dir,
+                candidate_id=item.candidate_id,
+                kind=kind,
+                request=_external_request(entry),
+                target_account_ref="feishu:user",
+            )
+    else:
+        action = prepare_action(
+            vault_dir,
+            candidate_id=item.candidate_id,
+            kind=kind,
+            request=_external_request(entry),
+            target_account_ref="feishu:user",
+        )
+    sending = mark_sending(vault_dir, action)
+    try:
+        remote_id = _creator_call(creator, args, sending.operation_id)
+        succeeded = mark_succeeded(vault_dir, sending, remote_id)
+    except FeishuError as exc:
+        if getattr(exc, "result_unknown", False):
+            mark_unknown(vault_dir, sending, str(exc))
+            raise ValueError(f"飞书创建结果未知，请先重新核对：{exc}") from exc
+        mark_failed(vault_dir, sending, str(exc))
+        raise ValueError(str(exc)) from exc
+    except (ValueError, OSError) as exc:
+        mark_failed(vault_dir, sending, str(exc))
+        raise
+    return destination, remote_id, succeeded.operation_id
+
+
 def _candidate_unchanged_since(current: ReviewEntry, original: ReviewEntry | None) -> bool:
     """最新页条目相对 apply 开始时的同 id 条目是否未被用户改动（P0-5 移除判据）。
 
@@ -343,25 +477,21 @@ def apply_meeting_review(
         else:
             try:
                 external_id: str | None
+                operation_id: str | None = None
                 if entry.candidate.route is RouteTarget.FEISHU_TASK:
-                    if task_creator is None:
-                        raise ValueError("缺少飞书任务创建器")
-                    external_id = task_creator(
-                        entry.candidate.description,
-                        entry.candidate.due_date,
-                        entry.candidate.candidate_id,
+                    destination, external_id, operation_id = _run_external(
+                        entry,
+                        vault_dir,
+                        task_creator=task_creator,
+                        meeting_creator=meeting_creator,
                     )
-                    destination = "feishu-task"
                 elif entry.candidate.route is RouteTarget.FEISHU_MEETING:
-                    if meeting_creator is None:
-                        raise ValueError("缺少飞书日历会议创建器")
-                    external_id = meeting_creator(
-                        entry.candidate.description,
-                        entry.candidate.start_at,
-                        entry.candidate.end_at,
-                        entry.candidate.candidate_id,
+                    destination, external_id, operation_id = _run_external(
+                        entry,
+                        vault_dir,
+                        task_creator=task_creator,
+                        meeting_creator=meeting_creator,
                     )
-                    destination = "feishu-meeting"
                 else:
                     destination, external_id = _write_local(entry, vault_dir, work_root)
                 record = make_execution_record(
@@ -369,9 +499,10 @@ def apply_meeting_review(
                     destination=destination,
                     result="applied",
                     external_id=external_id,
+                    operation_id=operation_id,
                     now=now,
                 )
-            except (ValueError, OSError) as exc:
+            except (FeishuError, ValueError, OSError) as exc:
                 failures += 1
                 failure_reasons[action.candidate_id] = str(exc)
                 continue

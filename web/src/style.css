@@ -363,6 +363,16 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .err-text { color: var(--bad); }
 code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
 .loading { color: var(--muted); text-align: center; padding: 24px 0; }
+.external-actions {
+  background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 12px; margin: 10px 0;
+}
+.external-actions h4 { margin: 0 0 6px; }
+.external-action-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 0; border-top: 1px solid var(--border); font-size: 12.5px;
+}
+.external-action-row .row { margin-top: 0; }
 
 /* ---- 第二大脑（对话页） ---- */
 .ask-layout { display: flex; gap: 16px; align-items: flex-start; }

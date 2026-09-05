@@ -163,6 +163,24 @@ def test_create_event_posts_seconds_timestamps() -> None:
     assert end["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T15:00", "Asia/Shanghai")
 
 
+def test_create_event_adds_operation_marker_when_outbox_managed() -> None:
+    seen: dict[str, object] = {}
+    client = _write_client(seen)
+    create_event(
+        client,
+        "cal_main",
+        "带标识会议",
+        "2026-09-10T14:00",
+        "2026-09-10T15:00",
+        timezone="Asia/Shanghai",
+        candidate_id="m#meeting-0",
+        operation_id="op-2",
+    )
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert body["description"] == "WB operation_id=op-2 candidate_id=m#meeting-0"
+
+
 def test_create_event_timeout_is_unknown_and_never_retried() -> None:
     calls = {"n": 0}
 

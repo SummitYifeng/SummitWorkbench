@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
 from summit_workbench.domain.review import (
     ApprovalCandidate,
     CandidateDecision,
@@ -32,6 +33,7 @@ from summit_workbench.repositories.review_page import (
 )
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
+from summit_workbench.workflows.external_actions import mark_sending, mark_unknown, prepare_action
 
 _STATIC_DIR = Path(__file__).resolve().parents[2] / "src" / "summit_workbench" / "webapp" / "static"
 
@@ -92,6 +94,29 @@ def test_api_version_has_no_store_headers(tmp_path: Path) -> None:
     response = _spa_client(tmp_path).get("/api/version")
     assert response.headers["cache-control"] == "no-store, max-age=0"
     assert response.headers["pragma"] == "no-cache"
+
+
+def test_external_action_query_and_manual_reconcile(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path, seed_review=False)
+    action = prepare_action(
+        vault,
+        candidate_id="m#task-0",
+        kind=ExternalActionKind.FEISHU_TASK,
+        request={"description": "任务"},
+        target_account_ref="feishu:user",
+    )
+    action = mark_unknown(vault, mark_sending(vault, action), "请求超时")
+
+    listed = client.get("/api/external-actions")
+    assert listed.status_code == 200
+    assert listed.json()["actions"][0]["state"] == ExternalActionState.UNKNOWN.value
+
+    confirmed = client.post(
+        f"/api/external-actions/{action.operation_id}/reconcile",
+        json={"decision": "succeeded", "remote_id": "task-remote"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["action"]["state"] == "reconciled-succeeded"
 
 
 def test_api_version_changes_server_instance_per_app_instance(tmp_path: Path) -> None:

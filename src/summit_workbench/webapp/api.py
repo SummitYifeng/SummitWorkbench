@@ -9,6 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from summit_workbench.domain.brief import CATEGORY_LABELS
+from summit_workbench.domain.external_action import ExternalAction
 from summit_workbench.domain.review import ReviewEntry
 
 _HEALTH_LABELS = {"ok": "正常", "degraded": "降级", "alert": "告警"}
@@ -113,6 +114,14 @@ class UndoRevertPayload(BaseModel):
     sha: str
 
 
+class ExternalActionReconcilePayload(BaseModel):
+    """外部创建结果核对：recheck | succeeded | not-found | retry。"""
+
+    decision: str
+    remote_id: str | None = None
+    confirm_retry: bool = False
+
+
 class AskHistoryTurn(BaseModel):
     """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
 
@@ -174,6 +183,24 @@ def review_payload(entries: list[ReviewEntry], errors: list[str]) -> dict[str, o
             }
         )
     return {"groups": groups, "errors": errors}
+
+
+def external_action_payload(action: ExternalAction) -> dict[str, object]:
+    """外部动作状态载荷；不向浏览器暴露请求 body 或凭据。"""
+    return {
+        "operation_id": action.operation_id,
+        "candidate_id": action.candidate_id,
+        "workspace_id": action.workspace_id,
+        "kind": action.kind.value,
+        "request_fingerprint": action.request_fingerprint,
+        "target_account_ref": action.target_account_ref,
+        "state": action.state.value,
+        "attempt": action.attempt,
+        "timestamp": action.timestamp,
+        "remote_id": action.remote_id,
+        "error": action.error,
+        "retry_allowed": action.retry_allowed,
+    }
 
 
 # ---- 晨间简报（结构化明细，供「今日」页组件化渲染） ----

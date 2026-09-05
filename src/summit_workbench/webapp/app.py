@@ -48,6 +48,10 @@ from summit_workbench.repositories.autocommit import (
     undo_error_code,
 )
 from summit_workbench.repositories.daily_note import read_brief_block
+from summit_workbench.repositories.external_action_outbox import (
+    latest_action,
+    latest_actions,
+)
 from summit_workbench.repositories.project_registry import (
     archive_project,
     create_project_note,
@@ -85,6 +89,7 @@ from summit_workbench.webapp.api import (
     CapturePayload,
     DecidePayload,
     EditPayload,
+    ExternalActionReconcilePayload,
     LogAppendPayload,
     MeetingEditPayload,
     ProjectCreatePayload,
@@ -95,6 +100,7 @@ from summit_workbench.webapp.api import (
     TaskEditPayload,
     UndoRevertPayload,
     brief_payload,
+    external_action_payload,
     review_payload,
 )
 from summit_workbench.webapp.build_info import (
@@ -104,6 +110,12 @@ from summit_workbench.webapp.build_info import (
     new_server_instance,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
+from summit_workbench.workflows.external_actions import (
+    authorize_retry,
+    reconcile_not_found,
+    reconcile_succeeded,
+    workspace_id_for_vault,
+)
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
     LocalMutationResult,
@@ -245,13 +257,16 @@ def _build_task_creator(ctx: WebContext, clients: _FeishuClientPool) -> TaskCrea
         create_task,
     )
 
-    def create(summary: str, due_date: str | None, candidate_id: str) -> str:
+    def create(
+        summary: str, due_date: str | None, candidate_id: str, *, operation_id: str | None = None
+    ) -> str:
         return create_task(
             clients.user_client(),  # type: ignore[arg-type]
             summary,
             due_date,
             candidate_id,
             timezone=ctx.timezone,
+            operation_id=operation_id,
         ).guid
 
     return create
@@ -270,7 +285,14 @@ def _build_meeting_creator(ctx: WebContext, clients: _FeishuClientPool) -> Meeti
     )
     from summit_workbench.providers.feishu.calendar import primary_calendar_id
 
-    def create(summary: str, start_at: str | None, end_at: str | None, candidate_id: str) -> str:
+    def create(
+        summary: str,
+        start_at: str | None,
+        end_at: str | None,
+        candidate_id: str,
+        *,
+        operation_id: str | None = None,
+    ) -> str:
         if start_at is None:
             raise ValueError("新建会议需要开始时间")
         start = datetime.fromisoformat(start_at)
@@ -290,6 +312,8 @@ def _build_meeting_creator(ctx: WebContext, clients: _FeishuClientPool) -> Meeti
             start_at,
             end_iso,
             timezone=ctx.timezone,
+            candidate_id=candidate_id,
+            operation_id=operation_id,
         )
 
     return create
@@ -757,6 +781,41 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return {"ok": False, "message": f"预演失败：{exc}"}
         return {"ok": True, "plan_text": _plan_text(report), "executed": False}
 
+    @app.get("/api/external-actions")
+    def api_external_actions() -> dict[str, object]:
+        workspace_id = workspace_id_for_vault(ctx.vault_dir)
+        actions = latest_actions(ctx.vault_dir, workspace_id=workspace_id)
+        return {"ok": True, "actions": [external_action_payload(action) for action in actions]}
+
+    @app.post("/api/external-actions/{operation_id}/reconcile")
+    def api_reconcile_external_action(
+        operation_id: str, payload: ExternalActionReconcilePayload
+    ) -> dict[str, object]:
+        action = latest_action(ctx.vault_dir, operation_id)
+        if action is None or action.workspace_id != workspace_id_for_vault(ctx.vault_dir):
+            return {"ok": False, "message": "外部动作不存在或不属于当前工作区"}
+        try:
+            if payload.decision == "recheck":
+                return {
+                    "ok": True,
+                    "action": external_action_payload(action),
+                    "message": "当前适配器不支持可靠远端检索，请人工确认是否已创建",
+                }
+            if payload.decision == "succeeded":
+                action = reconcile_succeeded(ctx.vault_dir, action, payload.remote_id or "")
+            elif payload.decision == "not-found":
+                action = reconcile_not_found(ctx.vault_dir, action)
+            elif payload.decision == "retry":
+                action = authorize_retry(ctx.vault_dir, action, confirm=payload.confirm_retry)
+            else:
+                return {
+                    "ok": False,
+                    "message": ("decision 必须是 recheck、succeeded、not-found 或 retry"),
+                }
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        return {"ok": True, "action": external_action_payload(action)}
+
     @app.post("/api/review/apply")
     def api_apply() -> dict[str, object]:
         try:
@@ -777,7 +836,16 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             a.destination for a in report.actions if not a.destination.startswith("feishu-")
         )
         git_note = _commit_suffix(ctx, touched, "审批应用写回")
-        return {"ok": True, "plan_text": _plan_text(report), "executed": True, "git_note": git_note}
+        external_actions = latest_actions(
+            ctx.vault_dir, workspace_id=workspace_id_for_vault(ctx.vault_dir)
+        )
+        return {
+            "ok": True,
+            "plan_text": _plan_text(report),
+            "executed": True,
+            "git_note": git_note,
+            "external_actions": [external_action_payload(action) for action in external_actions],
+        }
 
     @app.post("/api/threads/state")
     def api_set_project_state(payload: ProjectStatePayload) -> dict[str, object]:

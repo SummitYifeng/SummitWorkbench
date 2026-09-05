@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 
+from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState
 from summit_workbench.domain.review import (
     UNRESOLVED,
@@ -15,9 +16,12 @@ from summit_workbench.domain.review import (
     ReviewEntry,
     RouteTarget,
 )
+from summit_workbench.providers.feishu.errors import FeishuAPIError
+from summit_workbench.repositories.external_action_outbox import latest_for_candidate
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.review_audit import completed_ids
 from summit_workbench.repositories.review_page import parse_review_page, refresh_review_page
+from summit_workbench.workflows.external_actions import mark_sending, mark_succeeded, prepare_action
 from summit_workbench.workflows.review_apply import apply_meeting_review
 
 
@@ -298,3 +302,97 @@ def test_meeting_route_without_creator_reports_failure(tmp_path):
     # 缺少会议创建器 → 条目留在审批页并记失败（与任务创建器同款安全行为）
     assert report.applied == 0
     assert report.failed == 1
+
+
+def test_feishu_timeout_is_unknown_and_second_apply_does_not_post_again(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
+    )
+    refresh_review_page(vault, [entry])
+    calls = 0
+
+    def timeout_creator(title: str, due: str | None, candidate_id: str) -> str:
+        nonlocal calls
+        calls += 1
+        raise FeishuAPIError("请求超时", result_unknown=True)
+
+    first = apply_meeting_review(vault, work, apply=True, task_creator=timeout_creator)
+    second = apply_meeting_review(vault, work, apply=True, task_creator=timeout_creator)
+    action = latest_for_candidate(vault, entry.candidate.candidate_id)
+    assert first.failed == 1
+    assert second.failed == 1
+    assert calls == 1
+    assert action is not None
+    assert action.state is ExternalActionState.UNKNOWN
+    assert "核对" in (
+        parse_review_page((vault / "review" / "meetings.md").read_text(encoding="utf-8"))
+        .entries[0]
+        .apply_error
+        or ""
+    )
+
+
+def test_one_feishu_error_does_not_block_next_external_action(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    first = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+    )
+    second = _entry(
+        "m:n#action-item-1",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+    )
+    refresh_review_page(vault, [first, second])
+    calls: list[str] = []
+
+    def creator(title: str, due: str | None, candidate_id: str) -> str:
+        calls.append(candidate_id)
+        if candidate_id.endswith("item-0"):
+            raise FeishuAPIError("权限不足")
+        return "task-2"
+
+    report = apply_meeting_review(vault, work, apply=True, task_creator=creator)
+    assert report.failed == 1
+    assert report.applied == 1
+    assert calls == [first.candidate.candidate_id, second.candidate.candidate_id]
+
+
+def test_succeeded_outbox_reuses_remote_id_without_creator_call(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+    )
+    refresh_review_page(vault, [entry])
+    prepared = prepare_action(
+        vault,
+        candidate_id=entry.candidate.candidate_id,
+        kind=ExternalActionKind.FEISHU_TASK,
+        request={
+            "description": entry.candidate.description,
+            "target_project": entry.candidate.target_project,
+            "due_date": entry.candidate.due_date,
+        },
+        target_account_ref="feishu:user",
+    )
+    mark_succeeded(vault, mark_sending(vault, prepared), "already-created")
+    calls = 0
+
+    def creator(title: str, due: str | None, candidate_id: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "must-not-be-used"
+
+    report = apply_meeting_review(vault, work, apply=True, task_creator=creator)
+    assert report.applied == 1
+    assert calls == 0
