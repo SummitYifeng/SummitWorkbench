@@ -1526,11 +1526,11 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P0-13
 
 - 状态：完成 `[x]`（内部 arm64 发布实现与本机离线验收完成；M2+ 真机验收待用户执行）
-- Git commit：待本次修复提交（将推送至 `origin/main`）
+- Git commit：4c13631（实现提交；待收尾提交并推送至 `origin/main`）
 - 变更摘要：重构 macOS bundle 构建，使 `pyproject.toml` 成为短版本唯一来源、build number 显式注入、仅支持 arm64 Apple Silicon；构建在临时目录完成后原子替换，按 dylib/framework → PyInstaller executable → App 顺序 ad-hoc 签名，使用最小 entitlement；新增 `release-macos.sh` 生成 `INTERNAL-DEV` arm64 DMG、`SHA256SUMS`、发布 metadata 和 CycloneDX SBOM，不依赖 Apple 证书或真实网络凭据；新增 `verify-macos-release.sh` 覆盖 strict codesign、arm64、bundle 清单、开发路径/secret scan 和动态端口离线启动 smoke；修复 Swift 对 Python ISO-8601 runtime record 的解码，并在 readiness 超时重试前回收自管 server；补充内部安装/升级/卸载说明与 ADR 0032。
-- 目标测试：`uv run pytest tests/unit/test_native_panel_contract.py tests/unit/test_packaging_contract.py -q`（11 passed）；`BUILD_NUMBER=5 ARCH=arm64 OUTPUT_APP=dist/SummitWorkbench-fixed.app scripts/build-macos-app.sh`（自包含 App 构建、47 passed 相关回归、PyInstaller、Swift 离线编译、动态端口 smoke）；修复版 App 在当前 Mac Studio 真实用户环境中约 1 秒完成 `service_ready`；`scripts/verify-macos-release.sh dist/SummitWorkbench-fixed.app` 通过；发布 DMG 将在本次修复提交后重新生成。
+- 目标测试：`uv run pytest tests/unit/test_native_panel_contract.py tests/unit/test_packaging_contract.py -q`（11 passed）；`BUILD_NUMBER=5 ARCH=arm64 OUTPUT_APP=dist/SummitWorkbench-fixed.app scripts/build-macos-app.sh`（自包含 App 构建、47 passed 相关回归、PyInstaller、Swift 离线编译、动态端口 smoke）；修复版 App 在当前 Mac Studio 真实用户环境中约 1 秒完成 `service_ready`；`scripts/verify-macos-release.sh dist/SummitWorkbench-fixed.app` 通过；`BUILD_NUMBER=6 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/releases-hotfix scripts/release-macos.sh` 生成最终 arm64 `INTERNAL-DEV.dmg` 并通过 App/DMG 验证。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（716 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/release-macos.sh scripts/verify-macos-release.sh scripts/install-macos-app.sh` 通过；`WB_PACKAGED_APP=dist/SummitWorkbench-fixed.app uv run pytest -m integration -q`（1 passed）。
-- 真机验证：待执行。当前只需 M2+ Apple Silicon 真机完成安装、启动、新建 workspace、profile 切换、升级保留数据和删除 App 保留数据验证；不需要 Developer ID、notarization、Intel 或 Windows。
+- 真机验证：待执行。当前只需 M2+ Apple Silicon 真机安装最终 hotfix DMG、启动、新建 workspace、profile 切换、升级保留数据和删除 App 保留数据验证；不需要 Developer ID、notarization、Intel 或 Windows。
 - 遗留：无代码阻塞；等待用户按交付步骤完成 M2+ 真机验收后关闭最后的人工验证项。
 
 ## 16. 外部实现依据

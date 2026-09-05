@@ -33,6 +33,8 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
   47 项 packaged/native 回归、PyInstaller、Swift 离线编译、自包含 server 动态端口 smoke。
 - 修复后重新编译的 arm64 App 在当前 Mac Studio 真实用户环境中约 1 秒完成 `service_ready`，未再进入
   `crashLoop`；此前失败包的残留测试进程已清理。
+- 基于修复提交 `4c13631` 生成的最终 build 6 DMG 已通过完整离线发布验证；metadata 的 Git commit、
+  arm64、内部分发标记和 App/DMG digest 均一致。
 - `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和
