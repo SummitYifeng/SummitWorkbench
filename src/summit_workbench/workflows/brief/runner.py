@@ -48,6 +48,8 @@ def build_facts_source(
     timezone: str,
     *,
     lock_root: Path | None = None,
+    config_file: Path | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[FactsSource | None, FeishuOutcome]:
     """尽力构建飞书事实源；不可用时返回 (None, 原因)。
 
@@ -58,7 +60,10 @@ def build_facts_source(
         token 轮换临界区锁在这里，与同 workspace 的写者共用同一 ``.wb.lock``（P0-06）。
     """
     try:
-        cfg = load_feishu_config()
+        if config_file is None and workspace_id is None:
+            cfg = load_feishu_config()
+        else:
+            cfg = load_feishu_config(config_file, workspace_id=workspace_id)
         access = FeishuSession(cfg, lock_root=lock_root).access_token()
         client = FeishuClient(cfg, access)
     except FeishuAuthError as exc:
@@ -68,14 +73,16 @@ def build_facts_source(
     return FeishuFactsSource(client, day=day, timezone=timezone), FeishuOutcome()
 
 
-def build_ranker() -> tuple[RankFn, str | None]:
+def build_ranker(
+    *, config_file: Path | None = None, workspace_id: str | None = None
+) -> tuple[RankFn, str | None]:
     """尽力构建模型排序器；不可用时返回确定性回退排序闭包。"""
 
     def fallback(candidates: list[ActionSignal]) -> RankingResult:
         return RankingResult(order=fallback_ranking(candidates), degraded=True)
 
     try:
-        cfg = load_model_config("ranking")
+        cfg = load_model_config("ranking", config_file, workspace_id=workspace_id)
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("brief-ranker")
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
@@ -87,9 +94,11 @@ def build_ranker() -> tuple[RankFn, str | None]:
     return rank, None
 
 
-def pending_review_count(vault_dir: Path) -> int:
+def pending_review_count(vault_dir: Path, *, config_file: Path | None = None) -> int:
     try:
-        return build_status(vault_dir, config_file=default_config_file()).backlog.count
+        return build_status(
+            vault_dir, config_file=config_file or default_config_file()
+        ).backlog.count
     except (OSError, ValueError):
         return 0
 
@@ -102,13 +111,27 @@ class BriefRun:
 
 
 def run_brief(
-    *, work_root: Path, vault_dir: Path, timezone: str, day: str, write: bool, notify: bool
+    *,
+    work_root: Path,
+    vault_dir: Path,
+    timezone: str,
+    day: str,
+    write: bool,
+    notify: bool,
+    config_file: Path | None = None,
+    workspace_id: str | None = None,
 ) -> BriefRun:
     """装配默认输入并生成简报；记录排序模型用量与飞书授权健康度。"""
     # P0-06：Feishu refresh 的锁根来自单一解析入口（默认形态 = vault 容器 = work_root）。
     lock_root = resolve_work_paths(work_root=work_root, vault_dir=vault_dir).lock_root
-    facts, feishu = build_facts_source(day, timezone, lock_root=lock_root)
-    ranker, _ = build_ranker()
+    facts, feishu = build_facts_source(
+        day,
+        timezone,
+        lock_root=lock_root,
+        config_file=config_file,
+        workspace_id=workspace_id,
+    )
+    ranker, _ = build_ranker(config_file=config_file, workspace_id=workspace_id)
     result = generate_brief(
         work_root,
         vault_dir,
@@ -116,7 +139,7 @@ def run_brief(
         timezone=timezone,
         facts_source=facts,
         rank=ranker,
-        pending_review_count=pending_review_count(vault_dir),
+        pending_review_count=pending_review_count(vault_dir, config_file=config_file),
         write=write,
         notify=notify,
     )

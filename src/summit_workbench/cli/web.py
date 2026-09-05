@@ -14,7 +14,7 @@ import urllib.request
 
 import typer
 
-from summit_workbench.config.settings import load_settings
+from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.webapp.build_info import mode_from_environment
 from summit_workbench.webapp.security import validate_bind_host
 
@@ -100,16 +100,15 @@ def web_command(
         typer.echo(f"✗ 未安装 Web 组件。请先运行：uv sync --extra web（缺少 {exc.name}）")
         raise typer.Exit(code=2) from exc
 
-    settings = load_settings()
-    paths = settings.work_paths()
-    ctx = WebContext(
-        vault_dir=paths.vault_dir,
-        work_root=paths.work_root,
-        timezone=settings.timezone,
-        lock_root=paths.lock_root,
+    active_workspace = resolve_active_workspace(
+        allow_env_fallback=mode_from_environment(os.environ.get("WB_PANEL_MODE")) != "production"
     )
-    typer.echo(f"工作台：http://{host}:{port}/  （Ctrl+C 停止）")
-    typer.echo(f"vault：{paths.vault_dir}")
-    uvicorn.run(
-        create_app(ctx, bind_host=host, port=port), host=host, port=port, log_level="warning"
-    )
+    ctx = WebContext.from_active_workspace(active_workspace)
+    if ctx is None:
+        application = create_app(None, bind_host=host, port=port)
+        typer.echo(f"工作台 onboarding：http://{host}:{port}/  （Ctrl+C 停止）")
+    else:
+        application = create_app(ctx, bind_host=host, port=port)
+        typer.echo(f"工作台：http://{host}:{port}/  （Ctrl+C 停止）")
+        typer.echo(f"vault：{ctx.vault_dir}")
+    uvicorn.run(application, host=host, port=port, log_level="warning")

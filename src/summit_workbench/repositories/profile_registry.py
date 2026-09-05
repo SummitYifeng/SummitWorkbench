@@ -45,6 +45,7 @@ _PROFILE_TOML_KEYS = (
     "device_role",
     "created_at",
     "last_opened_at",
+    "timezone",
     "user_email",
 )
 
@@ -157,11 +158,44 @@ def _toml_value(value: object) -> str | None:
         return str(value)
     if isinstance(value, datetime):
         return json.dumps(value.isoformat())
+    if isinstance(value, list):
+        rendered = [_toml_value(item) for item in value]
+        if all(item is not None for item in rendered):
+            return "[" + ", ".join(item for item in rendered if item is not None) + "]"
+        return None
     return json.dumps(str(value))
 
 
+def _toml_key(key: str) -> str:
+    """Render a TOML key without making unknown forward-compatible keys unsafe."""
+    return key if key.replace("_", "").isalnum() and not key[:1].isdigit() else json.dumps(key)
+
+
+def _toml_table_lines(table: dict[str, object], prefix: tuple[str, ...]) -> list[str]:
+    """Render a small nested TOML table used by forward-compatible profile extras."""
+    lines: list[str] = []
+    scalars: list[tuple[str, object]] = []
+    nested: list[tuple[str, dict[str, object]]] = []
+    for key, value in table.items():
+        if isinstance(value, dict):
+            nested.append((key, value))
+        else:
+            scalars.append((key, value))
+    for key, value in sorted(scalars):
+        rendered = _toml_value(value)
+        if rendered is not None:
+            lines.append(f"{_toml_key(key)} = {rendered}")
+    for key, child in sorted(nested):
+        if lines:
+            lines.append("")
+        section = ".".join((*prefix, _toml_key(key)))
+        lines.append(f"[{section}]")
+        lines.extend(_toml_table_lines(child, (*prefix, _toml_key(key))))
+    return lines
+
+
 def profile_to_toml(profile: LocalProfile) -> str:
-    """把 LocalProfile 序列化为扁平 TOML（字段顺序稳定，便于 diff）。"""
+    """把 LocalProfile 序列化为 TOML，并保留未知的前向兼容字段。"""
     dump = profile.model_dump(mode="json")
     lines: list[str] = []
     for key in _PROFILE_TOML_KEYS:
@@ -171,6 +205,15 @@ def profile_to_toml(profile: LocalProfile) -> str:
         if rendered is None:
             continue
         lines.append(f"{key} = {rendered}")
+    extras = {
+        key: value
+        for key, value in dump.items()
+        if key not in _PROFILE_TOML_KEYS and value is not None
+    }
+    if extras:
+        if lines:
+            lines.append("")
+        lines.extend(_toml_table_lines(extras, ()))
     return "\n".join(lines) + "\n"
 
 

@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 import json
+import os
 
 import typer
 
-from summit_workbench.config.settings import load_settings
+from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.heartbeat import record_run_safely
+from summit_workbench.webapp.build_info import mode_from_environment
 from summit_workbench.workflows.brief.publish import PublishResult, publish_brief
 from summit_workbench.workflows.brief.runner import run_brief, today_iso
 
@@ -29,19 +31,26 @@ def brief_command(
     as_json: bool = typer.Option(False, "--json", help="以 JSON 输出结构化结果（便于脚本）。"),
 ) -> None:
     """生成今日晨间简报并幂等写入 ``_vault/daily/YYYY-MM-DD.md``。"""
-    settings = load_settings()
-    paths = settings.work_paths()
-    day = date or today_iso(settings.timezone)
+    context = resolve_active_workspace(
+        allow_env_fallback=mode_from_environment(os.environ.get("WB_PANEL_MODE")) != "production"
+    )
+    if context.paths is None:
+        typer.echo("✗ 尚未选择工作区，请先在 SummitWorkbench 中完成 onboarding")
+        raise typer.Exit(code=2)
+    paths = context.paths
+    day = date or today_iso(context.timezone)
 
     # 无人值守可见性：真实运行（非 --dry-run）在 CLI 边界记一条心跳，崩溃也记。
     try:
         run = run_brief(
             work_root=paths.work_root,
             vault_dir=paths.vault_dir,
-            timezone=settings.timezone,
+            timezone=context.timezone,
             day=day,
             write=not dry_run,
             notify=not dry_run,
+            config_file=context.config_file,
+            workspace_id=context.workspace_id,
         )
     except Exception as exc:
         if not dry_run:

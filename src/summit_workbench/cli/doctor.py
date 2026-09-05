@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -20,6 +21,7 @@ from pathlib import Path
 import typer
 
 from summit_workbench.cli import diagnostics
+from summit_workbench.config.profiles import ActiveWorkspaceContext, resolve_active_workspace
 from summit_workbench.config.secrets import CredentialError, CredentialRef, resolve_credential
 from summit_workbench.config.settings import Settings, default_config_file, load_settings
 from summit_workbench.providers.feishu.config import FeishuConfig, load_feishu_config
@@ -27,6 +29,7 @@ from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuErro
 from summit_workbench.providers.feishu.session import FeishuSession
 from summit_workbench.providers.llm import LLMError, load_model_config
 from summit_workbench.repositories.vault import check_vault
+from summit_workbench.webapp.build_info import mode_from_environment
 
 # launchd 定时任务的标签与安装路径（见 scripts/install-launchd.sh）。
 _LAUNCHD_LABELS = ("com.summitworkbench.brief", "com.summitworkbench.weekly")
@@ -109,9 +112,11 @@ def _credential_check(name: str, ref: CredentialRef) -> Check:
     return Check(name, CheckStatus.OK, f"Keychain 可解析（{ref}）")
 
 
-def _feishu_checks(config_file: Path, *, online: bool) -> list[Check]:
+def _feishu_checks(
+    config_file: Path, *, online: bool, workspace_id: str | None = None
+) -> list[Check]:
     try:
-        cfg = load_feishu_config(config_file)
+        cfg = load_feishu_config(config_file, workspace_id=workspace_id)
     except FeishuError as exc:
         return [Check("飞书配置", CheckStatus.WARN, f"未配置或不完整：{exc}")]
 
@@ -142,9 +147,9 @@ def _feishu_online_check(cfg: FeishuConfig) -> Check:
     return Check("飞书 token（在线）", CheckStatus.OK, "刷新成功（已轮换 refresh_token）")
 
 
-def _model_checks(config_file: Path) -> list[Check]:
+def _model_checks(config_file: Path, *, workspace_id: str | None = None) -> list[Check]:
     try:
-        cfg = load_model_config("ranking", config_file)
+        cfg = load_model_config("ranking", config_file, workspace_id=workspace_id)
     except LLMError as exc:
         return [Check("模型配置", CheckStatus.WARN, f"未配置或不完整：{exc}")]
     return [
@@ -167,12 +172,30 @@ def _launchd_check() -> Check:
     return Check("launchd 定时任务", CheckStatus.WARN, f"仅安装了 {', '.join(installed)}")
 
 
-def run_checks(settings: Settings, *, config_file: Path, online: bool) -> list[Check]:
+def run_checks(
+    settings: Settings,
+    *,
+    config_file: Path,
+    online: bool,
+    context: ActiveWorkspaceContext | None = None,
+) -> list[Check]:
     """跑全部预检，返回结构化结果（离线安全；online 才碰网络）。"""
+    if context is not None and context.is_onboarding_required:
+        return [
+            Check(
+                "工作区",
+                CheckStatus.WARN,
+                "尚未选择工作区：请在 SummitWorkbench onboarding 中新建、连接或升级",
+            )
+        ]
     checks = _base_checks(settings)
-    checks.append(_vault_schema_check(settings.work_paths().vault_dir))
-    checks.extend(_feishu_checks(config_file, online=online))
-    checks.extend(_model_checks(config_file))
+    vault_dir = (
+        context.paths.vault_dir if context and context.paths else settings.work_paths().vault_dir
+    )
+    workspace_id = context.workspace_id if context else None
+    checks.append(_vault_schema_check(vault_dir))
+    checks.extend(_feishu_checks(config_file, online=online, workspace_id=workspace_id))
+    checks.extend(_model_checks(config_file, workspace_id=workspace_id))
     checks.append(_launchd_check())
     return checks
 
@@ -192,8 +215,15 @@ def doctor_command(
 
     退出码：无 FAIL 返回 0，存在 FAIL 返回 1（WARN 不影响退出码）。
     """
-    settings = load_settings()
-    checks = run_checks(settings, config_file=default_config_file(), online=online)
+    panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
+    context = resolve_active_workspace(allow_env_fallback=panel_mode != "production")
+    settings = load_settings(
+        work_root=context.paths.work_root if context.paths else None,
+        vault_dir=context.paths.vault_dir if context.paths else None,
+        timezone=context.timezone,
+    )
+    config_file = context.config_file or default_config_file()
+    checks = run_checks(settings, config_file=config_file, online=online, context=context)
 
     if as_json:
         import json

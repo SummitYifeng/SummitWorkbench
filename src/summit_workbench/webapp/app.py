@@ -34,11 +34,14 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
 if TYPE_CHECKING:
+    from summit_workbench.providers.llm.config import ModelConfig
     from summit_workbench.workflows.ask.ask import AskTurn
 
+from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
+from summit_workbench.domain.workspace import Compatibility
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
     CommitResult,
@@ -151,9 +154,51 @@ class WebContext:
     timezone: str
     # P0-06：工作区锁根（WorkspacePaths.lock_root）。None 时回退旧语义（env 默认）。
     lock_root: Path | None = None
+    # P0-07C：production 由 active profile 冻结的运行时上下文。
+    active_workspace: ActiveWorkspaceContext | None = None
+    config_file: Path | None = None
+
+    @classmethod
+    def from_active_workspace(cls, context: ActiveWorkspaceContext) -> WebContext | None:
+        if context.paths is None or context.profile is None or not context.can_read:
+            return None
+        return cls(
+            vault_dir=context.paths.vault_dir,
+            work_root=context.paths.work_root,
+            timezone=context.timezone,
+            lock_root=context.paths.lock_root,
+            active_workspace=context,
+            config_file=context.config_file,
+        )
+
+    def provider_config_file(self) -> Path:
+        return self.config_file or default_config_file()
+
+    @property
+    def workspace_id(self) -> str | None:
+        return self.active_workspace.workspace_id if self.active_workspace else None
+
+    @property
+    def compatibility(self) -> Compatibility:
+        if self.active_workspace and self.active_workspace.compatibility is not None:
+            return self.active_workspace.compatibility
+        return Compatibility.READ_WRITE
 
     def today(self) -> str:
         return datetime.now(ZoneInfo(self.timezone)).date().isoformat()
+
+
+def _load_model_config_for_context(ctx: WebContext, capability: str) -> ModelConfig:
+    """Load legacy test/development config without changing its monkeypatch contract."""
+    from summit_workbench.providers.llm import load_model_config
+
+    if ctx.workspace_id is None and ctx.config_file is None:
+        return load_model_config(capability)
+    return load_model_config(
+        capability,
+        ctx.provider_config_file(),
+        workspace_id=ctx.workspace_id,
+    )
 
 
 class _FeishuClientPool:
@@ -163,10 +208,18 @@ class _FeishuClientPool:
     ``.wb.lock``，不再默认落到 ``~/Documents/Work``。
     """
 
-    def __init__(self, lock_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        lock_root: Path | None = None,
+        *,
+        config_file: Path | None = None,
+        workspace_id: str | None = None,
+    ) -> None:
         self._clients: dict[str, object] = {}
         self._lock = threading.Lock()
         self._lock_root = lock_root
+        self._config_file = config_file
+        self._workspace_id = workspace_id
 
     def _get(self, identity: str) -> object:
         with self._lock:
@@ -179,7 +232,13 @@ class _FeishuClientPool:
                 load_feishu_config,
             )
 
-            cfg = load_feishu_config()
+            if self._config_file is None and self._workspace_id is None:
+                cfg = load_feishu_config()
+            else:
+                cfg = load_feishu_config(
+                    self._config_file,
+                    workspace_id=self._workspace_id,
+                )
             session = FeishuSession(cfg, lock_root=self._lock_root)
             token = session.access_token() if identity == "user" else session.tenant_access_token()
             client = FeishuClient(cfg, token)
@@ -344,6 +403,9 @@ def _ask_html(
     question: str,
     history: tuple[AskTurn, ...] = (),
     project: str | None = None,
+    *,
+    config_file: Path | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[str, list[str]]:
     """跑一次 wb ask（可带追问上下文与项目/线程范围）并渲染为 HTML。
 
@@ -355,7 +417,10 @@ def _ask_html(
     from summit_workbench.workflows.ask.ask import answer_question
 
     try:
-        cfg = load_model_config("qa")
+        if config_file is None and workspace_id is None:
+            cfg = load_model_config("qa")
+        else:
+            cfg = load_model_config("qa", config_file, workspace_id=workspace_id)
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("qa-answer")
         result = answer_question(
@@ -393,7 +458,7 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     from summit_workbench.config.secrets import CredentialError, resolve_credential
     from summit_workbench.observability.status import load_budget_settings
     from summit_workbench.prompts import load_prompt
-    from summit_workbench.providers.llm import LLMError, load_model_config
+    from summit_workbench.providers.llm import LLMError
     from summit_workbench.repositories.usage_ledger import monthly_totals
     from summit_workbench.workflows.meetings.backfill import (
         plan_backfill,
@@ -402,7 +467,7 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     )
 
     try:
-        cfg = load_model_config("meeting")
+        cfg = _load_model_config_for_context(ctx, "meeting")
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("meeting-processor")
         merger_prompt = load_prompt("meeting-merger")
@@ -415,7 +480,7 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
 
     month = datetime.now(ZoneInfo(ctx.timezone)).strftime("%Y-%m")
     month_spent = monthly_totals(ctx.vault_dir, month).estimated_cost
-    soft_limit, _currency = load_budget_settings(default_config_file())
+    soft_limit, _currency = load_budget_settings(ctx.provider_config_file())
     est = plan_backfill(items, cfg, month_spent=month_spent, soft_limit=soft_limit)
 
     report = run_backfill(
@@ -456,14 +521,199 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     }
 
 
-def create_app(
-    ctx: WebContext,
+def _create_restricted_app(
+    active_workspace: ActiveWorkspaceContext,
     *,
     static_dir: Path | None = None,
     bind_host: str = "127.0.0.1",
     port: int = 8787,
 ) -> FastAPI:
-    feishu_clients = _FeishuClientPool(lock_root=ctx.lock_root)
+    """Create the empty-install control plane without constructing a vault context."""
+    panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
+    validate_bind_host(bind_host, panel_mode)
+    normalized_bind_host = bind_host.strip().strip("[]").lower()
+    external_bind = normalized_bind_host not in {"127.0.0.1", "::1"}
+    host_allowlist = allowed_hosts(bind_host, port, include_test_alias=panel_mode != "production")
+    server_instance = new_server_instance()
+    started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    app = FastAPI(title="SummitWorkbench onboarding", lifespan=None)
+    app.state.active_workspace_context = active_workspace
+
+    @app.middleware("http")
+    async def _restricted_boundary(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        from uuid import uuid4
+
+        operation_id = str(uuid4())
+        host = request.headers.get("host", "").lower()
+        if host not in host_allowlist:
+            return JSONResponse(
+                status_code=403,
+                content=error_payload(
+                    code="host_not_allowed",
+                    message="请求 Host 不属于当前本地服务",
+                    operation_id=operation_id,
+                ),
+            )
+        if request.method in {"POST", "PATCH", "DELETE"}:
+            origin = request.headers.get("origin")
+            if origin is not None and not origin_matches(
+                origin, request.url.scheme, host_allowlist
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content=error_payload(
+                        code="origin_not_allowed",
+                        message="请求来源不是当前服务同源地址",
+                        operation_id=operation_id,
+                    ),
+                )
+            if external_bind and not session_token_matches(request.headers.get(SESSION_HEADER)):
+                return JSONResponse(
+                    status_code=401,
+                    content=error_payload(
+                        code="authentication_required",
+                        message="写请求需要本地会话令牌",
+                        operation_id=operation_id,
+                    ),
+                )
+        response = await call_next(request)
+        response.headers["X-WB-Operation-ID"] = operation_id
+        return response
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def restricted_home() -> HTMLResponse:
+        return HTMLResponse(
+            "<main><h1>SummitWorkbench</h1><p>请先新建、连接或升级一个工作区。</p></main>"
+        )
+
+    @app.get("/api/version")
+    def restricted_version(request: Request) -> JSONResponse:
+        try:
+            info = WebBuildInfo.from_static_dir(static_dir or _STATIC_DIR)
+        except BuildInfoError as exc:
+            return JSONResponse(
+                status_code=503,
+                content=error_payload(
+                    code="invalid_build_manifest",
+                    message=str(exc),
+                    operation_id=request.headers.get("x-wb-operation-id", "unknown"),
+                ),
+            )
+        return JSONResponse(
+            info.version_payload(
+                server_instance=server_instance,
+                started_at=started_at,
+                mode=panel_mode,
+            )
+        )
+
+    from summit_workbench.config.profiles import resolve_workspace
+    from summit_workbench.domain.onboarding import OnboardingFlow
+    from summit_workbench.workflows import onboarding as onboarding_service
+
+    def _rejected(request: Request, exc: onboarding_service.OnboardingError) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=error_payload(
+                code="onboarding_rejected",
+                message=str(exc),
+                operation_id=request.headers.get("x-wb-operation-id", "unknown"),
+                details={"reasons": exc.reasons},
+            ),
+        )
+
+    @app.get("/api/onboarding/status", response_model=None)
+    def restricted_onboarding_status() -> dict[str, object]:
+        resolution = resolve_workspace(allow_env_fallback=False)
+        return {
+            "ok": True,
+            "state": resolution.state.value,
+            "workspace_id": resolution.profile.workspace_id if resolution.profile else None,
+            "reason": resolution.reason,
+        }
+
+    @app.post("/api/onboarding/preflight", response_model=None)
+    def restricted_preflight(
+        request: Request, payload: Annotated[OnboardingPreflightPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            report = onboarding_service.preflight(
+                OnboardingFlow(payload.flow),
+                Path(payload.path).expanduser(),
+                templates_dir=onboarding_service.default_vault_templates_dir(),
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _rejected(request, exc)
+        return {"ok": True, "report": report.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/create", response_model=None)
+    def restricted_create(
+        request: Request, payload: Annotated[OnboardingCreatePayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            result = onboarding_service.create_workspace(
+                Path(payload.work_root).expanduser(),
+                display_name=payload.display_name,
+                device_name=payload.device_name,
+                templates_dir=onboarding_service.default_vault_templates_dir(),
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/upgrade", response_model=None)
+    def restricted_upgrade(
+        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            result = onboarding_service.upgrade_workspace(
+                Path(payload.vault_dir).expanduser(), device_name=payload.device_name
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/connect", response_model=None)
+    def restricted_connect(
+        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        try:
+            result = onboarding_service.connect_workspace(
+                Path(payload.vault_dir).expanduser(),
+                display_name=payload.display_name,
+                device_name=payload.device_name,
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
+
+    return app
+
+
+def create_app(
+    ctx: WebContext | None,
+    *,
+    static_dir: Path | None = None,
+    bind_host: str = "127.0.0.1",
+    port: int = 8787,
+) -> FastAPI:
+    if ctx is None:
+        context = getattr(ctx, "active_workspace", None)
+        if context is None:
+            from summit_workbench.config.profiles import resolve_active_workspace
+
+            context = resolve_active_workspace(allow_env_fallback=False)
+        return _create_restricted_app(
+            context, static_dir=static_dir, bind_host=bind_host, port=port
+        )
+
+    feishu_clients = _FeishuClientPool(
+        lock_root=ctx.lock_root,
+        config_file=ctx.config_file,
+        workspace_id=ctx.workspace_id,
+    )
     panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
     validate_bind_host(bind_host, panel_mode)
     normalized_bind_host = bind_host.strip().strip("[]").lower()
@@ -556,6 +806,29 @@ def create_app(
                 ),
             )
         if request.method in {"POST", "PATCH", "DELETE"}:
+            if ctx.compatibility is Compatibility.CANNOT_OPEN and not request.url.path.startswith(
+                "/api/onboarding"
+            ):
+                return JSONResponse(
+                    status_code=409,
+                    content=error_payload(
+                        code="workspace_not_found",
+                        message="当前工作区无法打开，请升级或重新连接工作区",
+                        operation_id=operation_id,
+                    ),
+                )
+            if (
+                ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
+                and not request.url.path.startswith("/api/onboarding")
+            ):
+                return JSONResponse(
+                    status_code=409,
+                    content=error_payload(
+                        code="workspace_read_only_upgrade_required",
+                        message="当前工作区需要升级后才能写入",
+                        operation_id=operation_id,
+                    ),
+                )
             origin = request.headers.get("origin")
             if origin is not None and not origin_matches(
                 origin, request.url.scheme, host_allowlist
@@ -605,7 +878,7 @@ def create_app(
         msg: str | None = None, ask_q: str = "", ask_html: str | None = None
     ) -> HTMLResponse:
         day = ctx.today()
-        status = build_status(ctx.vault_dir, config_file=default_config_file())
+        status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
         brief_md = read_brief_block(ctx.vault_dir, day)
         return HTMLResponse(
             render_dashboard(
@@ -663,7 +936,7 @@ def create_app(
     def api_state() -> dict[str, object]:
         """看板数据：日期、状态速览、今日简报、inbox 积压。"""
         day = ctx.today()
-        status = build_status(ctx.vault_dir, config_file=default_config_file())
+        status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
         sync_state = sync_coordinator.current_snapshot(ctx.vault_dir).state.value
         brief_md = read_brief_block(ctx.vault_dir, day)
         inbox_path = ctx.vault_dir / "inbox.md"
@@ -1047,10 +1320,10 @@ def create_app(
         try:
             from summit_workbench.config.secrets import CredentialError, resolve_credential
             from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError, load_model_config
+            from summit_workbench.providers.llm import LLMError
             from summit_workbench.workflows.threadnotes import digest_log
 
-            cfg = load_model_config("capture")
+            cfg = _load_model_config_for_context(ctx, "capture")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("log-digest")
             digest = digest_log(cfg, api_key, prompt, text, project_hints=resolved)
@@ -1112,10 +1385,10 @@ def create_app(
         try:
             from summit_workbench.config.secrets import CredentialError, resolve_credential
             from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError, load_model_config
+            from summit_workbench.providers.llm import LLMError
             from summit_workbench.workflows.threadnotes import index_artifact
 
-            cfg = load_model_config("capture")
+            cfg = _load_model_config_for_context(ctx, "capture")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("artifact-index")
             index = index_artifact(cfg, api_key, prompt, text, title_hint=title_hint)
@@ -1171,7 +1444,7 @@ def create_app(
         from summit_workbench.config.secrets import CredentialError, resolve_credential
         from summit_workbench.domain.capture import CaptureKind
         from summit_workbench.prompts import load_prompt
-        from summit_workbench.providers.llm import LLMError, load_model_config
+        from summit_workbench.providers.llm import LLMError
         from summit_workbench.repositories.project_registry import load_project_registry
         from summit_workbench.repositories.writeback import append_global_inbox
         from summit_workbench.workflows.capture import classify_capture, extract_project_tags
@@ -1181,7 +1454,7 @@ def create_app(
         due_date: str | None = None
         model_used = False
         try:
-            cfg = load_model_config("capture")
+            cfg = _load_model_config_for_context(ctx, "capture")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("capture-classifier")
             cls = classify_capture(cfg, api_key, prompt, text)
@@ -1389,6 +1662,8 @@ def create_app(
                 day=ctx.today(),
                 write=True,
                 notify=False,
+                config_file=ctx.provider_config_file(),
+                workspace_id=ctx.workspace_id,
             )
             return {
                 "ok": True,
@@ -1430,7 +1705,14 @@ def create_app(
         project = None
         if payload.project:
             project = load_project_registry(ctx.vault_dir).resolve(payload.project)
-        html, source_ids = _ask_html(ctx.vault_dir, question, history=history, project=project)
+        html, source_ids = _ask_html(
+            ctx.vault_dir,
+            question,
+            history=history,
+            project=project,
+            config_file=ctx.config_file,
+            workspace_id=ctx.workspace_id,
+        )
         if html.startswith('<p class="not-actionable">问答不可用：'):
             return JSONResponse(
                 status_code=503,
@@ -1599,7 +1881,12 @@ def create_app(
         q = question.strip()
         if not q:
             return _dashboard(msg="请输入问题")
-        html, _source_ids = _ask_html(ctx.vault_dir, q)
+        html, _source_ids = _ask_html(
+            ctx.vault_dir,
+            q,
+            config_file=ctx.config_file,
+            workspace_id=ctx.workspace_id,
+        )
         return _dashboard(ask_q=q, ask_html=html)
 
     @app.get("/review", response_class=HTMLResponse)
@@ -1757,14 +2044,20 @@ def create_app(
 
     # ---- 多设备同步（P0-10）----
 
-    from summit_workbench.config.profiles import resolve_workspace
     from summit_workbench.domain.sync import AutomationOutcome
     from summit_workbench.workflows import sync_coordinator
 
     def _sync_blocked(request: Request) -> JSONResponse | None:
         """automation 角色门：secondary 上定时 writer 不执行（env-compat 放行）。"""
-        resolution = resolve_workspace()
-        if sync_coordinator.automation_gate(resolution.profile) is AutomationOutcome.NOT_PRIMARY:
+        profile = ctx.active_workspace.profile if ctx.active_workspace else None
+        if ctx.active_workspace is None:
+            # 保留直接注入 WebContext 的 development/test 兼容语义：这些调用方
+            # 可能在 app 创建后才准备临时 profile。production 入口始终传入冻结
+            # 的 ActiveWorkspaceContext，不会走这条动态回退。
+            from summit_workbench.config.profiles import resolve_active_workspace
+
+            profile = resolve_active_workspace(allow_env_fallback=True).profile
+        if sync_coordinator.automation_gate(profile) is AutomationOutcome.NOT_PRIMARY:
             return JSONResponse(
                 status_code=403,
                 content=error_payload(

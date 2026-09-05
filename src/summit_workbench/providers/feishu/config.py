@@ -10,7 +10,11 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from summit_workbench.config.secrets import CredentialRef
+from summit_workbench.config.secrets import (
+    CredentialRef,
+    workspace_account,
+    workspace_credential_ref,
+)
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.providers.feishu.errors import FeishuConfigError
 
@@ -51,13 +55,24 @@ class FeishuConfig:
     scopes: tuple[str, ...] = DEFAULT_SCOPES
     authorize_host: str = AUTHORIZE_HOST
     openapi_host: str = OPENAPI_HOST
+    workspace_id: str | None = None
 
     @property
     def app_secret_ref(self) -> CredentialRef:
+        if self.workspace_id:
+            return workspace_credential_ref(
+                self.workspace_id,
+                workspace_account("feishu", self.app_id, "app_secret"),
+            )
         return CredentialRef(service=APP_SECRET_SERVICE, account=self.app_id)
 
     @property
     def refresh_token_ref(self) -> CredentialRef:
+        if self.workspace_id:
+            return workspace_credential_ref(
+                self.workspace_id,
+                workspace_account("feishu", self.app_id, "refresh_token"),
+            )
         return CredentialRef(service=REFRESH_TOKEN_SERVICE, account=self.app_id)
 
     @property
@@ -66,7 +81,9 @@ class FeishuConfig:
         return " ".join(self.scopes)
 
 
-def load_feishu_config(config_file: Path | None = None) -> FeishuConfig:
+def load_feishu_config(
+    config_file: Path | None = None, *, workspace_id: str | None = None
+) -> FeishuConfig:
     """从本机配置文件的 ``[feishu]`` 表加载配置。
 
     必填 ``app_id`` 与 ``redirect_uri``；缺失即抛 :class:`FeishuConfigError`
@@ -97,4 +114,5 @@ def load_feishu_config(config_file: Path | None = None) -> FeishuConfig:
         app_id=str(app_id),
         redirect_uri=str(redirect_uri),
         scopes=scope_tuple,
+        workspace_id=workspace_id,
     )

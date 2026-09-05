@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 
 import typer
 
-from summit_workbench.config.settings import default_config_file, load_settings
+from summit_workbench.config.profiles import resolve_active_workspace
+from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.alerts import Notification, check_and_update
 from summit_workbench.observability.status import StatusReport, build_status
+from summit_workbench.webapp.build_info import mode_from_environment
 
 # 定时任务的面向用户标签。
 _JOB_LABELS: dict[str, str] = {"brief": "晨间简报", "weekly": "周复盘"}
@@ -38,9 +41,28 @@ def status_command(
     ),
 ) -> None:
     """汇总发现/成功/不可用/失败/待确认、当月 token 与估算费用；可选发出阈值通知。"""
-    settings = load_settings()
-    vault_dir = settings.work_paths().vault_dir
-    report = build_status(vault_dir, config_file=default_config_file())
+    context = resolve_active_workspace(
+        allow_env_fallback=mode_from_environment(os.environ.get("WB_PANEL_MODE")) != "production"
+    )
+    if context.paths is None:
+        if as_json:
+            typer.echo(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "state": "onboarding-required",
+                        "message": "尚未选择工作区，请先完成 onboarding",
+                        "notifications": [],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            typer.echo("工作区：尚未选择，请先在 SummitWorkbench 中完成 onboarding。")
+        return
+    vault_dir = context.paths.vault_dir
+    report = build_status(vault_dir, config_file=context.config_file or default_config_file())
     notifications = check_and_update(vault_dir, report) if notify else []
     if notify:
         _deliver_notifications(notifications)

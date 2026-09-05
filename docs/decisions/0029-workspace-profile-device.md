@@ -1,6 +1,6 @@
 # ADR 0029 · Workspace / Profile / Device 领域与存储
 
-- 状态：🟡 部分完成（基础实现与既有质量门全绿；production active-profile 接线等待 P0-07C）
+- 状态：✅ 已实现（P0-07C 已完成离线 production 接线；真实 App/Keychain 真机门未执行）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-07（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；承接 P0-06 WorkspacePaths/原子写/锁根统一）
 - 依据：计划 §2.1（产品边界）、§2.3（数据落点）、§2.4（工作区兼容契约）、P0-07 工作包（领域模型/实现要求 1–8/测试矩阵）；NFR-3（不硬编码路径）、NFR-4（凭据不入文件/仓库）
@@ -44,8 +44,9 @@ vault 容器路径的 legacy 摘要）、没有本机安装级 device id、没�
 - 都没有 → `onboarding-required`，**绝不**静默创建 ``~/Documents/Work`` 或任何目录
   （解析是纯读，不建 Application Support）。
 
-阶段化落地：P0-08 onboarding 完成前，现有 CLI/launchd 继续走 env-compat；P0-08 后各
-入口逐步切换到本解析入口。固定 home 路径只剩兼容代码与测试。
+阶段化落地：P0-08 onboarding 完成前，现有 CLI/launchd 继续走 env-compat；P0-07C 已将
+production Web/server/doctor/status/brief/provider 接线切换到冻结的 active context，仍保留
+显式 development/test env-compat。固定 home 路径只剩兼容代码与测试。
 
 ### 4. schema / 版本兼容门（Compatibility）
 
@@ -62,7 +63,7 @@ Keychain service = ``com.summitworkbench.credentials.<workspace_id>``，account 
 ``llm:<provider>:<name>`` / ``feishu:<app_id>:app_secret|refresh_token`` /
 ``git:<host>:<username>``。新 API（`workspace_credential_ref/resolve/store_workspace_credential`）
 只操作作用域命名；旧命名读取只经显式迁移入口 `resolve_legacy_credential_for_migration`，
-普通读取不回退旧命名、新代码不写旧命名。provider 实际接线留 P0-08（拿到 active profile 后切换）。
+普通读取不回退旧命名、新代码不写旧命名。provider 实际接线由 P0-07C 完成，onboarding 负责写入对应 profile 的非秘密配置。
 
 ### 6. outbox 工作区 id 升级
 
@@ -88,8 +89,24 @@ Keychain service = ``com.summitworkbench.credentials.<workspace_id>``，account 
 - 全程使用临时 HOME/临时目录与 fake Keychain，未访问真实 `~/Documents/Work`、真实
   Keychain、真实飞书或模型。
 
-## 遗留 / 边界
+## P0-07C 收口
 
-- onboarding 服务与 API（create/upgrade/connect）属 P0-08；provider 凭据接线、
-  production 全面切换解析入口、doctor/status 展示 onboarding-required 随 P0-08/P0-12 落地。
-- 打包 App 的真实 Application Support 路径与重签名稳定性属 P0-13 真机门。
+`ActiveWorkspaceContext` 是 production 入口的唯一运行时上下文：它一次性解析 active
+profile，派生 `WorkspacePaths`、profile config、workspace/device id，并读取 marker 计算
+`read-write`、`read-only-upgrade-required` 或 `cannot-open`。打包 server 与 `wb web` 使用
+`allow_env_fallback=False`；没有 active profile 时不创建旧的 `~/Documents/Work`，只提供版本、
+onboarding 与脱敏诊断所需的受限控制面。development/test 仍可显式使用 `WORK_ROOT` 兼容态。
+
+Web、doctor、status、brief runner 和 Feishu/LLM 配置都从冻结上下文取得路径、配置文件和
+workspace-scoped credential refs；旧全局 Keychain 命名没有静默回退。Web unsafe route 在
+compatibility 门控下统一拒绝写入，read-only 仍可浏览；profile TOML 的未知字段以 TOML
+扩展表形式保留，避免读写丢字段。
+
+## 验证与边界
+
+- 新增 `test_active_profile_runtime.py`：覆盖 active context、空安装、未知字段往返、provider
+  作用域与 schema compatibility/restricted control plane。
+- 全量质量门：ruff、format、mypy（241 files）通过；pytest（682 passed，1 skipped，既有
+  `WB_PACKAGED_APP` 条件打包 smoke）。
+- 离线 fake/临时 HOME 验证通过；真实 Keychain、真实 HTTPS remote、clean-account、第二台
+  Mac 与 Apple 签名/notarization 未执行，不能视为真机门通过。

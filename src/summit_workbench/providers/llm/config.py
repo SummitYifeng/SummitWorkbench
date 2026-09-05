@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from summit_workbench.config.secrets import CredentialRef
+from summit_workbench.config.secrets import (
+    CredentialRef,
+    workspace_account,
+    workspace_credential_ref,
+)
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.providers.llm.errors import LLMConfigError
 
@@ -47,14 +51,23 @@ class ModelConfig:
     context_window_tokens: int = 65536
     context_safety_ratio: float = 0.85
     pricing: ModelPricing = ModelPricing()
+    workspace_id: str | None = None
 
     @property
     def api_key_ref(self) -> CredentialRef:
+        if self.workspace_id:
+            return workspace_credential_ref(
+                self.workspace_id,
+                workspace_account("llm", self.capability, self.credential_account),
+            )
         return CredentialRef(service=API_KEY_SERVICE, account=self.credential_account)
 
 
 def _model_from_table(
-    capability: str, table: dict[str, Any], shared: dict[str, Any]
+    capability: str,
+    table: dict[str, Any],
+    shared: dict[str, Any],
+    workspace_id: str | None = None,
 ) -> ModelConfig:
     def pick(key: str, default: Any = None) -> Any:
         return table.get(key, shared.get(key, default))
@@ -89,10 +102,16 @@ def _model_from_table(
         context_window_tokens=context_window_tokens,
         context_safety_ratio=context_safety_ratio,
         pricing=pricing,
+        workspace_id=workspace_id,
     )
 
 
-def load_model_config(capability: str, config_file: Path | None = None) -> ModelConfig:
+def load_model_config(
+    capability: str,
+    config_file: Path | None = None,
+    *,
+    workspace_id: str | None = None,
+) -> ModelConfig:
     """加载某能力的模型配置。
 
     读取 ``[models.<capability>]``，缺项回退到 ``[models.shared]``（首版四类共用）。
@@ -119,4 +138,4 @@ def load_model_config(capability: str, config_file: Path | None = None) -> Model
     if not table and not shared:
         raise LLMConfigError(f"缺少 [models.{capability}] 且无 [models.shared] 兜底")
 
-    return _model_from_table(capability, table, shared)
+    return _model_from_table(capability, table, shared, workspace_id)

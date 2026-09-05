@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行；P0-01 至 P0-06、P0-08 已完成，P0-07/P0-09/P0-10 部分完成；下一工作包为 P0-07C
+> 状态：可执行；P0-01 至 P0-08、P0-07C 已完成，P0-09/P0-10 部分完成；下一工作包为 P0-09C
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -73,7 +73,7 @@ uv run pytest -m integration
 
 1. 仓库为 `main = origin/main = bf734d8`，复核前工作树干净；提交 `70dfae6..bf734d8` 线性存在。
 2. 当前全量质量门通过：ruff、format、mypy（240 files）、pytest（677 passed，1 skipped）以及前端 build/verify-build。测试全绿证明现有行为稳定，不等于未覆盖的产品契约已经完成。
-3. P0-06 与 P0-08 保持 `[x]`。P0-07 改为 `[~]`：领域模型、Application Support 与 profile registry 已落地，但 production Web/server/doctor/provider 仍未统一以 active profile 为权威上下文。
+3. P0-06 与 P0-08 保持 `[x]`。P0-07C 已收口 P0-07 的 production 缺口：active profile/runtime context、onboarding-required 受限控制面、compatibility 写门与 workspace-scoped provider 配置已接线；P0-07 现为 `[x]`。
 4. P0-09 改为 `[~]`：双 backend、typed error 与凭据模型已落地，但 Dulwich 的 clone/fetch/push 尚未接入 workspace-scoped HTTPS 凭据，打包入口也未固定使用生产 backend。
 5. P0-10 改为 `[~]`：状态机、基础协调器、API 与 banner 已落地，但 active-profile 状态持久化、准确 pending 计数与 last-success 保留、全部共享 vault 写入口保护/提交后推送、完整 UI 字段、remote clone 与主设备唯一声明尚未闭环。
 6. 不把上述缺口塞进一个超大的 P0-11。先执行 P0-07C → P0-09C → P0-10C，再执行 P0-11A → P0-12 → P0-11B。
@@ -205,11 +205,11 @@ account = git:<host>:<username>
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
-| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [~] |
+| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
 | 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [~] |
 | 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [~] |
-| 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [ ] |
+| 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [x] |
 | 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [ ] |
 | 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [ ] |
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [ ] |
@@ -536,7 +536,19 @@ P0-08 追加（onboarding 服务 API，无 UI；create/upgrade/connect 均为全
 
 **验收**：核心业务获得路径必须经 active profile/`WorkspacePaths`；固定 home 路径只剩兼容迁移代码和测试。
 
-**复核状态（`bf734d8`）**：`[~]`。模型、registry、Application Support 和解析器已完成；生产 `server_entry`/`wb web`、doctor/status、provider 配置与凭据仍存在旧 settings/默认路径入口，交由 P0-07C 收口。历史提交 `6076a01` 保留，不把已有实现推倒重写。
+**复核状态（`bf734d8`）**：`[~]`。模型、registry、Application Support 和解析器已完成；生产入口与 provider 接线当时仍待收口。
+
+**P0-07C 收口证据（2026-09-05）**：`ActiveWorkspaceContext` 由 active profile 一次解析并冻结
+paths、workspace/device id、compatibility、Application Support 与 profile config；打包
+`server_entry` 与 `wb web` 在 production 禁止 `WORK_ROOT` 回退，空安装只启动 onboarding
+受限控制面；WebContext、doctor/status、brief runner、Feishu/LLM 配置均消费该上下文或显式
+development fallback。read-only/cannot-open 在 Web unsafe middleware 统一拒绝，profile TOML
+未知字段往返保留，provider 凭据引用使用 workspace-scoped Keychain 命名。
+
+目标测试：`tests/unit/test_active_profile_runtime.py`（6 项）以及全量现有测试；质量门为
+ruff、format、mypy（241 files）、pytest（682 passed，1 skipped，跳过需
+`WB_PACKAGED_APP` 的既有打包 smoke）。未执行真实 Keychain、真实 remote、clean-account
+或 Apple 真机验证；这些仍属于后续 P0-09C/P0-13 门。
 
 ### P0-08 · 新建、升级与连接工作区服务
 
@@ -1438,6 +1450,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 计划决策：采用“先基础收口、再拆分 UI”的方案 A；新增 P0-07C/P0-09C/P0-10C，将原 P0-11 拆为 P0-11A 与 P0-11B，执行顺序固定为 P0-07C → P0-09C → P0-10C → P0-11A → P0-12 → P0-11B → P0-13。
 - 未验证：未访问真实 Keychain、真实私有 HTTPS remote、真实 `~/Documents/Work`、第二台 Mac、Apple 签名/notarization；这些仍按对应工作包和真机门记录，不能写成通过。
 - 下一工作包：P0-07C；本次未开始实现。
+
+### 2026-09-05 · P0-07C
+
+- 状态：完成
+- Git commit：待提交（本包完成后提交并推送）
+- 变更摘要：新增 `ActiveWorkspaceContext`，把 active profile、WorkspacePaths、workspace/device id、compatibility、Application Support 与 profile config 冻结为 production 唯一运行时上下文；打包 `server_entry` 与 `wb web` 禁止 production `WORK_ROOT` 回退，空安装启动受限 onboarding 控制面；Web、doctor/status、brief runner、Feishu/LLM provider 配置接入 profile 路径与 workspace-scoped Keychain 引用；read-only/cannot-open 写门统一；profile TOML 未知字段读写保留。
+- 目标测试：`uv run pytest tests/unit/test_active_profile_runtime.py`（6 passed）；覆盖 active context/marker、空安装、未知字段、provider 作用域、兼容性与受限控制面。
+- 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（241 files）通过；`uv run pytest`（683 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）。
+- 真机验证：未执行（使用临时 HOME、临时目录与离线 fake；未访问真实 Keychain/remote、真实工作目录、第二台 Mac 或 Apple 签名/notarization）。
+- 遗留：无；P0-09C 负责 production Dulwich HTTPS transport 与 remote clone；P0-13 负责真实打包/签名门。
 
 ## 16. 外部实现依据
 
