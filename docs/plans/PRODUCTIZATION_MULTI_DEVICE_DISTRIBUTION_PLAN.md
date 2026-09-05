@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08、P0-09 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -191,7 +191,7 @@ account = git:<host>:<username>
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
-| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [ ] |
+| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [x] |
 | 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [ ] |
 | 11 | P0-11 首次使用向导与设置中心 | P0 | P0-04、P0-08、P0-10 | L | [ ] |
 | 12 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07 | L | [ ] |
@@ -1251,6 +1251,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（229 files）通过；`uv run pytest`（651 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（使用临时 HOME/临时目录离线验证，无真实 Keychain/`~/Documents/Work`/第二台 Mac；UI 引导与 profile 切换设置中心属 P0-11）
 - 遗留：P0-08 路由已登记进 P0-05 路由表（onboarding 五条）；git init/backend 属 P0-09；首次使用向导 UI、多 profile 切换、doctor/status 展示 onboarding-required 属 P0-11/P0-12；下一工作包为 P0-09，本次未开始。
+
+### 2026-09-05 · P0-09
+
+- 状态：完成（决策门通过：dulwich 0.22 可安装且满足离线可验契约；真实 HTTPS/打包真机门如实未执行）
+- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- 变更摘要：
+  - 新增 `repositories/git_backend.py`（GitBackend Protocol + typed errors：GitNonFastForward/GitConflictError/GitAuthError/GitTlsError/GitRemoteUnavailable/GitInvalidRevision，全部派生 GitError）、`repositories/system_git.py`（从旧 git.py 提取的 subprocess 后端，行为零变化，含 init/clone/add_remote 与 stderr 特征分类）、`repositories/dulwich_git.py`（生产后端，dulwich>=0.22：init/clone/status(staged+unstaged+untracked)/add/commit/log_grep/show_patch(自实现 unified diff)/revert wb（反向树重建，冲突 typed 且不 force）/fetch/ahead-behind/ff（工作树同步）/push/branch/upstream；绝不调用系统 git，PATH 为空可完成全链路）。
+  - `repositories/git.py` 改为门面（API 与导出 GitError/AheadBehind 全部保留；默认转发 system 后端；`WB_GIT_BACKEND=dulwich` 显式选择生产后端，打包固定接线随 P0-10/P0-13）。
+  - 新增 `config/git_credentials.py`：workspace-scoped Keychain 读写（service=com.summitworkbench.credentials.<id>，account=git:<host>:<user>）、strip_credentials 剥 URL userinfo、GitCredentials（username+SecretStr，repr/日志不泄密）、profile_identity（显示名+user_email，缺省 wb@local 占位）。
+  - `domain/workspace.py::LocalProfile` 新增可选 `user_email`（config.toml 持久化，向后兼容）。
+  - pyproject 增加 `dulwich>=0.22,<0.23` 运行时依赖；mypy 仅对该无类型库模块局部放宽。
+  - 新增 ADR 0030（含 PyInstaller/arm64/证书/代理/GitHub-GitLab HTTPS/许可评估记录）。
+- 目标测试：新增 14 项（`test_git_backends.py`：system/dulwich 双后端 conformance——本地历史/revert+冲突 typed/作者身份写入、远端 push→clone→fetch→ff、remote-missing 与 non-ff typed、PATH 为空时 dulwich 完成 init/commit/fetch/ff/push、两后端语义一致；`test_git_credentials.py`：URL/repr/异常 canary、workspace 作用域隔离、profile_identity 占位）
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（235 files）通过；`uv run pytest`（665 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（使用临时仓库/本地 bare remote/fake 离线验证；真实私有 HTTPS 远端、证书/代理、clean-account 打包运行属 P0-13 真机门；认证/TLS 仅以确定性分类 unit 覆盖，dulwich 0.22 无 WSGI 服务端故未建本地 HTTP 假远端矩阵——已在 ADR 0030 如实记录）
+- 遗留：生产运行固定选 dulwich + 凭据 callback 接线、新工作区 git init/远端 clone 的业务接入随 P0-10/P0-13；下一工作包为 P0-10，本次未开始。
 
 ## 16. 外部实现依据
 

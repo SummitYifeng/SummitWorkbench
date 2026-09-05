@@ -22,6 +22,9 @@ dependencies = [
     "pydantic-settings>=2.3,<3",
     "httpx>=0.27,<1",
     "pyyaml>=6.0,<7",
+    # P0-09 可打包 Git 后端：纯 Python 的 git 实现（production backend，不依赖系统 git）。
+    # 0.22 起要求 urllib3（HTTPS 传输/TLS）；许可证 BSD-3-Clause。
+    "dulwich>=0.22,<0.23",
 ]
 
 [project.scripts]
@@ -83,6 +86,12 @@ module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+# P0-09 dulwich 库无类型标注：对该模块放宽「未标注调用/Any 返回/多余 ignore」类报错，
+# 其余 strict 检查（含 typed error 使用面）保留。
+module = "summit_workbench.repositories.dulwich_git"
+disable_error_code = ["no-untyped-call", "no-any-return", "unused-ignore", "no-untyped-def"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

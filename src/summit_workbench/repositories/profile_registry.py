@@ -45,6 +45,7 @@ _PROFILE_TOML_KEYS = (
     "device_role",
     "created_at",
     "last_opened_at",
+    "user_email",
 )
 
 

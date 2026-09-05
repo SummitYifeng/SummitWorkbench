@@ -34,6 +34,7 @@
 | [0027](0027-write-path-hardening-undo-activity.md) | v0.4.1 维护加固 | 写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复（P0/P0'/P1）：全库 RMW 加工作区锁与原子写、apply 乐观合并、幂等账本容错读、线程序号防撞；autocommit（wb: 提交）+ /api/undo/* 一键还原（只作用 vault 文件）；updated=实质更新 / activity_at=活动痕迹拆分（>14 天停滞点名不再被机器活动刷失明）|
 | [0028](0028-external-action-outbox.md) | v0.4.1 加固 P0-04 | 飞书外部动作 Outbox 与不确定态：prepared/sending/succeeded/failed/unknown/reconciled 状态机、请求指纹、unknown 禁止自动重试、人工核对 |
 | [0029](0029-workspace-profile-device.md) | v0.4.1 加固 P0-07 | Workspace/Profile/Device 领域与存储：manifest 随 vault 同步（UUID v4）、本机 profile registry/device.json（0600/0700、原子写）、active workspace 解析三态（active/env-compat/onboarding-required）、schema 版本兼容门、凭据 workspace 作用域（service=com.summitworkbench.credentials.<id>）|
+| [0030](0030-packaged-git-backend.md) | v0.4.1 加固 P0-09 | 可打包 Git 后端：GitBackend Protocol + conformance suite，system（subprocess，开发默认）↔ dulwich（纯 Python，生产、PATH 为空可跑），typed errors（non-ff/conflict/auth/TLS/remote-missing/invalid-revision）；git 凭据 workspace-scoped Keychain、绝不进 URL/日志/repr；author=profile 显示名+user_email（缺省 wb@local）|
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

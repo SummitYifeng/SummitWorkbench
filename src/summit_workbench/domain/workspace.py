@@ -110,6 +110,8 @@ class LocalProfile(BaseModel):
     device_role: DeviceRole = DeviceRole.SECONDARY
     created_at: datetime
     last_opened_at: datetime | None = None
+    # P0-09：Git author 邮箱（可选；缺省在提交时用本地占位 wb@local，绝不复制开发者 identity）
+    user_email: Annotated[str, Field(max_length=254)] | None = None
 
 
 class DeviceIdentity(BaseModel):
