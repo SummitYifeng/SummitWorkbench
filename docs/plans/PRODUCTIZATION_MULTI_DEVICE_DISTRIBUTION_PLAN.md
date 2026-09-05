@@ -215,7 +215,7 @@ account = git:<host>:<username>
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [x] |
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [x] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [x] |
-| 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [ ] |
+| 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [~] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [ ] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
@@ -1521,6 +1521,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（715 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
 - 真机验证：未执行（按 §0.1 使用临时目录、fake/离线 TestClient；真实 App/WKWebView、第二台 Mac、真实 Keychain、真实远端和 Apple 发布门留给 P0-13/人工真机矩阵）。
 - 遗留：P0-13 Developer ID 签名、notarization、架构 DMG、clean-account 安装/升级/删除验证和同事图形化试用仍未开始；本包已将 P0-11A/P0-11B 均标为 `[x]`，P0-11 总目标完成。
+
+### 2026-09-06 · P0-13
+
+- 状态：部分完成 `[~]`（离线发布实现与 unsigned-dev 验收完成；真实 Apple 发布门需要外部凭据/设备）
+- Git commit：待收口提交（实现提交后补记；将推送至 `origin/main`）
+- 变更摘要：重构 macOS bundle 构建，使 `pyproject.toml` 成为短版本唯一来源、build number 显式注入、架构显式标识且不伪装 universal；构建在临时目录完成后原子替换，按 dylib/framework → PyInstaller executable → App 顺序签名，使用最小 entitlement 与 hardened runtime 参数；新增 `release-macos.sh` 按 arm64/x86_64 生成 DMG、`SHA256SUMS`、发布 metadata、CycloneDX SBOM 和 notary 摘要，凭据只通过 Keychain profile 名称交给 `notarytool`；无完整 Apple 凭据自动降级为文件名/UI 均标明 `UNSIGNED-DEV` 的开发包；新增 `verify-macos-release.sh` 覆盖 strict codesign、spctl/stapler（正式包）、bundle 清单、开发路径/secret scan 和动态端口离线启动 smoke；补充发布/安装/卸载说明与 ADR 0032。
+- 目标测试：`uv run pytest tests/unit/test_packaging_contract.py -q`（6 passed）；`BUILD_NUMBER=1 ARCH=arm64 scripts/build-macos-app.sh`（自包含 App 构建、47 passed 相关回归、PyInstaller、Swift 离线编译、动态端口 smoke）；`scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过；`BUILD_NUMBER=2 ARCH=arm64 RELEASE_OUTPUT_DIR=<临时目录> scripts/release-macos.sh` 生成 arm64 `UNSIGNED-DEV.dmg`、metadata、SBOM、checksum 和 notary 摘要。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（716 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/release-macos.sh scripts/verify-macos-release.sh scripts/install-macos-app.sh` 通过；`WB_PACKAGED_APP=dist/SummitWorkbench.app uv run pytest -m integration -q`（1 passed）。
+- 真机验证：未执行。当前缺少 Developer ID Application、notarytool Keychain profile、原生 x86_64 runner/设备和 clean-account；因此未运行真实 `spctl`/stapler 成功门、notarization、Intel 原生矩阵、升级/删除/同事安装试点，不能声称形成 notarized DMG。
+- 遗留：提供签名身份与已存储的 notarytool Keychain profile 后，在受保护环境分别运行 arm64/x86_64 发布；随后由 Apple Silicon/Intel、clean-account、升级/删除和同事安装人工矩阵完成最终 `[x]` 验收。
 
 ## 16. 外部实现依据
 

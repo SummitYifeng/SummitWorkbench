@@ -3,15 +3,28 @@
 #
 # 生产路径：bundle 内 server + bundle 内静态资源 + WKWebView 原生壳。
 # 构建先完成临时 bundle、签名与 smoke test，最后才替换 dist 产物。
-# 用法：scripts/build-macos-app.sh [smoke port；默认动态端口]
+# 用法：ARCH=arm64 BUILD_NUMBER=123 scripts/build-macos-app.sh [smoke port；默认动态端口]
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="${1:-0}"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 STATIC_DIR="$REPO_ROOT/src/summit_workbench/webapp/static"
-FINAL_APP="$REPO_ROOT/dist/SummitWorkbench.app"
+ARCH="${ARCH:-$(uname -m)}"
+OUTPUT_APP="${OUTPUT_APP:-$REPO_ROOT/dist/SummitWorkbench.app}"
+FINAL_APP="$OUTPUT_APP"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+BUILD_NUMBER="${BUILD_NUMBER:-0}"
+RELEASE_BUILD="${RELEASE_BUILD:-false}"
+
+case "$ARCH" in
+  arm64|x86_64) ;;
+  *) echo "✗ ARCH 只支持 arm64 或 x86_64：$ARCH" >&2; exit 1 ;;
+esac
+if [[ "$RELEASE_BUILD" == true && "$BUILD_NUMBER" == 0 ]]; then
+  echo "✗ 正式/候选构建必须显式提供 BUILD_NUMBER（CI run 或发布参数）" >&2
+  exit 1
+fi
 
 [[ -x "$PYTHON" ]] || { echo "✗ 找不到 Python：$PYTHON" >&2; exit 1; }
 command -v npm >/dev/null || { echo "✗ 需要 npm" >&2; exit 1; }
@@ -21,6 +34,14 @@ command -v codesign >/dev/null || { echo "✗ 需要 codesign" >&2; exit 1; }
   echo "✗ 缺少 PyInstaller，请先 uv sync --extra web --extra packaging" >&2
   exit 1
 }
+PROJECT_VERSION="$($PYTHON - "$REPO_ROOT/pyproject.toml" <<'PY'
+import sys
+import tomllib
+from pathlib import Path
+
+print(tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["project"]["version"])
+PY
+)"
 
 # 先生成并验证唯一的前端构建身份，再打包 server；两者共享同一个 build-meta。
 npm --prefix "$REPO_ROOT/web" run build
@@ -51,6 +72,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/static" \
   --workpath "$BUILD_ROOT/server-work" \
   "$REPO_ROOT/packaging/SummitWorkbenchServer.spec"
 cp -R "$BUILD_ROOT/server-dist/SummitWorkbenchServer/." "$APP/Contents/Resources/server/"
+# editable 安装元数据只服务于开发环境，不能把本机仓库路径带进可分发 bundle。
+find "$APP/Contents/Resources/server" -name direct_url.json -type f -delete
 
 cp -R "$STATIC_DIR/." "$APP/Contents/Resources/web/static/"
 cp -R "$REPO_ROOT/prompts/." "$APP/Contents/Resources/prompts/"
@@ -73,25 +96,26 @@ fi
 
 # 原生壳从 Resources/server 与 Resources/web/static 的相对路径启动服务。
 SWIFT_SOURCES=("$REPO_ROOT"/native/SummitWorkbench/*.swift)
-xcrun swiftc -O -target "$(uname -m)-apple-macosx13.0" \
+xcrun swiftc -O -target "$ARCH-apple-macosx13.0" \
   -framework AppKit -framework WebKit "${SWIFT_SOURCES[@]}" \
   -o "$APP/Contents/MacOS/SummitWorkbench"
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
 
-read -r SHORT_VERSION BUNDLE_VERSION < <("$PYTHON" - <<'PY'
-from datetime import UTC, datetime
-from time import time
-
-now = datetime.now(UTC)
-print(f"{now.year}.{now.month}.{now.day}", int(time()))
-PY
-)
+SHORT_VERSION="$PROJECT_VERSION"
+BUNDLE_VERSION="$BUILD_NUMBER"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  DISPLAY_NAME="SummitWorkbench (UNSIGNED-DEV)"
+  RELEASE_LABEL="UNSIGNED-DEV"
+else
+  DISPLAY_NAME="SummitWorkbench"
+  RELEASE_LABEL="SIGNED"
+fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>SummitWorkbench</string>
-  <key>CFBundleDisplayName</key><string>SummitWorkbench</string>
+  <key>CFBundleName</key><string>$DISPLAY_NAME</string>
+  <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
   <key>CFBundleIdentifier</key><string>com.summitworkbench.panel</string>
   <key>CFBundleShortVersionString</key><string>$SHORT_VERSION</string>
   <key>CFBundleVersion</key><string>$BUNDLE_VERSION</string>
@@ -107,15 +131,37 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
 {
   "schema_version": 2,
   "product_id": "com.summitworkbench.panel",
+  "version": "$PROJECT_VERSION",
+  "build": "$BUILD_NUMBER",
+  "architecture": "$ARCH",
+  "distribution": "$RELEASE_LABEL",
   "frontend_build": "$FRONTEND_BUILD",
   "api_protocol": 2
 }
 MANIFEST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
-# 先签名嵌套 server，再签名 App；没有开发者证书时使用 ad-hoc 签名。
-codesign --force --sign "$SIGNING_IDENTITY" "$APP/Contents/Resources/server/SummitWorkbenchServer"
-codesign --force --sign "$SIGNING_IDENTITY" "$APP"
+# 先签名 dylib/framework，再签名 PyInstaller executable，最后签名 App（hardened-runtime）。
+ENTITLEMENTS="$REPO_ROOT/packaging/entitlements.plist"
+[[ -f "$ENTITLEMENTS" ]] || { echo "✗ 缺少最小 entitlement：$ENTITLEMENTS" >&2; exit 1; }
+SIGN_FLAGS=(--force --sign "$SIGNING_IDENTITY")
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  SIGN_FLAGS+=(--timestamp=none)
+else
+  SIGN_FLAGS+=(--options runtime --timestamp)
+fi
+sign_nested() { codesign "${SIGN_FLAGS[@]}" "$1"; }
+while IFS= read -r nested; do sign_nested "$nested"; done < <(
+  find "$APP/Contents/Resources" \( -name '*.dylib' -o -name '*.framework' \) -print | sort -r
+)
+sign_nested "$APP/Contents/Resources/server/SummitWorkbenchServer"
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  codesign --force --sign - --timestamp=none "$APP"
+else
+  codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp \
+    --entitlements "$ENTITLEMENTS" "$APP"
+fi
+codesign --verify --strict "$APP"
 codesign --verify --deep --strict "$APP"
 
 # 不依赖仓库 .venv 的 bundle server smoke：直接运行嵌套 server 与 bundle static。

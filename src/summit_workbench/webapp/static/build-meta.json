@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "product_id": "com.summitworkbench.panel",
-  "frontend_build": "v2026.09.05-c6f5b55-ac9b2fb7",
-  "git_revision": "c6f5b55",
+  "frontend_build": "v2026.09.05-f7bcd9b-ac9b2fb7",
+  "git_revision": "f7bcd9b",
   "source_hash": "ac9b2fb75c06df18f787fe97c4dda6b503e8b29afe8352de4010bc703934493a",
-  "built_at": "2026-09-05T23:05:55.739Z",
-  "index_sha256": "252b7f5ab6a814a80495cffcd5b00792c174d6572b9f300624a34ec22fce6559",
+  "built_at": "2026-09-05T23:21:32.056Z",
+  "index_sha256": "2314c74cda6683490ab0387f2eb58c33607dc0eb15d74bab3e22f8562bce4f95",
   "assets": {
-    "assets/index-B1HG0k6Q.js": "518f5f0a5df73dcd1cea94f394a59d6ecc7823029eb496a12a85e2cc18bc39db",
-    "assets/index-DOLGL80p.css": "fe13e9a87991fd5eefc4dd15d0ff383acea24fe84db82a407fe8dc3c9505296d"
+    "assets/index-DOLGL80p.css": "fe13e9a87991fd5eefc4dd15d0ff383acea24fe84db82a407fe8dc3c9505296d",
+    "assets/index-_uQVwlQt.js": "b294678441c419d2b6ec77f539a302f22d1b99f09100bc74f45a3472e923b136"
   }
 }
