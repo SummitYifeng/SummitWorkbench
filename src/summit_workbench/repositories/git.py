@@ -13,6 +13,7 @@ from pathlib import Path
 
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
+    CommitIdentity,
     GitBackend,
     backend_kind,
 )
@@ -50,6 +51,9 @@ class GitRepo:
     def has_remote(self, name: str = "origin") -> bool:
         return self._backend.has_remote(name)
 
+    def remote_url(self, name: str = "origin") -> str | None:
+        return self._backend.remote_url(name)
+
     def current_branch(self) -> str:
         return self._backend.current_branch()
 
@@ -84,9 +88,9 @@ class GitRepo:
         """只暂存显式列出的路径（相对仓库根）。绝不 ``add -A``，避免波及用户其它改动。"""
         self._backend.add(paths)
 
-    def commit(self, message: str) -> None:
+    def commit(self, message: str, *, author: CommitIdentity | None = None) -> None:
         """提交暂存区。无暂存内容时应由调用方先判 :meth:`has_staged_changes`（幂等）。"""
-        self._backend.commit(message)
+        self._backend.commit(message, author=author)
 
     def resolve_commit(self, sha: str) -> str:
         return self._backend.resolve_commit(sha)

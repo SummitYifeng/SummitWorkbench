@@ -125,6 +125,10 @@ class SystemGitBackend:
     def has_remote(self, name: str = "origin") -> bool:
         return name in self._run("remote").stdout.split()
 
+    def remote_url(self, name: str = "origin") -> str | None:
+        cp = self._run("remote", "get-url", name)
+        return cp.stdout.strip() or None
+
     def add_remote(self, name: str, url: str) -> None:
         self._must("remote", "add", name, url)
 

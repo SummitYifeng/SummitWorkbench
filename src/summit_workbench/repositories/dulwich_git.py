@@ -163,6 +163,11 @@ class DulwichGitBackend:
         repo = self._open()
         return self._config_get(repo, (b"remote", name.encode("utf-8")), b"url") is not None
 
+    def remote_url(self, name: str = "origin") -> str | None:
+        repo = self._open()
+        url = self._config_get(repo, (b"remote", name.encode("utf-8")), b"url")
+        return url.decode("utf-8") if url is not None else None
+
     def add_remote(self, name: str, url: str) -> None:
         repo = self._open()
         config = repo.get_config()
