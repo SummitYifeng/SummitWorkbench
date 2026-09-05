@@ -1197,7 +1197,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-06
 
 - 状态：完成
-- Git commit：85d3470（已推送至 `origin/main`）
+- Git commit：63ee520（已推送至 `origin/main`）
 - 变更摘要：
   - `repositories/_atomic.py`：原子写改为目标**同目录唯一临时文件**（`.目标名.<随机hex>.tmp`，`O_CREAT|O_EXCL` 防并发撞名，无固定 `.tmp` 名）；写入后 `flush + fsync(file)`，`os.replace` 后在支持的平台 `fsync(parent directory)`；替换已有文件保留原 mode，新建文件沿用普通创建语义（`0666 & ~umask`）；异常路径只清理本次临时文件。
   - 高风险生产路径的直接 `write_text` 迁移：`repositories/review_audit.py` 审计归档改走原子原语；webapp 上传暂存文件（`mkdtemp` 私有目录、finally 整目录删除）判定为非持久状态未迁移；fixture 生成代码未改动。
