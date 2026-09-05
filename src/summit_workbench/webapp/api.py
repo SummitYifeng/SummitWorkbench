@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from summit_workbench.domain.brief import CATEGORY_LABELS
 from summit_workbench.domain.external_action import ExternalAction
@@ -169,6 +169,7 @@ class OnboardingCreatePayload(BaseModel):
     work_root: str = Field(min_length=1, max_length=2_048)
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device_role: Literal["automation-primary", "secondary"] = "automation-primary"
 
 
 class OnboardingVaultPayload(BaseModel):
@@ -177,6 +178,48 @@ class OnboardingVaultPayload(BaseModel):
     vault_dir: str = Field(min_length=1, max_length=2_048)
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device_role: Literal["automation-primary", "secondary"] = "automation-primary"
+
+
+class OnboardingDraftPayload(BaseModel):
+    """安装级向导草稿；明确拒绝 api key/token 等秘密字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flow: Literal["create-new", "connect-existing", "upgrade-existing", "model", "feishu"] = (
+        "create-new"
+    )
+    step: str = Field(default="welcome", min_length=1, max_length=64)
+    work_root: str | None = Field(default=None, max_length=2_048)
+    vault_dir: str | None = Field(default=None, max_length=2_048)
+    display_name: str | None = Field(default=None, max_length=200)
+    device_name: str | None = Field(default=None, max_length=200)
+    git_mode: Literal["local", "remote", "skipped"] | None = None
+    remote_url: str | None = Field(default=None, max_length=2_048)
+    expected_workspace_id: str | None = Field(default=None, max_length=200)
+    git_username: str | None = Field(default=None, max_length=200)
+    model_provider: str | None = Field(default=None, max_length=100)
+    model_id: str | None = Field(default=None, max_length=200)
+    model_base_url: str | None = Field(default=None, max_length=2_048)
+    model_credential_account: str | None = Field(default=None, max_length=200)
+    feishu_app_id: str | None = Field(default=None, max_length=200)
+    feishu_redirect_uri: str | None = Field(default=None, max_length=2_048)
+    provider_status: Literal["pending", "skipped", "ready"] = "pending"
+    automation_role: Literal["primary", "secondary"] = "secondary"
+
+
+class OnboardingRemoteStagePayload(BaseModel):
+    remote_url: str = Field(min_length=1, max_length=2_048)
+    target_vault: str = Field(min_length=1, max_length=2_048)
+    expected_workspace_id: str | None = Field(default=None, max_length=200)
+    git_username: str = Field(min_length=1, max_length=200)
+
+
+class OnboardingRemoteConfirmPayload(BaseModel):
+    stage_id: str = Field(min_length=1, max_length=100)
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device_name: str | None = Field(default=None, min_length=1, max_length=200)
+    user_email: str | None = Field(default=None, max_length=320)
 
 
 class AutomationPrimaryPayload(BaseModel):

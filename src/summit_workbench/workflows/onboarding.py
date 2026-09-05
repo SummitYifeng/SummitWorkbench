@@ -326,6 +326,7 @@ def _ensure_profile(
     work_root: Path,
     vault_dir: Path,
     home: Path | None,
+    device_role: DeviceRole = DeviceRole.SECONDARY,
 ) -> LocalProfile:
     profile = LocalProfile.model_validate(
         {
@@ -334,7 +335,7 @@ def _ensure_profile(
             "display_name": display_name,
             "work_root": str(work_root),
             "vault_dir": str(vault_dir),
-            "device_role": DeviceRole.SECONDARY.value,
+            "device_role": device_role.value,
             "created_at": datetime.now(UTC).isoformat(),
         }
     )
@@ -371,6 +372,7 @@ def create_workspace(
     templates_dir: Path | None = None,
     home: Path | None = None,
     app_version: str | None = None,
+    device_role: DeviceRole = DeviceRole.AUTOMATION_PRIMARY,
 ) -> OnboardingResult:
     """create-new：全新 workspace（staging + 原子改名），失败回滚全部产物。"""
     report = preflight(
@@ -415,7 +417,11 @@ def create_workspace(
         staging = None
 
         device = ensure_device_identity(home, device_name=device_name)
-        _ensure_profile(workspace_id, display, work_root, vault_target, home)
+        _ensure_profile(workspace_id, display, work_root, vault_target, home, device_role)
+        if device_role is DeviceRole.AUTOMATION_PRIMARY:
+            from summit_workbench.repositories.automation_primary import claim_automation_primary
+
+            claim_automation_primary(vault_target, workspace_id, device.device_id)
         set_active_profile(workspace_id, home=home)
         return _make_result(
             OnboardingFlow.CREATE_NEW,
@@ -443,6 +449,7 @@ def upgrade_workspace(
     device_name: str | None = None,
     home: Path | None = None,
     app_version: str | None = None,
+    device_role: DeviceRole = DeviceRole.AUTOMATION_PRIMARY,
 ) -> OnboardingResult:
     """upgrade-existing：旧 vault（无 marker）→ 备份 → 写 marker/profile，内容不动。"""
     report = preflight(
@@ -484,7 +491,11 @@ def upgrade_workspace(
         manifest = _new_manifest(workspace_id, display, version)
         write_workspace_manifest(vault_dir, manifest)
         device = ensure_device_identity(home, device_name=device_name)
-        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home)
+        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home, device_role)
+        if device_role is DeviceRole.AUTOMATION_PRIMARY:
+            from summit_workbench.repositories.automation_primary import claim_automation_primary
+
+            claim_automation_primary(vault_dir, workspace_id, device.device_id)
         set_active_profile(workspace_id, home=home)
         return _make_result(
             OnboardingFlow.UPGRADE_EXISTING,

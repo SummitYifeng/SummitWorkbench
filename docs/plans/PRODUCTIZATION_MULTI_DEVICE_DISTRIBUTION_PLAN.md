@@ -212,7 +212,7 @@ account = git:<host>:<username>
 | 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [x] |
 | 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [x] |
 | 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [x] |
-| 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [ ] |
+| 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [x] |
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [ ] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [ ] |
 | 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [ ] |
@@ -1491,6 +1491,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（699 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，2 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
 - 真机验证：未执行（使用临时目录、fake backend 与离线双设备逻辑验证；未访问真实远端、真实 Keychain、第二台 Mac 或 Apple 签名/notarization）。
 - 遗留：P0-11A 负责首次使用向导；launchd/P1-01 helper 的租约与真实双设备 alpha、设置中心角色切换和真实分发门留给后续包。
+
+### 2026-09-05 · P0-11A
+
+- 状态：完成
+- Git commit：待提交（本包完成后提交并推送）
+- 变更摘要：空安装受限控制面渲染可恢复首次使用向导，覆盖新建、连接已有本地工作区、升级旧 vault、私有 HTTPS remote staging/confirm/cancel、Git 本地/跳过、模型/飞书跳过和设备角色选择；新增安装级原子 `onboarding-draft.json`，仅保存非秘密进度，完成/取消清理；创建新工作区默认写入 automation-primary 声明，连接已有 workspace 默认 secondary；验证错误脱敏且不回显秘密字段。
+- 目标测试：`uv run pytest tests/unit/test_onboarding_wizard.py tests/unit/test_webapi_onboarding.py tests/unit/test_onboarding.py`（22 passed）；覆盖草稿权限/无秘密、关闭恢复、空安装向导、create/upgrade/connect 服务与安全错误 envelope。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（702 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，2 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（使用临时 Home、临时目录、离线 fake；未访问真实 Keychain、真实私有 remote、真实账号或第二台 Mac）。
+- 遗留：模型实际连接、飞书 OAuth、remote 真实凭据和 settings/profile 切换留给后续设置中心/真实分发门；P0-11 总包继续未完成，下一包为 P0-12。
 
 ## 16. 外部实现依据
 
