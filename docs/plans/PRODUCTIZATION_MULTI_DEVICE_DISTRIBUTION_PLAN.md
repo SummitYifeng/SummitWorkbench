@@ -1255,7 +1255,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-09
 
 - 状态：完成（决策门通过：dulwich 0.22 可安装且满足离线可验契约；真实 HTTPS/打包真机门如实未执行）
-- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- Git commit：4683584（已推送至 `origin/main`）
 - 变更摘要：
   - 新增 `repositories/git_backend.py`（GitBackend Protocol + typed errors：GitNonFastForward/GitConflictError/GitAuthError/GitTlsError/GitRemoteUnavailable/GitInvalidRevision，全部派生 GitError）、`repositories/system_git.py`（从旧 git.py 提取的 subprocess 后端，行为零变化，含 init/clone/add_remote 与 stderr 特征分类）、`repositories/dulwich_git.py`（生产后端，dulwich>=0.22：init/clone/status(staged+unstaged+untracked)/add/commit/log_grep/show_patch(自实现 unified diff)/revert wb（反向树重建，冲突 typed 且不 force）/fetch/ahead-behind/ff（工作树同步）/push/branch/upstream；绝不调用系统 git，PATH 为空可完成全链路）。
   - `repositories/git.py` 改为门面（API 与导出 GitError/AheadBehind 全部保留；默认转发 system 后端；`WB_GIT_BACKEND=dulwich` 显式选择生产后端，打包固定接线随 P0-10/P0-13）。
