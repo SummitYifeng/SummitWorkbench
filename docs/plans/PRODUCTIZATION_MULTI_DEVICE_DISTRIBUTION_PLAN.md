@@ -1,0 +1,1127 @@
+# SummitWorkbench 多设备与可分发产品化开发计划
+
+> 版本：1.0
+>
+> 日期：2026-09-05
+>
+> 状态：可执行，P0-01 已完成，其余工作包尚未开始
+>
+> 适用基线：`v0.4.1` 之后、M3 之前
+>
+> 目标执行模型：Codex `gpt-5.6-luna`；每个新任务只实施一个工作包
+>
+> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0027
+
+## 0. 这份计划怎么用
+
+这不是方向性建议，而是可以逐包实施、逐包验收的工程计划。它解决三个具体使用场景：
+
+1. 当前使用者在 Mac Studio 与 MacBook Air 上使用同一套知识库；
+2. 同事安装同一个 SummitWorkbench App，但创建完全独立的个人知识库与工作台；
+3. App 从“绑定开发者电脑的自用工具”升级为“可签名、可安装、可诊断、可升级的本地优先产品”。
+
+### 0.1 Luna 执行协议
+
+每个 Codex 新任务必须遵守以下规则：
+
+1. 先完整阅读本计划、该工作包列出的必读文件和仓库根目录 `README.md`；不得只读工作包标题。
+2. 运行 `git status --short`。保留用户已有改动；若目标文件存在无法安全合并的改动，停止并说明冲突，不得 reset、checkout 或覆盖。
+3. 一次只实施一个工作包。不得“顺手”进入下一个工作包，不得做未列入范围的全库重构。
+4. 先补失败测试或特征测试，再修改实现；安全边界必须同时有成功与拒绝路径测试。
+5. 优先复用已有 `workspace_lock`、原子写、JSONL、Pydantic schema、Git 封装与前端生命周期模块，不复制第二套机制。
+6. 不访问真实飞书、不使用真实模型、不修改真实 Keychain、不读写真实 `~/Documents/Work`。测试只能使用 fake、`MockTransport`、临时目录和临时仓库。
+7. 未经明确要求，不 push、不发布、不替换 `/Applications` 中的 App、不注册真实 LaunchAgent、不执行真实凭据迁移。
+8. 完成目标测试和全量质量门后，才能把工作包状态由 `[ ]` 改成 `[x]`，并在第 15 节实施记录中追加证据。
+9. 缺少 Apple Developer 证书、第二台 Mac、真实私有远端或飞书测试账号时，完成可离线验证部分，但不得把真机门标为通过。
+10. 交付回复固定包含：完成范围、用户可见变化、主要文件、测试结果、尚未验证项、下一工作包；不要只回复“完成”。
+
+### 0.2 每包完成后的通用质量门
+
+Python 相关工作包：
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run pytest
+```
+
+前端相关工作包额外运行：
+
+```bash
+npm --prefix web run build
+node web/scripts/verify-build.mjs src/summit_workbench/webapp/static
+```
+
+macOS App 相关工作包额外运行：
+
+```bash
+scripts/build-macos-app.sh
+uv run pytest -m integration
+```
+
+只有发布工作包可以使用签名、notarization 和安装命令。普通代码包只做 ad-hoc 构建验证。
+
+## 1. 已确认的现状与主要缺口
+
+当前项目已经有可靠的领域模型、文件仓库、工作区锁、原子写、容错 JSONL、FastAPI 面板、
+Swift/AppKit + WKWebView 外壳、PyInstaller 自包含服务端和较完整测试。但它仍然默认只有一位使用者、
+一台电脑、一个固定目录：
+
+| 领域 | 当前状态 | 产品化风险 |
+|---|---|---|
+| 工作目录 | 原生壳默认 `~/Documents/Work` | 无首次设置、无多工作区、同事安装后不知道从哪里开始 |
+| 设备身份 | 无 `device_id` | 无法区分 Studio、Air 和同事电脑的写入来源 |
+| 工作区身份 | 无稳定 `workspace_id` | 凭据、同步、迁移和自动化无法安全隔离 |
+| 同步 | 扫描已有 Git 仓库并 ff-only/push | 不负责克隆；本机锁不能协调两台 Mac；分叉后缺少产品级保护态 |
+| 自动提交 | 显式 add 路径，但 commit 提交整个暂存区 | 可能夹带用户预先暂存的其它文件；撤销可接收任意提交 SHA |
+| 外部副作用 | 飞书客户端统一重试瞬时故障 | 非幂等 POST 在“服务端成功、客户端丢响应”时可能重复创建日程 |
+| Web 边界 | 固定端口、无会话认证 | 端口冲突；若绑定到非 loopback 或遭跨站请求，写接口缺少保护 |
+| 文件持久化 | 已有原子替换，但临时文件名固定且缺少完整 fsync | 并发、异常退出或断电场景仍可加强 |
+| 凭据 | Keychain，但部分调用把秘密作为命令参数 | 进程参数可见；同一 app/account 命名不足以隔离工作区 |
+| Git 运行时 | 调用系统 `git` | 全新 Mac 可能触发 Xcode Command Line Tools，App 并非真正开箱可用 |
+| 自动化 | shell 脚本要求 `wb` 命令 | 只拿到 `.app` 的同事无法注册和管理定时任务 |
+| 分发 | 当前架构构建 + ad-hoc 签名 | 不能作为可信外部分发包；无 notarization、DMG、发布验证与升级通道 |
+| 代码组织 | `webapp/app.py`、`web/src/main.ts` 过大 | 继续扩展 onboarding、sync、settings 会显著增加回归风险 |
+
+## 2. 产品边界与目标架构
+
+### 2.1 必须守住的产品边界
+
+- App bundle 是只读、无用户数据的统一程序；不得把任何人的 vault、配置、token 或日志打进 App。
+- 每个知识库拥有一个稳定 `workspace_id`；同一人的 Studio 与 Air 使用相同 `workspace_id`。
+- 每台 Mac 拥有不同 `device_id`；`device_id`、本机路径、日志和凭据永不经 Git 同步。
+- 同事必须创建新的 `workspace_id`；不得复制当前使用者的 vault、配置目录或 Keychain 项。
+- Vault 与可选项目仓库通过私有 Git remote 同步；禁止使用 iCloud/Dropbox/网盘直接同步含 `.git` 的目录。
+- 凭据采用 BYOK：每位使用者在自己的 Mac 上配置自己的模型 API Key 和飞书授权。
+- 第一阶段不建设 SummitWorkbench 云服务，不建立共享账号，不代管同事的 token。
+- Git 同步永不使用 force push、自动 rebase、自动 stash、自动冲突覆盖或破坏性 reset。
+- 网络不可用时允许本地工作并明确显示“待同步”；已确认分叉时进入受保护状态，不继续静默写共享热点文件。
+- 一个工作区最多一个“自动化主设备”。Studio 可为主设备，Air 默认辅助设备；同事的 Mac 可成为她自己工作区的主设备。
+
+### 2.2 目标关系
+
+```text
+同一个 SummitWorkbench.app
+├── 你的 Mac Studio
+│   ├── workspace_id = W-YIFENG
+│   ├── device_id = D-STUDIO
+│   └── role = automation-primary
+├── 你的 MacBook Air
+│   ├── workspace_id = W-YIFENG
+│   ├── device_id = D-AIR
+│   └── role = secondary
+└── 同事的 Mac
+    ├── workspace_id = W-COLLEAGUE
+    ├── device_id = D-COLLEAGUE
+    └── role = automation-primary（可选）
+```
+
+### 2.3 数据落点
+
+建议统一为：
+
+```text
+~/Library/Application Support/SummitWorkbench/
+├── registry.json                         # 本机 profile 索引，不同步
+├── device.json                           # 本机 device_id，不同步
+├── profiles/<workspace_id>/
+│   ├── config.toml                       # 本机路径和非秘密配置，不同步
+│   ├── sync-state.json                   # 本机同步状态，不同步
+│   └── runtime/                          # 端口、实例、会话等短期状态，不同步
+└── backups/                              # 配置/迁移备份，不同步
+
+~/Library/Logs/SummitWorkbench/
+└── summit-workbench.log                  # 本机滚动日志，不同步
+
+<用户选择的 Work Root>/
+├── _vault/
+│   ├── .summit-workbench/workspace.json  # 随 vault 同步，唯一 workspace_id
+│   └── ...                               # 当前知识库内容
+└── <project repositories>/               # 可选择接入，不要求同事拥有你的项目
+```
+
+Keychain 命名必须至少包含 `workspace_id`：
+
+```text
+service = com.summitworkbench.credentials.<workspace_id>
+account = llm:<provider>:<credential_name>
+account = feishu:<app_id>:app_secret
+account = feishu:<app_id>:refresh_token
+account = git:<host>:<username>
+```
+
+任何 schema 示例和诊断输出只允许出现 Keychain 引用，不得出现秘密值。
+
+### 2.4 工作区兼容契约
+
+`_vault/.summit-workbench/workspace.json` 初始字段：
+
+```json
+{
+  "schema_version": 1,
+  "workspace_id": "uuid-v4",
+  "display_name": "Yifeng Workbench",
+  "created_at": "2026-09-05T00:00:00Z",
+  "min_reader_version": "0.5.0",
+  "min_writer_version": "0.5.0"
+}
+```
+
+规则：
+
+- `workspace_id` 创建后不可修改；复制 App 不会复制它，连接既有 vault 时从 marker 读取。
+- App 低于 `min_reader_version`：拒绝打开并提示升级。
+- App 可读但低于 `min_writer_version`：只读打开，禁止写入。
+- 未知更高 `schema_version`：只读保护，不猜测字段语义。
+- marker 缺失的旧 vault 只能通过显式“升级现有工作区”生成 marker；升级前先备份，不静默生成。
+- `api_protocol` 继续只表示原生壳与本地服务的兼容性，不替代 workspace schema。
+
+## 3. 优先级、依赖和发布门
+
+### 3.1 工作包总表
+
+| 顺序 | 工作包 | 优先级 | 依赖 | 复杂度 | 状态 |
+|---:|---|---|---|---|---|
+| 1 | P0-01 Git 自动提交与撤销信任边界 | P0 | 无 | M | [x] |
+| 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [ ] |
+| 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [ ] |
+| 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [ ] |
+| 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [ ] |
+| 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [ ] |
+| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [ ] |
+| 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [ ] |
+| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [ ] |
+| 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [ ] |
+| 11 | P0-11 首次使用向导与设置中心 | P0 | P0-04、P0-08、P0-10 | L | [ ] |
+| 12 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07 | L | [ ] |
+| 13 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11、P0-12 | L | [ ] |
+| 14 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10、P0-13 | L | [ ] |
+| 15 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07 | M | [ ] |
+| 16 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
+| 17 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
+| 18 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07、P1-03 | M | [ ] |
+| 19 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
+| 20 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
+| 21 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
+| 22 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
+| 23 | P2-03 组织级 OAuth Broker（可选） | P2 | 明确扩展产品边界 | XL | [ ] |
+
+复杂度说明：S 为单一小改动，M 为一个清晰模块，L 需要跨 Python/前端/原生中的两个层，XL 必须再拆成子包。
+
+### 3.2 P0 发布门：允许给同事试用
+
+以下条件全部满足后，才可以把 App 发给同事：
+
+- P0-01 至 P0-13 全部通过；不得跳过数据安全包直接打发布包。
+- 在干净 macOS 用户账户中，拖入 `/Applications` 后首次启动不需要仓库源码、Python、Node、`uv` 或 `wb` 命令。
+- Gatekeeper 验证通过；App 已 Developer ID 签名、notarized、stapled。
+- 同事可只通过图形界面创建自己的新工作区，完成一条 capture，重启后数据仍在。
+- 新工作区中不出现当前使用者的姓名、路径、项目、Git remote、飞书 app id、模型 provider、token 或日志。
+- Studio 与 Air 连接同一测试 vault 时得到相同 `workspace_id` 和不同 `device_id`。
+- Studio 为自动化主设备、Air 为辅助设备；Air 不会重复生成晨间简报或周报。
+- 两台设备先后编辑可正常快进同步；离线写入后恢复网络，能够 push 或明确进入分叉保护态。
+- 已知分叉时不得自动覆盖任何一侧；UI 必须说明本地/远端领先状态和下一步。
+
+### 3.3 P1 发布门：允许长期日常使用
+
+- 定时任务完全由 App 安装、暂停、恢复和查看，不依赖 shell 脚本或源码环境。
+- 工作区升级有版本检查、备份、失败回滚和双版本兼容测试。
+- Python 与前端质量门进入 CI；发布产物按架构验证，覆盖率有最低门槛。
+- 用户可导出脱敏诊断包；日志不包含会议正文、token、Authorization header 或模型输入。
+- 已验证的签名更新通道可从前一个正式版本升级，失败不会损坏 vault。
+
+## 4. P0 工作包：数据安全与产品化底座
+
+### P0-01 · Git 自动提交与撤销信任边界
+
+**目的**：系统自动提交不得夹带用户预先暂存的文件；撤销与 diff 只能操作真实的 `wb:` 单父提交。
+
+**必读文件**：
+
+- `src/summit_workbench/repositories/autocommit.py`
+- `src/summit_workbench/repositories/git.py`
+- `src/summit_workbench/webapp/app.py` 中 `/api/undo/*`
+- `tests/unit/test_autocommit.py` 与 undo Web API 测试
+- ADR 0027
+
+**实现要求**：
+
+1. 在 `GitRepo` 增加精确读取暂存路径、提交主题、提交父节点数和校验 commit 对象的方法。
+2. `commit_paths` 获取 `workspace_lock(vault_dir.parent)` 后，先检查暂存区；只要调用前已有任何 staged path，返回新的可见状态 `index-not-clean`，不再 add、不 commit、不改变原暂存区。
+3. add 后只检查本次目标路径是否有 staged diff；不得用“整个暂存区非空”推断本次路径有变化。
+4. `message` 必须规范化为单行并以 `wb:` 开头；不合规时返回失败，不创建任意主题的系统提交。
+5. `revert_commit` 的 SHA 只接受 API 历史返回的完整 40 位小写/大小写十六进制 commit id；解析为 commit 后确认：主题以 `wb:` 开头、恰有一个 parent、提交仍可从当前仓库解析。
+6. 读取 touched paths、检查 dirty、执行 revert 必须在同一把锁内，消除检查与执行之间的竞态。
+7. `commit_diff_text` 使用相同的 wb commit 校验；手工提交、merge commit、无效 SHA 均拒绝。
+8. Web API 对“不允许撤销”返回 4xx 和稳定错误码，不再只返回 HTTP 200 + `ok:false`。
+9. 所有 Git 命令参数使用参数数组并加 revision/path 分隔保护；不得拼 shell 字符串。
+
+**必须新增的测试**：
+
+- 仓库预先 stage `manual.md`，系统只要求提交 `inbox.md`：操作被拒绝，两个文件状态均不被改写。
+- 无预先 stage 时，只提交目标路径，另一未暂存修改仍留在工作树。
+- 目标路径内容未变时返回 `nothing-to-commit`。
+- 手工提交 SHA、merge commit SHA、短 SHA、含选项字符的 SHA、未知 SHA 都不能 diff/revert。
+- wb commit touched file 在锁内被模拟改脏时，revert 拒绝且仓库不进入 revert 冲突态。
+- 正常 wb commit 可列出、查看 diff、revert，并生成反向提交。
+
+**验收**：目标测试与全量 Python 门通过；原暂存区在任何拒绝/失败路径上字节级等价；不改动飞书或业务文件格式。
+
+**停止条件**：如果 Git 现有调用依赖“预先 staged 后由 wb 一并提交”，先用测试证明调用点并报告，不得擅自清空或临时保存 index。
+
+### P0-02 · 本地写入与自动提交事务边界
+
+**目的**：一次本地业务操作的“文件变更 + wb commit”在同一个工作区临界区完成，不让两个并发操作合并进同一个 undo 提交。
+
+**建议新增**：`src/summit_workbench/workflows/local_mutation.py`、对应单元/集成测试。
+
+**实现要求**：
+
+1. 定义 `LocalMutationResult`，至少包含 `operation_id`、业务返回值、changed paths、commit result。
+2. 定义单一编排函数：在 `workspace_lock(vault_dir.parent)` 内执行纯本地 mutation、收集变更路径、调用 `commit_paths`。已有 repository 锁允许线程内重入，不得删除底层锁。
+3. 每次操作生成稳定 `operation_id`；commit 主题格式固定为 `wb: <action> [<operation_id>]`，日志和 API 返回同一 id。
+4. 迁移纯本地写端点：capture、线程日志、线程产物、线程状态、项目创建/激活/归档/改名、本地会议导入落盘阶段。
+5. 网络调用、LLM、飞书操作绝不放进工作区锁。包含外部副作用的端点只把最终本地镜像/审计部分交给本 helper；外部动作由 P0-04 的 outbox 管理。
+6. mutation 成功但 Git 非仓库/无变化时，业务仍成功并返回可见 commit 状态。
+7. mutation 抛错时不调用 commit；若文件已部分改变，必须依赖各 repository 的原子写或显式补偿，测试锁定行为。
+8. 不把 autocommit 塞进通用 repository 层，避免每次低层写都生成不可预测提交。
+
+**测试矩阵**：
+
+- 两个线程同时 capture，各得到不同 operation id、两个 wb commit、两条内容，无合并提交。
+- 一个 mutation 失败，另一个成功：成功操作仍提交，失败操作不产生 commit。
+- 非 Git vault 仍完成本地写并返回 `not-git`。
+- 同一线程 repository 重入锁不死锁。
+- 模拟慢网络函数并断言持锁区间不包含网络等待。
+
+**验收**：每个迁移端点只有一个明确的本地事务入口；undo 历史能按 operation id 对应一次用户操作。
+
+### P0-03 · 飞书重试分类与客户端生命周期
+
+**目的**：只重试明确安全的调用，并确保 HTTP 连接在 App 生命周期结束时关闭。
+
+**必读文件**：`providers/feishu/client.py`、`providers/_resilient.py`、飞书 task/calendar provider、FastAPI dependency 创建位置。
+
+**实现要求**：
+
+1. 引入显式 `RetryMode`：`safe`、`idempotency-key`、`never`；不得再根据 HTTP method 隐式重试全部请求。
+2. GET 默认 `safe`；POST 默认 `never`。只有 provider 明确传入服务端支持的幂等键时，POST 才使用 `idempotency-key`。
+3. 飞书任务创建已有 `client_token` 时，将该 token 一路传到 retry policy，并测试重复发送使用同一个 token。
+4. 日历事件创建在未证明官方幂等能力前使用 `never`；超时或连接中断返回“结果未知”，不自动第二次 POST。
+5. PATCH/DELETE 逐端点标注策略，不使用全局猜测。若重放可能改变语义，使用 `never`。
+6. `FeishuClient` 实现 `close()` 和上下文管理协议；只关闭自己创建的 client，不关闭注入的测试/共享 client。
+7. App 使用 lifespan 或等价资源容器复用一个受控 client，并在服务关闭时确定性释放。
+8. 错误对象保留 `retryable`、`retry_after`、`result_unknown` 等机器字段；日志不得包含 token/正文。
+
+**测试矩阵**：
+
+- GET 遇 429/5xx/timeout 按上限重试并尊重 Retry-After。
+- 普通 POST 遇 timeout 只调用一次并标记 unknown。
+- 带相同 client token 的任务 POST 可重试，所有 attempt 请求体 token 相同。
+- 业务 4xx/code 非零不重试。
+- 自建 client 被 close；注入 client 不被误关；App shutdown 完成 close。
+
+**验收**：每个飞书写 provider 都有显式 retry mode；代码审查中不再存在无分类的 `.post()` 自动重试。
+
+### P0-04 · 飞书外部动作 Outbox 与不确定态
+
+**目的**：把“本地批准”与“飞书是否真正创建成功”分开记录，避免响应丢失后重复创建会议或任务。
+
+**建议新增**：
+
+- `domain/external_action.py`
+- `repositories/external_action_outbox.py`
+- `workflows/external_actions.py`
+- `webapp` 对应查询/恢复 API 与前端状态组件
+- ADR `0028-external-action-outbox.md`
+
+**状态机**：
+
+```text
+prepared -> sending -> succeeded
+                    -> failed          # 已确认远端拒绝，可修改后重试
+                    -> unknown         # 可能已成功，禁止自动重试
+unknown  -> reconciled-succeeded
+         -> reconciled-not-found -> prepared（必须由用户确认）
+```
+
+**实现要求**：
+
+1. Outbox 使用现有 schema-versioned、容错 JSONL 基础；每次状态变化追加事件，不原地覆盖历史。
+2. 每条动作至少包含：`operation_id`、`candidate_id`、`workspace_id`、kind、请求指纹、目标账号引用、状态、attempt、时间、remote id、脱敏错误。
+3. 请求指纹由规范化后的业务字段计算；不得保存 Authorization、app secret、模型 key 或不必要的会议正文。
+4. 用户点击 apply 时，先可靠写 `prepared`，再发网络请求；成功后写 `succeeded` 和 remote id。
+5. 网络层返回 unknown 时写 `unknown`；后续重复 apply 同一 candidate 必须停止在“需要核对”，不能再次 POST。
+6. 飞书会议创建必须实际使用 `candidate_id/operation_id`；若 API 无幂等字段，在描述或可检索元数据中加入最小、可识别的 WB marker，并提供核对逻辑。若 provider 不支持可靠查询，则 UI 明确要求用户人工确认。
+7. `review_apply` 每个 action 分别捕获 `FeishuError`、验证错误和本地 IO 错误；单条失败/unknown 不终止同批其他动作。
+8. API/UI 展示 succeeded、failed、unknown；unknown 使用高辨识提示，并提供“重新核对”“确认已创建”“确认未创建并允许重试”，最后一项需二次确认。
+9. 对已 succeeded candidate 保持幂等：重复 apply 只读取 remote id，不发请求。
+
+**测试矩阵**：
+
+- 服务端模拟已接收但 client timeout：outbox 为 unknown，第二次 apply 的 POST 调用数仍为 1。
+- 已 succeeded 的候选重复处理不再调用远端。
+- batch 中一条 FeishuAPIError 不阻断后一条成功动作。
+- 进程在 `prepared` 后退出，重启可见待恢复；不得静默丢失。
+- outbox 坏行被隔离，其余动作仍可恢复。
+- workspace A 与 B 的同 candidate id 不相互命中。
+
+**验收**：所有远端创建型动作都可回答“未发送、发送中、成功、明确失败、结果未知”之一；不存在“异常后直接再建一次”的路径。
+
+### P0-05 · 本地 Web 边界、输入预算与错误语义
+
+**目的**：即便未来配置错误，也不能把无认证的写接口暴露到局域网；异常和超大输入要可控。
+
+**实现要求**：
+
+1. production 模式只允许绑定 `127.0.0.1` 或 `::1`；`0.0.0.0`、局域网 IP 在启动前拒绝。development 模式若显式开放，启动信息必须警告且仍要求认证。
+2. 增加 Host allowlist；仅接受当前 loopback host/实际端口组合。
+3. 对 POST/PATCH/DELETE 做 Origin 校验：有 Origin 时必须与当前服务同源；无 Origin 的受信原生调用仍需 P0-12 的 session token。
+4. 为所有请求模型定义 `max_length`、枚举和列表上限。建议起始值：普通标题 200、URL 2048、正文 100,000 字符、批量候选 100、搜索 query 2,000。
+5. 上传改为分块读取，默认单文件上限 10 MiB；超限立即停止、删除临时文件、返回 HTTP 413。文件名只作展示，不参与路径拼接。
+6. 建立统一错误 envelope：`code`、`message`、`operation_id`、可选 `details`；验证失败 422、未认证 401、禁止 403、冲突 409、锁忙 423、外部服务失败 502/503。
+7. 逐步淘汰 HTTP 200 + `{"ok": false}`；前端连接层同时兼容迁移期旧格式，但新端点只用 HTTP 语义。
+8. `/api/ask` 的模型/检索失败不得返回 `ok:true` 或把错误 HTML 当答案。
+9. CORS 默认关闭；不得用 `*` 解决本地访问问题。
+
+**测试矩阵**：
+
+- production 非 loopback bind 被拒绝。
+- 伪造 Host、跨源 Origin、无认证 unsafe request 被拒绝；同源合法请求通过。
+- 10 MiB 边界前后、超长字段、超大数组、路径型文件名均有测试。
+- 锁忙、分叉、飞书失败、未知异常分别映射稳定 HTTP status/code。
+- `/api/ask` 错误绝不伪装成功。
+
+**验收**：所有现有 38 个路由有读/写分类表；每个写路由至少经过统一认证/Origin/input/error 中间层。
+
+### P0-06 · 文件耐久性、隔离去重与锁根统一
+
+**目的**：完善异常退出耐久性，避免重复隔离坏行和因自定义 vault 路径导致锁分裂。
+
+**实现要求**：
+
+1. `_atomic.py` 使用目标同目录内的唯一临时文件；写入后 flush + `fsync(file)`，`os.replace` 后在支持的平台 `fsync(parent directory)`。
+2. 替换时尽量保留原文件 mode；异常路径清理本次临时文件，不删除其他进程临时文件。
+3. JSON/文本写统一使用该原语；搜索剩余直接 `write_text` 的持久状态，按风险逐一迁移，不改 fixture 生成代码。
+4. `_jsonl.py` 为隔离记录生成稳定 id：`sha256(source-relative-path + line-number + raw-line)`；同一坏行重复读取只写一次 quarantine。
+5. quarantine 保存截断后的 raw、原因、首次发现时间和稳定 id；raw 上限防止诊断文件膨胀。
+6. 新增 `WorkspacePaths` 或等价单一解析对象，明确 `work_root`、`vault_dir`、`lock_root`、profile state。所有锁调用从这里取得 lock root。
+7. 修正飞书 session 等使用默认 work root 而不是实际 vault/profile lock root 的调用；同一个 workspace 的所有写者必须落在同一 `.wb.lock`。
+
+**测试矩阵**：
+
+- 两个并发 atomic writer 不共用临时路径，最终文件是任一完整版本而不是拼接/半截。
+- replace 失败后原文件完整，本次 temp 被清理。
+- 同一坏 JSONL 行读三次，quarantine 只有一条；新增另一坏行后为两条。
+- 自定义 vault 路径下，web、brief、Feishu refresh、sync 解析出同一 lock root。
+- mock `fsync` 验证文件与目录耐久步骤；不依赖特定文件系统 timing。
+
+**验收**：持久化路径与锁根只有一个权威解析入口；没有固定 `.tmp` 名称；隔离文件不会因每次 status 刷新无限重复。
+
+### P0-07 · Workspace/Profile/Device 领域与存储
+
+**目的**：把“用户知识库”“本机安装”“设备角色”从固定路径中显式建模。
+
+**建议新增**：
+
+- `domain/workspace.py`
+- `config/app_support.py`
+- `config/profiles.py`
+- `repositories/profile_registry.py`
+- `repositories/workspace_manifest.py`
+- ADR `0029-workspace-profile-device.md`
+
+**领域模型**：
+
+- `WorkspaceManifest`：同步的 workspace 身份和兼容版本。
+- `LocalProfile`：workspace id、显示名、本机 work root/vault path、provider 非秘密配置、最后打开时间。
+- `DeviceIdentity`：device id、设备显示名、创建时间；安装时生成一次。
+- `DeviceRole`：`automation-primary` 或 `secondary`。
+- `Compatibility`：`read-write`、`read-only-upgrade-required`、`cannot-open`。
+
+**实现要求**：
+
+1. 使用 UUID v4；用 Pydantic 严格解析；未知字段前向兼容但不写回丢失。
+2. `registry.json` 只存 profile 索引和 active workspace id；profile config 独立存放，原子写。
+3. `device.json` 首次运行生成，之后稳定；从 App 升级、重新签名、移动路径都不改变 id。
+4. workspace marker 存在 vault 内并进入 Git；绝不包含 device id、本机绝对路径、凭据引用以外的秘密。
+5. 凭据访问 API 必须传 workspace id；旧 Keychain account 的读取只作为显式迁移兼容，不再写旧命名。
+6. 环境变量只作为 development/test 覆盖，production 不再用 `WORK_ROOT` 作为正常配置源。
+7. 没有 active profile 时返回明确 `onboarding-required` 状态，不再静默创建 `~/Documents/Work`。
+8. 加入文件权限：本机 profile/runtime 文件建议 0600，目录建议 0700；测试兼容 umask。
+
+**测试矩阵**：
+
+- 首次生成 device id；重复加载不变；两个模拟 Home 得到不同 id。
+- 同一 vault 在两台模拟设备读取相同 workspace id；本机 profile 路径和角色互不污染。
+- 两个 workspace 的同 provider 凭据引用不会串用。
+- 旧/新/未知 workspace schema 分别得到 read-write、read-only、cannot-open。
+- 空安装不访问或创建 `~/Documents/Work`，而是进入 onboarding-required。
+
+**验收**：核心业务获得路径必须经 active profile/`WorkspacePaths`；固定 home 路径只剩兼容迁移代码和测试。
+
+### P0-08 · 新建、升级与连接工作区服务
+
+**目的**：让新同事无需终端即可得到自己的知识库，让当前使用者可把旧 vault 升级为带身份的工作区。
+
+**建议新增**：`workflows/onboarding.py`、`domain/onboarding.py`、相关 API；本包先完成服务和 API，不做完整 UI。
+
+**三条流程**：
+
+1. `create-new`：选择 Work Root → 创建 `_vault` → 复制当前模板 → 写 workspace marker → 建 local profile。
+2. `upgrade-existing`：选择旧 Work Root/vault → 只读预检 → 备份 → 写 marker/profile → 不移动业务数据。
+3. `connect-local`：选择已经 clone 好的 vault → 校验 marker → 建 local profile；远端 clone 在 P0-10 完成。
+
+**实现要求**：
+
+1. 预检输出结构化报告：路径是否存在/可写、是否为空、是否为 Git repo、是否已有 marker、schema compatibility、模板冲突、空间与 Git 可用性。
+2. 新建时采用 staging 目录，全部成功后原子改名到最终 `_vault`；目标非空或已存在时不覆盖。
+3. 模板复制使用 allowlist；已有文件绝不覆盖。模板带当前使用者个性数据时，先拆为通用默认模板与个人内容。
+4. 升级旧 vault 前创建 timestamped backup，至少包含将被修改的配置/marker；不要复制整个大 vault。
+5. 失败必须回滚本次创建的 registry/profile/marker；不得删除用户原有目录。
+6. 检测 iCloud Drive、Dropbox、OneDrive 等常见 CloudStorage 路径。若目标将包含 `.git`，阻止并解释；不自动迁移用户数据。
+7. 新工作区默认不启用飞书、模型、Git remote 或自动化；这些是后续可跳过步骤。
+8. 新工作区初始化本地 Git 只能经 P0-09 backend；backend 尚未完成前不临时调用系统 git 扩大依赖。
+
+**测试矩阵**：
+
+- 新建成功、目标非空拒绝、中途失败回滚、重复提交幂等。
+- 旧 vault 升级后内容哈希不变，仅新增 marker/profile/backup。
+- 连接 workspace A 后不会读取 workspace B 的 local config。
+- CloudStorage + Git 组合被拒绝；普通本地路径通过。
+- templates 中故意加入个人化 fixture 时，扫描测试失败。
+
+**验收**：使用临时 Home 可完整创建独立 workspace，且产物中没有开发者路径、账号或 remote。
+
+### P0-09 · 可打包 Git 后端与凭据适配
+
+**目的**：正式 App 不依赖用户安装 Xcode Command Line Tools，同时保留开发时系统 Git 的可诊断性。
+
+**建议方案**：先以 Dulwich 实现 HTTPS remote 的产品后端；系统 Git 保留为 development backend。若验证失败，停在决策门，不勉强上线。
+
+**建议新增**：
+
+- `repositories/git_backend.py`：`RepositoryBackend` Protocol 和领域结果
+- `repositories/system_git.py`：迁移现有 subprocess 实现
+- `repositories/dulwich_git.py`：产品实现
+- `config/git_credentials.py`：Keychain 引用与 callback
+- ADR `0030-packaged-git-backend.md`
+
+**后端能力契约**：
+
+- repo detect/init/clone
+- status 与 staged/unstaged/untracked 精确列表
+- add explicit paths、commit、log/filter、show diff、revert wb commit
+- remote/upstream detect、fetch、ahead/behind、fast-forward、push
+- current branch、commit identity、错误分类
+
+**实现要求**：
+
+1. 先为现有 `GitRepo` 行为建立 backend conformance tests，再迁移调用方；不能一边换库一边改变同步语义。
+2. production backend 不调用 `/usr/bin/git`；测试通过 mock PATH 为空证明。
+3. P0 只承诺 HTTPS private remote。PAT/credential 只从 workspace-scoped Keychain callback 读取，不写 remote URL、不写磁盘、不进异常文本。
+4. clone 到 staging 目录，完成 marker/remote 校验后原子移动到最终路径。
+5. 严禁 force/rebase/stash/reset；fast-forward 失败返回 typed conflict。
+6. Git author 使用 profile 的显示名和用户配置邮箱；没有邮箱时 onboarding 要求输入或使用明确的本地占位，不复制开发者 identity。
+7. 评估并记录：PyInstaller 收集项、arm64/x86_64 wheel、证书校验、代理、GitHub/GitLab HTTPS、仓库大小和许可证。
+8. 如果 Dulwich 无法可靠满足 revert/HTTPS/证书/打包测试，输出 spike 结果并暂停：备选顺序为打包 libgit2/pygit2，其次在 App 中明确引导安装系统 Git。不得偷偷保留“clean Mac 实际不能 sync”的假完成状态。
+
+**测试矩阵**：
+
+- 两种 backend 对同一临时 bare remote 跑 conformance suite，结果一致。
+- PATH 为空时 production backend 完成 init/commit/fetch/ff/push。
+- 凭据不会出现在 remote URL、`repr`、日志、异常、fixture snapshot。
+- wrong credential、TLS 失败、remote missing、non-ff 分别有 typed error。
+- 打包 server smoke 能导入 backend 所需全部模块和 CA 资源。
+
+**验收**：clean account 使用打包 App 能操作本地/HTTPS Git，不触发 CLT 安装弹窗。
+
+### P0-10 · 多设备同步协调器与自动化主设备规则
+
+**目的**：将当前“手动 work-sync”升级为每个 workspace 可观察、非破坏的同步状态机。
+
+**建议新增**：
+
+- `domain/sync.py` 中明确状态机，或扩展现有领域文件
+- `workflows/sync_coordinator.py`
+- `repositories/local_sync_state.py`
+- sync status API 与前端 banner
+- ADR `0031-multi-device-sync.md`
+
+**状态机**：
+
+```text
+unconfigured
+ready
+syncing
+offline-local-ahead
+remote-ahead
+local-ahead
+diverged-protected
+dirty-protected
+auth-required
+error
+```
+
+**实现要求**：
+
+1. App 启动、回到前台、用户点击同步和本地写入前执行轻量 preflight；相同 workspace 的同步通过 lock 合并，不能并发 fetch/push。
+2. 可联网且 remote ahead、工作树干净时只做 ff；本地 ahead 时正常 push。
+3. 写操作完成 wb commit 后触发 push。push 被拒绝时保留本地提交，状态转 `diverged-protected` 或 `local-ahead`，绝不回滚用户内容。
+4. 网络不可用允许本地写，记录 pending commit count 与最后成功同步时间，显示 `offline-local-ahead`。
+5. 已确认 diverged 时，默认阻止会修改共享 vault 的操作；问答、浏览、导出仍可读。允许“导出本机副本”，不提供自动覆盖远端按钮。
+6. dirty 需区分 wb 管理文件与用户手工改动；无法安全 ff 时进入保护态，不自动 stash。
+7. `DeviceRole` 只控制定时 writer，不阻止辅助设备上的交互操作。一个 workspace 只能由用户显式选择一台 automation-primary。
+8. 主设备租约以同步的轻量状态/心跳表达时，要容忍旧心跳；不得仅凭“最近在线”自动抢主。更换主设备必须显式操作并提示先停旧设备自动化。
+9. UI 显示：状态、最后成功时间、本地领先数、远端领先数、当前 branch、remote host、下一步建议；不显示 token。
+10. remote clone：从私有 HTTPS URL clone 到 staging，读取 workspace marker，用户确认后创建 local profile；若 remote 没有 marker，引导升级而非猜测。
+
+**测试场景**：
+
+- A 写并 push，B 启动后 ff；workspace id 相同、device id 不同。
+- A/B 离线各写一条，先后上线后产生 diverged：两侧都不 force、不丢文件，UI 进入保护态。
+- offline 写入后重启，pending 状态仍在；联网后 push 清零。
+- secondary 设备运行 scheduler entry 时拒绝并记录 `not-primary`，交互 capture 仍允许。
+- auth required 与网络离线分别提示，不混成普通失败。
+- 同时点击同步三次只执行一个实际 fetch/push 序列。
+
+**验收**：所有 Git 分支路径最终都落在状态机中的一个可解释状态；代码中无 force/rebase/stash/reset。
+
+### P0-11 · 首次使用向导与设置中心
+
+**目的**：不懂终端的同事可以完成安装和自己的工作台配置；当前使用者可以连接 Air。
+
+**页面流程**：
+
+1. 欢迎页：`新建我的工作台` / `连接已有工作台` / `升级这台 Mac 上的旧工作台`。
+2. 名称与本机目录：显示默认建议，但允许选择；解释哪些内容会同步。
+3. Git：本地使用 / 连接私有 HTTPS remote；可跳过。
+4. 模型：provider、endpoint、model、Keychain key；提供“测试连接”，可跳过。
+5. 飞书：app id、最小 scope、登录；可跳过。
+6. 设备角色：主设备或辅助设备；连接已有 workspace 时默认辅助。
+7. 最终检查：路径、workspace id 短码、device id 短码、同步、凭据、自动化状态。
+
+**实现要求**：
+
+1. 向导是可恢复状态机；每一步保存非秘密进度，关闭 App 后从安全步骤继续。
+2. UI 不直接写文件/Keychain；只调用 onboarding service API。
+3. 每一步支持后退；对已创建的远端/Keychain 外部状态不假装可回滚，需解释。
+4. 所有 secret 输入默认遮挡，不回显，不保存在前端 store/localStorage，不进入 network log。
+5. 已配置用户启动直接进入主界面；设置中心可查看/切换多个 profile，但一次只激活一个。
+6. 切换 profile 时先停止旧服务任务、清空前端缓存/草稿作用域、重新加载 active context，防止跨 workspace 展示。
+7. GUI doctor 使用现有 `wb doctor` 领域检查，不从前端再实现一套规则。
+8. “重置本机配置”只删除选中的 local profile，默认不删除 vault、不删 remote、不删 Keychain；危险项单独确认并列出精确目标。
+9. 所有文案避免暴露技术细节，但错误详情允许复制脱敏诊断。
+
+**测试矩阵**：
+
+- 空安装完整新建流程；跳过 Git/Feishu/model 后仍可本地 capture。
+- 关闭重开后继续向导。
+- 连接已有 workspace 默认 secondary。
+- profile A/B 切换后 API、draft、缓存、Keychain 引用完全隔离。
+- secret 不出现在 DOM 持久化、日志和错误快照。
+- Playwright 或现有前端测试覆盖成功、路径冲突、remote auth、schema too new。
+
+**验收**：在临时 Home、无终端操作的条件下完成两种人物旅程：同事新建独立 workspace；Air 连接现有 workspace。
+
+### P0-12 · 动态端口、会话认证与原生生命周期
+
+**目的**：消除固定 8787 端口冲突，并确保只有当前 App 实例能调用本地写 API。
+
+**必读文件**：`native/SummitWorkbench/*`、`webapp/server_entry.py`、`cli/web.py`、前端 `lifecycle/*`、native contract tests。
+
+**实现要求**：
+
+1. production 不再从 build manifest 固定端口。Python 先绑定 `127.0.0.1:0` 获得 OS 分配端口，再把已绑定 socket 交给 Uvicorn，避免“先找空闲端口再启动”的竞态。
+2. 服务启动后原子写 runtime record：schema、pid、port、server instance、workspace id、device id、started_at；文件 mode 0600，位于 active profile runtime 目录。
+3. 原生壳启动时生成 256-bit 随机会话 token，使用进程环境传给子服务，不放命令参数、不写普通日志。
+4. API 接受 HttpOnly、SameSite=Strict session cookie 或受控 header；所有 unsafe route 必须认证，敏感 read route 也认证。
+5. 原生壳通过 `WKHTTPCookieStore` 在导航前写 cookie；不要把 token 注入 JavaScript、URL query 或 localStorage。
+6. `wb web` development 入口若仍支持普通浏览器，生成一次性 bootstrap URL，交换 HttpOnly cookie 后立即 redirect 清除 query；控制台只显示一次并明确仅限本机。
+7. native probe 同时校验 product id、api protocol、frontend build、server instance、workspace id 和 session；不能误连接同端口的旧实例。
+8. profile 切换或 App 退出时优雅停止子进程，等待有限时间后再 terminate；只操作自己记录的 pid/server instance。
+9. runtime record 过期或 pid 不存在时安全清理；不得杀掉仅凭端口匹配的其他进程。
+10. build manifest 保留产品/前端/API 兼容信息，删除运行端口职责并升级 schema。
+
+**测试矩阵**：
+
+- 8787 被占用时 App 正常启动到另一端口。
+- 无 cookie、错误 cookie、跨 workspace cookie 请求均被拒绝；合法 WKWebView 会话通过。
+- token 不出现在 `ps` 参数、runtime record、结构化日志、API version payload。
+- 两个开发实例并行启动各自连接正确服务，不互相 terminate。
+- crash 后 stale runtime record 被清理，正常实例记录不被误删。
+- native/server/frontend build 不兼容时显示可恢复错误，不无限重连。
+
+**验收**：production 包不再依赖固定端口；任意写 API 都要求当前实例会话。
+
+### P0-13 · Developer ID 签名、notarization 与 DMG
+
+**目的**：生成可直接发给 Studio、Air 和同事安装的可信 macOS 包。
+
+**建议新增/修改**：
+
+- `packaging/entitlements.plist`
+- `packaging/dmg-background`（若需要）
+- `scripts/release-macos.sh`
+- `scripts/verify-macos-release.sh`
+- `docs/RELEASING.md`
+- ADR `0032-macos-distribution.md`
+- 重构 `scripts/build-macos-app.sh`
+
+**实现要求**：
+
+1. `pyproject.toml` 为唯一 `CFBundleShortVersionString` 来源；build number 由 CI run 或显式参数提供，不再使用当天日期和 epoch 作为产品版本。
+2. 第一阶段按架构分别构建 `arm64` 与 `x86_64` DMG；不得把当前机器架构的包标成 universal。若所有 Python/wheel/Swift 产物均可验证，再新增 universal2 合并。
+3. build 在临时目录完成并先 smoke，成功后才移动产物；沿用当前原子替换策略。
+4. 对 bundle 内嵌 dylib、framework、PyInstaller executable、worker/helper 按由内到外顺序签名；正式发布禁止 ad-hoc。
+5. 使用 Developer ID Application、hardened runtime、timestamp 和最小 entitlement；不得为了省事关闭 library validation 或添加无需求权限。
+6. 创建 DMG，包含 App 与 `/Applications` 引导；对 DMG 提交 `notarytool`，成功后 staple App/DMG（以实际 Apple 支持对象为准）。
+7. 验证至少包括：`codesign --verify --strict`、`spctl --assess`、stapler validate、bundle 文件清单、无开发路径/secret 扫描、离线启动 smoke。
+8. 发布脚本从 Keychain profile/CI secret 读取签名与 notarization 凭据；不得要求把密码写进仓库或命令历史。
+9. 生成 checksum、架构、最低 macOS、version、build、Git commit、workspace schema range 和 SBOM/依赖清单。
+10. 没有 Apple 凭据时只能产出 `UNSIGNED-DEV` 包；文件名和 UI 必须明显区分，不得标为 release。
+
+**真机矩阵**：
+
+- Apple Silicon：当前 Mac Studio、MacBook Air 的实际 macOS 版本。
+- Intel：若仍承诺支持，使用独立 x86_64 runner/设备；不能只靠 Rosetta 冒充原生验证。
+- 干净用户账户：未装 Python/Node/uv/CLT，无旧配置。
+- 升级安装：保留 profile/vault/Keychain，替换 App 后正常启动。
+- 删除 App：用户数据仍保留；卸载文档明确如何另行删除本机数据。
+
+**验收**：P0 发布门全部通过，形成带 checksum 的 notarized DMG；同事按一页图形化说明完成安装与新建 workspace。
+
+## 5. P1 工作包：长期运行、维护与扩展性
+
+### P1-01 · App 内定时任务与自动化主设备
+
+**目的**：不依赖 `wb` CLI 和 `install-launchd.sh`，在 App 设置中管理晨间简报、周报与会议同步。
+
+**实现要求**：
+
+1. 使用 Apple Service Management 的现代注册方式（`SMAppService`）管理嵌入 App、同证书签名的 helper/agent；不要让 GUI 临时写任意 plist 到用户目录。
+2. 新增自包含 worker executable，打包必要 CLI/workflow，但不启动 Web server。
+3. helper 通过 profile/workspace id 查本机配置，不依赖 shell 环境、当前目录或 `PATH`。
+4. 运行前检查当前 device role；secondary 返回成功跳过状态 `not-primary`，绝不生成重复简报。
+5. UI 可启用/停用、查看下一次/上一次结果、手动运行和复制错误摘要。
+6. App 升级后重新核对 helper 版本与签名；旧 helper 不得继续调用不兼容 workspace schema。
+7. 保留旧 launchd 脚本仅作开发/迁移，文档标为非产品路径。
+
+**测试/验收**：worker 在空 PATH 可执行；注册/取消不残留；主设备运行一次、辅助设备零写入；睡眠唤醒补跑仍幂等；签名包内 helper 通过验证。
+
+### P1-02 · 工作区 schema 迁移、备份与回滚
+
+**目的**：Studio 与 Air 版本不一致时也不破坏共享 vault。
+
+**实现要求**：
+
+1. 建立 migration registry：每个迁移只有 `from_version -> to_version`，可重复检查但只执行一次。
+2. 写迁移前要求同步状态 ready、当前设备为用户确认的迁移设备、工作树干净、remote 可达。
+3. 在本机 backups 生成 manifest + 被修改文件快照；记录 checksum、App version、workspace id、Git HEAD。
+4. 迁移全部在 workspace lock 下使用原子写；失败恢复备份，并留下失败报告。
+5. 成功后单独生成 `wb: migrate workspace vN -> vN+1` 提交并 push；其他设备看到 `min_writer_version` 后自动只读并提示升级。
+6. 至少保留前一个正式版本的 reader compatibility；不能兼容时必须通过 marker 明确拒绝。
+
+**测试/验收**：旧版本 fixture 升级、重复迁移、半途异常回滚、两设备版本错位、remote 不可达、dirty tree、schema 太新全部有测试。
+
+### P1-03 · 后端路由与应用服务拆分
+
+**目的**：降低 `webapp/app.py` 的变更半径，为 onboarding、sync、settings、diagnostics 持续扩展。
+
+**目标结构**：
+
+```text
+webapp/
+├── app_factory.py
+├── dependencies.py
+├── errors.py
+├── middleware/
+├── routers/
+│   ├── system.py
+│   ├── workspace.py
+│   ├── projects.py
+│   ├── threads.py
+│   ├── review.py
+│   ├── feishu.py
+│   ├── sync.py
+│   └── onboarding.py
+└── services/
+```
+
+**实现要求**：
+
+1. 先生成现有 route contract snapshot：method、path、request、response status/error code。
+2. 只移动代码和注入依赖，不在同包改变业务行为、路由或前端样式。
+3. `create_app` 接收显式 `AppContext`；消除 route 内重复加载 settings/client 的隐式全局。
+4. 每个 router 只负责编解码和调用 workflow/service；不得继续增长业务逻辑。
+5. 单文件建议上限 400 行；超限需说明而非机械拆成无意义 helper。
+
+**验收**：route contract snapshot 不变；全量测试通过；`webapp/app.py` 只保留兼容导出或小型 app factory。
+
+### P1-04 · 前端 feature 拆分与状态管理
+
+**目的**：降低 `web/src/main.ts` 的耦合，防止 profile 切换和同步状态加入后出现跨页面脏状态。
+
+**目标结构**：
+
+```text
+web/src/
+├── api/
+├── core/
+├── features/onboarding/
+├── features/workspace/
+├── features/projects/
+├── features/threads/
+├── features/review/
+├── features/sync/
+├── features/settings/
+└── lifecycle/
+```
+
+**实现要求**：
+
+1. 先拆 typed API client、error normalization、active workspace store，再按 feature 移动 UI。
+2. 所有 cache/draft key 必须包含 workspace id；profile 切换统一 dispose subscriptions 与 abort requests。
+3. 禁止引入大型框架只为拆文件；若继续 vanilla TypeScript，使用小型明确模块和 typed events。
+4. 保持 DOM/样式/键盘行为，先做等价重构；每次只迁移一个 feature。
+5. 为 onboarding、sync banner、review apply、profile switch 添加浏览器级测试。
+
+**验收**：`main.ts` 仅作 composition root；无循环依赖；profile A 的草稿与响应不会出现在 profile B。
+
+### P1-05 · 诊断包、日志、隐私与可支持性
+
+**目的**：同事出问题时可提供足够证据，但不泄露工作内容和凭据。
+
+**实现要求**：
+
+1. Python/Swift 统一结构化日志字段：timestamp、level、component、operation id、workspace id 短码、device id 短码、error code。
+2. 日志滚动与容量上限；默认不记录正文、prompt、模型回复、Authorization、cookie、remote credential URL。
+3. 建立中央 redactor，并用秘密 canary 测试所有诊断出口。
+4. “导出诊断包”只包含：版本/架构、schema、状态摘要、最近脱敏错误、签名信息、同步计数、配置键名；文件清单需用户预览。
+5. crash report 默认本地；任何远程 telemetry 必须以后单独 opt-in，不在本包暗中添加。
+6. UI 提供复制诊断摘要与打开日志目录；失败不要求用户运行命令。
+
+**验收**：带 canary token/会议正文的模拟运行后，导出包全文扫描为零命中；诊断足以区分 auth、offline、schema、server crash、sync divergence。
+
+### P1-06 · CI、覆盖率门与发布矩阵
+
+**目的**：把当前本地可运行的质量门变成每次变更和每次发布都可复现的自动门禁。
+
+**实现要求**：
+
+1. PR CI：Python lint/format/mypy/pytest；Node install/build/verify；secret scan；依赖锁一致性。
+2. 初始覆盖率门设为不低于 80%，并生成模块报告；后续以当前基线逐步上调，禁止因新增代码静默下降。
+3. macOS build CI 按 arm64/x86_64 分开，产物 metadata 必须与 runner 架构一致。
+4. release workflow 只允许 tag 与 pyproject version 一致时签名；签名 secrets 仅在受保护环境可用。
+5. release 产出 DMG、checksum、SBOM、notary log 摘要、测试清单；任何一步失败不发布 partial latest。
+6. packaged integration tests 不再仅靠可选环境变量静默跳过；release job 必须执行并上传结果。
+
+**验收**：故意破坏 Python、前端 build、coverage、架构标记和签名各一次，CI 都能在对应门失败。
+
+### P1-07 · 签名自动更新
+
+**目的**：让 Studio、Air 和同事可靠升级，而不是手工反复传 DMG。
+
+**建议**：采用 Sparkle 2；更新 feed 与包都使用独立 EdDSA 签名，仍保留 Apple code signing/notarization。
+
+**实现要求**：
+
+1. 先完成手工“检查更新”；自动后台检查默认开启，但自动下载安装策略尊重用户设置。
+2. feed 按架构/最低系统版本发布兼容 enclosure；绝不把 x86_64 包发给 arm64 原生通道或反之。
+3. 更新前检查 workspace migration compatibility；App 更新失败不得触碰 vault。
+4. 支持跳过版本、稍后提醒和显示 release notes；同一 workspace 两台设备允许短期不同 App 版本并受 schema gate 保护。
+5. 验证从上一正式版升级、签名被篡改拒绝、下载中断、磁盘不足、回滚启动。
+
+**验收**：已 notarized 的 N-1 版本可通过签名 feed 更新到 N，用户数据和 profile 完整；恶意/损坏包被拒绝。
+
+## 6. P2 工作包：降低跨设备冲突与可选团队服务
+
+### P2-01 · 追加式操作事件与确定性投影视图
+
+**目的**：将最容易发生 Git 冲突的共享热点文件，从“整页 RMW”演进为“每次操作一个不可变事件文件”。
+
+**首批候选**：全局 inbox、meeting review decisions、daily signal/completion events、线程 activity；会议原文和项目档案暂不迁移。
+
+**建议布局**：
+
+```text
+_vault/_events/<device_id>/<yyyy>/<mm>/<ulid>.json
+_vault/_views/...                         # 可重建投影
+```
+
+**实现要求**：
+
+1. 事件含 schema、event id、workspace/device id、occurred_at、kind、aggregate id、payload、causation operation id。
+2. 使用单调 ULID 或等价 sortable id；两个设备离线生成不得重名。
+3. 事件不可修改/删除；更正通过 compensating event。投影按稳定排序和幂等 event id 重建。
+4. views 是派生物；损坏或冲突时可从 events 重建并校验 checksum。
+5. 采用 `shadow-read -> dual-write -> event-primary -> stop-legacy-write` 四阶段迁移，每阶段可回退并有一致性报告。
+6. 不把 Git commit 当业务事件；Git 只负责传输与历史，业务操作有自己的 operation/event id。
+7. 先对一个低风险 aggregate 做纵向切片，不一次迁移全部 Markdown。
+
+**测试/验收**：属性测试覆盖乱序、重复、时钟相同、离线双设备、投影中途失败；两设备 event 文件 Git merge 无同路径冲突；投影视图与旧格式结果等价。
+
+### P2-02 · 同步冲突解释与恢复工作台
+
+**目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
+
+**实现要求**：
+
+1. 冲突页区分：仅追加事件可自动集合并、生成视图可重建、人工 Markdown 需选择、二进制不可合并。
+2. 所有自动合并先在临时 clone/worktree 进行，验证 schema/投影/test 后才替换当前分支；不得直接在用户工作树试错。
+3. 提供“导出本机更改包”“复制诊断”“稍后处理”；不提供 force push 快捷按钮。
+4. 人工选择前展示双方时间、设备、操作 id 和结构化差异，不只展示原始 Git 冲突标记。
+5. 恢复完成生成审计事件和普通 push；远端仍变化时重新进入保护态。
+
+**验收**：构造事件/Markdown/二进制三类分叉，自动项不丢事件，人工项无确认不写，恢复后两设备能 ff 到同一 HEAD。
+
+### P2-03 · 组织级 OAuth Broker（可选，不默认实施）
+
+**目的**：若未来不希望每位同事自行创建飞书应用，可建设组织托管的 OAuth 回调与 token 服务。
+
+**开始条件**：产品所有者明确接受新增云服务、隐私责任、运维成本和组织管理员审批；否则保持本地 BYOK。
+
+**最小职责**：OAuth state/PKCE、回调、token 加密存储/轮换、用户与 workspace 绑定、撤销、审计、速率限制、区域与保留策略。模型 API key 托管不自动包含在此范围。
+
+**禁止事项**：不得把共享 app secret 打进桌面 App；不得让一个同事读到另一人的 token；不得以“方便”之名上传 vault 或会议正文。
+
+**验收**：威胁模型、数据处理说明、删除/撤销流程、密钥轮换、越权测试和服务不可用时的桌面降级全部完成后才可试点。
+
+## 7. 跨工作包的契约与禁止事项
+
+### 7.1 稳定错误码
+
+至少保留以下机器码，具体文字可本地化：
+
+- `onboarding_required`
+- `workspace_not_found`
+- `workspace_schema_too_new`
+- `workspace_read_only_upgrade_required`
+- `session_required`
+- `origin_rejected`
+- `input_too_large`
+- `workspace_busy`
+- `git_index_not_clean`
+- `sync_offline`
+- `sync_diverged`
+- `sync_auth_required`
+- `external_action_unknown`
+- `not_automation_primary`
+
+前端不得通过匹配中文 message 决定状态。
+
+### 7.2 隐私清单
+
+以下内容不得出现在 Git、App bundle、日志、诊断包、崩溃报告、前端持久缓存或测试 fixture：
+
+- 飞书 user access token、refresh token、app secret；
+- 模型 API key；
+- Git PAT/密码；
+- session token、cookie；
+- 完整 Authorization header；
+- 未脱敏的会议正文、模型 prompt/response；
+- 当前使用者或同事的真实 Home 绝对路径；
+- 私有 remote 中嵌入的 credential。
+
+### 7.3 不允许 Luna 自行做出的架构变更
+
+- 不引入中央数据库、向量库、远程后端或多租户服务。
+- 不把 Git 替换成网盘文件同步。
+- 不把自动化设成所有设备默认开启。
+- 不在分叉时自动选择一侧覆盖另一侧。
+- 不因重构改变 Markdown 稳定格式、PRD 审批边界或“飞书是远端事实源”的现有规则。
+- 不关闭 TLS 验证、Gatekeeper、hardened runtime 或代码签名检查。
+- 不把 secret 从 Keychain 迁到普通配置文件。
+- 不用 `--deep` 代替由内到外的正式签名流程。
+- 不为了通过测试删除/放宽原有测试、mypy strict 或错误可见性。
+
+## 8. 测试分层与最小矩阵
+
+### 8.1 单元测试
+
+- 领域状态机、schema compatibility、profile 隔离、retry mode、outbox 幂等、sync transition。
+- 路径与 lock root 必须使用临时 Home；不能依赖当前开发机目录。
+- 所有网络用 fake/MockTransport；所有 Keychain 用 protocol fake。
+
+### 8.2 集成测试
+
+- 临时 bare Git remote + 两个 clone 模拟 Studio/Air。
+- 两个独立 Home 模拟使用者/同事，验证任何配置、凭据引用、缓存不交叉。
+- 启动真实 bundled server，验证动态端口、cookie、runtime record、shutdown。
+- 中断点测试：atomic replace、outbox prepared、push reject、onboarding staging、migration rollback。
+
+### 8.3 App 黑盒测试
+
+- 空账号首次启动、新建 workspace、capture、退出、重启。
+- 连接 remote、断网、恢复、分叉保护。
+- profile 切换和旧版本 workspace 只读。
+- DMG 安装、Gatekeeper、签名、卸载后数据保留。
+
+### 8.4 真机验收脚本必须记录
+
+- 设备型号、芯片、macOS 版本；
+- App version/build/checksum；
+- workspace id 只记录短码，不记录路径和 secret；
+- 每一步预期/实际/截图或日志 operation id；
+- 回滚办法；
+- 未通过项不得写成“基本可用”。
+
+## 9. 两条最终用户验收旅程
+
+### 9.1 你的 Mac Studio + Air
+
+1. Studio 升级旧 vault，生成 workspace marker，保持所有原内容和 Git 历史。
+2. Studio 设置为 automation-primary，完成一次同步并 push。
+3. Air 安装同一正式 App，选择“连接已有工作台”，通过私有 HTTPS remote clone。
+4. Air 读取相同 workspace id，生成不同 device id，默认 secondary。
+5. Studio 写一条 capture 并同步；Air 前台刷新后看到。
+6. Air 断网写一条 capture，看到待同步计数；联网后 push，Studio ff 后看到。
+7. 构造两端离线同时修改同一旧热点文件，确认双方进入保护态且无 force/丢失。
+8. 两台 Mac 同时跨过 08:00，只有 Studio 生成简报；Air 显示由主设备负责。
+
+### 9.2 同事的独立工作台
+
+1. 在干净账户下载 DMG，校验 checksum，拖入 Applications，首次启动通过 Gatekeeper。
+2. 点击“新建我的工作台”，选择自己的本地目录和名称。
+3. 跳过 Git、飞书和模型，先完成本地 capture、项目建档和重启恢复。
+4. 逐项配置自己的模型 key、飞书授权、私有 remote；所有 secret 只进她的 Keychain。
+5. 启用自己的自动化主设备；查看一次手动运行结果。
+6. 导出诊断包，确认没有正文和 token。
+7. 检查她的 workspace、App Support、Keychain 和 Git remote 中完全不存在当前使用者的数据。
+
+## 10. 发布与回滚策略
+
+### 10.1 版本建议
+
+- `0.5.0-alpha.*`：P0-01 至 P0-10，仅开发者双设备测试。
+- `0.5.0-beta.*`：P0-11 至 P0-13，邀请同事 clean-account 试用。
+- `0.5.0`：P0 发布门通过。
+- `0.6.0`：P1 自动化、迁移、诊断、CI、更新完成。
+- `0.7.0` 或更高：P2 event store；因持久化模型变化，不混入普通 patch。
+
+### 10.2 回滚原则
+
+- App 二进制回滚与 workspace schema 回滚分离；旧 App 不兼容时只读，不能强开。
+- 每次 migration 前有本机备份和 Git HEAD；回滚不使用 `reset --hard` 操作用户仓库。
+- 外部飞书动作不能随 vault rollback 自动撤销；outbox 与 UI 必须持续显示真实远端状态。
+- 自动更新失败只回滚 App，不删除 profile、Keychain 或 vault。
+- 分发错误可撤下 feed/DMG，但已安装设备仍能离线读取兼容 workspace。
+
+## 11. 风险登记
+
+| 风险 | 早期信号 | 缓解 | 决策门 |
+|---|---|---|---|
+| Dulwich 与现有 Git 语义不完全一致 | conformance/revert/TLS 失败 | P0-09 time-box spike；改用 libgit2 或明确系统 Git 前置 | P0-09 |
+| 两台 Mac 离线修改旧 RMW 热点 | non-ff push | P0 保护态；P2 event store 根治 | P0-10/P2-01 |
+| 飞书日历无可靠幂等键 | timeout 后无法判断 | unknown 状态 + 核对，禁止自动重试 | P0-04 |
+| PyInstaller universal2 依赖不全 | lipo/启动验证失败 | 首发按架构分别发布 | P0-13 |
+| Keychain 迁移串 workspace | 相同 app id 读到旧 token | workspace-scoped service + 显式一次性迁移 | P0-07 |
+| helper 签名或路径在升级后失效 | 定时任务不再运行 | SMAppService 状态 UI + 版本握手 | P1-01 |
+| 大文件/日志撑满磁盘 | App 变慢、写失败 | 输入上限、日志轮换、容量诊断 | P0-05/P1-05 |
+| schema 在双设备版本错位时被旧版写坏 | Air 旧版仍能写 | min reader/writer gate，先升级再写 | P0-07/P1-02 |
+| Luna 跨包重构造成回归 | diff 过大、验收不聚焦 | 一任务一包、测试先行、明确停止条件 | 全程 |
+
+## 12. ADR 交付要求
+
+以下 ADR 随对应代码包创建并加入 `docs/decisions/README.md`：
+
+| ADR | 工作包 | 必须回答 |
+|---|---|---|
+| 0028 | P0-04 | 哪些飞书动作可重试；unknown 如何核对；如何避免重复 |
+| 0029 | P0-07 | workspace/profile/device 边界；同步与本机数据分别是什么 |
+| 0030 | P0-09 | Git backend 选择、HTTPS 凭据、打包/许可证/架构证据 |
+| 0031 | P0-10 | 同步状态机、离线策略、主设备、分叉保护 |
+| 0032 | P0-13 | 架构产物、签名顺序、notarization、版本与发布验证 |
+| 0033 | P1-01 | helper/SMAppService 生命周期、权限、升级兼容 |
+| 0034 | P2-01 | event schema、投影、双写迁移与回滚 |
+
+ADR 必须记录最终实现与验证证据，不得只复制本计划。
+
+## 13. Luna 单包交付模板
+
+每完成一个工作包，在回复中使用以下结构：
+
+```text
+工作包：P0-XX · 名称
+结果：完成 / 部分完成 / 阻塞
+
+完成范围：
+- ...
+
+用户可见变化：
+- ...
+
+主要文件：
+- path: 变化
+
+验证：
+- 命令：结果
+- 新增测试：数量与覆盖场景
+
+未验证/阻塞：
+- ...
+
+计划状态：
+- 是否已勾选本工作包
+- 下一工作包（只说明，不实施）
+```
+
+若任何全量门失败，不得写“完成”；要区分本次引入失败还是基线已有失败，并提供证据。
+
+## 14. 推荐执行节奏
+
+为减少 Luna 长上下文漂移，建议每个新窗口只交付一个工作包：
+
+1. 第一轮：P0-01、P0-02，封住本地数据与 undo 边界。
+2. 第二轮：P0-03、P0-04，封住飞书重复副作用。
+3. 第三轮：P0-05、P0-06，统一 Web/文件基础设施。
+4. 第四轮：P0-07、P0-08，建立用户、工作区和设备模型。
+5. 第五轮：P0-09、P0-10，完成 clean Mac Git 与双设备同步。
+6. 第六轮：P0-11、P0-12，完成无终端 onboarding 和安全原生运行时。
+7. 第七轮：P0-13，签名分发与同事试点。
+8. P0 真实使用一至两周后，再进入 P1；不要在试点前建设 P2 event store。
+
+每轮两个工作包也应分别开任务、分别验收；这里的“轮”只表示同一主题，不表示一次提交。
+
+## 15. 实施记录
+
+完成工作包后按以下格式追加，不覆盖历史：
+
+```text
+### YYYY-MM-DD · P0-XX
+
+- 状态：完成
+- Git commit：<sha 或“未提交”>
+- 变更摘要：...
+- 目标测试：...
+- 全量质量门：...
+- 真机验证：通过 / 未执行（原因）
+- 遗留：...
+```
+
+### 2026-09-05 · P0-01
+
+- 状态：完成
+- Git commit：未提交
+- 变更摘要：GitRepo 新增暂存路径、提交主题、父节点数和 commit 对象校验；自动提交拒绝调用前已有 staged path，主题规范化为单行 `wb:`，只检查本次目标路径；撤销与 diff 仅接受完整 40 位十六进制的 `wb:` 单父提交，并在同一工作区锁内完成撤销前读取、脏检查和执行；undo Web API 拒绝路径返回 4xx 与稳定错误码。
+- 目标测试：`uv run pytest tests/unit/test_autocommit.py tests/unit/test_webapi_undo.py`（20 passed）
+- 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（528 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（本工作包使用临时 Git 仓库离线验证，无 Apple Developer 证书、第二台 Mac 或真实远端门）
+- 遗留：无；P0-02 及后续工作包未开始。
+
+## 16. 外部实现依据
+
+- Apple：Notarizing macOS software before distribution
+  `https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution`
+- Apple：Building a universal macOS binary
+  `https://developer.apple.com/documentation/Apple-Silicon/building-a-universal-macos-binary`
+- Apple：Service Management / SMAppService
+  `https://developer.apple.com/documentation/servicemanagement/`
+- PyInstaller：macOS target architecture
+  `https://pyinstaller.org/en/stable/usage.html`
+- Sparkle：Distribution and update documentation
+  `https://sparkle-project.org/documentation/`
+
+实施时以当时官方文档为准；签名、notarization、API scope、第三方库版本属于会变化的信息，
+执行对应工作包前必须重新核验，不能只依赖本计划中的摘要。

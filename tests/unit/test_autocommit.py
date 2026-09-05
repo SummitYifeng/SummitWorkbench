@@ -21,6 +21,10 @@ def _git(path: Path, *args: str) -> str:
     ).stdout
 
 
+def _git_bytes(path: Path, *args: str) -> bytes:
+    return subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True).stdout
+
+
 def _init_repo(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     _git(path, "init", "-q")
@@ -62,6 +66,62 @@ def test_u1_only_stages_listed_paths(tmp_path: Path) -> None:
     assert "inbox.md" not in status  # 目标已提交
     log = _git(vault, "log", "--pretty=%s", "-1")
     assert log.strip() == "wb: capture"
+
+
+def test_u1_refuses_preexisting_index_and_preserves_it_byte_for_byte(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    manual = vault / "manual.md"
+    manual.write_bytes(b"user staged content\x00")
+    _git(vault, "add", "--", "manual.md")
+    before = _git_bytes(vault, "diff", "--cached", "--binary")
+    target = vault / "inbox.md"
+    target.write_text("system content", encoding="utf-8")
+
+    result = commit_paths(vault, [target], "wb: capture")
+
+    assert result.status is CommitStatus.INDEX_NOT_CLEAN
+    assert _git_bytes(vault, "diff", "--cached", "--binary") == before
+    assert "manual.md" in _git(vault, "diff", "--cached", "--name-only")
+    assert "inbox.md" not in _git(vault, "diff", "--cached", "--name-only")
+    assert _git(vault, "log", "--pretty=%s", "-1").strip() == "chore: seed"
+
+
+def test_u1_refuses_intent_to_add_as_preexisting_staged_path(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    manual = vault / "manual.md"
+    manual.write_text("user content", encoding="utf-8")
+    _git(vault, "add", "-N", "--", "manual.md")
+    target = vault / "inbox.md"
+    target.write_text("system content", encoding="utf-8")
+
+    result = commit_paths(vault, [target], "wb: capture")
+
+    assert result.status is CommitStatus.INDEX_NOT_CLEAN
+    assert "manual.md" in _git(vault, "status", "--porcelain")
+
+
+def test_u1_invalid_message_does_not_touch_index_or_create_commit(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "inbox.md"
+    target.write_text("system content", encoding="utf-8")
+
+    result = commit_paths(vault, [target], "capture\nmanual")
+
+    assert result.status is CommitStatus.FAILED
+    assert result.error_code == "invalid-message"
+    assert "inbox.md" not in _git(vault, "diff", "--cached", "--name-only")
+    assert _git(vault, "log", "--pretty=%s", "-1").strip() == "chore: seed"
+
+
+def test_u1_message_is_normalized_to_one_line(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "inbox.md"
+    target.write_text("system content", encoding="utf-8")
+
+    result = commit_paths(vault, [target], "  wb: capture\nwith\tline  ")
+
+    assert result.status is CommitStatus.COMMITTED
+    assert _git(vault, "log", "--pretty=%s", "-1").strip() == "wb: capture with line"
 
 
 def test_u1_unchanged_content_skips_commit(tmp_path: Path) -> None:
@@ -116,6 +176,54 @@ def test_u2_list_excludes_non_wb_commits(tmp_path: Path) -> None:
     commits, error = list_wb_commits(vault)
     assert error is None
     assert commits == []
+
+
+def test_u2_diff_and_revert_reject_non_wb_short_unknown_and_option_sha(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    target = vault / "manual.md"
+    target.write_text("manual", encoding="utf-8")
+    _git(vault, "add", "--", "manual.md")
+    _git(vault, "commit", "-q", "-m", "docs: manual")
+    manual_sha = _git(vault, "rev-parse", "HEAD").strip()
+
+    invalid_shas = [
+        manual_sha,
+        manual_sha[:8],
+        "--output=/tmp/should-not-be-created",
+        "f" * 40,
+    ]
+    for sha in invalid_shas:
+        diff, diff_error = commit_diff_text(vault, sha)
+        reverted = revert_commit(vault, sha)
+        assert diff == ""
+        assert diff_error is not None
+        assert reverted.status is CommitStatus.FAILED
+        assert reverted.error_code == "invalid-wb-commit"
+
+
+def test_u2_merge_wb_commit_is_not_listed_or_reversible(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    _git(vault, "checkout", "-qb", "feature")
+    (vault / "feature.md").write_text("feature", encoding="utf-8")
+    _git(vault, "add", "--", "feature.md")
+    _git(vault, "commit", "-q", "-m", "feature")
+    _git(vault, "checkout", "-q", "-")
+    (vault / "main.md").write_text("main", encoding="utf-8")
+    _git(vault, "add", "--", "main.md")
+    _git(vault, "commit", "-q", "-m", "main")
+    _git(vault, "merge", "--no-ff", "-q", "feature", "-m", "wb: merge")
+    merge_sha = _git(vault, "rev-parse", "HEAD").strip()
+
+    commits, error = list_wb_commits(vault)
+    diff, diff_error = commit_diff_text(vault, merge_sha)
+    reverted = revert_commit(vault, merge_sha)
+
+    assert error is None
+    assert commits == []
+    assert diff == ""
+    assert diff_error is not None
+    assert reverted.status is CommitStatus.FAILED
+    assert reverted.error_code == "invalid-wb-commit"
 
 
 # ---- U3：还原前目标文件有未提交改动 → 拒绝 ----

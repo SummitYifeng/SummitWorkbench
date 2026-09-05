@@ -92,9 +92,24 @@ class GitRepo:
         if cp.returncode != 0:
             raise GitError("git add 失败", stderr=cp.stderr)
 
-    def has_staged_changes(self) -> bool:
-        """暂存区是否有待提交内容（``diff --cached --quiet`` 返回 1 表示有）。"""
-        return self._run("diff", "--cached", "--quiet").returncode != 0
+    def staged_paths(self) -> list[str]:
+        """精确读取暂存区路径；支持删除和 intent-to-add，避免换行路径被拆错。"""
+        cp = self._run("status", "--porcelain=v1", "-z", "--")
+        if cp.returncode != 0:
+            raise GitError("读取暂存路径失败", stderr=cp.stderr)
+        paths: set[str] = set()
+        for entry in cp.stdout.split("\0"):
+            if len(entry) < 3 or entry[0] in "?!" or (entry[0] == " " and entry[1] != "A"):
+                continue
+            paths.add(entry[3:])
+        return sorted(paths)
+
+    def has_staged_changes(self, paths: list[str] | None = None) -> bool:
+        """检查暂存 diff，可选地只检查显式路径。"""
+        args = ["diff", "--cached", "--quiet"]
+        if paths:
+            args.extend(["--", *paths])
+        return self._run(*args).returncode != 0
 
     def commit(self, message: str) -> None:
         """提交暂存区。无暂存内容时应由调用方先判 :meth:`has_staged_changes`（幂等）。"""
@@ -102,16 +117,42 @@ class GitRepo:
         if cp.returncode != 0:
             raise GitError("git commit 失败", stderr=cp.stderr)
 
+    def resolve_commit(self, sha: str) -> str:
+        """把 revision 解析为当前仓库中的 commit 对象并返回规范 SHA。"""
+        return self._must("rev-parse", "--verify", "--end-of-options", f"{sha}^{{commit}}")
+
+    def commit_subject(self, sha: str) -> str:
+        """读取指定 commit 的主题。调用方应先通过 :meth:`resolve_commit`。"""
+        return self._must("show", "-s", "--format=%s", sha, "--")
+
+    def commit_parent_count(self, sha: str) -> int:
+        """读取指定 commit 的父节点数量。"""
+        parents = self._must("rev-list", "--parents", "-n", "1", sha, "--").split()
+        if not parents:
+            raise GitError(f"无法读取提交 {sha} 的父节点")
+        return len(parents) - 1
+
+    def validate_commit(self, sha: str) -> tuple[str, int]:
+        """返回 ``(规范 SHA 的主题, 父节点数)``，失败则抛 :class:`GitError`。"""
+        resolved = self.resolve_commit(sha)
+        return self.commit_subject(resolved), self.commit_parent_count(resolved)
+
     def files_changed_by(self, sha: str) -> list[str]:
         """某提交触碰的文件（相对仓库根，去重排序）；非提交 sha → :class:`GitError`。"""
-        cp = self._run("show", "--name-only", "--pretty=format:", sha)
+        cp = self._run("show", "--name-only", "--pretty=format:", sha, "--")
         if cp.returncode != 0:
             raise GitError(f"git show {sha} 失败", stderr=cp.stderr)
         return sorted({line for line in cp.stdout.splitlines() if line.strip()})
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
         """grep 提交主题的最近提交，返回 ``(sha, ISO 时间, 主题)``（供 wb 撤销历史）。"""
-        cp = self._run("log", f"--grep={pattern}", f"-n{limit}", "--pretty=%H%x09%aI%x09%s")
+        cp = self._run(
+            "log",
+            f"--grep={pattern}",
+            f"-n{limit}",
+            "--pretty=%H%x09%aI%x09%s",
+            "--",
+        )
         if cp.returncode != 0:
             raise GitError("git log --grep 失败", stderr=cp.stderr)
         rows: list[tuple[str, str, str]] = []
@@ -140,7 +181,7 @@ class GitRepo:
 
     def show_patch(self, sha: str) -> str:
         """某提交的完整差异输出（``git show --stat --patch``），供撤销面板预览。"""
-        cp = self._run("show", "--stat", "--patch", sha)
+        cp = self._run("show", "--stat", "--patch", sha, "--")
         if cp.returncode != 0:
             raise GitError(f"git show {sha} 失败", stderr=cp.stderr)
         return cp.stdout

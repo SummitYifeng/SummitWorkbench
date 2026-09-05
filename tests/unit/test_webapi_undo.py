@@ -67,7 +67,9 @@ def test_u4_diff_ok_and_error(tmp_path: Path) -> None:
     assert ok.json()["ok"] is True
     assert "- [ ] 一条" in ok.json()["diff"]
     bad = client.get("/api/undo/diff", params={"sha": "deadbeef" * 5})
+    assert bad.status_code == 422
     assert bad.json()["ok"] is False
+    assert bad.json()["code"] == "undo_invalid_commit"
 
 
 def test_u4_revert_restores_file_with_flynote(tmp_path: Path) -> None:
@@ -98,6 +100,8 @@ def test_u4_revert_refused_when_dirty(tmp_path: Path) -> None:
     target.write_text("wb 写入 + 手改", encoding="utf-8")
     r = client.post("/api/undo/revert", json={"sha": sha})
     assert r.json()["ok"] is False
+    assert r.status_code == 409
+    assert r.json()["code"] == "undo_target_dirty"
     assert "未提交改动" in r.json()["message"]
 
 
@@ -107,4 +111,13 @@ def test_u4_revert_not_git_graceful(tmp_path: Path) -> None:
     r = _client(vault).post("/api/undo/revert", json={"sha": "a" * 40})
     body = r.json()
     assert body["ok"] is False
+    assert r.status_code == 409
+    assert body["code"] == "undo_not_git"
     assert "不是 git 仓库" in body["message"]
+
+
+def test_u4_revert_rejects_missing_sha_with_4xx_code(tmp_path: Path) -> None:
+    vault = _git_vault(tmp_path)
+    r = _client(vault).post("/api/undo/revert", json={"sha": ""})
+    assert r.status_code == 422
+    assert r.json() == {"ok": False, "code": "undo_invalid_commit", "message": "缺少提交 sha"}

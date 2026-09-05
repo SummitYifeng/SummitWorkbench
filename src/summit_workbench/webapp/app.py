@@ -43,6 +43,7 @@ from summit_workbench.repositories.autocommit import (
     commit_paths,
     list_wb_commits,
     revert_commit,
+    undo_error_code,
 )
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.repositories.project_registry import (
@@ -159,6 +160,20 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
     if result.status is CommitStatus.FAILED or result.status is CommitStatus.BUSY:
         return f"（git 留痕失败：{result.detail or result.status.value}）"
     return ""
+
+
+def _undo_error_response(code: str, message: str) -> JSONResponse:
+    """返回撤销 API 的稳定 4xx 错误 envelope。"""
+    status_code = {
+        "undo_invalid_commit": 422,
+        "undo_target_dirty": 409,
+        "undo_not_git": 409,
+        "undo_busy": 423,
+    }.get(code, 409)
+    return JSONResponse(
+        status_code=status_code,
+        content={"ok": False, "code": code, "message": message},
+    )
 
 
 def _build_task_creator(ctx: WebContext) -> TaskCreator:
@@ -1114,20 +1129,21 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return {"ok": False, "message": f"读取提交历史失败：{error}"}
         return {"ok": True, "commits": [c.as_dict() for c in commits], "note": None}
 
-    @app.get("/api/undo/diff")
-    def api_undo_diff(sha: str) -> dict[str, object]:
+    @app.get("/api/undo/diff", response_model=None)
+    def api_undo_diff(sha: str) -> dict[str, object] | JSONResponse:
         """某次 wb 提交的 before/after 差异（git show 输出），供撤销前预览。"""
         text, error = commit_diff_text(ctx.vault_dir, sha)
         if error is not None:
-            return {"ok": False, "message": f"无法读取差异：{error}"}
+            code = undo_error_code(error)
+            return _undo_error_response(code, f"无法读取差异：{error}")
         return {"ok": True, "diff": text}
 
-    @app.post("/api/undo/revert")
-    def api_undo_revert(payload: UndoRevertPayload) -> dict[str, object]:
+    @app.post("/api/undo/revert", response_model=None)
+    def api_undo_revert(payload: UndoRevertPayload) -> dict[str, object] | JSONResponse:
         """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
         sha = payload.sha.strip()
         if not sha:
-            return {"ok": False, "message": "缺少提交 sha"}
+            return _undo_error_response("undo_invalid_commit", "缺少提交 sha")
         result = revert_commit(ctx.vault_dir, sha)
         if result.status is CommitStatus.REVERTED:
             # 明示边界：飞书侧副作用（已建任务/会议、已完成状态）不可撤销。
@@ -1137,8 +1153,16 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 "已完成状态）不可撤销、不受本次还原影响。" + (result.detail or ""),
             }
         if result.status is CommitStatus.NOT_GIT:
-            return {"ok": False, "message": "vault 不是 git 仓库，无法撤销"}
-        return {"ok": False, "message": f"还原失败：{result.detail or result.status.value}"}
+            return _undo_error_response("undo_not_git", "vault 不是 git 仓库，无法撤销")
+        code = {
+            "invalid-wb-commit": "undo_invalid_commit",
+            "undo-target-dirty": "undo_target_dirty",
+            "workspace-locked": "undo_busy",
+        }.get(result.error_code or "", "undo_failed")
+        return _undo_error_response(
+            code,
+            f"还原失败：{result.detail or result.status.value}",
+        )
 
     @app.post("/api/shutdown")
     def api_shutdown(

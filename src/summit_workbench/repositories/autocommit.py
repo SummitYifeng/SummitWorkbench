@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -26,10 +27,50 @@ from summit_workbench.repositories.git import GitError, GitRepo
 
 # 撤销历史只认本系统的自动提交（消息以 wb: 开头），不把人工/其它提交混进撤销列表。
 _WB_PREFIX_GREP = "^wb:"
+_FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+def _normalize_message(message: str) -> str | None:
+    """规整提交主题为单行，并拒绝非 ``wb:`` 系统提交。"""
+    normalized = " ".join(message.split())
+    return normalized if normalized.startswith("wb:") else None
+
+
+def _validate_wb_commit(repo: GitRepo, sha: str) -> tuple[str, str | None]:
+    """校验完整 SHA、commit 类型、主题和单父边界，返回规范 SHA 与错误。"""
+    if not _FULL_SHA.fullmatch(sha):
+        return "", "无效 wb commit：只接受完整 40 位十六进制 commit id"
+    try:
+        resolved = repo.resolve_commit(sha)
+        subject, parent_count = repo.validate_commit(resolved)
+    except GitError as exc:
+        return "", "无效 wb commit：" + (exc.stderr or "commit 不存在或不是可解析的 commit 对象")
+    if not subject.startswith("wb:"):
+        return "", "无效 wb commit：该提交不是系统自动提交（主题必须以 wb: 开头）"
+    if parent_count != 1:
+        return "", "无效 wb commit：该提交不是单父提交，拒绝操作"
+    return resolved, None
+
+
+def undo_error_code(detail: str) -> str:
+    """把撤销读操作的错误归一为 Web API 可稳定消费的错误码。"""
+    if detail == "not-git":
+        return "undo_not_git"
+    if (
+        "无效 wb commit" in detail
+        or "完整 40 位" in detail
+        or "不是系统自动提交" in detail
+        or "不是单父提交" in detail
+        or "commit 不存在" in detail
+        or "不是可解析的 commit" in detail
+    ):
+        return "undo_invalid_commit"
+    return "undo_failed"
 
 
 class CommitStatus(StrEnum):
     COMMITTED = "committed"
+    INDEX_NOT_CLEAN = "index-not-clean"  # 调用前已有用户暂存内容，拒绝接管 index
     NOTHING_TO_COMMIT = "nothing-to-commit"  # 内容未变，幂等跳过
     NOT_GIT = "not-git"  # 非 git 仓库：优雅降级
     REVERTED = "reverted"  # 撤销成功（生成了新的反向提交）
@@ -41,9 +82,14 @@ class CommitStatus(StrEnum):
 class CommitResult:
     status: CommitStatus
     detail: str = ""
+    error_code: str | None = None
 
     def as_dict(self) -> dict[str, object]:
-        return {"status": self.status.value, "detail": self.detail}
+        return {
+            "status": self.status.value,
+            "detail": self.detail,
+            "error_code": self.error_code,
+        }
 
 
 @dataclass(frozen=True)
@@ -83,21 +129,34 @@ def commit_paths(vault_dir: Path, paths: list[Path], message: str) -> CommitResu
 
     :param message: 提交主题，应自带 ``wb:`` 前缀（撤销历史按它检索）。
     """
+    normalized_message = _normalize_message(message)
+    if normalized_message is None:
+        return CommitResult(
+            CommitStatus.FAILED,
+            "系统提交主题必须是单行且以 wb: 开头",
+            error_code="invalid-message",
+        )
     repo = GitRepo(vault_dir)
     if not repo.is_git_repo():
         return CommitResult(CommitStatus.NOT_GIT, f"{vault_dir} 不是 git 仓库")
-    rel = _vault_relative(vault_dir, paths)
-    if not rel:
-        return CommitResult(CommitStatus.NOTHING_TO_COMMIT, "没有 vault 内文件需要提交")
     try:
         # add → commit 序列在工作区锁内，与 publish_brief / sync 互斥（ADR 0016）。
         with workspace_lock(vault_dir.parent):
+            if repo.staged_paths():
+                return CommitResult(
+                    CommitStatus.INDEX_NOT_CLEAN,
+                    "调用前暂存区已有用户内容，拒绝接管（请先完成或撤销手动暂存）",
+                    error_code="index-not-clean",
+                )
+            rel = _vault_relative(vault_dir, paths)
+            if not rel:
+                return CommitResult(CommitStatus.NOTHING_TO_COMMIT, "没有 vault 内文件需要提交")
             repo.add(rel)
-            if not repo.has_staged_changes():
+            if not repo.has_staged_changes(rel):
                 return CommitResult(CommitStatus.NOTHING_TO_COMMIT, "内容未变，无需提交")
-            repo.commit(message)
+            repo.commit(normalized_message)
     except LockBusy as exc:
-        return CommitResult(CommitStatus.BUSY, str(exc))
+        return CommitResult(CommitStatus.BUSY, str(exc), error_code="workspace-locked")
     except GitError as exc:
         return CommitResult(CommitStatus.FAILED, exc.stderr or str(exc))
     return CommitResult(CommitStatus.COMMITTED)
@@ -117,11 +176,16 @@ def list_wb_commits(vault_dir: Path, *, limit: int = 20) -> tuple[list[WbCommitI
         return [], exc.stderr or str(exc)
     commits: list[WbCommitInfo] = []
     for sha, when, subject in rows:
+        validated_sha, validation_error = _validate_wb_commit(repo, sha)
+        if validation_error is not None:
+            continue
         try:
-            files = repo.files_changed_by(sha)
+            files = repo.files_changed_by(validated_sha)
         except GitError:
             files = []
-        commits.append(WbCommitInfo(sha=sha, message=subject, time=when, files=tuple(files)))
+        commits.append(
+            WbCommitInfo(sha=validated_sha, message=subject, time=when, files=tuple(files))
+        )
     return commits, None
 
 
@@ -135,19 +199,24 @@ def revert_commit(vault_dir: Path, sha: str) -> CommitResult:
     if not repo.is_git_repo():
         return CommitResult(CommitStatus.NOT_GIT, f"{vault_dir} 不是 git 仓库")
     try:
-        files = repo.files_changed_by(sha)
-    except GitError as exc:
-        return CommitResult(CommitStatus.FAILED, exc.stderr or str(exc))
-    if repo.is_dirty_paths(files):
-        return CommitResult(
-            CommitStatus.FAILED,
-            "该提交触碰的文件存在未提交改动，拒绝还原（避免覆盖你的手动修改）",
-        )
-    try:
         with workspace_lock(vault_dir.parent):
-            repo.revert(sha)
+            validated_sha, validation_error = _validate_wb_commit(repo, sha)
+            if validation_error is not None:
+                return CommitResult(
+                    CommitStatus.FAILED,
+                    validation_error,
+                    error_code="invalid-wb-commit",
+                )
+            files = repo.files_changed_by(validated_sha)
+            if repo.is_dirty_paths(files):
+                return CommitResult(
+                    CommitStatus.FAILED,
+                    "该提交触碰的文件存在未提交改动，拒绝还原（避免覆盖你的手动修改）",
+                    error_code="undo-target-dirty",
+                )
+            repo.revert(validated_sha)
     except LockBusy as exc:
-        return CommitResult(CommitStatus.BUSY, str(exc))
+        return CommitResult(CommitStatus.BUSY, str(exc), error_code="workspace-locked")
     except GitError as exc:
         return CommitResult(CommitStatus.FAILED, exc.stderr or str(exc))
     return CommitResult(
@@ -165,6 +234,9 @@ def commit_diff_text(vault_dir: Path, sha: str) -> tuple[str, str | None]:
     if not repo.is_git_repo():
         return "", "not-git"
     try:
-        return repo.show_patch(sha), None
+        validated_sha, validation_error = _validate_wb_commit(repo, sha)
+        if validation_error is not None:
+            return "", validation_error
+        return repo.show_patch(validated_sha), None
     except GitError as exc:
         return "", exc.stderr or str(exc)
