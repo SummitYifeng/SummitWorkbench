@@ -1515,7 +1515,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P0-11B
 
 - 状态：完成（离线实现与验收完成；真实 App 黑盒/Playwright、第二台 Mac、真实 Keychain 与远端仍未执行）
-- Git commit：待收口提交（实现提交后补记；已推送至 `origin/main`）
+- Git commit：c90940c（实现提交；待推送至 `origin/main`）
 - 变更摘要：新增 profile 设置领域 workflow 与后端 API，提供 profile 摘要、workspace 兼容性、设备角色、同步摘要和 provider 就绪状态；切换采用 prepare/commit 一次性计划，目标重新校验后只切换本机 active registry，切换期间统一阻止共享 vault mutation，并以受控重启要求重新建立目标 workspace/session；provider 非秘密配置留在本机 profile，secret 单次请求写入 workspace-scoped Keychain 且不回显；doctor 默认离线并另设明确在线确认；移除 profile 只删除本机 profile/runtime/draft，预览列出精确目标并保留 vault/remote/Keychain；前端设置中心、workspace-scoped 问答/草稿存储、切换重启、provider 表单和 doctor 操作已接线，静态产物已重建。
 - 目标测试：`uv run pytest tests/unit/test_profile_settings.py tests/unit/test_web_security.py tests/unit/test_webapp.py -q`（26 passed）；覆盖 A/B profile 摘要与切换、兼容性拒绝、切换期间 mutation 拒绝、移除安全边界、provider secret 隔离/API 契约。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（715 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
