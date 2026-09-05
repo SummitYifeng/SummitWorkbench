@@ -17,7 +17,8 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
@@ -128,6 +129,47 @@ class WebContext:
         return datetime.now(ZoneInfo(self.timezone)).date().isoformat()
 
 
+class _FeishuClientPool:
+    """按身份复用飞书客户端，并由 App lifespan 统一释放。"""
+
+    def __init__(self) -> None:
+        self._clients: dict[str, object] = {}
+        self._lock = threading.Lock()
+
+    def _get(self, identity: str) -> object:
+        with self._lock:
+            existing = self._clients.get(identity)
+            if existing is not None:
+                return existing
+            from summit_workbench.providers.feishu import (
+                FeishuClient,
+                FeishuSession,
+                load_feishu_config,
+            )
+
+            cfg = load_feishu_config()
+            session = FeishuSession(cfg)
+            token = session.access_token() if identity == "user" else session.tenant_access_token()
+            client = FeishuClient(cfg, token)
+            self._clients[identity] = client
+            return client
+
+    def user_client(self) -> object:
+        return self._get("user")
+
+    def tenant_client(self) -> object:
+        return self._get("tenant")
+
+    def close(self) -> None:
+        with self._lock:
+            clients = tuple(self._clients.values())
+            self._clients.clear()
+        for client in clients:
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+
+
 def _load(vault_dir: Path) -> tuple[list[ReviewEntry], list[str]]:
     path = review_path(vault_dir)
     if not path.is_file():
@@ -198,24 +240,14 @@ def _undo_error_response(code: str, message: str) -> JSONResponse:
     )
 
 
-def _build_task_creator(ctx: WebContext) -> TaskCreator:
-    from functools import lru_cache
-
+def _build_task_creator(ctx: WebContext, clients: _FeishuClientPool) -> TaskCreator:
     from summit_workbench.providers.feishu import (
-        FeishuClient,
-        FeishuSession,
         create_task,
-        load_feishu_config,
     )
-
-    @lru_cache(maxsize=1)
-    def client() -> object:
-        cfg = load_feishu_config()
-        return FeishuClient(cfg, FeishuSession(cfg).access_token())
 
     def create(summary: str, due_date: str | None, candidate_id: str) -> str:
         return create_task(
-            client(),  # type: ignore[arg-type]
+            clients.user_client(),  # type: ignore[arg-type]
             summary,
             due_date,
             candidate_id,
@@ -225,27 +257,18 @@ def _build_task_creator(ctx: WebContext) -> TaskCreator:
     return create
 
 
-def _build_meeting_creator(ctx: WebContext) -> MeetingCreator:
+def _build_meeting_creator(ctx: WebContext, clients: _FeishuClientPool) -> MeetingCreator:
     """审批「新建会议」写回器：解析主日历后创建定时日程事件，返回 event_id。
 
     缺省结束时间 = 开始 + 60 分钟；失败（含日历写 scope 未授权）抛错由
     apply 面板层可见化。
     """
     from datetime import datetime, timedelta
-    from functools import lru_cache
 
     from summit_workbench.providers.feishu import (
-        FeishuClient,
-        FeishuSession,
         create_event,
-        load_feishu_config,
     )
     from summit_workbench.providers.feishu.calendar import primary_calendar_id
-
-    @lru_cache(maxsize=1)
-    def client() -> object:
-        cfg = load_feishu_config()
-        return FeishuClient(cfg, FeishuSession(cfg).access_token())
 
     def create(summary: str, start_at: str | None, end_at: str | None, candidate_id: str) -> str:
         if start_at is None:
@@ -258,9 +281,10 @@ def _build_meeting_creator(ctx: WebContext) -> MeetingCreator:
             if end_at is not None
             else (start + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M")
         )
-        calendar_id = primary_calendar_id(client())  # type: ignore[arg-type]
+        client = clients.user_client()
+        calendar_id = primary_calendar_id(client)  # type: ignore[arg-type]
         return create_event(
-            client(),  # type: ignore[arg-type]
+            client,  # type: ignore[arg-type]
             calendar_id,
             summary,
             start_at,
@@ -389,7 +413,17 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
 
 
 def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
-    app = FastAPI(title="SummitWorkbench 面板")
+    feishu_clients = _FeishuClientPool()
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            feishu_clients.close()
+
+    app = FastAPI(title="SummitWorkbench 面板", lifespan=lifespan)
+    app.state.feishu_clients = feishu_clients
     spa_dir = static_dir or _STATIC_DIR
     server_instance = new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -730,8 +764,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 ctx.vault_dir,
                 ctx.work_root,
                 apply=True,
-                task_creator=_build_task_creator(ctx),
-                meeting_creator=_build_meeting_creator(ctx),
+                task_creator=_build_task_creator(ctx, feishu_clients),
+                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
@@ -995,16 +1029,10 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         guid = payload.task_id.strip()
         if not guid:
             return {"ok": False, "message": "缺少任务 id"}
-        from summit_workbench.providers.feishu import (
-            FeishuClient,
-            FeishuSession,
-            complete_task,
-            load_feishu_config,
-        )
+        from summit_workbench.providers.feishu import complete_task
 
         try:
-            cfg = load_feishu_config()
-            complete_task(FeishuClient(cfg, FeishuSession(cfg).access_token()), guid)
+            complete_task(feishu_clients.user_client(), guid)  # type: ignore[arg-type]
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化（授权过期/任务已删等）
             return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
         result = run_local_mutation(
@@ -1045,17 +1073,11 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 clear_due = True
         if summary is None and due_value is None and not clear_due:
             return {"ok": False, "message": "没有需要更新的内容"}
-        from summit_workbench.providers.feishu import (
-            FeishuClient,
-            FeishuSession,
-            load_feishu_config,
-            update_task,
-        )
+        from summit_workbench.providers.feishu import update_task
 
         try:
-            cfg = load_feishu_config()
             update_task(
-                FeishuClient(cfg, FeishuSession(cfg).access_token()),
+                feishu_clients.user_client(),  # type: ignore[arg-type]
                 guid,
                 summary=summary,
                 due_date=due_value,
@@ -1102,23 +1124,17 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
             return {"ok": False, "message": "改了结束时间也要一并改开始时间"}
         if summary is None and start_at is None and end_at is None:
             return {"ok": False, "message": "没有需要更新的内容"}
-        from summit_workbench.providers.feishu import (
-            FeishuClient,
-            FeishuSession,
-            load_feishu_config,
-            update_event,
-        )
+        from summit_workbench.providers.feishu import update_event
         from summit_workbench.providers.feishu.calendar import (
             local_iso_to_epoch_seconds,
             primary_calendar_id,
         )
 
         try:
-            cfg = load_feishu_config()
-            client = FeishuClient(cfg, FeishuSession(cfg).access_token())
-            calendar_id = primary_calendar_id(client)
+            client = feishu_clients.user_client()
+            calendar_id = primary_calendar_id(client)  # type: ignore[arg-type]
             update_event(
-                client,
+                client,  # type: ignore[arg-type]
                 calendar_id,
                 event_id,
                 summary=summary,
@@ -1392,8 +1408,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 ctx.vault_dir,
                 ctx.work_root,
                 apply=True,
-                task_creator=_build_task_creator(ctx),
-                meeting_creator=_build_meeting_creator(ctx),
+                task_creator=_build_task_creator(ctx, feishu_clients),
+                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             detail = f"应用失败：{type(exc).__name__}: {exc}"

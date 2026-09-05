@@ -28,11 +28,13 @@ class FeishuAuthError(FeishuError):
         needs_reauthorize: bool = False,
         retryable: bool = False,
         retry_after: float | None = None,
+        result_unknown: bool = False,
     ) -> None:
         super().__init__(message)
         self.needs_reauthorize = needs_reauthorize
         self.retryable = retryable
         self.retry_after = retry_after
+        self.result_unknown = result_unknown
 
 
 class FeishuAPIError(FeishuError):
@@ -50,9 +52,11 @@ class FeishuAPIError(FeishuError):
         status: int | None = None,
         retryable: bool = False,
         retry_after: float | None = None,
+        result_unknown: bool = False,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.status = status
         self.retryable = retryable
         self.retry_after = retry_after
+        self.result_unknown = result_unknown

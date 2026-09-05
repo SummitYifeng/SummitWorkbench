@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
 from summit_workbench.providers.feishu.calendar import (
@@ -18,6 +19,7 @@ from summit_workbench.providers.feishu.calendar import (
 )
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.config import FeishuConfig
+from summit_workbench.providers.feishu.errors import FeishuAPIError
 
 CFG = FeishuConfig(app_id="app1", redirect_uri="http://localhost/cb")
 
@@ -159,6 +161,32 @@ def test_create_event_posts_seconds_timestamps() -> None:
     assert isinstance(start["timestamp"], str)
     assert start["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T14:00", "Asia/Shanghai")
     assert end["timestamp"] == local_iso_to_epoch_seconds("2026-09-10T15:00", "Asia/Shanghai")
+
+
+def test_create_event_timeout_is_unknown_and_never_retried() -> None:
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.TimeoutException("slow")
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("tok"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: pytest.fail("日历创建不应自动重试"),
+    )
+    with pytest.raises(FeishuAPIError) as ei:
+        create_event(
+            client,
+            "cal_main",
+            "不重复创建",
+            "2026-09-10T14:00",
+            "2026-09-10T15:00",
+            timezone="Asia/Shanghai",
+        )
+    assert calls["n"] == 1
+    assert ei.value.result_unknown is True
 
 
 def test_update_event_patches_only_given_fields() -> None:

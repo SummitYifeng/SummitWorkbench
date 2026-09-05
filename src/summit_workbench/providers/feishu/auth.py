@@ -23,6 +23,7 @@ import httpx
 from pydantic import SecretStr
 
 from summit_workbench.providers._resilient import (
+    RetryMode,
     build_client,
     parse_retry_after,
     send_with_retry,
@@ -31,7 +32,7 @@ from summit_workbench.providers.feishu.config import AUTHORIZE_PATH, TOKEN_PATH,
 from summit_workbench.providers.feishu.errors import FeishuAuthError
 
 _DEFAULT_TIMEOUT = 15.0
-_MAX_RETRIES = 3  # 初次失败后最多再重试 3 次（仅瞬时基础设施故障）
+_MAX_RETRIES = 3  # 保留统一退避配置接口；token POST 当前 RetryMode.NEVER 不重试
 
 
 @dataclass(frozen=True)
@@ -69,24 +70,26 @@ def _post_json(
     *,
     sleep: Callable[[float], None],
 ) -> httpx.Response:
-    """POST 一次 token 端点并带瞬时故障重试；返回 HTTP 2xx/4xx 响应交由调用方解析信封。
+    """POST 一次 token 端点；返回 HTTP 2xx/4xx 响应交由调用方解析信封。
 
-    只把「超时 / 网络抖动 / 429 / 5xx」当作可重试的瞬时故障（尊重 ``Retry-After``）；
-    其余（含 4xx 语义失败）作为普通响应返回，语义判定留给调用方。
+    token 端点是非幂等 POST，瞬时网络失败也不自动重放；调用方通过
+    ``FeishuAuthError.result_unknown`` 得到结果不确定的机器状态。
     """
 
     def attempt(_n: int) -> httpx.Response:
         try:
             resp = http.post(url, json=payload)
         except httpx.TimeoutException as exc:
-            raise FeishuAuthError(f"{what}请求超时", retryable=True) from exc
+            raise FeishuAuthError(f"{what}请求超时", result_unknown=True) from exc
         except httpx.HTTPError as exc:
-            raise FeishuAuthError(f"{what}网络错误：{type(exc).__name__}", retryable=True) from exc
+            raise FeishuAuthError(
+                f"{what}网络错误：{type(exc).__name__}", result_unknown=True
+            ) from exc
         if resp.status_code == 429 or resp.status_code >= 500:
             raise FeishuAuthError(
                 f"{what}服务暂时不可用（HTTP {resp.status_code}）",
-                retryable=True,
                 retry_after=parse_retry_after(resp),
+                result_unknown=True,
             )
         return resp
 
@@ -97,6 +100,7 @@ def _post_json(
         retry_after=lambda exc: getattr(exc, "retry_after", None),
         max_retries=_MAX_RETRIES,
         sleep=sleep,
+        retry_mode=RetryMode.NEVER,
     )
 
 

@@ -6,6 +6,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from summit_workbench.providers._resilient import RetryMode
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.config import FeishuConfig
 from summit_workbench.providers.feishu.errors import FeishuAPIError
@@ -115,3 +116,79 @@ def test_retry_after_header_is_honored():
     client = FeishuClient(CFG, SecretStr("access-tok"), client=http, sleep=slept.append)
     verify_identity(client)
     assert slept == [7.0]
+
+
+def test_ordinary_post_timeout_is_not_retried_and_is_result_unknown():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        raise httpx.TimeoutException("slow")
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("access-tok"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: pytest.fail("普通 POST 不应退避重试"),
+    )
+    with pytest.raises(FeishuAPIError) as ei:
+        client.post("/open-apis/test", json={"value": 1})
+    assert calls["n"] == 1
+    assert ei.value.result_unknown is True
+    assert ei.value.retryable is False
+
+
+def test_idempotent_post_retries_with_same_key():
+    calls = {"n": 0}
+    bodies: list[bytes] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        bodies.append(request.content)
+        if calls["n"] == 1:
+            return httpx.Response(503, text="down")
+        return httpx.Response(200, json={"code": 0, "data": {"ok": True}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("access-tok"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    result = client.post(
+        "/open-apis/test",
+        json={"client_token": "stable-token"},
+        retry_mode=RetryMode.IDEMPOTENCY_KEY,
+        idempotency_key="stable-token",
+    )
+    assert result["ok"] is True
+    assert calls["n"] == 2
+    assert bodies[0] == bodies[1]
+
+
+def test_injected_http_client_is_not_closed(monkeypatch):
+    closed = {"n": 0}
+
+    class InjectedClient:
+        def close(self) -> None:
+            closed["n"] += 1
+
+    client = FeishuClient(CFG, SecretStr("access-tok"), client=InjectedClient())  # type: ignore[arg-type]
+    client.close()
+    assert closed["n"] == 0
+
+
+def test_owned_http_client_is_closed(monkeypatch):
+    closed = {"n": 0}
+
+    class OwnedClient:
+        def close(self) -> None:
+            closed["n"] += 1
+
+    monkeypatch.setattr(
+        "summit_workbench.providers.feishu.client.build_client", lambda _timeout: OwnedClient()
+    )
+    client = FeishuClient(CFG, SecretStr("access-tok"))
+    client.close()
+    client.close()
+    assert closed["n"] == 1

@@ -19,6 +19,7 @@ import email.utils
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from enum import StrEnum
 
 import httpx
 
@@ -26,6 +27,14 @@ _DEFAULT_MAX_RETRIES = 3  # 初次失败后最多再重试 3 次（共 4 次调�
 _DEFAULT_BASE_BACKOFF = 0.5
 # 长驻客户端连接的存活上限：静置超过此秒数的 keep-alive 连接不再复用，避免半开连接。
 _DEFAULT_KEEPALIVE_EXPIRY = 30.0
+
+
+class RetryMode(StrEnum):
+    """调用方明确声明的重试安全边界。"""
+
+    SAFE = "safe"
+    IDEMPOTENCY_KEY = "idempotency-key"
+    NEVER = "never"
 
 
 def build_client(
@@ -72,6 +81,8 @@ def send_with_retry[T](
     max_retries: int = _DEFAULT_MAX_RETRIES,
     base_backoff: float = _DEFAULT_BASE_BACKOFF,
     sleep: Callable[[float], None] = time.sleep,
+    retry_mode: RetryMode = RetryMode.SAFE,
+    idempotency_key: str | None = None,
 ) -> T:
     """带指数退避的重试执行器（上游无关）。
 
@@ -83,14 +94,20 @@ def send_with_retry[T](
     :param max_retries: 初次失败后最多再重试几次。
     :param base_backoff: 指数退避基数；第 n 次失败后等 ``base_backoff * 2**(n-1)`` 秒。
     :param sleep: 休眠函数，便于测试注入。
+    :param retry_mode: ``safe`` 只用于天然安全的重放，``idempotency-key`` 要求调用方提供
+        稳定键，``never`` 完全不重试。
+    :param idempotency_key: ``idempotency-key`` 模式的稳定键，不会写入日志。
 
     非重试类错误、或已耗尽重试次数时，原样上抛最后一次的异常（NFR-6：失败必须可见）。
     """
+    if retry_mode is RetryMode.IDEMPOTENCY_KEY and not idempotency_key:
+        raise ValueError("idempotency-key 模式必须提供稳定键")
+
     for n in range(1, max_retries + 2):
         try:
             return attempt(n)
         except retry_on as exc:
-            if n <= max_retries and is_retryable(exc):
+            if retry_mode is not RetryMode.NEVER and n <= max_retries and is_retryable(exc):
                 delay = retry_after(exc)
                 if delay is None:
                     delay = base_backoff * (2 ** (n - 1))

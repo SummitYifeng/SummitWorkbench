@@ -13,6 +13,7 @@ from datetime import date, datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from summit_workbench.providers._resilient import RetryMode
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.errors import FeishuAPIError
 
@@ -87,7 +88,7 @@ def list_tasks(
             params["completed"] = "true" if completed else "false"
         if page_token:
             params["page_token"] = page_token
-        data = client.get(LIST_TASKS_PATH, params)
+        data = client.get(LIST_TASKS_PATH, params, retry_mode=RetryMode.SAFE)
         for raw in data.get("items") or []:
             if isinstance(raw, dict):
                 parsed = _parse_task(raw, timezone)
@@ -131,6 +132,7 @@ def complete_task(client: FeishuClient, task_guid: str) -> None:
             "task": {"completed_at": completed_at_ms},
             "update_fields": ["completed_at"],
         },
+        retry_mode=RetryMode.NEVER,
     )
 
 
@@ -168,6 +170,7 @@ def update_task(
     client.patch(
         f"{CREATE_TASK_PATH}/{guid}",
         json={"task": task_patch, "update_fields": update_fields},
+        retry_mode=RetryMode.NEVER,
     )
 
 
@@ -176,7 +179,7 @@ def delete_task(client: FeishuClient, task_guid: str) -> None:
     guid = str(task_guid).strip()
     if not guid:
         raise ValueError("缺少任务 guid")
-    client.delete(f"{CREATE_TASK_PATH}/{guid}")
+    client.delete(f"{CREATE_TASK_PATH}/{guid}", retry_mode=RetryMode.NEVER)
 
 
 def create_task(
@@ -195,7 +198,12 @@ def create_task(
     }
     if due_date is not None:
         body["due"] = _all_day_due(due_date, timezone)
-    data = client.post(CREATE_TASK_PATH, json=body)
+    data = client.post(
+        CREATE_TASK_PATH,
+        json=body,
+        retry_mode=RetryMode.IDEMPOTENCY_KEY,
+        idempotency_key=str(body["client_token"]),
+    )
     raw = data.get("task")
     if not isinstance(raw, dict):
         raise FeishuAPIError("POST /task/v2/tasks 响应缺少 task")

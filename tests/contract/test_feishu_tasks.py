@@ -69,6 +69,29 @@ def test_without_due_omits_due_field():
     assert "due" not in bodies[0]
 
 
+def test_create_task_retries_with_stable_client_token():
+    calls = {"n": 0}
+    bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        bodies.append(json.loads(request.content))
+        if calls["n"] == 1:
+            return httpx.Response(503, text="temporary")
+        return httpx.Response(200, json={"code": 0, "data": {"task": {"guid": "id"}}})
+
+    client = FeishuClient(
+        CFG,
+        SecretStr("token"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    create_task(client, "可重试任务", None, "candidate-1", timezone="Asia/Shanghai")
+
+    assert calls["n"] == 2
+    assert bodies[0]["client_token"] == bodies[1]["client_token"]
+
+
 def test_complete_task_patches_completed_at_official_shape():
     seen: dict[str, object] = {}
 

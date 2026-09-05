@@ -23,6 +23,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from summit_workbench.providers._resilient import RetryMode
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.errors import FeishuAPIError, FeishuError
 
@@ -46,7 +47,7 @@ class CalendarEvent:
 
 def primary_calendar_id(client: FeishuClient) -> str:
     """取主日历 calendar_id。响应缺少主日历即显式报错（不猜测）。"""
-    data = client.post(PRIMARY_CALENDAR_PATH, json={})
+    data = client.post(PRIMARY_CALENDAR_PATH, json={}, retry_mode=RetryMode.NEVER)
     # 官方响应形如 {"calendars": [{"calendar": {"calendar_id": "..."}}]}
     calendars = data.get("calendars")
     if isinstance(calendars, list):
@@ -100,7 +101,7 @@ def list_events(
         }
         if page_token:
             params["page_token"] = page_token
-        data = client.get(path, params)
+        data = client.get(path, params, retry_mode=RetryMode.SAFE)
         for raw in data.get("items") or []:
             if isinstance(raw, dict):
                 parsed = _parse_event(raw)
@@ -137,7 +138,7 @@ def list_event_instances(
         }
         if page_token:
             params["page_token"] = page_token
-        data = client.get(path, params)
+        data = client.get(path, params, retry_mode=RetryMode.SAFE)
         for raw in data.get("items") or []:
             if not isinstance(raw, dict) or raw.get("status") == "cancelled":
                 continue
@@ -225,7 +226,11 @@ def create_event(
         "start_time": {"timestamp": local_iso_to_epoch_seconds(start_iso, timezone)},
         "end_time": {"timestamp": local_iso_to_epoch_seconds(end_iso, timezone)},
     }
-    data = client.post(EVENTS_PATH.format(calendar_id=calendar_id), json=body)
+    data = client.post(
+        EVENTS_PATH.format(calendar_id=calendar_id),
+        json=body,
+        retry_mode=RetryMode.NEVER,
+    )
     return _event_id_from(data, "POST /calendar/v4/events")
 
 
@@ -250,4 +255,4 @@ def update_event(
     if not body:
         raise ValueError("没有需要更新的字段")
     path = f"{EVENTS_PATH.format(calendar_id=calendar_id)}/{event_id}"
-    client.patch(path, json=body)
+    client.patch(path, json=body, retry_mode=RetryMode.NEVER)

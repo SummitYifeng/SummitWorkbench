@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from summit_workbench.providers._resilient import RetryMode
 from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.errors import FeishuError
 
@@ -60,7 +61,7 @@ def verify_identity(client: FeishuClient) -> dict[str, Any]:
 
     这是 M0-4 的鉴权冒烟：成功即证明授权链路与 token 刷新可用；失败抛显式错误。
     """
-    return client.get(USER_INFO_PATH)
+    return client.get(USER_INFO_PATH, retry_mode=RetryMode.SAFE)
 
 
 def import_local_transcript(source_path: Path, meeting_id: str) -> TranscriptResult:
@@ -104,7 +105,7 @@ def list_meeting_briefs(
         }
         if page_token:
             params["page_token"] = page_token
-        data = client.get(LIST_BY_NO_PATH, params)
+        data = client.get(LIST_BY_NO_PATH, params, retry_mode=RetryMode.SAFE)
         items = data.get("meeting_briefs") or data.get("meeting_list") or []
         briefs.extend(m for m in items if isinstance(m, dict))
         if not data.get("has_more") or not data.get("page_token"):
@@ -116,7 +117,9 @@ def list_meeting_briefs(
 def get_meeting_detail(client: FeishuClient, meeting_id: str) -> dict[str, Any]:
     """GET /open-apis/vc/v1/meetings/{meeting_id}，返回 meeting 实体（含 note_id）。"""
     data = client.get(
-        MEETING_GET_PATH.format(meeting_id=meeting_id), {"with_participants": "false"}
+        MEETING_GET_PATH.format(meeting_id=meeting_id),
+        {"with_participants": "false"},
+        retry_mode=RetryMode.SAFE,
     )
     meeting = data.get("meeting")
     if not isinstance(meeting, dict):
@@ -157,7 +160,7 @@ class FeishuNoteSource:
 
     def get_note(self, note_id: str) -> dict[str, Any]:
         """GET /open-apis/vc/v1/notes/{note_id}，返回 note 实体（含 artifacts）。"""
-        data = self.client.get(f"/open-apis/vc/v1/notes/{note_id}")
+        data = self.client.get(f"/open-apis/vc/v1/notes/{note_id}", retry_mode=RetryMode.SAFE)
         note = data.get("note")
         if not isinstance(note, dict):
             raise FeishuError(f"纪要 {note_id} 响应缺少 note 实体")
@@ -165,7 +168,10 @@ class FeishuNoteSource:
 
     def read_doc_text(self, doc_token: str) -> str:
         """GET /open-apis/docx/v1/documents/{doc_token}/raw_content，返回纯文本正文。"""
-        data = self.client.get(f"/open-apis/docx/v1/documents/{doc_token}/raw_content")
+        data = self.client.get(
+            f"/open-apis/docx/v1/documents/{doc_token}/raw_content",
+            retry_mode=RetryMode.SAFE,
+        )
         content = data.get("content")
         if not isinstance(content, str):
             raise FeishuError(f"文档 {doc_token} 未返回 content 正文")

@@ -3,6 +3,7 @@
 只做飞书身份、会议、纪要、日历与任务的 API 适配，不写 vault（见模块边界）。
 """
 
+from summit_workbench.providers._resilient import RetryMode
 from summit_workbench.providers.feishu.calendar import (
     CalendarEvent,
     create_event,
@@ -51,6 +52,7 @@ __all__ = [
     "FeishuNoteSource",
     "FeishuSession",
     "MeetingSummary",
+    "RetryMode",
     "TranscriptResult",
     "complete_task",
     "create_event",

@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -185,7 +185,7 @@ account = git:<host>:<username>
 |---:|---|---|---|---|---|
 | 1 | P0-01 Git 自动提交与撤销信任边界 | P0 | 无 | M | [x] |
 | 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [x] |
-| 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [ ] |
+| 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [x] |
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [ ] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [ ] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [ ] |
@@ -1103,7 +1103,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-01
 
 - 状态：完成
-- Git commit：未提交
+- Git commit：db00659（已推送至 `origin/main`）
 - 变更摘要：GitRepo 新增暂存路径、提交主题、父节点数和 commit 对象校验；自动提交拒绝调用前已有 staged path，主题规范化为单行 `wb:`，只检查本次目标路径；撤销与 diff 仅接受完整 40 位十六进制的 `wb:` 单父提交，并在同一工作区锁内完成撤销前读取、脏检查和执行；undo Web API 拒绝路径返回 4xx 与稳定错误码。
 - 目标测试：`uv run pytest tests/unit/test_autocommit.py tests/unit/test_webapi_undo.py`（20 passed）
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（528 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
@@ -1119,6 +1119,16 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（535 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（本工作包使用临时目录/临时 Git 仓库和 fake/MockTransport 离线验证，无真实飞书、模型、Keychain、工作目录或第二台 Mac）
 - 遗留：无；P0-03 及后续工作包未开始。
+
+### 2026-09-05 · P0-03
+
+- 状态：完成
+- Git commit：未提交
+- 变更摘要：引入显式 `RetryMode`（`safe`、`idempotency-key`、`never`）；GET 明确使用 safe，任务创建携带稳定 `client_token` 后才允许幂等重试，普通 POST、日历创建、PATCH/DELETE 与 token POST 均禁止自动重放；网络/超时错误保留 `retryable`、`retry_after`、`result_unknown` 机器字段；`FeishuClient` 支持 close/context manager，并由 FastAPI lifespan 复用和确定性释放用户态客户端。
+- 目标测试：`uv run pytest tests/contract/test_feishu_client.py tests/contract/test_feishu_tasks.py tests/contract/test_feishu_calendar.py tests/contract/test_feishu_meetings_list.py tests/unit/test_feishu_session.py tests/unit/test_feishu_lifecycle.py tests/unit/test_resilient.py tests/unit/test_webapi.py tests/unit/test_webapp.py`（98 passed）
+- 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（542 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（本工作包使用 MockTransport/fake 客户端离线验证，未访问真实飞书或真实凭据）
+- 遗留：无；P0-04 及后续工作包未开始。
 
 ## 16. 外部实现依据
 

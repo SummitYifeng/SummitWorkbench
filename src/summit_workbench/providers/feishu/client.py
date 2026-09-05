@@ -18,6 +18,7 @@ import httpx
 from pydantic import SecretStr
 
 from summit_workbench.providers._resilient import (
+    RetryMode,
     build_client,
     parse_retry_after,
     send_with_retry,
@@ -42,23 +43,63 @@ class FeishuClient:
         self.cfg = cfg
         self._token = access_token
         self._client = client or build_client(_DEFAULT_TIMEOUT)
+        self._owns_client = client is None
+        self._closed = False
         self._sleep = sleep
         self._max_retries = max_retries
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token.get_secret_value()}"}
 
-    def get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._request("GET", path, params=params, json=None)
+    def get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        *,
+        retry_mode: RetryMode = RetryMode.SAFE,
+    ) -> dict[str, Any]:
+        return self._request("GET", path, params=params, json=None, retry_mode=retry_mode)
 
-    def post(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._request("POST", path, params=None, json=json)
+    def post(
+        self,
+        path: str,
+        json: dict[str, Any] | None = None,
+        *,
+        retry_mode: RetryMode = RetryMode.NEVER,
+        idempotency_key: str | None = None,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            path,
+            params=None,
+            json=json,
+            retry_mode=retry_mode,
+            idempotency_key=idempotency_key,
+        )
 
-    def patch(self, path: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._request("PATCH", path, params=None, json=json)
+    def patch(
+        self,
+        path: str,
+        json: dict[str, Any] | None = None,
+        *,
+        retry_mode: RetryMode = RetryMode.NEVER,
+    ) -> dict[str, Any]:
+        return self._request("PATCH", path, params=None, json=json, retry_mode=retry_mode)
 
-    def delete(self, path: str) -> dict[str, Any]:
-        return self._request("DELETE", path, params=None, json=None)
+    def delete(self, path: str, *, retry_mode: RetryMode = RetryMode.NEVER) -> dict[str, Any]:
+        return self._request("DELETE", path, params=None, json=None, retry_mode=retry_mode)
+
+    def close(self) -> None:
+        """关闭仅由本实例创建的 HTTP client；注入的测试/共享 client 归调用方管理。"""
+        if self._owns_client and not self._closed:
+            self._client.close()
+            self._closed = True
+
+    def __enter__(self) -> FeishuClient:
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        self.close()
 
     def _request(
         self,
@@ -67,14 +108,20 @@ class FeishuClient:
         *,
         params: dict[str, Any] | None,
         json: dict[str, Any] | None,
+        retry_mode: RetryMode,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
         return send_with_retry(
-            lambda _attempt: self._attempt_once(method, path, params=params, json=json),
+            lambda _attempt: self._attempt_once(
+                method, path, params=params, json=json, retry_mode=retry_mode
+            ),
             retry_on=(FeishuAPIError,),
             is_retryable=lambda exc: isinstance(exc, FeishuAPIError) and exc.retryable,
             retry_after=lambda exc: getattr(exc, "retry_after", None),
             max_retries=self._max_retries,
             sleep=self._sleep,
+            retry_mode=retry_mode,
+            idempotency_key=idempotency_key,
         )
 
     def _attempt_once(
@@ -84,6 +131,7 @@ class FeishuClient:
         *,
         params: dict[str, Any] | None,
         json: dict[str, Any] | None,
+        retry_mode: RetryMode,
     ) -> dict[str, Any]:
         url = f"{self.cfg.openapi_host}{path}"
         try:
@@ -91,10 +139,16 @@ class FeishuClient:
                 method, url, params=params, json=json, headers=self._headers()
             )
         except httpx.TimeoutException as exc:
-            raise FeishuAPIError(f"{method} {path} 请求超时", retryable=True) from exc
+            raise FeishuAPIError(
+                f"{method} {path} 请求超时",
+                retryable=retry_mode is not RetryMode.NEVER,
+                result_unknown=retry_mode is RetryMode.NEVER,
+            ) from exc
         except httpx.HTTPError as exc:
             raise FeishuAPIError(
-                f"{method} {path} 网络错误：{type(exc).__name__}", retryable=True
+                f"{method} {path} 网络错误：{type(exc).__name__}",
+                retryable=retry_mode is not RetryMode.NEVER,
+                result_unknown=retry_mode is RetryMode.NEVER,
             ) from exc
 
         # 先判 HTTP 层的瞬时故障：网关 5xx / 限流 429 未必返回 JSON 信封，按可重试处理。
@@ -102,8 +156,9 @@ class FeishuClient:
             raise FeishuAPIError(
                 f"{method} {path} 服务暂时不可用（HTTP {resp.status_code}）",
                 status=resp.status_code,
-                retryable=True,
+                retryable=retry_mode is not RetryMode.NEVER,
                 retry_after=parse_retry_after(resp),
+                result_unknown=retry_mode is not RetryMode.SAFE,
             )
 
         try:
