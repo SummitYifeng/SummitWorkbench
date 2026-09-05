@@ -138,6 +138,39 @@ class ExternalActionReconcilePayload(BaseModel):
     confirm_retry: bool = False
 
 
+class ProfileSwitchPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(min_length=8, max_length=64)
+
+
+class ProfileSwitchCommitPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str = Field(min_length=8, max_length=100)
+
+
+class ProfileRemovePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(min_length=8, max_length=64)
+    confirmed: bool = False
+
+
+class ProviderSettingsPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["model", "feishu", "git"]
+    settings: dict[str, object] = Field(default_factory=dict)
+    secret: str | None = Field(default=None, max_length=100_000)
+
+
+class DoctorPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    online: bool = False
+
+
 class AskHistoryTurn(BaseModel):
     """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
 

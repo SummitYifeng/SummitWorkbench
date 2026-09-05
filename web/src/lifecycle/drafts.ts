@@ -1,6 +1,10 @@
 export const DRAFT_STORAGE_KEY = 'wb.draft.snapshot.v1';
 const MAX_DRAFT_AGE_MS = 30 * 60 * 1000;
 
+function draftStorageKey(workspaceId?: string): string {
+  return workspaceId ? DRAFT_STORAGE_KEY + '.' + workspaceId : DRAFT_STORAGE_KEY;
+}
+
 export interface ReviewDraftFields {
   description: string;
   target_project: string;
@@ -21,17 +25,17 @@ export interface DraftSnapshot {
   review_forms: Record<string, ReviewDraftFields>;
 }
 
-export function saveDraftSnapshot(snapshot: DraftSnapshot): void {
+export function saveDraftSnapshot(snapshot: DraftSnapshot, workspaceId?: string): void {
   try {
-    window.sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
+    window.sessionStorage.setItem(draftStorageKey(workspaceId), JSON.stringify(snapshot));
   } catch {
     // 隐私模式或配额不足时不阻断版本更新。
   }
 }
 
-export function loadDraftSnapshot(nowMs = Date.now()): DraftSnapshot | null {
+export function loadDraftSnapshot(nowMs = Date.now(), workspaceId?: string): DraftSnapshot | null {
   try {
-    const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(draftStorageKey(workspaceId));
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<DraftSnapshot>;
     const savedAt = typeof value.saved_at === 'string' ? Date.parse(value.saved_at) : NaN;
@@ -55,9 +59,11 @@ export function loadDraftSnapshot(nowMs = Date.now()): DraftSnapshot | null {
   }
 }
 
-export function clearDraftSnapshot(): void {
+export function clearDraftSnapshot(workspaceId?: string): void {
   try {
-    window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+    window.sessionStorage.removeItem(draftStorageKey(workspaceId));
+    // 清掉 P0-11B 之前无 workspace 命名空间的草稿，避免切换后误恢复。
+    if (workspaceId) window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
   } catch {
     // 存储不可用时无需额外处理。
   }

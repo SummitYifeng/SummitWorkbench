@@ -97,6 +97,7 @@ from summit_workbench.webapp.api import (
     BatchDecidePayload,
     CapturePayload,
     DecidePayload,
+    DoctorPayload,
     EditPayload,
     ExternalActionReconcilePayload,
     LogAppendPayload,
@@ -107,10 +108,14 @@ from summit_workbench.webapp.api import (
     OnboardingRemoteConfirmPayload,
     OnboardingRemoteStagePayload,
     OnboardingVaultPayload,
+    ProfileRemovePayload,
+    ProfileSwitchCommitPayload,
+    ProfileSwitchPayload,
     ProjectCreatePayload,
     ProjectPayload,
     ProjectRenamePayload,
     ProjectStatePayload,
+    ProviderSettingsPayload,
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
@@ -145,6 +150,15 @@ from summit_workbench.workflows.local_mutation import (
     LocalMutationResult,
     MutationBlocked,
     run_local_mutation,
+)
+from summit_workbench.workflows.profile_settings import (
+    ProfileSettingsError,
+    ProfileSwitchPlan,
+    commit_profile_switch,
+    list_profile_summaries,
+    prepare_profile_switch,
+    remove_local_profile,
+    update_provider_settings,
 )
 from summit_workbench.workflows.review_apply import (
     ApplyReport,
@@ -1046,6 +1060,8 @@ def create_app(
     spa_dir = static_dir or _STATIC_DIR
     server_instance = server_instance or new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    switch_plans: dict[str, object] = {}
+    profile_switch_in_progress = False
 
     def _operation_id(request: Request) -> str:
         operation_id = getattr(request.state, "operation_id", None)
@@ -1290,6 +1306,120 @@ def create_app(
             SESSION_COOKIE, token, httponly=True, samesite="strict", secure=False, path="/"
         )
         return response
+
+    def _settings_home() -> Path:
+        return ctx.active_workspace.home if ctx.active_workspace else Path.home()
+
+    @app.get("/api/settings/profiles", response_model=None)
+    def settings_profiles() -> dict[str, object]:
+        from summit_workbench.repositories.profile_registry import active_profile_id
+
+        summaries = list_profile_summaries(home=_settings_home())
+        return {
+            "ok": True,
+            "active_workspace_id": active_profile_id(home=_settings_home()),
+            "profiles": [item.as_dict() for item in summaries],
+        }
+
+    @app.post("/api/settings/profile/prepare", response_model=None)
+    def settings_profile_prepare(payload: ProfileSwitchPayload) -> dict[str, object]:
+        nonlocal profile_switch_in_progress
+        try:
+            plan = prepare_profile_switch(
+                home=_settings_home(), target_workspace_id=payload.workspace_id
+            )
+        except ProfileSettingsError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+        switch_plans[plan.plan_id] = plan
+        profile_switch_in_progress = True
+        return {"ok": True, "plan_id": plan.plan_id, "workspace_id": plan.target_workspace_id}
+
+    @app.post("/api/settings/profile/commit", response_model=None)
+    def settings_profile_commit(payload: ProfileSwitchCommitPayload) -> dict[str, object]:
+        nonlocal profile_switch_in_progress
+        plan = switch_plans.pop(payload.plan_id, None)
+        if plan is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "switch_plan_missing", "message": "切换计划已失效，请重新准备"},
+            )
+        assert isinstance(plan, ProfileSwitchPlan)
+        try:
+            return commit_profile_switch(home=_settings_home(), plan=plan)
+        except ProfileSettingsError as exc:
+            profile_switch_in_progress = False
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    @app.post("/api/settings/profile/remove", response_model=None)
+    def settings_profile_remove(payload: ProfileRemovePayload) -> dict[str, object]:
+        try:
+            return remove_local_profile(
+                home=_settings_home(),
+                workspace_id=payload.workspace_id,
+                confirmed=payload.confirmed,
+            )
+        except ProfileSettingsError as exc:
+            if exc.code == "confirmation_required":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": exc.code,
+                        "message": str(exc),
+                        "details": {
+                            "workspace_id": payload.workspace_id,
+                            "deletes": ["local_profile", "runtime", "onboarding_draft"],
+                            "preserves": ["vault", "remote", "keychain"],
+                        },
+                    },
+                ) from exc
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    @app.post("/api/settings/provider", response_model=None)
+    def settings_provider(payload: ProviderSettingsPayload) -> dict[str, object]:
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        try:
+            return update_provider_settings(
+                home=_settings_home(),
+                workspace_id=ctx.workspace_id,
+                provider=payload.provider,
+                settings=payload.settings,
+                secret=payload.secret,
+            )
+        except ProfileSettingsError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    @app.post("/api/settings/doctor", response_model=None)
+    def settings_doctor(payload: DoctorPayload) -> dict[str, object]:
+        from summit_workbench.cli.doctor import CheckStatus, run_checks
+        from summit_workbench.config.settings import load_settings
+
+        active = ctx.active_workspace
+        settings = load_settings(
+            work_root=ctx.work_root, vault_dir=ctx.vault_dir, timezone=ctx.timezone
+        )
+        checks = run_checks(
+            settings,
+            config_file=ctx.provider_config_file(),
+            online=payload.online,
+            context=active,
+        )
+        return {
+            "ok": not any(item.status is CheckStatus.FAIL for item in checks),
+            "online": payload.online,
+            "checks": [item.as_dict() for item in checks],
+        }
 
     @app.get("/api/state")
     def api_state() -> dict[str, object]:
@@ -2531,6 +2661,8 @@ def create_app(
     def _run_web_mutation[T](
         action: str, mutation: Callable[[str], LocalMutationOutcome[T]]
     ) -> LocalMutationResult[T]:
+        if profile_switch_in_progress:
+            raise MutationBlocked("工作台正在切换，请等待本机服务重启后再修改")
         profile = ctx.active_workspace.profile if ctx.active_workspace else None
         return run_local_mutation(
             ctx.vault_dir,

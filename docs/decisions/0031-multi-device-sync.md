@@ -101,3 +101,14 @@ outbox/undo/会议导入等 Web 写路径和 commit 后 push 接入同一事务�
   形成同步权威声明；API/SPA 提供完整状态、重试与脱敏导出。
 - 目标回归：`tests/unit/test_sync_hardening.py`、`test_sync_coordinator.py`、`test_webapi_sync.py`、
   Web 路由回归（含上传兼容性）通过；全量 pytest `699 passed, 1 skipped`。
+
+## P0-11B 设置中心边界
+
+设置中心的 profile 摘要复用 `sync-state.json` 的 workspace-scoped 快照，只显示状态、待推送数量和
+最后同步时间，不重新执行网络同步。profile prepare/commit 期间，Web 共享 vault mutation 统一返回
+可恢复的 `sync_diverged` 错误；commit 只切换本机 active registry，随后由原生壳受控重启，避免旧服务
+与目标服务同时成为 writer。切换完成后的新服务重新从 active context 读取 workspace/session，前端问答、
+草稿和同步展示均以 workspace id 命名空间隔离。
+
+验证：P0-11B profile/settings 回归覆盖切换期间写入拒绝、同步摘要和默认移除不触碰 vault/remote/Keychain；
+真实双设备与原生 App 黑盒仍未执行，属于 P0-13/人工真机矩阵。

@@ -8,6 +8,7 @@ export interface VersionPayload {
   server_instance: string;
   started_at: string;
   mode: 'production' | 'development-managed' | 'development-external';
+  workspace_id?: string;
 }
 
 export type VersionStatus = 'checking' | 'synced' | 'update-pending' | 'reconnecting' | 'failed';
@@ -28,6 +29,9 @@ export function validateVersionPayload(value: unknown): VersionPayload {
     throw new Error('版本响应字段无效');
   }
   if (payload.api_protocol < 2) throw new Error('版本响应协议不兼容');
+  if (payload.workspace_id !== undefined && typeof payload.workspace_id !== 'string') {
+    throw new Error('版本响应 workspace 作用域无效');
+  }
   return payload as unknown as VersionPayload;
 }
 

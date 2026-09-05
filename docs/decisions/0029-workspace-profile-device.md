@@ -110,3 +110,16 @@ compatibility 门控下统一拒绝写入，read-only 仍可浏览；profile TOM
   `WB_PACKAGED_APP` 条件打包 smoke）。
 - 离线 fake/临时 HOME 验证通过；真实 Keychain、真实 HTTPS remote、clean-account、第二台
   Mac 与 Apple 签名/notarization 未执行，不能视为真机门通过。
+
+## P0-11B 设置中心收口
+
+设置中心复用本 ADR 的 active profile、路径与 workspace-scoped credential 契约：profile 列表只向 UI
+暴露当前 profile 的绝对路径，其它 profile 仅显示目录名；provider 非秘密配置写回对应本机 profile，
+secret 只通过 `store_workspace_credential` 写入 workspace-scoped Keychain，不写入 TOML 或响应。profile
+切换使用 prepare/commit 计划，目标 compatibility 在 prepare 与 commit 双重校验，commit 只更新本机
+registry 并要求原生壳重启，从而重新建立目标 workspace/session；切换期间共享 vault mutation 被拒绝。
+默认移除只清理本机 profile/runtime/draft，vault、remote 和 Keychain 均保持不变。doctor 复用既有领域
+检查，默认离线，在线检查须由用户明确确认。
+
+验证：`tests/unit/test_profile_settings.py` 与 Web 安全/应用回归通过；全量 pytest `715 passed,
+1 skipped`，mypy 252 files，前端 build/verify-build 通过。真实 Keychain、App 黑盒与第二台 Mac 未执行。

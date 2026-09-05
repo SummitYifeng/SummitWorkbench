@@ -22,7 +22,7 @@ import { briefCardHtml, type BriefData } from './brief-card';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
-type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide';
+type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -191,6 +191,7 @@ let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
 let connectionHadFailure = false;
 let restoredDraft: DraftSnapshot | null = null;
+let loadedAskWorkspace = 'unknown';
 
 // ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
 
@@ -219,7 +220,6 @@ interface AskResponse {
   source_ids?: string[];
 }
 
-const ASK_STORAGE_KEY = 'wb.ask.threads.v1';
 const ASK_MAX_THREADS = 10;
 /** 追问时最多回传的历史轮数（与后端 _MAX_HISTORY_TURNS 同口径） */
 const ASK_MAX_HISTORY = 6;
@@ -232,6 +232,11 @@ let askBusyThreadId: string | null = null;
 let askDraft = '';
 /** 问答检索范围：''=全部；否则为项目/线程名（后端按 registry 解析） */
 let askScope = '';
+
+function askStorageKey(): string {
+  const workspaceId = remoteVersion?.workspace_id ?? 'unknown';
+  return 'wb.ask.threads.v1.' + workspaceId;
+}
 
 const app = document.getElementById('app') as HTMLElement;
 const toasts = document.getElementById('toasts') as HTMLElement;
@@ -337,7 +342,7 @@ function saveCurrentDraftSnapshot(): void {
     capture_text: capture?.value ?? '',
     ask_draft: askDraft,
     review_forms: reviewForms,
-  });
+  }, remoteVersion?.workspace_id);
 }
 
 function applyRestoredDraft(): void {
@@ -360,7 +365,7 @@ function applyRestoredDraft(): void {
     }
   });
   window.scrollTo({ top: draft.scroll_y, behavior: 'instant' as ScrollBehavior });
-  clearDraftSnapshot();
+  clearDraftSnapshot(remoteVersion?.workspace_id);
   toast('已恢复更新前草稿（未自动提交）', 'info');
   restoredDraft = null;
 }
@@ -401,6 +406,14 @@ async function doCheckVersion(reason: string): Promise<void> {
   const instanceChanged = lastServerInstance !== null && lastServerInstance !== remote.server_instance;
   lastServerInstance = remote.server_instance;
   remoteVersion = remote;
+  const workspaceId = remote.workspace_id ?? 'unknown';
+  if (loadedAskWorkspace !== workspaceId) {
+    askThreads = [];
+    askActiveId = null;
+    askDraft = '';
+    loadedAskWorkspace = workspaceId;
+    loadAskStore();
+  }
   if (remote.frontend_build === CLIENT_BUILD) {
     setVersionStatus('synced');
     notifyClientReady(CLIENT_BUILD, remote.server_instance);
@@ -442,11 +455,13 @@ function render(): void {
   const askView = document.getElementById('view-ask') as HTMLElement;
   const projectsView = document.getElementById('view-projects') as HTMLElement;
   const guideView = document.getElementById('view-guide') as HTMLElement;
+  const settingsView = document.getElementById('view-settings') as HTMLElement;
   todayView.style.display = tab === 'today' ? '' : 'none';
   reviewView.style.display = tab === 'review' ? '' : 'none';
   askView.style.display = tab === 'ask' ? '' : 'none';
   projectsView.style.display = tab === 'projects' ? '' : 'none';
   guideView.style.display = tab === 'guide' ? '' : 'none';
+  settingsView.style.display = tab === 'settings' ? '' : 'none';
   if (tab === 'today') {
     renderToday(todayView);
   } else if (tab === 'review') {
@@ -455,6 +470,8 @@ function render(): void {
     renderProjects(projectsView);
   } else if (tab === 'guide') {
     renderGuide(guideView);
+  } else if (tab === 'settings') {
+    void renderSettings(settingsView);
   } else {
     renderAsk(askView);
   }
@@ -485,6 +502,7 @@ function renderShell(): void {
     '<button class="tab" data-tab="ask" role="tab">第二大脑</button>' +
     '<button class="tab" data-tab="projects" role="tab">项目</button>' +
     '<button class="tab" data-tab="guide" role="tab">指南</button>' +
+    '<button class="tab" data-tab="settings" role="tab">设置</button>' +
     '</nav>' +
     '<main>' +
     '<section id="view-today" class="view"></section>' +
@@ -492,13 +510,14 @@ function renderShell(): void {
     '<section id="view-ask" class="view"></section>' +
     '<section id="view-projects" class="view"></section>' +
     '<section id="view-guide" class="view"></section>' +
+    '<section id="view-settings" class="view"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     b.addEventListener('click', () => {
       const next = b.dataset.tab;
-      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' ? next : 'today';
+      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' || next === 'settings' ? next : 'today';
       render();
     });
   });
@@ -683,7 +702,7 @@ async function doImport(file: File): Promise<void> {
 
 function loadAskStore(): void {
   try {
-    const raw = window.localStorage.getItem(ASK_STORAGE_KEY);
+    const raw = window.localStorage.getItem(askStorageKey());
     if (!raw) return;
     const parsed = JSON.parse(raw) as { threads?: AskThread[]; activeId?: string | null };
     if (Array.isArray(parsed.threads)) askThreads = parsed.threads.slice(0, ASK_MAX_THREADS);
@@ -697,7 +716,7 @@ function loadAskStore(): void {
 function saveAskStore(): void {
   try {
     window.localStorage.setItem(
-      ASK_STORAGE_KEY,
+      askStorageKey(),
       JSON.stringify({ threads: askThreads, activeId: askActiveId }),
     );
   } catch {
@@ -1256,6 +1275,89 @@ function renderGuide(view: HTMLElement): void {
   view.innerHTML = '<div class="guide">' + guideBodyHtml() + '</div>';
 }
 
+interface ProfileSummaryPayload {
+  workspace_id: string;
+  workspace_short_code: string;
+  display_name: string;
+  path: string;
+  compatibility: string;
+  device_role: string;
+  active: boolean;
+  provider_status: Record<string, string>;
+  sync_summary: { state: string; pending_commits: number | null; last_sync_at?: string | null };
+}
+
+async function renderSettings(view: HTMLElement): Promise<void> {
+  view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
+  try {
+    const response = await api<{ profiles: ProfileSummaryPayload[] }>('/api/settings/profiles');
+    view.innerHTML = '<section class="block"><div class="section-head"><h2 class="section-title">工作台设置</h2>' +
+      '<button class="ghost" data-action="settings-doctor">离线检查</button>' +
+      '<button class="ghost" data-action="settings-doctor-online">在线检查（会访问网络）</button></div>' +
+      '<p class="hint">一次只打开一个工作台。切换会先完成安全检查，再由本机服务重启到目标工作台。</p>' +
+      response.profiles.map((profile) =>
+        '<article class="card entry ' + (profile.active ? 'ok' : '') + '"><div class="entry-top"><strong>' + esc(profile.display_name) +
+        '</strong><span class="badge">' + esc(profile.active ? '当前' : profile.workspace_short_code) + '</span></div>' +
+        '<p class="meta">兼容性：' + esc(profile.compatibility) + ' · 设备：' + esc(profile.device_role) + '</p>' +
+        '<p class="meta">路径：' + esc(profile.path) + '</p><p class="meta">同步：' +
+        esc(profile.sync_summary.state + ' · 待推送 ' + String(profile.sync_summary.pending_commits ?? '—')) +
+        '</p><p class="meta">Provider：' +
+        esc(Object.entries(profile.provider_status).map(([key, value]) => key + ' ' + value).join(' · ')) + '</p>' +
+        (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到此工作台</button><button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>') +
+        '</article>',
+      ).join('') + '</section>' +
+      '<section class="block"><h3 class="section-title">Provider 设置</h3><p class="hint">非秘密配置写入当前 workspace profile；秘密只在提交时进入该 workspace 的 Keychain，不会回显。</p>' +
+      '<form id="provider-settings-form" autocomplete="off"><div class="grid2">' +
+      '<label>类型<select id="provider-kind"><option value="model">模型</option><option value="feishu">飞书</option><option value="git">Git</option></select></label>' +
+      '<label>能力/账号<input id="provider-capability" placeholder="qa 或 shared"></label>' +
+      '<label>模型 ID / App ID / 用户名<input id="provider-primary" placeholder="按类型填写"></label>' +
+      '<label>服务地址 / Redirect URI / Host<input id="provider-secondary" placeholder="按类型填写"></label>' +
+      '<label>秘密（可选）<input id="provider-secret" type="password" autocomplete="new-password"></label></div>' +
+      '<button class="primary" type="submit">保存 Provider 设置</button></form></section>';
+    const form = document.getElementById('provider-settings-form') as HTMLFormElement | null;
+    form?.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const kind = (document.getElementById('provider-kind') as HTMLSelectElement).value;
+      const capability = (document.getElementById('provider-capability') as HTMLInputElement).value.trim();
+      const primary = (document.getElementById('provider-primary') as HTMLInputElement).value.trim();
+      const secondary = (document.getElementById('provider-secondary') as HTMLInputElement).value.trim();
+      const secret = (document.getElementById('provider-secret') as HTMLInputElement).value;
+      const settings: Record<string, unknown> = kind === 'model'
+        ? { capability, model_id: primary, base_url: secondary }
+        : kind === 'feishu'
+          ? { app_id: primary, redirect_uri: secondary }
+          : { git_username: primary, host: secondary };
+      void api<{ secret_saved: boolean }>('/api/settings/provider', {
+        method: 'POST', body: JSON.stringify({ provider: kind, settings, secret: secret || null }),
+      }).then(() => { (document.getElementById('provider-secret') as HTMLInputElement).value = ''; toast('Provider 设置已保存', 'ok'); })
+        .catch((err: unknown) => toast(String(err), 'err'));
+    });
+  } catch (err) {
+    view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(err)) + '</div>';
+  }
+}
+
+async function switchProfile(workspaceId: string): Promise<void> {
+  const prepared = await api<{ plan_id: string }>('/api/settings/profile/prepare', {
+    method: 'POST', body: JSON.stringify({ workspace_id: workspaceId }),
+  });
+  const committed = await api<{ restart_required: boolean }>('/api/settings/profile/commit', {
+    method: 'POST', body: JSON.stringify({ plan_id: prepared.plan_id }),
+  });
+  clearDraftSnapshot(remoteVersion?.workspace_id);
+  if (committed.restart_required && sendNativeMessage({ type: 'quit' })) return;
+  window.location.reload();
+}
+
+async function runSettingsDoctor(online = false): Promise<void> {
+  const result = await api<{ ok: boolean; checks: { name: string; status: string; detail: string }[] }>(
+    '/api/settings/doctor', { method: 'POST', body: JSON.stringify({ online }) },
+  );
+  const failed = result.checks.filter((check) => check.status === 'fail').length;
+  const label = online ? '在线检查' : '离线检查';
+  toast(failed ? label + '发现 ' + failed + ' 项问题' : label + '完成', failed ? 'err' : 'ok');
+}
+
 function entryCard(e: ReviewEntry): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
@@ -1376,6 +1478,29 @@ document.addEventListener('click', (ev) => {
   if (action === 'goto-projects') {
     tab = 'projects';
     render();
+    return;
+  }
+  if (action === 'profile-switch') {
+    const workspaceId = btn.dataset.workspace ?? '';
+    if (workspaceId) void switchProfile(workspaceId).catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'profile-remove') {
+    const workspaceId = btn.dataset.workspace ?? '';
+    if (!workspaceId || !window.confirm('只移除本机 profile/runtime，不删除 vault、远端或 Keychain。确定继续？')) return;
+    void api('/api/settings/profile/remove', {
+      method: 'POST', body: JSON.stringify({ workspace_id: workspaceId, confirmed: true }),
+    }).then(() => { toast('本机 profile 已移除', 'ok'); void renderSettings(document.getElementById('view-settings') as HTMLElement); })
+      .catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'settings-doctor') {
+    void runSettingsDoctor().catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'settings-doctor-online') {
+    if (!window.confirm('在线检查会访问 provider，并可能轮换飞书 token。确定继续？')) return;
+    void runSettingsDoctor(true).catch((err: unknown) => toast(String(err), 'err'));
     return;
   }
   if (action === 'project-activate') {
@@ -2335,7 +2460,6 @@ async function exportSyncSnapshot(): Promise<void> {
 
 // ---------- 启动 ----------
 
-loadAskStore();
 renderShell();
 setMutationIdleHandler(async (targetBuild) => {
   saveCurrentDraftSnapshot();
@@ -2347,8 +2471,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function startApp(): Promise<void> {
-  restoredDraft = loadDraftSnapshot();
   await checkVersion('startup');
+  restoredDraft = loadDraftSnapshot(Date.now(), remoteVersion?.workspace_id);
   await refreshAll();
   if (restoredDraft) render();
 }

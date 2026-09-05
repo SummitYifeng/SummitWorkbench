@@ -214,7 +214,7 @@ account = git:<host>:<username>
 | 13 | P0-10C 同步状态、写边界与主设备声明收口 | P0 | P0-02、P0-09C、P0-10 | L | [x] |
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [x] |
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [x] |
-| 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [ ] |
+| 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [x] |
 | 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [ ] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [ ] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
@@ -1511,6 +1511,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（710 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke；5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/install-macos-app.sh` 通过；Swift native sources 离线编译通过（仅既有 Selector 警告）。
 - 真机验证：未执行（使用临时 Home、临时端口、临时 runtime record、离线 TestClient/fake 与 Swift 编译；未访问真实 Keychain、真实账号、第二台 Mac、真实 DMG/Gatekeeper 或 Apple 签名/notarization）。
 - 遗留：真实 App 黑盒/WKWebView GUI、双设备 clean-account 与发布签名门留给 P0-13 真机矩阵；下一工作包为 P0-11B。
+
+### 2026-09-06 · P0-11B
+
+- 状态：完成（离线实现与验收完成；真实 App 黑盒/Playwright、第二台 Mac、真实 Keychain 与远端仍未执行）
+- Git commit：待收口提交（实现提交后补记；已推送至 `origin/main`）
+- 变更摘要：新增 profile 设置领域 workflow 与后端 API，提供 profile 摘要、workspace 兼容性、设备角色、同步摘要和 provider 就绪状态；切换采用 prepare/commit 一次性计划，目标重新校验后只切换本机 active registry，切换期间统一阻止共享 vault mutation，并以受控重启要求重新建立目标 workspace/session；provider 非秘密配置留在本机 profile，secret 单次请求写入 workspace-scoped Keychain 且不回显；doctor 默认离线并另设明确在线确认；移除 profile 只删除本机 profile/runtime/draft，预览列出精确目标并保留 vault/remote/Keychain；前端设置中心、workspace-scoped 问答/草稿存储、切换重启、provider 表单和 doctor 操作已接线，静态产物已重建。
+- 目标测试：`uv run pytest tests/unit/test_profile_settings.py tests/unit/test_web_security.py tests/unit/test_webapp.py -q`（26 passed）；覆盖 A/B profile 摘要与切换、兼容性拒绝、切换期间 mutation 拒绝、移除安全边界、provider secret 隔离/API 契约。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（715 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（按 §0.1 使用临时目录、fake/离线 TestClient；真实 App/WKWebView、第二台 Mac、真实 Keychain、真实远端和 Apple 发布门留给 P0-13/人工真机矩阵）。
+- 遗留：P0-13 Developer ID 签名、notarization、架构 DMG、clean-account 安装/升级/删除验证和同事图形化试用仍未开始；本包已将 P0-11A/P0-11B 均标为 `[x]`，P0-11 总目标完成。
 
 ## 16. 外部实现依据
 
