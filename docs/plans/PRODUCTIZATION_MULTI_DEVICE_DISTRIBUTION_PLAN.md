@@ -1533,6 +1533,15 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 真机验证：待执行。当前只需 M2+ Apple Silicon 真机安装最终 hotfix DMG、启动、新建 workspace、profile 切换、升级保留数据和删除 App 保留数据验证；不需要 Developer ID、notarization、Intel 或 Windows。
 - 遗留：无代码阻塞；等待用户按交付步骤完成 M2+ 真机验收后关闭最后的人工验证项。
 
+### 2026-09-06 · P0-13 现场反馈修复
+
+- 状态：修复完成 `[x]`（动态端口 Origin 兼容已实现；等待用户重新安装 hotfix DMG 验收）
+- Git commit：待本次修复提交（将推送至 `origin/main`）
+- 变更摘要：根据真实 M2+ Mac Studio 反馈，修复生产动态端口下 WKWebView 的 Origin 校验；只把当前请求的 loopback Host 加入同源判断，不放宽外部来源；新增普通生产写请求与空安装 onboarding 草稿保存回归测试。
+- 目标测试：两条回归测试先失败（均复现 `origin_not_allowed`）后通过；本次提交后复跑相关测试、全量质量门，并重新生成 build 7 `INTERNAL-DEV` arm64 DMG。
+- 真机反馈：旧 build `v2026.09.05-406e449-ac9b2fb7` 能打开向导但点击流程后返回“请求来源不是当前服务同源地址”；原因已定位并修复。无需新增飞书权限、Apple 证书或第二台电脑。
+- 遗留：等待用户安装 build 7 并重新完成“升级这台 Mac 上的旧工作台”流程验证。
+
 ## 16. 外部实现依据
 
 - Apple：Notarizing macOS software before distribution

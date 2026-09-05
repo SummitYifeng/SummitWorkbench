@@ -81,6 +81,30 @@ def test_cross_origin_write_is_rejected_and_same_origin_is_allowed(tmp_path: Pat
     assert same.status_code != 403
 
 
+def test_dynamic_loopback_same_origin_write_is_allowed(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("WB_PANEL_MODE", "production")
+    ctx = WebContext(vault_dir=tmp_path / "_vault", work_root=tmp_path, timezone="UTC")
+    client = TestClient(
+        create_app(
+            ctx,
+            static_dir=tmp_path / "no-static",
+            bind_host="127.0.0.1",
+            port=0,
+            session_token="token",
+        ),
+        base_url="http://127.0.0.1:43123",
+    )
+    response = client.post(
+        "/api/review/decide",
+        json={"candidate_id": "missing", "decision": "approved"},
+        headers={
+            "Origin": "http://127.0.0.1:43123",
+            "X-WB-Session-Token": "token",
+        },
+    )
+    assert response.status_code != 403
+
+
 def test_production_originless_write_requires_session_token(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("WB_PANEL_MODE", "production")
     client = _client(tmp_path, mode="production")

@@ -53,6 +53,30 @@ def test_status_onboarding_required_when_empty(tmp_path, monkeypatch, client) ->
     assert not (home / "Library" / "Application Support" / "SummitWorkbench").exists()
 
 
+def test_restricted_onboarding_accepts_dynamic_loopback_same_origin(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
+    monkeypatch.delenv("WORK_ROOT", raising=False)
+    app = create_app(
+        None,
+        static_dir=tmp_path / "no-static",
+        bind_host="127.0.0.1",
+        port=0,
+        session_token="token",
+    )
+    client = TestClient(app, base_url="http://127.0.0.1:43123")
+    response = client.put(
+        "/api/onboarding/draft",
+        json={"flow": "upgrade-existing", "step": "location", "provider_status": "skipped"},
+        headers={
+            "Origin": "http://127.0.0.1:43123",
+            "X-WB-Session-Token": "token",
+        },
+    )
+    assert response.status_code == 200, response.text
+
+
 def test_preflight_and_create_via_api(tmp_path, monkeypatch, client) -> None:
     work = tmp_path / "api-work"
     payload = {"work_root": str(work), "display_name": "API Workspace"}

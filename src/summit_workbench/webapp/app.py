@@ -699,9 +699,8 @@ def _create_restricted_app(
             and request.url.path != "/api/session/bootstrap"
         ):
             origin = request.headers.get("origin")
-            if origin is not None and not origin_matches(
-                origin, request.url.scheme, host_allowlist
-            ):
+            origin_hosts = {host} if dynamic_loopback_host else host_allowlist
+            if origin is not None and not origin_matches(origin, request.url.scheme, origin_hosts):
                 return JSONResponse(
                     status_code=403,
                     content=error_payload(
@@ -1183,9 +1182,8 @@ def create_app(
                     ),
                 )
             origin = request.headers.get("origin")
-            if origin is not None and not origin_matches(
-                origin, request.url.scheme, host_allowlist
-            ):
+            origin_hosts = {host} if dynamic_loopback_host else host_allowlist
+            if origin is not None and not origin_matches(origin, request.url.scheme, origin_hosts):
                 return JSONResponse(
                     status_code=403,
                     content=error_payload(
