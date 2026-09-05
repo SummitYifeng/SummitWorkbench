@@ -1505,7 +1505,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-05 · P0-12
 
 - 状态：完成
-- Git commit：a1ca7d6（已推送至 `origin/main`）
+- Git commit：378e46c（已推送至 `origin/main`）
 - 变更摘要：production 服务入口改为先绑定 loopback 动态端口并把已绑定 socket 交给 Uvicorn；新增 0600 原子 runtime record（产品/API/frontend/server instance/workspace/device/pid/port/start time）及 pid-only 陈旧清理；原生壳生成 256-bit session token，经环境变量传给自管服务，probe 校验动态端口、实例与会话，WKWebView 导航前写入 HttpOnly SameSite=Strict cookie，退出带有限等待且不凭端口终止未知进程；API production 对全部 API 读写边界启用 cookie/受控 header 会话认证，development 保留一次性 bootstrap redirect；build manifest 升级 schema 并删除固定端口职责，安装/构建 smoke 改读 runtime record。
 - 目标测试：`uv run pytest tests/unit/test_runtime_record.py tests/unit/test_web_session.py tests/unit/test_packaging_contract.py tests/unit/test_web_security.py tests/unit/test_webapi.py -q`（63 passed）；覆盖动态端口运行记录权限/原子性、陈旧/正常进程、无错跨 workspace 会话、合法 Cookie/Header、bootstrap 清 query、manifest/native 契约。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests` 通过；`uv run pytest -q`（710 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke；5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/install-macos-app.sh` 通过；Swift native sources 离线编译通过（仅既有 Selector 警告）。
