@@ -1239,7 +1239,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-08
 
 - 状态：完成
-- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- Git commit：45030ac（已推送至 `origin/main`）
 - 变更摘要：
   - 新增 `domain/onboarding.py`（OnboardingFlow/PreflightReport/OnboardingResult）与 `workflows/onboarding.py` 服务层，三条流程全部实现：
     - **create-new**：选择 Work Root → 父目录按需创建 → staging 目录拷贝 allowlist 模板（inbox/conventions，`{{date}}` 填充）→ 写 marker → `os.replace` 原子改名到 `<work_root>/_vault`；目标 `_vault` 已存在即拒绝且绝不覆盖；成功后建档并置 active；任何中途失败回滚本次创建的 vault/marker/profile/registry（绝不删用户目录）。
