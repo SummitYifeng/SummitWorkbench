@@ -1271,7 +1271,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-10
 
 - 状态：完成
-- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- Git commit：e9d56f2（核心 ce8f709 + 收尾 e9d56f2；已推送至 `origin/main`）
 - 变更摘要：
   - 新增 `domain/sync.py`（10 态 SyncState + SyncSnapshot + 纯函数：离线/认证/TLS/分叉/脏态分类、状态合并、state_from_counts、next_step 建议）。
   - 新增 `repositories/local_sync_state.py`（profiles/<id>/sync-state.json，原子写 0600/0700，仅 ACTIVE profile/显式 home 落盘，env-compat 不写盘）。
