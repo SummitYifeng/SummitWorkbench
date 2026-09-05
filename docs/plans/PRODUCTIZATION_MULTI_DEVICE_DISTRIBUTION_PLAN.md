@@ -1212,7 +1212,7 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-07
 
 - 状态：完成
-- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- Git commit：6076a01（已推送至 `origin/main`）
 - 变更摘要：
   - 新增 `domain/workspace.py`：WorkspaceManifest（vault 内 `.summit-workbench/workspace.json`，随 Git 同步，UUID v4、未知字段前向兼容且重写不丢失）、LocalProfile（本机 profile，含 work root/vault/device_role）、DeviceIdentity（device.json，首生成后稳定）、DeviceRole、Compatibility + `evaluate_manifest_compatibility`（schema 1：app<min_reader→cannot-open、app<min_writer→read-only、否则 read-write；更高 schema→只读保护；≤0/非数→cannot-open；正式发布位版本比较）。
   - 新增 `config/app_support.py`（`~/Library/Application Support/SummitWorkbench/` 布局：registry.json/device.json/profiles/<id>/config.toml/runtime；本机文件 0600、目录 0700；日志目录）与 `config/profiles.py`（`resolve_workspace()` 三态解析入口：active > env-compat（仅 dev/test）> onboarding-required，空安装不创建/访问 `~/Documents/Work`）。
