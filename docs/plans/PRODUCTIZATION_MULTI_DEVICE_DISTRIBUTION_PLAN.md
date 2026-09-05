@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -187,7 +187,7 @@ account = git:<host>:<username>
 | 2 | P0-02 本地写入与自动提交事务边界 | P0 | P0-01 | M | [x] |
 | 3 | P0-03 飞书重试分类与客户端生命周期 | P0 | 无 | M | [x] |
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
-| 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [ ] |
+| 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [ ] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [ ] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [ ] |
@@ -1177,12 +1177,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 ### 2026-09-05 · P0-04
 
 - 状态：完成
-- Git commit：未提交
+- Git commit：0d874bb（已推送至 `origin/main`）
 - 变更摘要：新增 schema-versioned 外部动作 outbox 与状态机（prepared/sending/succeeded/failed/unknown/reconciled）；apply 先落 prepared、再落 sending，成功记录 remote id，FeishuError/验证/IO 错误按 action 隔离；unknown 与未二次确认的核对未找到状态禁止自动重试；任务/会议写回贯通 operation id 与最小 WB marker；新增外部动作查询/人工核对/二次确认重试 API 和审批页状态组件；坏行沿用 quarantine，workspace id 与候选指纹隔离；新增 ADR 0028。
 - 目标测试：`uv run pytest tests/unit/test_external_action_outbox.py tests/unit/test_external_actions.py tests/unit/test_review_apply.py tests/unit/test_webapi.py tests/contract/test_feishu_tasks.py tests/contract/test_feishu_calendar.py`（78 passed）；覆盖 timeout-after-received 后第二次 apply 不再 POST、成功态复用 remote id、批量错误隔离、prepared 重启可见、坏行隔离和工作区隔离。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（555 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
 - 真机验证：未执行（本工作包使用 fake/MockTransport/临时目录离线验证；未访问真实飞书、模型、Keychain、真实工作目录或第二台 Mac；当前 provider 的可靠远端查询仍需人工确认）。
 - 遗留：无；下一工作包为 P0-05，但本次未开始。
+
+### 2026-09-05 · P0-05
+
+- 状态：完成
+- Git commit：fe5861f（已在本地提交，未推送）
+- 变更摘要：新增 production loopback bind 校验与 development 外部绑定警告；建立当前 host/端口 allowlist、unsafe method 的 Origin 校验和外部绑定会话令牌边界；所有 JSON 请求模型补齐长度、枚举和列表上限；上传改为分块读取并限制 10 MiB、路径型文件名仅取展示 basename；统一验证、认证、禁止、上传、构建和未知异常的错误 envelope；`/api/ask` 模型/检索失败改用 HTTP 503；前端连接层兼容迁移期错误响应；补齐 38 条路由读写分类表。
+- 目标测试：`uv run pytest tests/unit/test_web_security.py tests/unit/test_webapp.py tests/unit/test_webapi.py tests/unit/test_webapi_undo.py`（70 passed）
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy` 通过；`uv run pytest`（565 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（使用临时目录和 TestClient 离线验证；未在真实非 loopback 网卡、真实浏览器会话、真实凭据或打包 App 中进行手工安全 smoke）。
+- 遗留：无；下一工作包为 P0-06，本次未开始。
 
 ## 16. 外部实现依据
 
