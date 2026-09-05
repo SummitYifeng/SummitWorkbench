@@ -22,8 +22,9 @@ from summit_workbench.repositories.git_backend import (
 from summit_workbench.repositories.git_backend import GitError as GitError  # noqa: F401, PLC0414
 
 
-def _new_backend(path: Path) -> GitBackend:
-    if backend_kind() == "dulwich":
+def _new_backend(path: Path, kind: str | None = None) -> GitBackend:
+    chosen = kind or backend_kind()
+    if chosen == "dulwich":
         from summit_workbench.repositories.dulwich_git import DulwichGitBackend
 
         return DulwichGitBackend(path)
@@ -41,9 +42,27 @@ class GitRepo:
     里的其它改动。任何失败都抛 :class:`GitError`，由上层聚合为可见状态（NFR-6）。
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        backend_kind: str | None = None,
+        backend: GitBackend | None = None,
+    ) -> None:
         self.path = path
-        self._backend = _new_backend(path)
+        if backend is not None:
+            if backend.path != path:
+                raise ValueError("注入的 Git backend 路径必须与 GitRepo 一致")
+            self._backend = backend
+        else:
+            if backend_kind is not None and backend_kind not in ("system", "dulwich"):
+                raise ValueError(f"未知 git backend：{backend_kind!r}")
+            self._backend = _new_backend(path, backend_kind)
+
+    @property
+    def backend(self) -> GitBackend:
+        """返回本次调用显式选择/注入的 backend（供 runtime wiring 与测试）。"""
+        return self._backend
 
     def is_git_repo(self) -> bool:
         return self._backend.is_git_repo()

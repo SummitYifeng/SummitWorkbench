@@ -11,9 +11,9 @@
 - typed errors：远程不可达/认证失败/TLS 失败/非快进/冲突各自可分类，全部派生
   :class:`GitError`（既有上层仍可统一捕获）。
 
-运行时选择（P0-09 对齐结论）：默认 ``system``（开发/CLI 保持现状），环境变量
-``WB_GIT_BACKEND=dulwich`` 显式选生产后端（打包/生产固定选 dulwich 的接线随
-P0-10/P0-13 落地）。
+运行时选择（P0-09C）：默认 ``system``（开发/CLI 保持现状）；production/packaged
+调用方必须把 ``dulwich`` 作为显式 backend 注入，不能依赖跨测试/跨请求的进程环境变量。
+``WB_GIT_BACKEND=dulwich`` 仍保留给 development conformance 与离线调试。
 """
 
 from __future__ import annotations
@@ -123,3 +123,8 @@ def backend_kind() -> str:
     if kind not in SUPPORTED_KINDS:
         raise ValueError(f"未知 git backend：{kind!r}（支持 {SUPPORTED_KINDS}）")
     return kind
+
+
+def production_backend_kind() -> str:
+    """production/packaged 的固定 backend；不读取环境变量。"""
+    return "dulwich"

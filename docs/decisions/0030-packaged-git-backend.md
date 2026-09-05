@@ -1,11 +1,11 @@
 # ADR 0030 · 可打包 Git 后端（system ↔ dulwich）与凭据适配
 
-- 状态：🟡 部分完成（双 backend 与既有质量门全绿；HTTPS 凭据/remote clone/production 接线等待 P0-09C）
+- 状态：✅ 已实现（P0-09C 离线 production/backend 与 remote clone 接线完成；真实 HTTPS/clean-account 真机门未执行）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-09（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；依赖 P0-01 撤销信任边界、P0-07 workspace/profile 与凭据作用域）
 - 依据：计划 P0-09（能力契约 / 实现要求 1–8 / 测试矩阵 / 决策门）；NFR-3（非破坏性）、NFR-4（凭据不入文件/仓库）
 
-> 2026-09-05 `bf734d8` 复核：system/dulwich conformance、typed errors 与 workspace-scoped 凭据模型已经实现；凭据尚未进入 Dulwich clone/fetch/push transport，production backend 仍由环境变量选择，clone staging/marker 确认与 packaged CA smoke 未完成。以计划 P0-09C 完成证据作为本 ADR 转为“已实现”的条件。
+> 2026-09-05 `bf734d8` 复核：system/dulwich conformance、typed errors 与 workspace-scoped 凭据模型已经实现；凭据尚未进入 Dulwich clone/fetch/push transport，production backend 仍由环境变量选择，clone staging/marker 确认与 packaged CA smoke 未完成。以下 P0-09C 收口记录已更新这些结论。
 
 ## 背景与问题
 
@@ -32,9 +32,9 @@
 - conformance suite（`test_git_backends.py`）先于调用方迁移建立：两个后端对**同一临时
   bare remote** 跑同一场景（含 PATH 为空时 dulwich 完成 init/commit/fetch/ff/push 的
   证明）。
-- 运行时选择：默认 `system`（开发/CLI 现状）；`WB_GIT_BACKEND=dulwich` 显式启用生产
-  后端。打包/生产固定选 dulwich 的接线随 P0-10/P0-13 落地——本包以「契约 + conformance +
-  PATH 为空证明」为离线验收，不宣称 clean Mac 已可用（真机门 P0-13）。
+- 运行时选择：默认 `system`（开发/CLI 现状）；production/packaged 调用方通过显式 backend
+  注入固定 `dulwich`，不依赖跨请求的进程环境；`WB_GIT_BACKEND=dulwich` 仅保留给
+  development conformance 与离线调试。
 
 ### 2. 凭据（`config/git_credentials.py`）
 
@@ -80,6 +80,28 @@
 
 ## 遗留 / 边界
 
-- 真实 HTTPS 远端（GitHub/GitLab）、证书校验、代理与 clean-account 打包运行属真机门
-  （P0-13 前未验证）；生产运行固定选 dulwich 与凭据 callback 接线随 P0-10/P0-13。
-- 新工作区的 git init/远端 clone 对业务的接入（onboarding/sync）随 P0-10 落地。
+- 真实 HTTPS 远端（GitHub/GitLab）、代理、自签证书与 clean-account 打包运行属真机门
+  （P0-13 前未验证）；本包用注入式 callback、脱敏错误与 CA bundle discovery 完成离线证据。
+- remote clone 已由 `workflows/remote_onboarding.py` 提供 staging/confirm/cancel 服务；同步
+  状态与全部共享 vault 写边界的显式 backend/context 接线留 P0-10C。
+
+## P0-09C 收口
+
+- `GitRepo` 支持每次调用显式传入 `backend_kind` 或注入 `GitBackend`；production 固定 helper
+  返回 Dulwich，环境变量不参与该次调用的选择。
+- `DulwichGitBackend` 的 clone/fetch/push 对 HTTPS 统一经 workspace id、host、username 的
+  resolver 取得短生命周期凭据；不把密码写入 URL、磁盘、日志、异常或对象 repr。resolver
+  异常统一降为脱敏 `GitAuthError`。
+- remote onboarding 只接受 HTTPS 无 userinfo URL；clone staging 与目标同文件系统，marker、
+  workspace id、当前 App compatibility 均在确认前校验；确认后 atomic move 并创建 secondary
+  profile，失败/取消只清理本次 staging 并恢复 registry。
+- `ca_bundle_path()` 可发现打包运行所需 CA 资源；PATH 为空时 Dulwich init/add/commit 已验证，
+  未调用系统 Git。
+
+## P0-09C 验证与边界
+
+- 目标测试：`tests/unit/test_remote_onboarding.py` 11 项，联合既有 Git backend/credentials/
+  packaging 测试共 28 passed。
+- 全量质量门：ruff、format、mypy（243 files）通过；pytest（694 passed，1 skipped，跳过既有
+  `WB_PACKAGED_APP` smoke）。真实私有 HTTPS、wrong credential/TLS 服务器、代理、clean-account
+  与 Apple 签名/公证未执行，继续留在 P0-13 真机矩阵。

@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行；P0-01 至 P0-08、P0-07C 已完成，P0-09/P0-10 部分完成；下一工作包为 P0-09C
+> 状态：可执行；P0-01 至 P0-09、P0-07C、P0-09C 已完成，P0-10 部分完成；下一工作包为 P0-10C
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -74,7 +74,7 @@ uv run pytest -m integration
 1. 仓库为 `main = origin/main = bf734d8`，复核前工作树干净；提交 `70dfae6..bf734d8` 线性存在。
 2. 当前全量质量门通过：ruff、format、mypy（240 files）、pytest（677 passed，1 skipped）以及前端 build/verify-build。测试全绿证明现有行为稳定，不等于未覆盖的产品契约已经完成。
 3. P0-06 与 P0-08 保持 `[x]`。P0-07C 已收口 P0-07 的 production 缺口：active profile/runtime context、onboarding-required 受限控制面、compatibility 写门与 workspace-scoped provider 配置已接线；P0-07 现为 `[x]`。
-4. P0-09 改为 `[~]`：双 backend、typed error 与凭据模型已落地，但 Dulwich 的 clone/fetch/push 尚未接入 workspace-scoped HTTPS 凭据，打包入口也未固定使用生产 backend。
+4. P0-09C 已收口 P0-09 的 production 缺口：Dulwich HTTPS transport 使用 workspace-scoped 凭据回调，remote clone 具备 staging/marker/兼容性/确认回滚，production backend 选择改为显式注入；P0-09 现为 `[x]`。
 5. P0-10 改为 `[~]`：状态机、基础协调器、API 与 banner 已落地，但 active-profile 状态持久化、准确 pending 计数与 last-success 保留、全部共享 vault 写入口保护/提交后推送、完整 UI 字段、remote clone 与主设备唯一声明尚未闭环。
 6. 不把上述缺口塞进一个超大的 P0-11。先执行 P0-07C → P0-09C → P0-10C，再执行 P0-11A → P0-12 → P0-11B。
 
@@ -207,7 +207,7 @@ account = git:<host>:<username>
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
-| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [~] |
+| 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [x] |
 | 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [~] |
 | 11 | P0-07C Active Profile 生产运行时收口 | P0 | P0-07、P0-08 | M | [x] |
 | 12 | P0-09C 私有 HTTPS Git 与 remote clone 收口 | P0 | P0-07C、P0-08、P0-09 | L | [ ] |
@@ -627,6 +627,17 @@ ruff、format、mypy（241 files）、pytest（682 passed，1 skipped，跳过�
 **验收**：clean account 使用打包 App 能操作本地/HTTPS Git，不触发 CLT 安装弹窗。
 
 **复核状态（`bf734d8`）**：`[~]`。双 backend 与本地 bare-remote conformance 已完成；workspace-scoped 凭据尚未进入 Dulwich remote transport，production backend 仍依赖环境变量选择，clone staging/marker 确认与 packaged CA smoke 尚未完成，交由 P0-09C 收口。
+
+**P0-09C 收口证据（2026-09-05）**：`GitRepo` 支持单次调用显式注入 `system`/`dulwich`
+backend，production 固定 backend helper 不读取进程环境；Dulwich clone/fetch/push 统一通过
+workspace id、host、username 的 credential resolver 传递短生命周期 HTTPS Basic Auth，remote
+URL 与异常保持脱敏。新增 remote onboarding staging/confirm/cancel 服务：仅 HTTPS、拒绝
+userinfo，marker 缺失/不兼容/目标冲突均有稳定错误，失败只清理本次 staging，确认后 atomic
+move 并创建 secondary profile。CA bundle 可发现，PATH 为空时 Dulwich 可完成本地 init/commit。
+
+目标测试：`tests/unit/test_remote_onboarding.py`（11 项）以及既有 Git backend/credentials/
+packaging 测试（28 项合计）通过；未执行真实私有 HTTPS、代理、自签证书或 clean-account 打包运行，
+这些继续属于 P0-13 真机门。
 
 ### P0-10 · 多设备同步协调器与自动化主设备规则
 
@@ -1460,6 +1471,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（241 files）通过；`uv run pytest`（683 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）。
 - 真机验证：未执行（使用临时 HOME、临时目录与离线 fake；未访问真实 Keychain/remote、真实工作目录、第二台 Mac 或 Apple 签名/notarization）。
 - 遗留：无；P0-09C 负责 production Dulwich HTTPS transport 与 remote clone；P0-13 负责真实打包/签名门。
+
+### 2026-09-05 · P0-09C
+
+- 状态：完成
+- Git commit：待提交（本包完成后提交并推送）
+- 变更摘要：GitRepo 支持单次调用显式 backend 注入；Dulwich clone/fetch/push 接入 workspace-scoped HTTPS credential resolver 并统一脱敏错误；新增 remote clone staging/confirm/cancel 服务，完成 HTTPS/userinfo、marker、workspace id、compatibility、目标冲突与失败回滚边界；profile 持久化 Git username；补齐 CA bundle 与 PATH 为空的 packaged backend smoke 证据。
+- 目标测试：`uv run pytest tests/unit/test_remote_onboarding.py tests/unit/test_git_backends.py tests/unit/test_git_credentials.py tests/unit/test_packaging_contract.py -q`（28 passed）。
+- 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（243 files）通过；`uv run pytest -q`（694 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）。
+- 真机验证：未执行（使用 fake backend、临时目录与离线凭据回调；未访问真实私有 HTTPS、代理、自签证书、真实 Keychain、clean-account 或 Apple 真机）。
+- 遗留：P0-10C 负责把显式 production backend/context 接入同步状态、全部写边界与主设备声明；P0-13 负责真实打包/签名门。
 
 ## 16. 外部实现依据
 

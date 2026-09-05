@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import certifi
 from PyInstaller.utils.hooks import collect_submodules
 
 
@@ -9,10 +10,15 @@ REPO_ROOT = Path(SPECPATH).resolve().parent
 datas = [
     (str(REPO_ROOT / "prompts"), "prompts"),
     (str(REPO_ROOT / "templates"), "templates"),
+    (certifi.where(), "certifi"),
 ]
 hiddenimports = (
     collect_submodules("summit_workbench")
+    + collect_submodules("dulwich")
     + [
+        "certifi",
+        "dulwich.client",
+        "urllib3",
         "multipart",
         "uvicorn.logging",
         "uvicorn.loops.auto",

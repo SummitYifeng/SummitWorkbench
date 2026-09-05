@@ -113,6 +113,8 @@ class LocalProfile(BaseModel):
     timezone: Annotated[str, Field(min_length=1, max_length=64)] = "Asia/Shanghai"
     # P0-09：Git author 邮箱（可选；缺省在提交时用本地占位 wb@local，绝不复制开发者 identity）
     user_email: Annotated[str, Field(max_length=254)] | None = None
+    # P0-09C：HTTPS remote 的公开账号名；密码只存在 workspace-scoped Keychain。
+    git_username: Annotated[str, Field(max_length=200)] | None = None
 
 
 class DeviceIdentity(BaseModel):

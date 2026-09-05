@@ -10,6 +10,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 def test_packaging_spec_collects_runtime_and_project_data() -> None:
     spec = (_ROOT / "packaging" / "SummitWorkbenchServer.spec").read_text(encoding="utf-8")
     assert 'collect_submodules("summit_workbench")' in spec
+    assert 'collect_submodules("dulwich")' in spec
+    assert '"dulwich.client"' in spec
+    assert '"certifi"' in spec
     assert '"prompts"' in spec
     assert '"templates"' in spec
     assert 'name="SummitWorkbenchServer"' in spec

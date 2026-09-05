@@ -13,9 +13,13 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import importlib.util
 import os
+import ssl
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from dulwich import porcelain
 from dulwich.diff_tree import tree_changes
@@ -51,13 +55,30 @@ def _silenced() -> Any:
 
 
 def _classify_remote(exc: BaseException, message: str) -> GitError:
-    """把 dulwich/网络异常映射成 typed error（文本不含凭据）。"""
+    """把 dulwich/网络异常映射成 typed error（文本不含 URL 或凭据）。"""
     text = f"{type(exc).__name__}: {exc}".casefold()
     if any(marker in text for marker in ("ssl", "certificate", "tls", "certificate_verify")):
         return GitTlsError(message)
     if any(marker in text for marker in ("auth", "401", "403", "permission")):
         return GitAuthError(message)
     return GitRemoteUnavailable(message)
+
+
+def ca_bundle_path() -> Path | None:
+    """返回打包运行时可用的 CA bundle；不关闭 TLS 校验。"""
+    if importlib.util.find_spec("certifi") is not None:
+        import certifi
+
+        candidate = Path(certifi.where())
+        if candidate.is_file():
+            return candidate
+    defaults = ssl.get_default_verify_paths()
+    for raw in (defaults.cafile, defaults.openssl_cafile):
+        if raw:
+            candidate = Path(raw)
+            if candidate.is_file():
+                return candidate
+    return None
 
 
 class _DirNode:
@@ -71,8 +92,18 @@ class _DirNode:
 class DulwichGitBackend:
     """把 :class:`~summit_workbench.repositories.git_backend.GitBackend` 契约映射到 dulwich。"""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        workspace_id: str | None = None,
+        username: str | None = None,
+        credential_resolver: Callable[[str, str, str], Any] | None = None,
+    ) -> None:
         self._path = path
+        self._workspace_id = workspace_id
+        self._username = username
+        self._credential_resolver = credential_resolver
 
     @property
     def path(self) -> Path:
@@ -137,9 +168,15 @@ class DulwichGitBackend:
     def clone(self, url: str, destination: Path) -> None:
         with _silenced() as sink:
             try:
-                porcelain.clone(url, str(destination), errstream=sink)
+                clone: Any = porcelain.clone
+                clone(
+                    url,
+                    str(destination),
+                    errstream=sink,
+                    **dict(self.transport_kwargs(url, operation="clone")),
+                )
             except Exception as exc:  # noqa: BLE001 - 需要跨库分类
-                raise _classify_remote(exc, f"clone 失败：{url}") from exc
+                raise _classify_remote(exc, "clone 失败") from exc
         # 补齐 branch.<name>.remote/merge（git clone 语义；dulwich porcelain 可能不写）
         repo = self._open()
         ref_name = self._head_ref_name(repo)
@@ -351,12 +388,45 @@ class DulwichGitBackend:
             raise GitError(f"没有配置 remote {remote}")
         return url.decode("utf-8")
 
+    def transport_kwargs(self, url: str, *, operation: str) -> dict[str, str]:
+        """为 Dulwich HTTP transport 解析一次 workspace-scoped 凭据。
+
+        该方法只返回给当前请求的短生命周期参数；调用方不得把返回值写入配置、
+        remote URL 或日志。测试可注入 resolver，production 默认使用 P0-07 的
+        workspace Keychain resolver。
+        """
+        parsed = urlsplit(url)
+        if parsed.scheme.lower() != "https":
+            return {}
+        if parsed.username is not None or parsed.password is not None:
+            raise GitAuthError("HTTPS remote 不允许把凭据写入 URL")
+        if not self._workspace_id or not self._username:
+            raise GitAuthError("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
+        resolver = self._credential_resolver
+        if resolver is None:
+            from summit_workbench.config.git_credentials import resolve_git_credentials
+
+            resolver = resolve_git_credentials
+        try:
+            credentials = resolver(self._workspace_id, parsed.hostname or "", self._username)
+        except GitError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - Keychain errors must be sanitized
+            raise GitAuthError("Git workspace 凭据读取失败") from exc
+        password = credentials.password.get_secret_value()
+        return {"username": self._username, "password": password}
+
     def fetch(self, remote: str = "origin") -> None:
         repo = self._open()
         url = self._remote_url(repo, remote)
         with _silenced() as sink:
             try:
-                porcelain.fetch(repo, remote_location=url, errstream=sink)
+                porcelain.fetch(
+                    repo,
+                    remote_location=url,
+                    errstream=sink,
+                    **self.transport_kwargs(url, operation="fetch"),
+                )
             except Exception as exc:  # noqa: BLE001 - 跨库分类
                 raise _classify_remote(exc, f"fetch {remote} 失败") from exc
         self._copy_local_remote_refs(repo, remote, url)
@@ -441,7 +511,12 @@ class DulwichGitBackend:
             raise GitError("没有可推送的提交")
         with _silenced() as sink:
             try:
-                porcelain.push(repo, remote_location=url, errstream=sink)
+                porcelain.push(
+                    repo,
+                    remote_location=url,
+                    errstream=sink,
+                    **self.transport_kwargs(url, operation="push"),
+                )
             except porcelain.DivergedBranches as exc:
                 raise GitNonFastForward(f"push {remote} 失败（非快进被拒）") from exc
             except Exception as exc:  # noqa: BLE001

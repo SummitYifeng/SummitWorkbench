@@ -47,6 +47,7 @@ _PROFILE_TOML_KEYS = (
     "last_opened_at",
     "timezone",
     "user_email",
+    "git_username",
 )
 
 
