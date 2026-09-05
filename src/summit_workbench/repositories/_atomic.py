@@ -74,11 +74,19 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
-def atomic_write_text(path: Path, text: str, *, ensure_parents: bool = False) -> None:
+def atomic_write_text(
+    path: Path,
+    text: str,
+    *,
+    ensure_parents: bool = False,
+    new_mode: int | None = None,
+) -> None:
     """把 ``text`` 原子写入 ``path``（UTF-8）：唯一临时文件 + fsync + replace + 目录 fsync。
 
     :param ensure_parents: 为真时先 ``mkdir(parents=True)`` 建好父目录。默认 False——
         调用方若已保证父目录存在（如「就地改写既有文件」）则无需重复建。
+    :param new_mode: 仅当目标**不存在**（新建）时生效的权限位（如本机 0600 文件，
+        P0-07）；目标已存在时一律保留原 mode，忽略本参数。
     """
     if ensure_parents:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +97,8 @@ def atomic_write_text(path: Path, text: str, *, ensure_parents: bool = False) ->
         with os.fdopen(fd, "wb") as handle:
             if mode is not None:
                 os.fchmod(handle.fileno(), mode)
+            elif new_mode is not None:
+                os.fchmod(handle.fileno(), new_mode)
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())

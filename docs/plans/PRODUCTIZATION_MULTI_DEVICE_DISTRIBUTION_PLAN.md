@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -189,7 +189,7 @@ account = git:<host>:<username>
 | 4 | P0-04 飞书外部动作 Outbox 与不确定态 | P0 | P0-03 | L | [x] |
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
-| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [ ] |
+| 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
 | 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [ ] |
 | 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [ ] |
 | 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [ ] |
@@ -1208,6 +1208,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（214 files）通过；`uv run pytest`（586 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（使用临时目录、临时仓库、fake/MockTransport 离线验证；未访问真实飞书、模型、Keychain、真实 `~/Documents/Work` 或第二台 Mac）
 - 遗留：无；嵌套/脱离 work_root 的自定义 vault 布局与 profile/device 身份属 P0-07 范围（届时 vault 与 workspace 关系被显式建模），本包统一了受支持形态（vault 为 work_root 下目录，`lock_root` 恒 = vault 容器 = 默认形态的 work_root）；下一工作包为 P0-07，本次未开始。
+
+### 2026-09-05 · P0-07
+
+- 状态：完成
+- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- 变更摘要：
+  - 新增 `domain/workspace.py`：WorkspaceManifest（vault 内 `.summit-workbench/workspace.json`，随 Git 同步，UUID v4、未知字段前向兼容且重写不丢失）、LocalProfile（本机 profile，含 work root/vault/device_role）、DeviceIdentity（device.json，首生成后稳定）、DeviceRole、Compatibility + `evaluate_manifest_compatibility`（schema 1：app<min_reader→cannot-open、app<min_writer→read-only、否则 read-write；更高 schema→只读保护；≤0/非数→cannot-open；正式发布位版本比较）。
+  - 新增 `config/app_support.py`（`~/Library/Application Support/SummitWorkbench/` 布局：registry.json/device.json/profiles/<id>/config.toml/runtime；本机文件 0600、目录 0700；日志目录）与 `config/profiles.py`（`resolve_workspace()` 三态解析入口：active > env-compat（仅 dev/test）> onboarding-required，空安装不创建/访问 `~/Documents/Work`）。
+  - 新增 `repositories/profile_registry.py`（registry.json 只存索引与 active id、profile config.toml 独立存放、device.json；全走 P0-06 原子写并给 `_atomic.atomic_write_text` 增加 `new_mode` 参数）与 `repositories/workspace_manifest.py`（marker 读写，损坏可见报错）。
+  - `config/secrets.py` 新增 workspace 作用域凭据 API：service=`com.summitworkbench.credentials.<workspace_id>`，account=`llm:/feishu:/git:`；只写作用域命名，旧命名读取仅经显式迁移入口 `resolve_legacy_credential_for_migration`（provider 接线留 P0-08）。
+  - `workflows/external_actions.py::workspace_id_for_vault` 优先读 marker 的 canonical id，无/损坏 marker 回退 legacy 摘要（P0-04 兼容）。
+  - 新增 ADR 0029（含 P0-04 缺失的 0028 索引行一并补齐）。
+- 目标测试：新增 46 项（`test_workspace_domain.py` 领域模型/兼容映射、`test_app_support_layout.py`、`test_profile_registry.py` device/registry/权限 0600-0700/两 Home 隔离、`test_workspace_manifest.py` 跨设备同 id/未知字段不回丢/损坏可见、`test_profile_resolution.py` 解析三态与空安装、`test_secrets_workspace_scope.py` 两 workspace 凭据不串用与显式迁移）
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（225 files）通过；`uv run pytest`（632 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（使用临时 HOME/临时目录与 fake Keychain 离线验证；未访问真实 `~/Documents/Work`、真实 Keychain、真实飞书、模型或第二台 Mac；打包 App 的真实 Application Support/重签名稳定性属 P0-13 真机门）
+- 遗留：onboarding 服务/API（create/upgrade/connect）与 provider 凭据接线、生产入口全面切换 `resolve_workspace`、doctor/status 展示 onboarding-required 随 P0-08/P0-12 落地；下一工作包为 P0-08，本次未开始。
 
 ## 16. 外部实现依据
 

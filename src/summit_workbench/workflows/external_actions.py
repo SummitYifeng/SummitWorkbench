@@ -21,9 +21,21 @@ from summit_workbench.repositories.external_action_outbox import append_action
 def workspace_id_for_vault(vault_dir: Path) -> str:
     """返回不含秘密的工作区标识。
 
-    P0-07 统一工作区身份前，使用规范化工作区路径的不可逆短摘要作为兼容标识；路径本身
-    不写入 outbox，且不同 vault 天然不会互相复用候选动作。
+    P0-07 起优先读 vault 内 workspace marker（``.summit-workbench/workspace.json``，
+    随 Git 同步，跨设备稳定）；无 marker 的旧 vault 沿用规范化 vault 容器路径的
+    不可逆短摘要作为兼容标识。路径本身不写入 outbox，不同 vault 不会复用候选动作。
     """
+    from summit_workbench.repositories.workspace_manifest import (
+        WorkspaceManifestError,
+        load_workspace_manifest,
+    )
+
+    try:
+        manifest = load_workspace_manifest(vault_dir)
+    except WorkspaceManifestError:
+        manifest = None
+    if manifest is not None:
+        return manifest.workspace_id
     root = vault_dir.expanduser().resolve().parent
     return "legacy-" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:24]
 

@@ -1,0 +1,215 @@
+"""本机 profile registry / device identity 存储（P0-07）。
+
+- ``registry.json`` 只存 profile 索引与 active workspace id（本机、不同步）；
+- 每个 workspace 的本地档案独立存放在 ``profiles/<workspace_id>/config.toml``
+  （TOML，扁平字段，原子写；含本机路径、设备角色等非同步信息）；
+- ``device.json`` 存本机安装级 device id，首次运行生成一次、之后稳定。
+
+写入全部走 P0-06 原子原语（唯一临时文件 + fsync），本机文件 0600、目录 0700。
+profile 配置只含非秘密项；凭据一律以 workspace 作用域 Keychain 引用承载（secrets.py）。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+import tomllib
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+from pydantic import BaseModel, ConfigDict, ValidationError
+
+from summit_workbench.config.app_support import (
+    PROFILE_DIR_MODE,
+    PROFILE_FILE_MODE,
+    app_support_dir,
+    device_file,
+    profile_config_file,
+    profile_dir,
+    profiles_dir,
+    registry_file,
+)
+from summit_workbench.domain.workspace import DeviceIdentity, LocalProfile
+from summit_workbench.repositories._atomic import atomic_write_text
+
+_REGISTRY_SCHEMA_VERSION = 1
+
+_PROFILE_TOML_KEYS = (
+    "schema_version",
+    "workspace_id",
+    "display_name",
+    "work_root",
+    "vault_dir",
+    "device_role",
+    "created_at",
+    "last_opened_at",
+)
+
+
+class ProfileRegistry(BaseModel):
+    """本机 profile 索引：只存 id 列表与 active workspace id（不存路径等详情）。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    schema_version: int = _REGISTRY_SCHEMA_VERSION
+    active_workspace_id: str | None = None
+    profiles: list[str] = []
+
+
+# ---- 目录/文件辅助 ----
+
+
+def _ensure_dir(path: Path, mode: int = PROFILE_DIR_MODE) -> None:
+    """按约定权限建目录（umask 之外的权限差用 chmod 补足，保证 0700）。"""
+    path.mkdir(mode=mode, parents=True, exist_ok=True)
+    os.chmod(path, mode)
+
+
+def _app_support_tree(home: Path | None) -> None:
+    root = app_support_dir(home)
+    _ensure_dir(root)
+    _ensure_dir(profiles_dir(home))
+
+
+# ---- registry.json ----
+
+
+def load_registry(home: Path | None = None) -> ProfileRegistry:
+    """读本机 registry；文件缺失时返回空默认（尚未 onboarding 是正常态）。"""
+    path = registry_file(home)
+    if not path.is_file():
+        return ProfileRegistry()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ProfileRegistry.model_validate(raw)
+    except (ValueError, ValidationError) as exc:
+        raise ValueError(f"registry.json 损坏，请检查 {path}") from exc
+
+
+def save_registry(registry: ProfileRegistry, home: Path | None = None) -> Path:
+    """原子写本机 registry（0600）。"""
+    _app_support_tree(home)
+    path = registry_file(home)
+    payload = registry.model_dump(mode="json")
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    atomic_write_text(path, text, new_mode=PROFILE_FILE_MODE)
+    return path
+
+
+def set_active_profile(workspace_id: str | None, home: Path | None = None) -> Path:
+    """把某 workspace 设为 active（None 则清除 active，索引保留）。"""
+    registry = load_registry(home)
+    registry.active_workspace_id = workspace_id
+    if workspace_id is not None and workspace_id not in registry.profiles:
+        registry.profiles.append(workspace_id)
+    return save_registry(registry, home=home)
+
+
+def profile_ids(home: Path | None = None) -> list[str]:
+    """本机已建档的 workspace id 列表。"""
+    return list(load_registry(home).profiles)
+
+
+def active_profile_id(home: Path | None = None) -> str | None:
+    return load_registry(home).active_workspace_id
+
+
+# ---- profiles/<id>/config.toml ----
+
+
+def _toml_value(value: object) -> str | None:
+    """把扁平 profile 值序列化成 TOML 标量（字符串经 json.dumps 得到合法 basic string）。"""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, datetime):
+        return json.dumps(value.isoformat())
+    return json.dumps(str(value))
+
+
+def profile_to_toml(profile: LocalProfile) -> str:
+    """把 LocalProfile 序列化为扁平 TOML（字段顺序稳定，便于 diff）。"""
+    dump = profile.model_dump(mode="json")
+    lines: list[str] = []
+    for key in _PROFILE_TOML_KEYS:
+        if key not in dump:
+            continue
+        rendered = _toml_value(dump[key])
+        if rendered is None:
+            continue
+        lines.append(f"{key} = {rendered}")
+    return "\n".join(lines) + "\n"
+
+
+def save_profile(profile: LocalProfile, home: Path | None = None) -> Path:
+    """原子写某 workspace 的本机 profile 配置（目录 0700、文件 0600）。"""
+    _app_support_tree(home)
+    directory = profile_dir(profile.workspace_id, home)
+    _ensure_dir(directory)
+    path = profile_config_file(profile.workspace_id, home)
+    atomic_write_text(path, profile_to_toml(profile), new_mode=PROFILE_FILE_MODE)
+    return path
+
+
+def load_profile(workspace_id: str, home: Path | None = None) -> LocalProfile | None:
+    """读某 workspace 的本机 profile；不存在返回 None，损坏抛 ValueError。"""
+    path = profile_config_file(workspace_id, home)
+    if not path.is_file():
+        return None
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        return LocalProfile.model_validate(raw)
+    except (ValueError, ValidationError) as exc:
+        raise ValueError(f"profile 配置损坏：{path}") from exc
+
+
+# ---- device.json ----
+
+
+def _write_device_identity(identity: DeviceIdentity, home: Path | None) -> Path:
+    _app_support_tree(home)
+    path = device_file(home)
+    payload = identity.model_dump(mode="json")
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    atomic_write_text(path, text, new_mode=PROFILE_FILE_MODE)
+    return path
+
+
+def ensure_device_identity(
+    home: Path | None = None, *, device_name: str | None = None
+) -> DeviceIdentity:
+    """读本机 device identity；首次运行（文件缺失）生成一次并原子落盘。
+
+    之后永不重新生成（App 升级/重签名/移动路径都不改变 device id）；显式传入的
+    ``device_name`` 只在首次生成时生效。
+    """
+    existing = load_device_identity(home)
+    if existing is not None:
+        return existing
+    identity = DeviceIdentity.model_validate(
+        {
+            "schema_version": 1,
+            "device_id": str(uuid4()),
+            "device_name": device_name or socket.gethostname(),
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    _write_device_identity(identity, home)
+    return identity
+
+
+def load_device_identity(home: Path | None = None) -> DeviceIdentity | None:
+    """读本机 device identity；文件缺失返回 None，损坏抛 ValueError。"""
+    path = device_file(home)
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return DeviceIdentity.model_validate(raw)
+    except (ValueError, ValidationError) as exc:
+        raise ValueError(f"device.json 损坏，请检查 {path}") from exc

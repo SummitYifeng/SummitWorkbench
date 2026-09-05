@@ -88,3 +88,55 @@ def redact(value: object) -> str:
     if isinstance(value, SecretStr):
         return "***"
     return str(value)
+
+
+# ---- workspace 作用域凭据（P0-07） ----
+#
+# Keychain 命名必须包含 workspace_id，避免两台设备/两个 workspace 的凭据串用：
+#   service = com.summitworkbench.credentials.<workspace_id>
+#   account = llm:<provider>:<credential_name>
+#   account = feishu:<app_id>:app_secret | feishu:<app_id>:refresh_token
+#   account = git:<host>:<username>
+#
+# 本层只提供 workspace 作用域的读写（service 由 workspace_id 派生）；旧命名（不带
+# workspace_id 的 service）的**读取**只经显式迁移入口
+# :func:`resolve_legacy_credential_for_migration`，新代码不再写旧命名。provider 的实际
+# 接线（Feishu/LLM 会话在 P0-08 拿到 active profile 后改用本层）不在本包范围。
+
+_WORKSPACE_SERVICE_PREFIX = "com.summitworkbench.credentials."
+
+
+def workspace_credential_service(workspace_id: str) -> str:
+    """workspace 作用域 Keychain service 名（含 workspace_id）。"""
+    return f"{_WORKSPACE_SERVICE_PREFIX}{workspace_id}"
+
+
+def workspace_account(kind: str, *parts: str) -> str:
+    """provider 作用域 account 名：``kind:part1:part2``（如 ``llm:deepseek:shared``）。"""
+    if not kind or not parts:
+        raise ValueError("workspace_account 需要非空 kind 与至少一个标识部分")
+    return f"{kind}:" + ":".join(parts)
+
+
+def workspace_credential_ref(workspace_id: str, account: str) -> CredentialRef:
+    """把 (workspace_id, provider account) 组装成作用域 :class:`CredentialRef`。"""
+    return CredentialRef(service=workspace_credential_service(workspace_id), account=account)
+
+
+def resolve_workspace_credential(workspace_id: str, account: str) -> SecretStr:
+    """只读 workspace 作用域凭据；缺失报 :class:`CredentialError`（不含旧命名回退）。"""
+    return resolve_credential(workspace_credential_ref(workspace_id, account))
+
+
+def store_workspace_credential(workspace_id: str, account: str, value: SecretStr) -> None:
+    """只写 workspace 作用域命名（旧命名绝不由此入口写入）。"""
+    store_credential(workspace_credential_ref(workspace_id, account), value)
+
+
+def resolve_legacy_credential_for_migration(ref: CredentialRef) -> SecretStr:
+    """显式迁移入口：读**旧命名**（无 workspace_id 的 service）凭据。
+
+    只允许一次性迁移工具/诊断调用（P0-09 凭据适配或显式迁移命令），普通业务读取
+    一律走 :func:`resolve_workspace_credential`；迁移完成后新写必须落到作用域命名。
+    """
+    return resolve_credential(ref)
