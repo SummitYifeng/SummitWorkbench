@@ -6,7 +6,9 @@ SSR 视图（views.py）与 JSON API（本模块）共用同一套领域逻辑�
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field
 
 from summit_workbench.domain.brief import CATEGORY_LABELS
 from summit_workbench.domain.external_action import ExternalAction
@@ -18,107 +20,121 @@ _HEALTH_LABELS = {"ok": "正常", "degraded": "降级", "alert": "告警"}
 
 
 class DecidePayload(BaseModel):
-    candidate_id: str
-    decision: str  # pending | approved | rejected
+    candidate_id: str = Field(min_length=1, max_length=200)
+    decision: Literal["pending", "approved", "rejected"]
 
 
 class BatchDecidePayload(BaseModel):
-    candidate_ids: list[str]
-    decision: str  # pending | approved | rejected
+    candidate_ids: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=100
+    )
+    decision: Literal["pending", "approved", "rejected"]
 
 
 class EditPayload(BaseModel):
-    candidate_id: str
-    description: str | None = None
-    target_project: str | None = None
-    route: str | None = (
-        None  # feishu-task | feishu-meeting | project-main | project-inbox | global-inbox
-    )
-    due_date: str | None = None
-    start_at: str | None = None  # 新建日历会议：本地 naive YYYY-MM-DDTHH:MM（空串 = 清除）
-    end_at: str | None = None
+    candidate_id: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=100_000)
+    target_project: str | None = Field(default=None, max_length=200)
+    route: (
+        Literal[
+            "feishu-task",
+            "feishu-meeting",
+            "project-main",
+            "project-followup",
+            "project-inbox",
+            "global-inbox",
+        ]
+        | None
+    ) = None  # feishu-task | feishu-meeting | project-main | project-inbox | global-inbox
+    due_date: str | None = Field(default=None, max_length=32)
+    start_at: str | None = Field(default=None, max_length=64)
+    end_at: str | None = Field(default=None, max_length=64)
 
 
 class TaskEditPayload(BaseModel):
     """今日待办任务行内编辑：只改标题与/或截止日期（空 due_date = 清除截止）。"""
 
-    task_id: str
-    summary: str | None = None
-    due_date: str | None = None
+    task_id: str = Field(min_length=1, max_length=2048)
+    summary: str | None = Field(default=None, max_length=200)
+    due_date: str | None = Field(default=None, max_length=32)
 
 
 class MeetingEditPayload(BaseModel):
     """今日会议行内编辑：只改标题与/或起止时间（本地 naive YYYY-MM-DDTHH:MM）。"""
 
-    event_id: str
-    summary: str | None = None
-    start_at: str | None = None
-    end_at: str | None = None
+    event_id: str = Field(min_length=1, max_length=2048)
+    summary: str | None = Field(default=None, max_length=200)
+    start_at: str | None = Field(default=None, max_length=64)
+    end_at: str | None = Field(default=None, max_length=64)
 
 
 class CapturePayload(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=100_000)
 
 
 class TaskCompletePayload(BaseModel):
     """把一条飞书任务标记为已完成（``task_id`` 即简报 ``task_list`` 里的飞书任务 guid）。"""
 
-    task_id: str
+    task_id: str = Field(min_length=1, max_length=2048)
 
 
 class ProjectPayload(BaseModel):
     """工作台精选（ADR 0023）：按文件夹名加入/归档项目。"""
 
-    name: str
+    name: str = Field(min_length=1, max_length=200)
 
 
 class ProjectCreatePayload(BaseModel):
     """新建知识线程项目（无 Work 文件夹的 vault 档案）。"""
 
-    project_id: str
-    aliases: list[str] = []
+    project_id: str = Field(min_length=1, max_length=200)
+    aliases: list[Annotated[str, Field(max_length=200)]] = Field(
+        default_factory=list, max_length=100
+    )
 
 
 class ProjectRenamePayload(BaseModel):
     """设置项目/线程的显示名（frontmatter ``title``；不影响规范 ID、别名与文件夹）。"""
 
-    name: str
-    title: str
+    name: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=200)
 
 
 class LogAppendPayload(BaseModel):
     """追加一条推进日志：可关联 1..n 个线程/项目；AI 摘要是加分项，模型不可用只存原文。"""
 
-    projects: list[str]
-    text: str
+    projects: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=100
+    )
+    text: str = Field(min_length=1, max_length=100_000)
 
 
 class ArtifactSavePayload(BaseModel):
     """把一段 AI 产物（阶段总结/PRD/背景包等）存入某个线程档案。"""
 
-    project: str
-    text: str
-    title: str | None = None
+    project: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=100_000)
+    title: str | None = Field(default=None, max_length=200)
 
 
 class ProjectStatePayload(BaseModel):
     """把主档案「当前状态」区块替换为一段文本（产物摘要 → 状态草案）。"""
 
-    project: str
-    text: str
+    project: str = Field(min_length=1, max_length=200)
+    text: str = Field(min_length=1, max_length=100_000)
 
 
 class UndoRevertPayload(BaseModel):
     """撤销一次系统自动提交（``wb:`` 前缀的 vault 提交）。"""
 
-    sha: str
+    sha: str = Field(max_length=40)
 
 
 class ExternalActionReconcilePayload(BaseModel):
     """外部创建结果核对：recheck | succeeded | not-found | retry。"""
 
-    decision: str
-    remote_id: str | None = None
+    decision: Literal["recheck", "succeeded", "not-found", "retry"]
+    remote_id: str | None = Field(default=None, max_length=2048)
     confirm_retry: bool = False
 
 
@@ -128,15 +144,17 @@ class AskHistoryTurn(BaseModel):
     刻意**不带** AI 当时的答案全文——AI 回答不是 vault 事实，不进入下一轮来源集合。
     """
 
-    question: str
-    sources: list[str] = []
+    question: str = Field(min_length=1, max_length=2_000)
+    sources: list[Annotated[str, Field(max_length=2048)]] = Field(
+        default_factory=list, max_length=100
+    )
 
 
 class AskPayload(BaseModel):
-    question: str
-    history: list[AskHistoryTurn] = []
+    question: str = Field(min_length=1, max_length=2_000)
+    history: list[AskHistoryTurn] = Field(default_factory=list, max_length=100)
     # 可选的检索范围：限定到某个项目/线程（其档案+日志+产物+关联会议）。
-    project: str | None = None
+    project: str | None = Field(default=None, max_length=200)
 
 
 # ---- 序列化 ----

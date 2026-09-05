@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,8 @@ import urllib.request
 import typer
 
 from summit_workbench.config.settings import load_settings
+from summit_workbench.webapp.build_info import mode_from_environment
+from summit_workbench.webapp.security import validate_bind_host
 
 
 def _server_alive(host: str, port: int) -> bool:
@@ -74,6 +77,11 @@ def web_command(
     ),
 ) -> None:
     """在 localhost 启动 Web 工作台；--open 可随时「点开直达」。"""
+    try:
+        validate_bind_host(host, mode_from_environment(os.environ.get("WB_PANEL_MODE")))
+    except ValueError as exc:
+        typer.echo(f"✗ 启动拒绝：{exc}")
+        raise typer.Exit(code=2) from exc
     if open_browser:
         if _server_alive(host, port):
             typer.echo(f"面板已在运行：http://{host}:{port}/")
@@ -99,4 +107,6 @@ def web_command(
     )
     typer.echo(f"工作台：http://{host}:{port}/  （Ctrl+C 停止）")
     typer.echo(f"vault：{paths.vault_dir}")
-    uvicorn.run(create_app(ctx), host=host, port=port, log_level="warning")
+    uvicorn.run(
+        create_app(ctx, bind_host=host, port=port), host=host, port=port, log_level="warning"
+    )

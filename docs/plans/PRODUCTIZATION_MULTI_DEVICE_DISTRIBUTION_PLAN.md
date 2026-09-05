@@ -395,6 +395,50 @@ unknown  -> reconciled-succeeded
 
 **验收**：所有现有 38 个路由有读/写分类表；每个写路由至少经过统一认证/Origin/input/error 中间层。
 
+**38 条路由读写分类（P0-05）**：统一安全中间层覆盖下表全部路由；其中 `POST` 为写请求，
+`GET` 为读取或只读预演。SSR 兼容路由保留旧页面响应，但同样经过 Host/Origin 边界。
+
+| 方法 | 路由 | 分类 |
+|---|---|---|
+| GET | `/api/version` | 读 |
+| GET | `/api/state` | 读 |
+| POST | `/api/projects/rename` | 写 |
+| POST | `/api/projects/activate` | 写 |
+| POST | `/api/projects/archive` | 写 |
+| POST | `/api/projects/create` | 写 |
+| GET | `/api/review` | 读 |
+| POST | `/api/review/decide` | 写 |
+| POST | `/api/review/batch` | 写 |
+| POST | `/api/review/edit` | 写 |
+| POST | `/api/review/plan` | 读（POST 只读预演） |
+| GET | `/api/external-actions` | 读 |
+| POST | `/api/external-actions/{operation_id}/reconcile` | 写 |
+| POST | `/api/review/apply` | 写 |
+| POST | `/api/threads/state` | 写 |
+| GET | `/api/projects/view` | 读 |
+| POST | `/api/threads/logs` | 写 |
+| POST | `/api/threads/artifacts` | 写 |
+| POST | `/api/capture` | 写 |
+| POST | `/api/tasks/complete` | 写 |
+| POST | `/api/tasks/update` | 写 |
+| POST | `/api/meetings/update` | 写 |
+| POST | `/api/run/brief` | 写 |
+| POST | `/api/run/weekly` | 写 |
+| POST | `/api/ask` | 读（问答请求） |
+| POST | `/api/meetings/import` | 写 |
+| GET | `/api/undo/history` | 读 |
+| GET | `/api/undo/diff` | 读 |
+| POST | `/api/undo/revert` | 写 |
+| POST | `/api/shutdown` | 写 |
+| POST | `/run/brief` | 写（SSR 兼容） |
+| POST | `/run/weekly` | 写（SSR 兼容） |
+| POST | `/ask` | 写（SSR 兼容） |
+| GET | `/review` | 读（SSR 兼容） |
+| POST | `/review/decide` | 写（SSR 兼容） |
+| POST | `/review/edit` | 写（SSR 兼容） |
+| GET | `/review/plan` | 读（SSR 预演） |
+| POST | `/review/apply` | 写（SSR 兼容） |
+
 ### P0-06 · 文件耐久性、隔离去重与锁根统一
 
 **目的**：完善异常退出耐久性，避免重复隔离坏行和因自定义 vault 路径导致锁分裂。

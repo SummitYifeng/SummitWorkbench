@@ -10,6 +10,8 @@ import uvicorn
 
 from summit_workbench.config.settings import load_settings
 from summit_workbench.webapp.app import WebContext, create_app
+from summit_workbench.webapp.build_info import mode_from_environment
+from summit_workbench.webapp.security import validate_bind_host
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -23,6 +25,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
+    validate_bind_host(args.host, mode_from_environment(os.environ.get("WB_PANEL_MODE")))
     settings = load_settings(work_root=args.work_root) if args.work_root else load_settings()
     paths = settings.work_paths()
     static_dir = Path(args.static_dir).expanduser() if args.static_dir else None
@@ -34,7 +37,7 @@ def main(argv: list[str] | None = None) -> None:
         timezone=settings.timezone,
     )
     uvicorn.run(
-        create_app(ctx, static_dir=static_dir),
+        create_app(ctx, static_dir=static_dir, bind_host=args.host, port=args.port),
         host=args.host,
         port=args.port,
         log_level="warning",

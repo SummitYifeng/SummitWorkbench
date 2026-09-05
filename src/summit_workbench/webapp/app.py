@@ -22,11 +22,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from html import escape
+from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
@@ -108,6 +110,14 @@ from summit_workbench.webapp.build_info import (
     WebBuildInfo,
     mode_from_environment,
     new_server_instance,
+)
+from summit_workbench.webapp.security import (
+    SESSION_HEADER,
+    allowed_hosts,
+    error_payload,
+    origin_matches,
+    session_token_matches,
+    validate_bind_host,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
 from summit_workbench.workflows.external_actions import (
@@ -238,7 +248,7 @@ def _mutation_fields[T](result: LocalMutationResult[T]) -> dict[str, object]:
     }
 
 
-def _undo_error_response(code: str, message: str) -> JSONResponse:
+def _undo_error_response(code: str, message: str, *, operation_id: str = "unknown") -> JSONResponse:
     """返回撤销 API 的稳定 4xx 错误 envelope。"""
     status_code = {
         "undo_invalid_commit": 422,
@@ -248,7 +258,7 @@ def _undo_error_response(code: str, message: str) -> JSONResponse:
     }.get(code, 409)
     return JSONResponse(
         status_code=status_code,
-        content={"ok": False, "code": code, "message": message},
+        content=error_payload(code=code, message=message, operation_id=operation_id),
     )
 
 
@@ -436,8 +446,22 @@ def _run_web_import(ctx: WebContext, transcript_path: Path) -> dict[str, object]
     }
 
 
-def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
+def create_app(
+    ctx: WebContext,
+    *,
+    static_dir: Path | None = None,
+    bind_host: str = "127.0.0.1",
+    port: int = 8787,
+) -> FastAPI:
     feishu_clients = _FeishuClientPool()
+    panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
+    validate_bind_host(bind_host, panel_mode)
+    normalized_bind_host = bind_host.strip().strip("[]").lower()
+    external_bind = normalized_bind_host not in {
+        "127.0.0.1",
+        "::1",
+    }
+    host_allowlist = allowed_hosts(bind_host, port, include_test_alias=panel_mode != "production")
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -451,7 +475,102 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     spa_dir = static_dir or _STATIC_DIR
     server_instance = new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    panel_mode = mode_from_environment(os.environ.get("WB_PANEL_MODE"))
+
+    def _operation_id(request: Request) -> str:
+        operation_id = getattr(request.state, "operation_id", None)
+        return str(operation_id or "unknown")
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+        details = [
+            {"loc": list(error.get("loc", ())), "msg": str(error.get("msg", "输入无效"))}
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content=error_payload(
+                code="validation_error",
+                message="请求参数不符合接口约束",
+                operation_id=_operation_id(request),
+                details=details,
+            ),
+        )
+
+    @app.exception_handler(HTTPException)
+    async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
+        detail = exc.detail
+        code = "http_error"
+        message = str(detail)
+        details: object | None = None
+        if isinstance(detail, dict):
+            code = str(detail.get("code", code))
+            message = str(detail.get("message", message))
+            details = detail.get("details")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(
+                code=code,
+                message=message,
+                operation_id=_operation_id(request),
+                details=details,
+            ),
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content=error_payload(
+                code="internal_error",
+                message="服务内部错误，请稍后重试",
+                operation_id=_operation_id(request),
+            ),
+        )
+
+    @app.middleware("http")
+    async def _security_boundary(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        from uuid import uuid4
+
+        operation_id = str(uuid4())
+        request.state.operation_id = operation_id
+        host = request.headers.get("host", "").lower()
+        if host not in host_allowlist:
+            return JSONResponse(
+                status_code=403,
+                content=error_payload(
+                    code="host_not_allowed",
+                    message="请求 Host 不属于当前本地服务",
+                    operation_id=operation_id,
+                ),
+            )
+        if request.method in {"POST", "PATCH", "DELETE"}:
+            origin = request.headers.get("origin")
+            if origin is not None and not origin_matches(
+                origin, request.url.scheme, host_allowlist
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content=error_payload(
+                        code="origin_not_allowed",
+                        message="请求来源不是当前服务同源地址",
+                        operation_id=operation_id,
+                    ),
+                )
+            if external_bind or (origin is None and panel_mode == "production"):
+                if not session_token_matches(request.headers.get(SESSION_HEADER)):
+                    return JSONResponse(
+                        status_code=401,
+                        content=error_payload(
+                            code="authentication_required",
+                            message="写请求需要本地会话令牌",
+                            operation_id=operation_id,
+                        ),
+                    )
+        response = await call_next(request)
+        response.headers["X-WB-Operation-ID"] = operation_id
+        return response
 
     def _build_info() -> WebBuildInfo:
         return WebBuildInfo.from_static_dir(spa_dir)
@@ -507,17 +626,18 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
     # ---- JSON API（SPA 工作台） ----
 
     @app.get("/api/version")
-    def api_version() -> JSONResponse:
+    def api_version(request: Request) -> JSONResponse:
         """轻量 readiness + build handshake；静态构建无效时明确返回 503。"""
         try:
             info = _build_info()
         except BuildInfoError as exc:
             return JSONResponse(
                 status_code=503,
-                content={
-                    "ok": False,
-                    "error": {"code": "invalid_build_manifest", "message": str(exc)},
-                },
+                content=error_payload(
+                    code="invalid_build_manifest",
+                    message=str(exc),
+                    operation_id=_operation_id(request),
+                ),
                 headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
             )
         return JSONResponse(
@@ -1274,8 +1394,8 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
             return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
 
-    @app.post("/api/ask")
-    def api_ask(payload: AskPayload) -> dict[str, object]:
+    @app.post("/api/ask", response_model=None)
+    def api_ask(request: Request, payload: AskPayload) -> dict[str, object] | JSONResponse:
         question = payload.question.strip()
         if not question:
             return {"ok": False, "message": "请输入问题"}
@@ -1290,15 +1410,42 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         if payload.project:
             project = load_project_registry(ctx.vault_dir).resolve(payload.project)
         html, source_ids = _ask_html(ctx.vault_dir, question, history=history, project=project)
+        if html.startswith('<p class="not-actionable">问答不可用：'):
+            return JSONResponse(
+                status_code=503,
+                content=error_payload(
+                    code="ask_unavailable",
+                    message="问答服务暂不可用",
+                    operation_id=_operation_id(request),
+                ),
+            )
         return {"ok": True, "answer_html": html, "source_ids": source_ids}
 
     @app.post("/api/meetings/import")
     def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
         """拖拽上传逐字稿 → 全自动归档 + 结构化 + 生成审批候选。"""
-        name = file.filename or "transcript.txt"
+        max_upload_bytes = 10 * 1024 * 1024
+        chunk_size = 64 * 1024
+        name = (file.filename or "transcript.txt")[:200]
         if not name.lower().endswith((".md", ".txt")):
             return {"ok": False, "message": "仅支持 .md / .txt 逐字稿文件"}
-        data = file.file.read()
+        buffer = BytesIO()
+        total = 0
+        while True:
+            chunk = file.file.read(chunk_size)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_upload_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail={
+                        "code": "upload_too_large",
+                        "message": "逐字稿文件不能超过 10 MiB",
+                    },
+                )
+            buffer.write(chunk)
+        data = buffer.getvalue()
         text = data.decode("utf-8", errors="replace")
         if not text.strip():
             return {"ok": False, "message": "文件内容为空"}
@@ -1327,20 +1474,26 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         return {"ok": True, "commits": [c.as_dict() for c in commits], "note": None}
 
     @app.get("/api/undo/diff", response_model=None)
-    def api_undo_diff(sha: str) -> dict[str, object] | JSONResponse:
+    def api_undo_diff(request: Request, sha: str) -> dict[str, object] | JSONResponse:
         """某次 wb 提交的 before/after 差异（git show 输出），供撤销前预览。"""
         text, error = commit_diff_text(ctx.vault_dir, sha)
         if error is not None:
             code = undo_error_code(error)
-            return _undo_error_response(code, f"无法读取差异：{error}")
+            return _undo_error_response(
+                code, f"无法读取差异：{error}", operation_id=_operation_id(request)
+            )
         return {"ok": True, "diff": text}
 
     @app.post("/api/undo/revert", response_model=None)
-    def api_undo_revert(payload: UndoRevertPayload) -> dict[str, object] | JSONResponse:
+    def api_undo_revert(
+        request: Request, payload: UndoRevertPayload
+    ) -> dict[str, object] | JSONResponse:
         """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
         sha = payload.sha.strip()
         if not sha:
-            return _undo_error_response("undo_invalid_commit", "缺少提交 sha")
+            return _undo_error_response(
+                "undo_invalid_commit", "缺少提交 sha", operation_id=_operation_id(request)
+            )
         result = revert_commit(ctx.vault_dir, sha)
         if result.status is CommitStatus.REVERTED:
             # 明示边界：飞书侧副作用（已建任务/会议、已完成状态）不可撤销。
@@ -1350,7 +1503,9 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
                 "已完成状态）不可撤销、不受本次还原影响。" + (result.detail or ""),
             }
         if result.status is CommitStatus.NOT_GIT:
-            return _undo_error_response("undo_not_git", "vault 不是 git 仓库，无法撤销")
+            return _undo_error_response(
+                "undo_not_git", "vault 不是 git 仓库，无法撤销", operation_id=_operation_id(request)
+            )
         code = {
             "invalid-wb-commit": "undo_invalid_commit",
             "undo-target-dirty": "undo_target_dirty",
@@ -1359,6 +1514,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         return _undo_error_response(
             code,
             f"还原失败：{result.detail or result.status.value}",
+            operation_id=_operation_id(request),
         )
 
     @app.post("/api/shutdown")
@@ -1418,7 +1574,7 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         return RedirectResponse(url=f"/?msg={msg}", status_code=303)
 
     @app.post("/ask", response_class=HTMLResponse)
-    def ask_endpoint(question: str = Form("")) -> HTMLResponse:
+    def ask_endpoint(question: str = Form("", max_length=2_000)) -> HTMLResponse:
         q = question.strip()
         if not q:
             return _dashboard(msg="请输入问题")
@@ -1431,7 +1587,10 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
         return HTMLResponse(render_review(entries, errors, message=msg))
 
     @app.post("/review/decide", response_class=RedirectResponse)
-    def decide(candidate_id: str = Form(...), decision: str = Form(...)) -> RedirectResponse:
+    def decide(
+        candidate_id: str = Form(..., min_length=1, max_length=200),
+        decision: str = Form(..., max_length=32),
+    ) -> RedirectResponse:
         try:
             set_decision(ctx.vault_dir, candidate_id, CandidateDecision(decision))
             msg = f"已更新 {candidate_id} → {decision}"
@@ -1441,11 +1600,11 @@ def create_app(ctx: WebContext, *, static_dir: Path | None = None) -> FastAPI:
 
     @app.post("/review/edit", response_class=RedirectResponse)
     def edit(
-        candidate_id: str = Form(...),
-        description: str = Form(""),
-        target_project: str = Form(""),
-        route: str = Form(""),
-        due_date: str = Form(""),
+        candidate_id: str = Form(..., min_length=1, max_length=200),
+        description: str = Form("", max_length=100_000),
+        target_project: str = Form("", max_length=200),
+        route: str = Form("", max_length=64),
+        due_date: str = Form("", max_length=32),
     ) -> RedirectResponse:
         try:
             update_fields(

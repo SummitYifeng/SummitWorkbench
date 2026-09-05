@@ -225,7 +225,15 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
     const resp = await fetch(url, init);
     if (!resp.ok) {
       connectionHadFailure = true;
-      throw new Error('请求失败：HTTP ' + resp.status);
+      let detail: { message?: string; code?: string; operation_id?: string } | null = null;
+      try {
+        detail = (await resp.json()) as { message?: string; code?: string; operation_id?: string };
+      } catch {
+        // 非 JSON 错误响应仍按 HTTP 状态提示。
+      }
+      const label = detail?.message ?? '请求失败：HTTP ' + resp.status;
+      const code = detail?.code ? ' [' + detail.code + ']' : '';
+      throw new Error(label + code);
     }
     if (connectionHadFailure && url !== '/api/version') {
       connectionHadFailure = false;

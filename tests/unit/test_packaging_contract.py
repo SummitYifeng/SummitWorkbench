@@ -18,7 +18,9 @@ def test_packaging_spec_collects_runtime_and_project_data() -> None:
 def test_server_entry_requires_bundle_static_directory() -> None:
     source = (_ROOT / "src/summit_workbench/webapp/server_entry.py").read_text(encoding="utf-8")
     assert "--static-dir" in source
-    assert "create_app(ctx, static_dir=static_dir)" in source
+    assert "create_app(ctx, static_dir=static_dir" in source
+    assert "bind_host=args.host" in source
+    assert "port=args.port" in source
     assert "uvicorn.run" in source
 
 

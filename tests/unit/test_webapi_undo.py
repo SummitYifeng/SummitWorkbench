@@ -120,4 +120,6 @@ def test_u4_revert_rejects_missing_sha_with_4xx_code(tmp_path: Path) -> None:
     vault = _git_vault(tmp_path)
     r = _client(vault).post("/api/undo/revert", json={"sha": ""})
     assert r.status_code == 422
-    assert r.json() == {"ok": False, "code": "undo_invalid_commit", "message": "缺少提交 sha"}
+    assert r.json()["ok"] is False
+    assert r.json()["code"] == "undo_invalid_commit"
+    assert r.json()["operation_id"]

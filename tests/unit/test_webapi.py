@@ -135,7 +135,8 @@ def test_api_version_returns_503_for_invalid_manifest(tmp_path: Path) -> None:
     ctx = WebContext(vault_dir=tmp_path / "_vault", work_root=tmp_path, timezone="Asia/Shanghai")
     response = TestClient(create_app(ctx, static_dir=static_dir)).get("/api/version")
     assert response.status_code == 503
-    assert response.json()["error"]["code"] == "invalid_build_manifest"
+    assert response.json()["code"] == "invalid_build_manifest"
+    assert response.json()["operation_id"]
 
 
 def test_spa_home_uses_no_store(tmp_path: Path) -> None:
@@ -476,9 +477,9 @@ def test_api_ask_without_model_shows_unavailable(tmp_path: Path, monkeypatch) ->
     client, _ = _client(tmp_path)
     resp = client.post("/api/ask", json={"question": "最近有什么决策"})
     data = resp.json()
-    assert data["ok"] is True
-    assert "问答不可用" in data["answer_html"]
-    assert data["source_ids"] == []
+    assert resp.status_code == 503
+    assert data["ok"] is False
+    assert data["code"] == "ask_unavailable"
 
 
 def test_api_ask_accepts_history_payload(tmp_path: Path, monkeypatch) -> None:
@@ -495,10 +496,10 @@ def test_api_ask_accepts_history_payload(tmp_path: Path, monkeypatch) -> None:
             ],
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 503
     data = resp.json()
-    assert data["ok"] is True
-    assert "问答不可用" in data["answer_html"]
+    assert data["ok"] is False
+    assert data["code"] == "ask_unavailable"
 
 
 # ---------- SPA 服务 ----------
