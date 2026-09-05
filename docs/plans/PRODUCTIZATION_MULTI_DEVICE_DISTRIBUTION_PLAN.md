@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07 已完成，其余工作包尚未开始
+> 状态：可执行，P0-01、P0-02、P0-03、P0-04、P0-05、P0-06、P0-07、P0-08 已完成，其余工作包尚未开始
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -190,7 +190,7 @@ account = git:<host>:<username>
 | 5 | P0-05 本地 Web 边界、输入预算与错误语义 | P0 | 无 | M | [x] |
 | 6 | P0-06 文件耐久性、隔离去重与锁根统一 | P0 | 无 | M | [x] |
 | 7 | P0-07 Workspace/Profile/Device 领域与存储 | P0 | P0-06 | L | [x] |
-| 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [ ] |
+| 8 | P0-08 新建/升级/连接工作区服务 | P0 | P0-07 | L | [x] |
 | 9 | P0-09 可打包 Git 后端与凭据适配 | P0 | P0-01、P0-07 | L | [ ] |
 | 10 | P0-10 多设备同步协调器与主设备规则 | P0 | P0-02、P0-09 | L | [ ] |
 | 11 | P0-11 首次使用向导与设置中心 | P0 | P0-04、P0-08、P0-10 | L | [ ] |
@@ -438,6 +438,17 @@ unknown  -> reconciled-succeeded
 | POST | `/review/edit` | 写（SSR 兼容） |
 | GET | `/review/plan` | 读（SSR 预演） |
 | POST | `/review/apply` | 写（SSR 兼容） |
+
+P0-08 追加（onboarding 服务 API，无 UI；create/upgrade/connect 均为全流程事务服务，
+失败整体回滚并返回 409 + `onboarding_rejected` 稳定码）：
+
+| 方法 | 路由 | 分类 |
+|---|---|---|
+| GET | `/api/onboarding/status` | 读（active / env-compat / onboarding-required）|
+| POST | `/api/onboarding/preflight` | 读（POST 只读预演，结构化预检报告）|
+| POST | `/api/onboarding/create` | 写 |
+| POST | `/api/onboarding/upgrade` | 写 |
+| POST | `/api/onboarding/connect` | 写 |
 
 ### P0-06 · 文件耐久性、隔离去重与锁根统一
 
@@ -1224,6 +1235,22 @@ ADR 必须记录最终实现与验证证据，不得只复制本计划。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（225 files）通过；`uv run pytest`（632 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
 - 真机验证：未执行（使用临时 HOME/临时目录与 fake Keychain 离线验证；未访问真实 `~/Documents/Work`、真实 Keychain、真实飞书、模型或第二台 Mac；打包 App 的真实 Application Support/重签名稳定性属 P0-13 真机门）
 - 遗留：onboarding 服务/API（create/upgrade/connect）与 provider 凭据接线、生产入口全面切换 `resolve_workspace`、doctor/status 展示 onboarding-required 随 P0-08/P0-12 落地；下一工作包为 P0-08，本次未开始。
+
+### 2026-09-05 · P0-08
+
+- 状态：完成
+- Git commit：待提交后回填（本地提交并推送至 `origin/main`）
+- 变更摘要：
+  - 新增 `domain/onboarding.py`（OnboardingFlow/PreflightReport/OnboardingResult）与 `workflows/onboarding.py` 服务层，三条流程全部实现：
+    - **create-new**：选择 Work Root → 父目录按需创建 → staging 目录拷贝 allowlist 模板（inbox/conventions，`{{date}}` 填充）→ 写 marker → `os.replace` 原子改名到 `<work_root>/_vault`；目标 `_vault` 已存在即拒绝且绝不覆盖；成功后建档并置 active；任何中途失败回滚本次创建的 vault/marker/profile/registry（绝不删用户目录）。
+    - **upgrade-existing**：旧 vault（无 marker）只读预检 → Application Support/backups 下 timestamped 备份（仅将被修改的 marker/配置快照，不复制大 vault）→ 写 marker + profile + active；业务内容哈希不变、不运行 git；已有 marker 拒绝并提示走 connect。
+    - **connect-local**：带 marker vault 校验 schema（cannot-open 拒绝并提示升级 App）→ 建档 + active；本地 profile 与其它 workspace 完全隔离。
+  - 模板个人化卫生扫描（命中即拒绝）：绝对 `/Users/<名>/` 路径、home/仓库绝对路径、`WB_BLOCKED_ACCOUNTS` 账号；CloudStorage 网盘路径（iCloud/Dropbox/OneDrive/Google Drive…）一律拒绝（网盘同步含 .git 工作区损坏仓库）；全程不调系统 git、不 git init。
+  - Web `/api/onboarding/*`（status / preflight / create / upgrade / connect，`response_model=None` + 显式 `Body()`；拒绝返回 409 + `onboarding_rejected` 稳定码与 reasons）；`config/app_support.py` 补 `backups_dir`、`profile_registry` 补 `drop_profile`（回滚用）。
+- 目标测试：新增 19 项（`test_onboarding.py` 13 项：新建成功/目标已存在拒绝/中途失败回滚/重复提交幂等、旧 vault 升级内容哈希不变仅新增 marker+profile+backup、连接隔离、CloudStorage 拒绝与本地通过、模板个人化扫描拒绝、.git 仅探测不运行；`test_webapi_onboarding.py` 6 项：status/preflight/create/upgrade/connect 端点与 409 错误 envelope）
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（229 files）通过；`uv run pytest`（651 passed，1 skipped；跳过既有需 `WB_PACKAGED_APP` 的打包 smoke）
+- 真机验证：未执行（使用临时 HOME/临时目录离线验证，无真实 Keychain/`~/Documents/Work`/第二台 Mac；UI 引导与 profile 切换设置中心属 P0-11）
+- 遗留：P0-08 路由已登记进 P0-05 路由表（onboarding 五条）；git init/backend 属 P0-09；首次使用向导 UI、多 profile 切换、doctor/status 展示 onboarding-required 属 P0-11/P0-12；下一工作包为 P0-09，本次未开始。
 
 ## 16. 外部实现依据
 

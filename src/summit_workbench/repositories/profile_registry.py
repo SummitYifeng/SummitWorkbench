@@ -116,6 +116,33 @@ def active_profile_id(home: Path | None = None) -> str | None:
     return load_registry(home).active_workspace_id
 
 
+def drop_profile(workspace_id: str, home: Path | None = None) -> bool:
+    """删除本机某 workspace 的 profile（索引项 + 独立配置 + active 指向）。
+
+    用于 onboarding 失败回滚 / 显式移除本机档案。**绝不删除 vault 或其它用户目录**，
+    只清理本机 Application Support 内由本模块创建的内容；返回是否确实删除了内容。
+    """
+    removed = False
+    registry = load_registry(home)
+    if workspace_id in registry.profiles or registry.active_workspace_id == workspace_id:
+        registry.profiles = [item for item in registry.profiles if item != workspace_id]
+        if registry.active_workspace_id == workspace_id:
+            registry.active_workspace_id = None
+        save_registry(registry, home=home)
+        removed = True
+    config = profile_config_file(workspace_id, home)
+    if config.is_file():
+        config.unlink()
+        removed = True
+    directory = profile_dir(workspace_id, home)
+    if directory.is_dir():
+        try:
+            directory.rmdir()  # 只删空目录；若已写入 runtime 等内容则保留
+        except OSError:
+            pass
+    return removed
+
+
 # ---- profiles/<id>/config.toml ----
 
 

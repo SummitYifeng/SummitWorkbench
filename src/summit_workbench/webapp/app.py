@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -94,6 +94,9 @@ from summit_workbench.webapp.api import (
     ExternalActionReconcilePayload,
     LogAppendPayload,
     MeetingEditPayload,
+    OnboardingCreatePayload,
+    OnboardingPreflightPayload,
+    OnboardingVaultPayload,
     ProjectCreatePayload,
     ProjectPayload,
     ProjectRenamePayload,
@@ -1649,5 +1652,96 @@ def create_app(
             detail = f"应用失败：{type(exc).__name__}: {exc}"
             return HTMLResponse(render_plan(detail, executed=True))
         return HTMLResponse(render_plan(_plan_text(report), executed=True))
+
+    # ---- onboarding 服务 API（P0-08：服务 + API，无 UI） ----
+
+    from summit_workbench.domain.onboarding import OnboardingFlow
+    from summit_workbench.workflows import onboarding as onboarding_service
+
+    def _onboarding_rejected(
+        request: Request, exc: onboarding_service.OnboardingError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=error_payload(
+                code="onboarding_rejected",
+                message=str(exc),
+                operation_id=_operation_id(request),
+                details={"reasons": exc.reasons},
+            ),
+        )
+
+    @app.get("/api/onboarding/status", response_model=None)
+    def api_onboarding_status() -> dict[str, object]:
+        """当前 workspace 解析状态：active / env-compat / onboarding-required。"""
+        from summit_workbench.config.profiles import resolve_workspace
+
+        resolution = resolve_workspace()
+        return {
+            "ok": True,
+            "state": resolution.state.value,
+            "workspace_id": resolution.profile.workspace_id if resolution.profile else None,
+            "reason": resolution.reason,
+        }
+
+    @app.post("/api/onboarding/preflight", response_model=None)
+    def api_onboarding_preflight(
+        request: Request, payload: Annotated[OnboardingPreflightPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        """只读预演：返回结构化预检报告（不写任何文件）。"""
+        try:
+            report = onboarding_service.preflight(
+                OnboardingFlow(payload.flow),
+                Path(payload.path).expanduser(),
+                templates_dir=onboarding_service.default_vault_templates_dir(),
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _onboarding_rejected(request, exc)
+        return {"ok": True, "report": report.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/create", response_model=None)
+    def api_onboarding_create(
+        request: Request, payload: Annotated[OnboardingCreatePayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        """create-new：全新工作区（staging + 原子改名 + marker + profile，失败回滚）。"""
+        try:
+            result = onboarding_service.create_workspace(
+                Path(payload.work_root).expanduser(),
+                display_name=payload.display_name,
+                device_name=payload.device_name,
+                templates_dir=onboarding_service.default_vault_templates_dir(),
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _onboarding_rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/upgrade", response_model=None)
+    def api_onboarding_upgrade(
+        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        """upgrade-existing：旧 vault 升级（备份 + marker + profile，内容不动）。"""
+        try:
+            result = onboarding_service.upgrade_workspace(
+                Path(payload.vault_dir).expanduser(),
+                device_name=payload.device_name,
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _onboarding_rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
+
+    @app.post("/api/onboarding/connect", response_model=None)
+    def api_onboarding_connect(
+        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        """connect-local：连接已 clone/拷贝的带 marker vault（建档 + 置 active）。"""
+        try:
+            result = onboarding_service.connect_workspace(
+                Path(payload.vault_dir).expanduser(),
+                display_name=payload.display_name,
+                device_name=payload.device_name,
+            )
+        except onboarding_service.OnboardingError as exc:
+            return _onboarding_rejected(request, exc)
+        return {"ok": True, **result.model_dump(mode="json")}
 
     return app

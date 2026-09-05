@@ -157,6 +157,28 @@ class AskPayload(BaseModel):
     project: str | None = Field(default=None, max_length=200)
 
 
+# ---- onboarding 服务 API（P0-08，无 UI；服务在 workflows/onboarding.py） ----
+
+
+class OnboardingPreflightPayload(BaseModel):
+    flow: Literal["create-new", "upgrade-existing", "connect-local"]
+    path: str = Field(min_length=1, max_length=2_048)
+
+
+class OnboardingCreatePayload(BaseModel):
+    work_root: str = Field(min_length=1, max_length=2_048)
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device_name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class OnboardingVaultPayload(BaseModel):
+    """upgrade-existing / connect-local 的目标 vault。"""
+
+    vault_dir: str = Field(min_length=1, max_length=2_048)
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    device_name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 # ---- 序列化 ----
 
 

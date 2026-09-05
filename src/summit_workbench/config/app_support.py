@@ -8,9 +8,10 @@
     <home>/Library/Application Support/SummitWorkbench/
     ├── registry.json                     # 本机 profile 索引（atomic, 0600）
     ├── device.json                       # 本机 device_id（atomic, 0600）
-    └── profiles/<workspace_id>/
-        ├── config.toml                   # 本机路径与非秘密配置（atomic, 0600）
-        └── runtime/                      # 端口/实例/会话等短期状态（P0-12 用）
+    ├── profiles/<workspace_id>/
+    │   ├── config.toml                   # 本机路径与非秘密配置（atomic, 0600）
+    │   └── runtime/                      # 端口/实例/会话等短期状态（P0-12 用）
+    └── backups/                          # 配置/迁移/升级前快照（P0-08 起，不同步）
 
     <home>/Library/Logs/SummitWorkbench/  # 本机滚动日志
 
@@ -72,3 +73,8 @@ def profile_config_file(workspace_id: str, home: Path | None = None) -> Path:
 def runtime_dir(workspace_id: str, home: Path | None = None) -> Path:
     """某 workspace 的短期运行时状态目录（端口/实例/会话，P0-12 用）。"""
     return profile_dir(workspace_id, home) / "runtime"
+
+
+def backups_dir(home: Path | None = None) -> Path:
+    """配置/迁移/升级前备份根目录（不同步；P0-08 onboarding 用）。"""
+    return app_support_dir(home) / "backups"
