@@ -18,8 +18,8 @@ BUILD_NUMBER="${BUILD_NUMBER:-0}"
 RELEASE_BUILD="${RELEASE_BUILD:-false}"
 
 case "$ARCH" in
-  arm64|x86_64) ;;
-  *) echo "✗ ARCH 只支持 arm64 或 x86_64：$ARCH" >&2; exit 1 ;;
+  arm64) ;;
+  *) echo "✗ 本产品仅支持 arm64 Apple Silicon（M2 及以上）：$ARCH" >&2; exit 1 ;;
 esac
 if [[ "$RELEASE_BUILD" == true && "$BUILD_NUMBER" == 0 ]]; then
   echo "✗ 正式/候选构建必须显式提供 BUILD_NUMBER（CI run 或发布参数）" >&2
@@ -104,8 +104,8 @@ chmod +x "$APP/Contents/MacOS/SummitWorkbench"
 SHORT_VERSION="$PROJECT_VERSION"
 BUNDLE_VERSION="$BUILD_NUMBER"
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
-  DISPLAY_NAME="SummitWorkbench (UNSIGNED-DEV)"
-  RELEASE_LABEL="UNSIGNED-DEV"
+  DISPLAY_NAME="SummitWorkbench (INTERNAL-DEV)"
+  RELEASE_LABEL="INTERNAL-DEV"
 else
   DISPLAY_NAME="SummitWorkbench"
   RELEASE_LABEL="SIGNED"
@@ -141,7 +141,7 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
 MANIFEST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
-# 先签名 dylib/framework，再签名 PyInstaller executable，最后签名 App（hardened-runtime）。
+# 先签名 dylib/framework，再签名 PyInstaller executable，最后签名 App；内部包统一使用 ad-hoc。
 ENTITLEMENTS="$REPO_ROOT/packaging/entitlements.plist"
 [[ -f "$ENTITLEMENTS" ]] || { echo "✗ 缺少最小 entitlement：$ENTITLEMENTS" >&2; exit 1; }
 SIGN_FLAGS=(--force --sign "$SIGNING_IDENTITY")

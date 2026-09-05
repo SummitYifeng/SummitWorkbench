@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# 构建一个可审计的 macOS DMG。没有完整 Apple 凭据时只生成 UNSIGNED-DEV 包。
+# 构建仅供 M2+ Apple Silicon 内部使用的可审计 macOS DMG。
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="$REPO_ROOT/.venv/bin/python"
 ARCH="${ARCH:-$(uname -m)}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
-SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 FINAL_ROOT="${RELEASE_OUTPUT_DIR:-$REPO_ROOT/dist/releases}"
 
 case "$ARCH" in
-  arm64|x86_64) ;;
-  *) echo "✗ ARCH 只支持 arm64 或 x86_64：$ARCH" >&2; exit 1 ;;
+  arm64) ;;
+  *) echo "✗ 本产品仅支持 arm64 Apple Silicon（M2 及以上）：$ARCH" >&2; exit 1 ;;
 esac
 [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
   echo "✗ 请显式提供 BUILD_NUMBER（CI run 或发布参数）" >&2
@@ -31,17 +29,10 @@ print(tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["project"]["v
 PY
 )"
 
-# 只有同时提供 Developer ID 和 Keychain 中的 notarytool profile 才进入正式路径。
-if [[ -n "$SIGNING_IDENTITY" && -n "$NOTARY_PROFILE" ]]; then
-  DISTRIBUTION="SIGNED"
-  SIGN_IDENTITY="$SIGNING_IDENTITY"
-  SUFFIX=""
-else
-  DISTRIBUTION="UNSIGNED-DEV"
-  SIGN_IDENTITY="-"
-  SUFFIX="-UNSIGNED-DEV"
-  echo "⚠ 缺少 Developer ID 或 notarytool Keychain profile，生成 UNSIGNED-DEV"
-fi
+# 内部/个人自用不需要 Developer ID 或 notarization；使用 ad-hoc 签名并明确标识用途。
+DISTRIBUTION="INTERNAL-DEV"
+SIGN_IDENTITY="-"
+SUFFIX="-INTERNAL-DEV"
 
 RELEASE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/summitworkbench-release.XXXXXX")"
 cleanup() { rm -rf "$RELEASE_TMP"; }
@@ -52,7 +43,7 @@ APP="$RELEASE_TMP/package/SummitWorkbench-$VERSION-$ARCH${SUFFIX}.app"
 ARCH="$ARCH" BUILD_NUMBER="$BUILD_NUMBER" RELEASE_BUILD=true \
   OUTPUT_APP="$APP" SIGNING_IDENTITY="$SIGN_IDENTITY" \
   "$REPO_ROOT/scripts/build-macos-app.sh"
-# notarization 前只能做本地 bundle/离线门；spctl/stapler 在 staple 后复验。
+# 内部 ad-hoc 包只执行本地 bundle/离线验证，不访问 Apple 在线发布服务。
 SKIP_APPLE_ONLINE=true "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP"
 
 DMG_STAGE="$RELEASE_TMP/dmg-stage"
@@ -64,15 +55,8 @@ DMG_TMP="$RELEASE_TMP/$DMG_NAME"
 hdiutil create -volname "SummitWorkbench $VERSION ($ARCH)" -srcfolder "$DMG_STAGE" \
   -format UDZO -ov "$DMG_TMP" >/dev/null
 
-if [[ "$DISTRIBUTION" == SIGNED ]]; then
-  xcrun notarytool submit "$DMG_TMP" --keychain-profile "$NOTARY_PROFILE" \
-    --wait --output-format json > "$RELEASE_TMP/notary-log.json"
-  xcrun stapler staple "$APP"
-  xcrun stapler staple "$DMG_TMP"
-else
-  printf '{"status":"not-run","reason":"missing Developer ID identity or notarytool Keychain profile"}\n' \
-    > "$RELEASE_TMP/notary-log.json"
-fi
+printf '{"status":"not-applicable","reason":"internal arm64 M2+ distribution; no Apple Developer ID/notarization required"}\n' \
+  > "$RELEASE_TMP/notary-log.json"
 "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP" "$DMG_TMP"
 
 META="$RELEASE_TMP/package/release-metadata.json"
@@ -132,4 +116,4 @@ fi
 mkdir -p "$(dirname "$FINAL_DIR")"
 mv "$RELEASE_TMP/package" "$FINAL_DIR"
 echo "✓ 已生成 $DISTRIBUTION 包：$FINAL_DIR/$DMG_NAME"
-[[ "$DISTRIBUTION" == UNSIGNED-DEV ]] && echo "  仅供离线开发验证，不可标为 release。"
+echo "  仅供 M2+ Apple Silicon 内部/个人自用，不支持 Intel/Windows。"

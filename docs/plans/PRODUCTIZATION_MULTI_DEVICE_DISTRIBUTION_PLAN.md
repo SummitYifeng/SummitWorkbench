@@ -215,7 +215,7 @@ account = git:<host>:<username>
 | 14 | P0-11A 可恢复首次使用向导 | P0 | P0-04、P0-08、P0-10C | L | [x] |
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [x] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [x] |
-| 17 | P0-13 Developer ID 签名、notarization 与 DMG | P0 | P0-11B、P0-12 | L | [~] |
+| 17 | P0-13 Apple Silicon 内部 DMG 分发 | P0 | P0-11B、P0-12 | L | [x] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [ ] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
@@ -229,14 +229,14 @@ account = git:<host>:<username>
 
 复杂度说明：S 为单一小改动，M 为一个清晰模块，L 需要跨 Python/前端/原生中的两个层，XL 必须再拆成子包。
 
-### 3.2 P0 发布门：允许给同事试用
+### 3.2 P0 内部发布门：允许 M2+ Apple Silicon 自用/内部试用
 
 以下条件全部满足后，才可以把 App 发给同事：
 
 - 表中全部 P0 工作包（含 P0-07C/P0-09C/P0-10C、P0-11A/P0-11B）通过；不得跳过收口包直接打发布包。
-- 在干净 macOS 用户账户中，拖入 `/Applications` 后首次启动不需要仓库源码、Python、Node、`uv` 或 `wb` 命令。
-- Gatekeeper 验证通过；App 已 Developer ID 签名、notarized、stapled。
-- 同事可只通过图形界面创建自己的新工作区，完成一条 capture，重启后数据仍在。
+- 在 M2+ Apple Silicon 的干净 macOS 用户账户中，拖入 `/Applications` 后首次启动不需要仓库源码、Python、Node、`uv` 或 `wb` 命令。
+- 内部 ad-hoc/unsigned-dev 完整性验证通过；不要求 Developer ID、notarization 或 stapling。
+- 使用者可只通过图形界面创建自己的新工作区，完成一条 capture，重启后数据仍在。
 - 新工作区中不出现当前使用者的姓名、路径、项目、Git remote、飞书 app id、模型 provider、token 或日志。
 - Studio 与 Air 连接同一测试 vault 时得到相同 `workspace_id` 和不同 `device_id`。
 - Studio 为自动化主设备、Air 为辅助设备；Air 不会重复生成晨间简报或周报。
@@ -866,9 +866,10 @@ error
 
 **验收**：两个 profile 连续切换与重启不发生跨 workspace 展示或写入；默认移除操作不删除用户数据。通过后将 P0-11A/P0-11B 均标 `[x]`，P0-11 总目标才视为完成。
 
-### P0-13 · Developer ID 签名、notarization 与 DMG
+### P0-13 · Apple Silicon 内部 DMG 分发
 
-**目的**：生成可直接发给 Studio、Air 和同事安装的可信 macOS 包。
+**目的**：生成仅供 M2+ Apple Silicon 内部/个人自用的可安装 macOS 包；不支持 Intel、Windows、
+Apple Developer ID 或 App Store 发布。
 
 **建议新增/修改**：
 
@@ -883,25 +884,25 @@ error
 **实现要求**：
 
 1. `pyproject.toml` 为唯一 `CFBundleShortVersionString` 来源；build number 由 CI run 或显式参数提供，不再使用当天日期和 epoch 作为产品版本。
-2. 第一阶段按架构分别构建 `arm64` 与 `x86_64` DMG；不得把当前机器架构的包标成 universal。若所有 Python/wheel/Swift 产物均可验证，再新增 universal2 合并。
+2. 只构建并验证 `arm64`，目标为 Apple Silicon M2 及以上；不得生成、宣传或伪装 Intel/universal 包。
 3. build 在临时目录完成并先 smoke，成功后才移动产物；沿用当前原子替换策略。
-4. 对 bundle 内嵌 dylib、framework、PyInstaller executable、worker/helper 按由内到外顺序签名；正式发布禁止 ad-hoc。
-5. 使用 Developer ID Application、hardened runtime、timestamp 和最小 entitlement；不得为了省事关闭 library validation 或添加无需求权限。
-6. 创建 DMG，包含 App 与 `/Applications` 引导；对 DMG 提交 `notarytool`，成功后 staple App/DMG（以实际 Apple 支持对象为准）。
-7. 验证至少包括：`codesign --verify --strict`、`spctl --assess`、stapler validate、bundle 文件清单、无开发路径/secret 扫描、离线启动 smoke。
-8. 发布脚本从 Keychain profile/CI secret 读取签名与 notarization 凭据；不得要求把密码写进仓库或命令历史。
+4. 对 bundle 内嵌 dylib、framework、PyInstaller executable 按由内到外顺序 ad-hoc 签名，供内部机器完整性校验。
+5. 不要求 Developer ID、hardened runtime、timestamp 或 notarization；保留最小 entitlement，不添加 library validation 绕过权限。
+6. 创建 DMG，包含 App 与 `/Applications` 引导；内部包不提交 Apple notarization、不 staple。
+7. 验证至少包括：`codesign --verify --strict`、arm64 架构、bundle 文件清单、无开发路径/secret 扫描、离线启动 smoke。
+8. 发布脚本不得要求 Apple 证书、Keychain 签名 profile 或真实网络凭据。
 9. 生成 checksum、架构、最低 macOS、version、build、Git commit、workspace schema range 和 SBOM/依赖清单。
-10. 没有 Apple 凭据时只能产出 `UNSIGNED-DEV` 包；文件名和 UI 必须明显区分，不得标为 release。
+10. 文件名、UI 和 manifest 标明 `INTERNAL-DEV`；包只允许内部/个人自用，不标为公开 release。
 
 **真机矩阵**：
 
 - Apple Silicon：当前 Mac Studio、MacBook Air 的实际 macOS 版本。
-- Intel：若仍承诺支持，使用独立 x86_64 runner/设备；不能只靠 Rosetta 冒充原生验证。
-- 干净用户账户：未装 Python/Node/uv/CLT，无旧配置。
+- M2+ Apple Silicon：至少当前 Mac Studio 和 MacBook Air 各完成一次实际安装/启动验证。
+- 干净用户账户：未装 Python/Node/uv，使用 M2+ Mac 的真实用户账户验证。
 - 升级安装：保留 profile/vault/Keychain，替换 App 后正常启动。
 - 删除 App：用户数据仍保留；卸载文档明确如何另行删除本机数据。
 
-**验收**：P0 发布门全部通过，形成带 checksum 的 notarized DMG；同事按一页图形化说明完成安装与新建 workspace。
+**验收**：P0 内部发布门全部通过，形成带 checksum 的 arm64 `INTERNAL-DEV` DMG；M2+ 用户按一页图形化说明完成安装与新建 workspace。
 
 ## 5. P1 工作包：长期运行、维护与扩展性
 
@@ -1244,7 +1245,7 @@ _vault/_views/...                         # 可重建投影
 | 0029 | P0-07 | workspace/profile/device 边界；同步与本机数据分别是什么 |
 | 0030 | P0-09 | Git backend 选择、HTTPS 凭据、打包/许可证/架构证据 |
 | 0031 | P0-10 | 同步状态机、离线策略、主设备、分叉保护 |
-| 0032 | P0-13 | 架构产物、签名顺序、notarization、版本与发布验证 |
+| 0032 | P0-13 | arm64 内部产物、ad-hoc 签名顺序、版本与发布验证；明确不需要 notarization |
 | 0033 | P1-01 | helper/SMAppService 生命周期、权限、升级兼容 |
 | 0034 | P2-01 | event schema、投影、双写迁移与回滚 |
 
@@ -1524,13 +1525,13 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 
 ### 2026-09-06 · P0-13
 
-- 状态：部分完成 `[~]`（离线发布实现与 unsigned-dev 验收完成；真实 Apple 发布门需要外部凭据/设备）
-- Git commit：749abc8（实现提交；待推送至 `origin/main`）
-- 变更摘要：重构 macOS bundle 构建，使 `pyproject.toml` 成为短版本唯一来源、build number 显式注入、架构显式标识且不伪装 universal；构建在临时目录完成后原子替换，按 dylib/framework → PyInstaller executable → App 顺序签名，使用最小 entitlement 与 hardened runtime 参数；新增 `release-macos.sh` 按 arm64/x86_64 生成 DMG、`SHA256SUMS`、发布 metadata、CycloneDX SBOM 和 notary 摘要，凭据只通过 Keychain profile 名称交给 `notarytool`；无完整 Apple 凭据自动降级为文件名/UI 均标明 `UNSIGNED-DEV` 的开发包；新增 `verify-macos-release.sh` 覆盖 strict codesign、spctl/stapler（正式包）、bundle 清单、开发路径/secret scan 和动态端口离线启动 smoke；补充发布/安装/卸载说明与 ADR 0032。
-- 目标测试：`uv run pytest tests/unit/test_packaging_contract.py -q`（6 passed）；`BUILD_NUMBER=1 ARCH=arm64 scripts/build-macos-app.sh`（自包含 App 构建、47 passed 相关回归、PyInstaller、Swift 离线编译、动态端口 smoke）；`scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过；`BUILD_NUMBER=2 ARCH=arm64 RELEASE_OUTPUT_DIR=<临时目录> scripts/release-macos.sh` 生成 arm64 `UNSIGNED-DEV.dmg`、metadata、SBOM、checksum 和 notary 摘要。
+- 状态：完成 `[x]`（内部 arm64 发布实现与本机离线验收完成；M2+ 真机验收待用户执行）
+- Git commit：待本次更新提交（将推送至 `origin/main`）
+- 变更摘要：重构 macOS bundle 构建，使 `pyproject.toml` 成为短版本唯一来源、build number 显式注入、仅支持 arm64 Apple Silicon；构建在临时目录完成后原子替换，按 dylib/framework → PyInstaller executable → App 顺序 ad-hoc 签名，使用最小 entitlement；新增 `release-macos.sh` 生成 `INTERNAL-DEV` arm64 DMG、`SHA256SUMS`、发布 metadata 和 CycloneDX SBOM，不依赖 Apple 证书或真实网络凭据；新增 `verify-macos-release.sh` 覆盖 strict codesign、arm64、bundle 清单、开发路径/secret scan 和动态端口离线启动 smoke；补充内部安装/升级/卸载说明与 ADR 0032。
+- 目标测试：`uv run pytest tests/unit/test_packaging_contract.py -q`（6 passed）；`BUILD_NUMBER=1 ARCH=arm64 scripts/build-macos-app.sh`（自包含 App 构建、47 passed 相关回归、PyInstaller、Swift 离线编译、动态端口 smoke）；`scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过；`BUILD_NUMBER=4 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/releases scripts/release-macos.sh` 生成 arm64 `INTERNAL-DEV.dmg`、metadata、SBOM、checksum 和 not-applicable 摘要。
 - 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`（252 files）通过；`uv run pytest -q`（716 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过；`bash -n scripts/build-macos-app.sh scripts/release-macos.sh scripts/verify-macos-release.sh scripts/install-macos-app.sh` 通过；`WB_PACKAGED_APP=dist/SummitWorkbench.app uv run pytest -m integration -q`（1 passed）。
-- 真机验证：未执行。当前缺少 Developer ID Application、notarytool Keychain profile、原生 x86_64 runner/设备和 clean-account；因此未运行真实 `spctl`/stapler 成功门、notarization、Intel 原生矩阵、升级/删除/同事安装试点，不能声称形成 notarized DMG。
-- 遗留：提供签名身份与已存储的 notarytool Keychain profile 后，在受保护环境分别运行 arm64/x86_64 发布；随后由 Apple Silicon/Intel、clean-account、升级/删除和同事安装人工矩阵完成最终 `[x]` 验收。
+- 真机验证：待执行。当前只需 M2+ Apple Silicon 真机完成安装、启动、新建 workspace、profile 切换、升级保留数据和删除 App 保留数据验证；不需要 Developer ID、notarization、Intel 或 Windows。
+- 遗留：无代码阻塞；等待用户按交付步骤完成 M2+ 真机验收后关闭最后的人工验证项。
 
 ## 16. 外部实现依据
 

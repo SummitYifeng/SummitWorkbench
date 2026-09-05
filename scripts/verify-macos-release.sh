@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 验证 App/DMG 的签名、清单、隐私卫生和离线服务启动；UNSIGNED-DEV 只跳过 Apple 在线门。
+# 验证 App/DMG 的签名、清单、隐私卫生和离线服务启动；内部包跳过 Apple 在线门。
 set -euo pipefail
 
 APP="${1:-}"
@@ -16,8 +16,8 @@ MANIFEST="$APP/Contents/Resources/build-manifest.json"
 codesign --verify --strict "$APP"
 codesign --verify --deep --strict "$APP"
 SIGNATURE="$(codesign -dv --verbose=4 "$APP" 2>&1 || true)"
-if grep -q 'UNSIGNED-DEV' "$MANIFEST" || grep -q 'Signature=adhoc' <<<"$SIGNATURE"; then
-  echo "⚠ UNSIGNED-DEV：跳过 spctl/stapler 在线签名门"
+if grep -qE 'INTERNAL-DEV|UNSIGNED-DEV' "$MANIFEST" || grep -q 'Signature=adhoc' <<<"$SIGNATURE"; then
+  echo "✓ 内部 ad-hoc 包：跳过 spctl/stapler 在线签名门"
 elif [[ "${SKIP_APPLE_ONLINE:-false}" == true ]]; then
   echo "↻ notarization 前跳过 spctl/stapler，待 staple 后复验"
 else

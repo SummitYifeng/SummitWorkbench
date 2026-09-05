@@ -1,34 +1,28 @@
 # SummitWorkbench macOS 发布
 
-## 本机离线开发包
+## 内部/个人自用包（仅 M2+ Apple Silicon）
 
-发布脚本要求显式 build number，并按架构命名产物。没有 Developer ID 和
-`notarytool` Keychain profile 时，脚本只生成名字和 App 界面均标明
-`UNSIGNED-DEV` 的开发包：
+发布脚本要求显式 build number，只构建 arm64，并生成名字和 App 界面均标明
+`INTERNAL-DEV` 的 ad-hoc 包。不需要 Apple Developer ID、notarization、Intel 或 Windows：
 
 ```bash
 BUILD_NUMBER=123 ARCH=arm64 scripts/release-macos.sh
 ```
 
 产物包含 App、DMG、`SHA256SUMS`、`release-metadata.json`、`SBOM.json` 和 notary
-结果摘要。`UNSIGNED-DEV` 不能作为 release 或发给同事；它只用于离线启动 smoke 和
-包内容检查。
+不适用摘要。`INTERNAL-DEV` 只用于内部/个人自用、离线启动 smoke 和包内容检查。
 
-## 正式发布
+## 构建与验证
 
-签名身份与 notarization 凭据不写入仓库、脚本参数或命令历史。把 notarization 凭据
-预先存入 macOS Keychain profile，然后在受保护的 CI/发布终端提供 profile 名称：
+不需要准备证书或账号：
 
 ```bash
 BUILD_NUMBER=456 ARCH=arm64 \
-SIGNING_IDENTITY='Developer ID Application: Example' \
-NOTARY_PROFILE='summitworkbench-release' \
 scripts/release-macos.sh
 ```
 
-正式路径按 `arm64` / `x86_64` 分别构建，完成 hardened runtime、timestamp、DMG、
-`notarytool submit --keychain-profile`、staple、`codesign`/`spctl`/stapler 验证后才
-发布。Intel 包必须在原生 x86_64 runner/设备上验证，不能用 Rosetta 代替。
+脚本会执行临时目录构建、ad-hoc 签名、DMG、checksum、SBOM、动态端口离线 smoke 和
+完整性验证，不会访问飞书或 Apple 网络服务。
 
 ## 用户安装与卸载
 
