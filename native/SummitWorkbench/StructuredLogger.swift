@@ -15,15 +15,25 @@ final class StructuredLogger {
     }
 
     func log(_ event: String, level: String = "info", fields: [String: String] = [:]) {
+        let sanitizedFields = PrivacyRedactor.fields(fields)
         var object: [String: Any] = [
             "ts": ISO8601DateFormatter().string(from: Date()),
+            "timestamp": ISO8601DateFormatter().string(from: Date()),
             "level": level,
             "component": "launcher",
-            "event": event,
+            "event": PrivacyRedactor.text(event),
             "launch_session": session,
             "app_build": appBuild,
+            "operation_id": "unknown",
+            "workspace_id": "unknown",
+            "device_id": "unknown",
+            "error_code": "",
         ]
-        fields.forEach { object[$0.key] = $0.value }
+        sanitizedFields.forEach { key, value in
+            guard !["ts", "timestamp", "level", "component", "event", "operation_id",
+                    "workspace_id", "device_id", "error_code"].contains(key) else { return }
+            object[key] = value
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: object),
               let line = String(data: data, encoding: .utf8) else { return }
         queue.async { [weak self] in

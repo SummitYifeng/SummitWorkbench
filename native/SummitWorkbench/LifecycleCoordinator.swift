@@ -129,6 +129,10 @@ final class LifecycleCoordinator {
             }
         case .copyDiagnostics:
             copyDiagnostics()
+        case .openLogDirectory:
+            let logs = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs")
+            NSWorkspace.shared.open(logs)
+            logger?.log("log_directory_opened")
         case .openExternal(let url):
             NSWorkspace.shared.open(url)
         case .saveTextFile(let filename, let content):

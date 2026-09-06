@@ -40,6 +40,23 @@ def create_app(
     )
     if context is not None:
         application.state.app_context = context
+        from summit_workbench.observability.structured_logging import StructuredLogger
+        from summit_workbench.webapp.dependencies import RouteDependencies
+        from summit_workbench.webapp.routers.diagnostics import register_diagnostics_routes
+
+        log_path = Path.home() / "Library" / "Logs" / "summitworkbench-panel.log"
+        application.state.structured_logger = StructuredLogger(log_path, component="webapp")
+        register_diagnostics_routes(
+            RouteDependencies(
+                app=application,
+                context=context,
+                operation_id=lambda request: str(
+                    getattr(request.state, "operation_id", "unknown")
+                ),
+            ),
+            static_dir=static_dir or Path(__file__).resolve().parent / "static",
+            log_path=log_path,
+        )
     return application
 
 

@@ -7,6 +7,7 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 SWIFT_SOURCES=(
   "$REPO_ROOT/native/SummitWorkbench/Models.swift"
+  "$REPO_ROOT/native/SummitWorkbench/PrivacyRedactor.swift"
   "$REPO_ROOT/native/SummitWorkbench/StructuredLogger.swift"
   "$REPO_ROOT/native/SummitWorkbench/AutomationServicePolicy.swift"
   "$REPO_ROOT/native/SummitWorkbench/AutomationServiceManager.swift"

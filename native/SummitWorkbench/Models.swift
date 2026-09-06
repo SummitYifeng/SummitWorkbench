@@ -131,6 +131,7 @@ enum NativeMessage {
     case clientReady(build: String, serverInstance: String)
     case quit
     case copyDiagnostics
+    case openLogDirectory
     case openExternal(URL)
     case saveTextFile(filename: String, content: String)
     case automationSettingsChanged(enabled: Bool)
@@ -146,6 +147,7 @@ enum NativeMessage {
             self = .clientReady(build: build, serverInstance: server)
         case "quit": self = .quit
         case "copyDiagnostics": self = .copyDiagnostics
+        case "openLogDirectory": self = .openLogDirectory
         case "openExternal":
             guard let raw = dictionary["url"] as? String, raw.count <= 2048,
                   let url = URL(string: raw), ["http", "https"].contains(url.scheme?.lowercased()) else { return nil }

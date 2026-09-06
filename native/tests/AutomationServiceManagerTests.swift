@@ -21,7 +21,9 @@ private final class FakeAutomationService: AutomationServiceControlling {
 }
 
 private func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
-    precondition(condition(), message)
+    let passed = condition()
+    if !passed { fputs(message + "\n", stderr) }
+    precondition(passed, message)
 }
 
 @main
@@ -71,6 +73,19 @@ struct AutomationServiceManagerTests {
             manager.setEnabled(false)
             expect(service.unregisterCalls == 0, "disabled must not unregister from \(initialStatus)")
         }
+
+        let diagnosticText = PrivacyRedactor.text(
+            "canary-secret-token Authorization: Bearer abc123 " +
+            "Cookie: session=secret-value meeting body: unreleased plan " +
+            "/Users/alice/Library/Logs/panel.log"
+        )
+        expect(!diagnosticText.contains("canary-secret-token"), "Swift diagnostics must redact canary")
+        expect(!diagnosticText.contains("abc123"), "Swift diagnostics must redact bearer token")
+        expect(!diagnosticText.contains("secret-value"), "Swift diagnostics must redact cookie")
+        expect(!diagnosticText.contains("unreleased plan"), "Swift diagnostics must redact meeting body")
+        expect(!diagnosticText.contains("/Users/alice"), "Swift diagnostics must redact home path")
+        expect(PrivacyRedactor.text("provider_token_invalid") == "provider_token_invalid",
+               "Swift diagnostics must preserve error code")
         print("native automation service manager tests passed")
     }
 }

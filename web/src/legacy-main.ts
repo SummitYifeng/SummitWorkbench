@@ -147,6 +147,11 @@ interface SyncStatusPayload {
   detail?: string;
   next_step?: string;
 }
+interface DiagnosticsPreviewPayload {
+  ok: boolean;
+  files: Array<{ name: string; description: string }>;
+  snapshot: Record<string, unknown>;
+}
 
 /** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
 interface ProjectView {
@@ -384,6 +389,42 @@ async function copyDiagnostics(): Promise<void> {
     toast('诊断信息已复制', 'ok');
   } catch {
     toast(lines.join(' · '), 'info');
+  }
+}
+
+async function previewDiagnostics(): Promise<void> {
+  const target = document.getElementById('diagnostics-preview');
+  try {
+    const result = await api<DiagnosticsPreviewPayload>('/api/diagnostics/preview');
+    if (target) {
+      target.innerHTML = '<div class="success"><strong>导出内容预览</strong><ul>' +
+        result.files.map((file) => '<li><code>' + esc(file.name) + '</code>：' + esc(file.description) + '</li>').join('') +
+        '</ul></div>';
+    }
+    toast('诊断包预览已生成', 'ok');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function exportDiagnostics(): Promise<void> {
+  try {
+    const response = await fetch('/api/diagnostics/export', { cache: 'no-store' });
+    if (!response.ok) throw new Error('诊断包导出失败（HTTP ' + response.status + '）');
+    const blob = await response.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'summitworkbench-diagnostics.zip';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 1000);
+    toast('诊断包已导出', 'ok');
+  } catch (err) {
+    toast(String(err), 'err');
   }
 }
 
@@ -1362,7 +1403,13 @@ async function renderSettings(view: HTMLElement): Promise<void> {
       '<label>模型 ID / App ID / 用户名<input id="provider-primary" placeholder="按类型填写"></label>' +
       '<label>服务地址 / Redirect URI / Host<input id="provider-secondary" placeholder="按类型填写"></label>' +
       '<label>秘密（可选）<input id="provider-secret" type="password" autocomplete="new-password"></label></div>' +
-      '<button class="primary" type="submit">保存 Provider 设置</button></form></section>';
+      '<button class="primary" type="submit">保存 Provider 设置</button></form></section>' +
+      '<section class="block"><h3 class="section-title">诊断与支持</h3>' +
+      '<p class="hint">诊断包只包含版本、架构、状态摘要、同步计数和脱敏错误，不包含会议正文、提示词、模型响应或凭据。</p>' +
+      '<div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button>' +
+      '<button class="ghost" data-action="diagnostics-export">导出诊断包</button>' +
+      '<button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div>' +
+      '<div id="diagnostics-preview"></div></section>';
     const form = document.getElementById('provider-settings-form') as HTMLFormElement | null;
     form?.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -1591,6 +1638,22 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'copy-diagnostics') {
     void copyDiagnostics();
+    return;
+  }
+  if (action === 'diagnostics-preview') {
+    void previewDiagnostics();
+    return;
+  }
+  if (action === 'diagnostics-export') {
+    void exportDiagnostics();
+    return;
+  }
+  if (action === 'diagnostics-open-log') {
+    if (sendNativeMessage({ type: 'openLogDirectory' })) {
+      toast('已打开日志目录', 'ok');
+    } else {
+      toast('日志目录位于 ~/Library/Logs', 'info');
+    }
     return;
   }
   if (action === 'sync-retry') {

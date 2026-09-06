@@ -41,6 +41,26 @@
     "method": [
       "GET"
     ],
+    "path": "/api/diagnostics/export",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/diagnostics/preview",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/external-actions",
     "request_fields": [],
     "request_model": null,
