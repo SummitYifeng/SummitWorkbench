@@ -27,7 +27,7 @@ def _run(*args: str, input_data: bytes | None = None) -> bytes:
 
 
 def _public_key(private_key: Path) -> str:
-    der = _run("openssl", "pkey", "-in", str(private_key), "-pubout", "-outform", "DER")
+    der = _run("pkey", "-in", str(private_key), "-pubout", "-outform", "DER")
     if len(der) < 32:
         raise ValueError("Ed25519 公钥 DER 无效")
     return base64.b64encode(der[-32:]).decode("ascii")
@@ -38,7 +38,6 @@ def _signature(private_key: Path, payload: bytes) -> str:
         raw.write(payload)
         raw.flush()
         signature = _run(
-            "openssl",
             "pkeyutl",
             "-sign",
             "-rawin",
