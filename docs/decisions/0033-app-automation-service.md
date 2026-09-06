@@ -50,3 +50,8 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
 - 最新日志仍为 `automation_registration_requested(status=notFound)`，随后 `automation_registration_failed(code=4, message=系统找不到 automation helper)`；因此不能把系统中看到的两个 `wb` 项当作新服务。
 - `sfltool dumpbtm` 显示两个 `wb` 来自旧版 legacy LaunchAgent：`~/Library/LaunchAgents/com.summitworkbench.brief.plist` 与 `com.summitworkbench.weekly.plist`，可执行文件均为仓库 `.venv/bin/wb`。
 - 当前阻塞：bundle 内 helper 已存在、Info.plist 标识与版本匹配、arm64 与 strict codesign 均通过，但真实 macOS 环境中的 `SMAppService.loginItem(identifier:)` 仍返回 `notFound`；需进一步确认 API 对 ad-hoc 签名、主 App 位置/注册数据库或 helper bundle 结构的额外约束。
+
+### build 15 前修复
+
+- `AutomationServiceManager` 现在对首次安装的 `.notFound` 与 `.notRegistered` 都调用 `register()`；`.enabled` 不重复注册，`.requiresApproval` 等待系统批准，停用只对可注销状态调用 `unregister()`。
+- 系统服务通过 `AutomationServiceControlling` 注入，原生状态行为由 fake service 覆盖四种状态；Python 测试新增 autouse 临时 HOME，避免默认测试读取或污染真实用户目录。

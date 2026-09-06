@@ -1576,6 +1576,12 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 旁证：系统中两个 `wb` 是旧版 `~/Library/LaunchAgents/com.summitworkbench.brief.plist` 与 `com.summitworkbench.weekly.plist`，可执行文件指向仓库 `.venv/bin/wb`，不是 P1-01 的嵌套 helper。
 - 当前结论：代码已提交、推送且离线/打包质量门通过；真实 macOS 的 SMAppService helper 解析仍未闭环，暂停进入 P1-02，交由更高模型继续定位。
 
+### 2026-09-06 · P1-01 build 15 修复准备
+
+- 状态：实现待全量质量门与真机复验 `[~]`
+- 变更摘要：修正首次安装状态：`SMAppService` 返回 `.notFound` 时不再提前报错，而是与 `.notRegistered` 一样实际调用 `register()`；新增 `AutomationServiceControlling` 注入层与 fake 状态行为单测；新增 pytest 全局临时 HOME fixture，修复默认测试隐式读取真实 HOME 并污染 atomic 测试目录的问题。
+- 验收：需完成全量质量门并生成 build 15；仅 build 15 首次启用“晨间简报”需要 Mac Studio 真机确认 `register()` 结果及系统设置展示。
+
 ## 16. 外部实现依据
 
 - Apple：Notarizing macOS software before distribution

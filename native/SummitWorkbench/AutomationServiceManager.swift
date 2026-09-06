@@ -1,15 +1,21 @@
 import Foundation
 import Security
-import ServiceManagement
 
 /// 通过 SMAppService 管理随 App 安装的自动化 helper。
 /// 不直接写 LaunchAgents/LaunchDaemons，由系统服务管理器负责生命周期。
 final class AutomationServiceManager {
     private let logger: StructuredLogger
-    private let service = SMAppService.loginItem(identifier: "com.summitworkbench.panel.automation")
+    private let service: AutomationServiceControlling
+    private let helperValidator: (() throws -> Void)?
 
-    init(logger: StructuredLogger) {
+    init(
+        logger: StructuredLogger,
+        service: AutomationServiceControlling? = nil,
+        helperValidator: (() throws -> Void)? = nil
+    ) {
         self.logger = logger
+        self.service = service ?? SMAppServiceController()
+        self.helperValidator = helperValidator
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -24,9 +30,9 @@ final class AutomationServiceManager {
                 fields: ["enabled": String(enabled), "status": statusDescription(before)]
             )
             if enabled {
-                try validateHelper()
+                if let helperValidator { try helperValidator() } else { try validateHelper() }
                 switch before {
-                case .notRegistered:
+                case .notRegistered, .notFound:
                     try service.register()
                 case .enabled:
                     break
@@ -34,12 +40,6 @@ final class AutomationServiceManager {
                     logger.log(
                         "automation_registration_waiting_approval",
                         fields: ["status": statusDescription(before)]
-                    )
-                case .notFound:
-                    throw NSError(
-                        domain: "SummitWorkbench.Automation",
-                        code: 4,
-                        userInfo: [NSLocalizedDescriptionKey: "系统找不到 automation helper"]
                     )
                 @unknown default:
                     throw NSError(
@@ -81,7 +81,7 @@ final class AutomationServiceManager {
         }
     }
 
-    private func statusDescription(_ status: SMAppService.Status) -> String {
+    private func statusDescription(_ status: AutomationServiceStatus) -> String {
         switch status {
         case .notRegistered: return "notRegistered"
         case .enabled: return "enabled"

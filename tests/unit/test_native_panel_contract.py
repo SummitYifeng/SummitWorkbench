@@ -82,14 +82,28 @@ def test_settings_doctor_declares_json_and_sync_export_supports_native_save() ->
 
 def test_p101_automation_manager_handles_all_smappservice_states() -> None:
     manager = _source("AutomationServiceManager.swift")
-    assert "case .notRegistered:" in manager
+    policy = _source("AutomationServicePolicy.swift")
+    assert "case .notRegistered, .notFound:" in manager
     assert "case .enabled:" in manager
     assert "case .requiresApproval:" in manager
-    assert "case .notFound:" in manager
+    assert "AutomationServiceControlling" in manager
+    assert "SMAppServiceController" in policy
     assert "automation_registration_waiting_approval" in manager
     assert '"status": statusDescription(service.status)' in manager
     assert '"domain": (error as NSError).domain' in manager
     assert 'helperBundle.bundleIdentifier == "com.summitworkbench.panel.automation"' in manager
+
+
+def test_p101_native_state_behavior_test_is_in_repository() -> None:
+    script = (_ROOT / "scripts" / "test-native-automation.sh").read_text(encoding="utf-8")
+    test = (_ROOT / "native" / "tests" / "AutomationServiceManagerTests.swift").read_text(
+        encoding="utf-8"
+    )
+    conftest = (_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+    assert "AutomationServiceManagerTests.swift" in script
+    assert "helperValidator: {}" in test
+    assert "AutomationServiceStatus.notFound" in test
+    assert 'monkeypatch.setenv("HOME", str(fake_home))' in conftest
 
 
 def test_p101_uses_smappservice_and_preserves_native_bridge_controls() -> None:

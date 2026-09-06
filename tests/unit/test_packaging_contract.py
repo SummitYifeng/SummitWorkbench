@@ -90,9 +90,12 @@ def test_p101_packages_a_self_contained_worker_and_native_helper() -> None:
     manager = (_ROOT / "native" / "SummitWorkbench" / "AutomationServiceManager.swift").read_text(
         encoding="utf-8"
     )
+    policy = (_ROOT / "native" / "SummitWorkbench" / "AutomationServicePolicy.swift").read_text(
+        encoding="utf-8"
+    )
     assert "SummitWorkbenchWorker.spec" in build
     assert "Contents/Helpers/SummitWorkbenchWorker" in build
     assert "worker_entry.py" in spec
     assert "Process()" in helper
-    assert "SMAppService.loginItem" in manager
+    assert "SMAppService.loginItem" in (manager + "\n" + policy)
     assert "launchctl" not in manager
