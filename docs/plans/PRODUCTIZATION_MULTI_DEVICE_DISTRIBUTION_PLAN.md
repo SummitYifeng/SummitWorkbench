@@ -1582,6 +1582,14 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 变更摘要：修正首次安装状态：`SMAppService` 返回 `.notFound` 时不再提前报错，而是与 `.notRegistered` 一样实际调用 `register()`；新增 `AutomationServiceControlling` 注入层与 fake 状态行为单测；新增 pytest 全局临时 HOME fixture，修复默认测试隐式读取真实 HOME 并污染 atomic 测试目录的问题。
 - 验收：需完成全量质量门并生成 build 15；仅 build 15 首次启用“晨间简报”需要 Mac Studio 真机确认 `register()` 结果及系统设置展示。
 
+### 2026-09-06 · P1-01 build 15 已出包
+
+- 状态：等待首次启用真机验收 `[~]`
+- Git commit：5d3bef8、623ff14；发布记录提交待推送
+- 产物：`dist/releases-p101-build15/0.4.1/arm64/SummitWorkbench-0.4.1-arm64-INTERNAL-DEV.dmg`；SHA256 `a92ff5de104671d52702c0676819f1e210d45615299efc2a79708105ce19da04`
+- 全量质量门：`733 passed, 1 skipped`；ruff、format、mypy、前端构建验证、脚本语法、原生 fake 状态测试、Swift arm64 编译与 build 15 App/DMG 离线发布验证均通过。
+- 当前停止点：只等待 build 15 首次启用“晨间简报”后的真实 `register()` 结果；若返回 `SMAppServiceErrorDomain` 错误或仍未出现在“App 后台活动”，再继续修复；不进入 P1-02。
+
 ## 16. 外部实现依据
 
 - Apple：Notarizing macOS software before distribution
