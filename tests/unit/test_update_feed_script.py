@@ -3,12 +3,25 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _openssl3() -> str:
+    candidates = [
+        Path("/opt/homebrew/opt/openssl@3/bin/openssl"),
+        Path("/usr/local/opt/openssl@3/bin/openssl"),
+        Path("/usr/bin/openssl"),
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            version = subprocess.check_output([str(candidate), "version"], text=True)
+            if version.startswith("OpenSSL 3."):
+                return str(candidate)
+    raise AssertionError("P1-07C 真实签名测试需要 OpenSSL 3")
 
 
 def test_generator_emits_sha256_size_signature_and_public_key(tmp_path: Path) -> None:
@@ -16,9 +29,8 @@ def test_generator_emits_sha256_size_signature_and_public_key(tmp_path: Path) ->
     dmg = tmp_path / "SummitWorkbench.dmg"
     output = tmp_path / "update-feed.json"
     dmg.write_bytes(b"offline-dmg-fixture")
-    generated = subprocess.run(["openssl", "genpkey", "-algorithm", "ED25519", "-out", str(key)])
-    if generated.returncode != 0:
-        pytest.skip("当前离线工具链的 openssl 不提供 Ed25519；发布机需使用支持 Ed25519 的 openssl")
+    openssl = _openssl3()
+    subprocess.run([openssl, "genpkey", "-algorithm", "ED25519", "-out", str(key)], check=True)
 
     subprocess.run(
         [
@@ -40,6 +52,7 @@ def test_generator_emits_sha256_size_signature_and_public_key(tmp_path: Path) ->
         ],
         check=True,
         cwd=ROOT,
+        env={**os.environ, "OPENSSL_BIN": openssl},
     )
 
     feed = json.loads(output.read_text(encoding="utf-8"))

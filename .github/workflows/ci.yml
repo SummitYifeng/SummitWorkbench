@@ -14,6 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-lint:
+    name: GitHub Actions workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflows with actionlint
+        uses: raven-actions/actionlint@v2
+
   quality-gate:
     # macOS runner：本工具依赖 macOS 专属能力（Keychain 的 security、launchd、osascript），
     # 诊断/预检会检查这些系统工具存在，故必须在 macOS 上跑质量门。
@@ -40,6 +48,9 @@ jobs:
       - name: Verify uv lock
         run: uv lock --check
 
+      - name: Install OpenSSL 3 for real update signing tests
+        run: brew install openssl@3
+
       - name: Ruff lint
         run: uv run ruff check .
 
@@ -64,6 +75,9 @@ jobs:
       - name: Secret scan
         run: uv run python scripts/secret_scan.py
 
+      - name: Native update behavior tests
+        run: scripts/test-native-updates.sh
+
   macos-build-matrix:
     name: macOS ${{ matrix.architecture }} contract
     strategy:
@@ -75,7 +89,7 @@ jobs:
             architecture: arm64
             supported: true
           # Intel 不属于产品支持面；保留独立负向门，确保不会误发 x86 包。
-          - runner: macos-13
+          - runner: macos-15-intel
             architecture: x86_64
             supported: false
     runs-on: ${{ matrix.runner }}

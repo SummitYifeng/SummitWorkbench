@@ -6,19 +6,28 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  workflow-lint:
+    name: GitHub Actions workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflows with actionlint
+        uses: raven-actions/actionlint@v2
+
   release:
+    needs: workflow-lint
     # macos-14 是本产品唯一支持的 Apple Silicon release runner。
     runs-on: macos-14
-    environment: release
+    environment:
+      name: release
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate tag and runner architecture before signing
         id: version
-        env:
         run: |
           VERSION="$(python3 - <<'PY'
           import tomllib
@@ -50,6 +59,29 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Install OpenSSL 3 signing toolchain
+        run: |
+          brew install openssl@3
+          echo "OPENSSL_BIN=$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
+
+      - name: Prepare protected update configuration
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
+          UPDATE_DOWNLOAD_URL: ${{ vars.UPDATE_DOWNLOAD_URL }}
+        run: |
+          [[ -n "$UPDATE_SIGNING_KEY" ]] || { echo "missing release secret UPDATE_SIGNING_KEY" >&2; exit 1; }
+          [[ "$UPDATE_FEED_URL" == https://* ]] || { echo "UPDATE_FEED_URL must be HTTPS" >&2; exit 1; }
+          [[ "$UPDATE_DOWNLOAD_URL" == https://* ]] || { echo "UPDATE_DOWNLOAD_URL must be HTTPS" >&2; exit 1; }
+          KEY_PATH="$RUNNER_TEMP/update-signing-key.pem"
+          (umask 077 && printf '%s\n' "$UPDATE_SIGNING_KEY" > "$KEY_PATH")
+          test "$(stat -f '%Lp' "$KEY_PATH")" = 600
+          {
+            echo "UPDATE_SIGNING_KEY_PATH=$KEY_PATH"
+            echo "UPDATE_FEED_URL=$UPDATE_FEED_URL"
+            echo "UPDATE_DOWNLOAD_URL=$UPDATE_DOWNLOAD_URL"
+          } >> "$GITHUB_ENV"
+
       - name: Install locked dependencies
         run: |
           uv sync --extra dev --extra web --extra packaging
@@ -59,11 +91,12 @@ jobs:
       - name: Secret scan
         run: uv run python scripts/secret_scan.py
 
-      - name: Build internal arm64 DMG
+      - name: Build signed internal arm64 DMG
         env:
           ARCH: arm64
           BUILD_NUMBER: ${{ github.run_number }}
           RELEASE_OUTPUT_DIR: dist/ci-release
+          REQUIRE_SIGNED_UPDATE: "true"
         run: scripts/release-macos.sh
 
       - name: Run packaged integration tests
@@ -71,9 +104,26 @@ jobs:
           WB_PACKAGED_APP: dist/ci-release/${{ steps.version.outputs.version }}/arm64/SummitWorkbench.app
         run: uv run pytest -m integration -q
 
-      - name: Upload release package and test manifest
+      - name: Upload fully verified package as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: SummitWorkbench-${{ github.ref_name }}-arm64
           path: dist/ci-release/**
           if-no-files-found: error
+
+      # Create and fill a draft first. A signing, test, or asset upload failure leaves
+      # only a draft and can never publish a partial latest release.
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --draft --title "SummitWorkbench ${{ steps.version.outputs.version }}" --notes "Verified internal arm64 release; update feed and DMG are integrity-protected."
+
+      - name: Upload complete release assets to draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/ci-release/${{ steps.version.outputs.version }}/arm64/* --clobber
+
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false

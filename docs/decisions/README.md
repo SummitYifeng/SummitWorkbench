@@ -43,7 +43,7 @@
 | [0036](0036-frontend-feature-lifecycle-boundaries.md) | v0.4.1 加固 P1-04 | ✅ 前端 feature 边界、typed API client 与 workspace 生命周期 |
 | [0037](0037-diagnostics-privacy-supportability.md) | v0.4.1 加固 P1-05 | ✅ 诊断包、结构化日志、脱敏与本地可支持性 |
 | [0038](0038-ci-coverage-release-matrix.md) | v0.4.1 加固 P1-06 | ✅ CI、80% 覆盖率门与 M2+ arm64 发布矩阵 |
-| [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07 | ⚠️ 内部 arm64 Ed25519 更新 feed 与安全手动下载；真实发布验收待补 |
+| [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07C | 🚧 发布闭环与外部验收进行中；内部 arm64 Ed25519 更新 feed / 手动下载 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

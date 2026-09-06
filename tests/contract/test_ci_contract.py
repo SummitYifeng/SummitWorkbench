@@ -30,8 +30,18 @@ def test_release_workflow_validates_tag_and_runs_packaged_integration() -> None:
         "ARCH: arm64",
         "WB_PACKAGED_APP:",
         "actions/upload-artifact@v4",
+        "raven-actions/actionlint@v2",
+        "environment:",
+        "secrets.UPDATE_SIGNING_KEY",
+        "vars.UPDATE_FEED_URL",
+        "vars.UPDATE_DOWNLOAD_URL",
+        'REQUIRE_SIGNED_UPDATE: "true"',
+        "OpenSSL 3",
+        "--draft",
+        "gh release edit",
     ):
         assert required in workflow
+    assert "        env:\n        run:" not in workflow
 
 
 def test_release_scripts_enforce_arm64_metadata_and_publish_test_manifest() -> None:
@@ -40,3 +50,23 @@ def test_release_scripts_enforce_arm64_metadata_and_publish_test_manifest() -> N
     assert "$(uname -m)" in build
     assert '"architecture": "$ARCH"' in build
     assert "test-manifest.json" in release
+    assert "--require-openssl3" in release
+    assert "REQUIRE_SIGNED_UPDATE" in release
+
+
+def test_p107c_has_real_workflow_and_native_behavior_gates() -> None:
+    workflow_lint = (ROOT / "scripts/verify-workflows.sh").read_text(encoding="utf-8")
+    swift_test = (ROOT / "scripts/test-native-updates.sh").read_text(encoding="utf-8")
+    update_source = (ROOT / "native/SummitWorkbench/UpdateCoordinator.swift").read_text(
+        encoding="utf-8"
+    )
+    bridge = (ROOT / "web/src/lifecycle/native-bridge.ts").read_text(encoding="utf-8")
+    main = (ROOT / "web/src/legacy-main.ts").read_text(encoding="utf-8")
+    assert "actionlint" in workflow_lint
+    assert "UpdateNetworking" in update_source
+    assert "UpdateFileSystem" in update_source
+    assert "UpdateDefaults" in update_source
+    assert "UpdateAppOpener" in update_source
+    assert "workspaceIsCompatible" in update_source
+    assert "updateAutoCheckChanged" in bridge + main
+    assert "UpdateCoordinatorTests.swift" in swift_test

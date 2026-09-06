@@ -1404,6 +1404,9 @@ async function renderSettings(view: HTMLElement): Promise<void> {
       ).join('') + '</section>' +
       '<section class="block"><h3 class="section-title">App 内自动化</h3><p class="hint">只在这台 Mac 本地运行。只有 workspace 的 automation-primary 会执行写入；辅助设备会安全跳过。</p>' +
       Object.entries(automation.jobs).map(([job, schedule]) => automationJobHtml(job, schedule)).join('') + '</section>' +
+      '<section class="block"><h3 class="section-title">更新</h3><label class="automation-enabled"><input id="auto-update-check" type="checkbox"' +
+      (localStorage.getItem('wb.update.auto-check') !== 'false' ? ' checked' : '') +
+      '>每天自动检查更新（只提示，不会自动安装）</label><p class="hint">更新前会检查 workspace schema；公开更新仓库只提供完整性，不提供保密性。</p></section>' +
       '<section class="block"><h3 class="section-title">Provider 设置</h3><p class="hint">非秘密配置写入当前 workspace profile；秘密只在提交时进入该 workspace 的 Keychain，不会回显。</p>' +
       '<form id="provider-settings-form" autocomplete="off"><div class="grid2">' +
       '<label>类型<select id="provider-kind"><option value="model">模型</option><option value="feishu">飞书</option><option value="git">Git</option></select></label>' +
@@ -1441,6 +1444,12 @@ async function renderSettings(view: HTMLElement): Promise<void> {
         event.preventDefault();
         void saveAutomationForm(automationForm);
       });
+    });
+    document.getElementById('auto-update-check')?.addEventListener('change', (event) => {
+      const enabled = (event.target as HTMLInputElement).checked;
+      localStorage.setItem('wb.update.auto-check', enabled ? 'true' : 'false');
+      sendNativeMessage({ type: 'updateAutoCheckChanged', enabled });
+      toast(enabled ? '已开启每天自动检查更新' : '已关闭自动检查更新', 'ok');
     });
   } catch (err) {
     view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(err)) + '</div>';

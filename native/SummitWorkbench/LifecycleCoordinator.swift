@@ -33,7 +33,9 @@ final class LifecycleCoordinator {
                     publicKeyBase64: config.updatePublicKey,
                     currentVersion: config.manifest.version ?? "0.0.0",
                     currentBuild: config.manifest.build ?? "0",
-                    architecture: config.manifest.architecture ?? "arm64"
+                    architecture: config.manifest.architecture ?? "arm64",
+                    workspaceCompatibility: config.updateWorkspaceCompatibility,
+                    statusHandler: { [weak self] status in self?.handleUpdateStatus(status) }
                 )
                 log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
                 log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
@@ -149,8 +151,26 @@ final class LifecycleCoordinator {
             saveTextFile(filename: filename, content: content)
         case .automationSettingsChanged(let enabled):
             automationService?.setEnabled(enabled)
+        case .updateAutoCheckChanged(let enabled):
+            updateCoordinator?.setAutomaticChecksEnabled(enabled)
         case .checkForUpdates:
             updateCoordinator?.check(manual: true)
+        }
+    }
+
+    private func handleUpdateStatus(_ status: UpdateStatus) {
+        let message: String
+        switch status {
+        case .checking: message = "正在检查更新…"
+        case .unavailable: message = "更新源未配置"
+        case .current: message = "当前已是最新版本"
+        case .available(let version): message = "发现可用更新 (version)"
+        case .failed: message = "更新检查失败，可重试"
+        case .downloadFailed: message = "更新下载失败，可重试"
+        }
+        panel?.showStatus(message)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.panel?.hideStatus()
         }
     }
 

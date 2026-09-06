@@ -61,12 +61,23 @@ def main() -> int:
     parser.add_argument("--download-url", required=True)
     parser.add_argument("--dmg", required=True, type=Path)
     parser.add_argument("--release-notes", default="")
+    parser.add_argument("--workspace-schema-version", type=int, default=2)
+    parser.add_argument("--workspace-min-reader-version", default="0.4.1")
+    parser.add_argument("--workspace-min-writer-version", default="0.4.1")
+    parser.add_argument(
+        "--require-openssl3",
+        action="store_true",
+        help="拒绝 LibreSSL/OpenSSL 1.x；发布门必须使用 OpenSSL 3",
+    )
     args = parser.parse_args()
 
     if not args.private_key.is_file():
         parser.error(f"找不到更新 feed 私钥：{args.private_key}")
     if not args.dmg.is_file():
         parser.error(f"找不到 DMG：{args.dmg}")
+    openssl_version = _run("version").decode("utf-8", errors="replace").strip()
+    if args.require_openssl3 and not openssl_version.startswith("OpenSSL 3."):
+        parser.error(f"签名发布必须使用 OpenSSL 3，当前为：{openssl_version}")
     digest = hashlib.sha256(args.dmg.read_bytes()).hexdigest()
     artifact = {
         "version": args.version,
@@ -77,11 +88,50 @@ def main() -> int:
         "sha256": digest,
         "size": args.dmg.stat().st_size,
         "release_notes": args.release_notes,
+        "workspace_schema": {
+            "schema_version": args.workspace_schema_version,
+            "min_reader_version": args.workspace_min_reader_version,
+            "min_writer_version": args.workspace_min_writer_version,
+        },
     }
     artifact["signature"] = _signature(
         args.private_key, signing_payload(artifact, product_id=args.product_id)
     )
     artifact["public_key"] = _public_key(args.private_key)
+    # 生成后立即用同一个 public key 做真实验签；只得到可解码的 64 字节签名不算通过。
+    with (
+        tempfile.NamedTemporaryFile() as signature_file,
+        tempfile.NamedTemporaryFile() as raw,
+        tempfile.NamedTemporaryFile() as public_key_file,
+    ):
+        signature_file.write(base64.b64decode(artifact["signature"], validate=True))
+        signature_file.flush()
+        raw.write(signing_payload(artifact, product_id=args.product_id))
+        raw.flush()
+        public_key_file.write(_run("pkey", "-in", str(args.private_key), "-pubout"))
+        public_key_file.flush()
+        verified = subprocess.run(
+            (
+                OPENSSL_BIN,
+                "pkeyutl",
+                "-verify",
+                "-rawin",
+                "-pubin",
+                "-inkey",
+                public_key_file.name,
+                "-in",
+                raw.name,
+                "-sigfile",
+                signature_file.name,
+            ),
+            capture_output=True,
+            check=False,
+        )
+    if verified.returncode != 0:
+        raise RuntimeError(
+            "OpenSSL Ed25519 真实验签失败："
+            + verified.stderr.decode("utf-8", errors="replace").strip()
+        )
     payload = {
         "schema_version": 1,
         "product_id": args.product_id,

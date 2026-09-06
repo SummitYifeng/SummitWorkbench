@@ -19,7 +19,7 @@ class UpdateFeedError(ValueError):
 
 def signing_payload(artifact: Mapping[str, Any], *, product_id: str) -> bytes:
     """返回 Python/Swift 共同使用的稳定签名正文；不包含 signature 字段。"""
-    fields = (
+    fields: list[str] = [
         product_id,
         _required_str(artifact, "version"),
         _required_str(artifact, "build"),
@@ -29,7 +29,16 @@ def signing_payload(artifact: Mapping[str, Any], *, product_id: str) -> bytes:
         _required_str(artifact, "sha256"),
         str(_required_int(artifact, "size")),
         _required_str(artifact, "release_notes"),
-    )
+    ]
+    workspace_schema = artifact.get("workspace_schema")
+    if workspace_schema is not None:
+        if not isinstance(workspace_schema, Mapping):
+            raise UpdateFeedError("update feed workspace_schema 无效")
+        fields += [
+            str(_required_int(workspace_schema, "schema_version")),
+            _required_str(workspace_schema, "min_reader_version"),
+            _required_str(workspace_schema, "min_writer_version"),
+        ]
     return "\n".join(fields).encode("utf-8")
 
 

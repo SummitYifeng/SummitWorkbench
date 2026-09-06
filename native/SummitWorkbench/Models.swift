@@ -3,6 +3,12 @@ import Foundation
 let panelProductID = "com.summitworkbench.panel"
 let panelAPIProtocol = 2
 
+struct UpdateWorkspaceCompatibility {
+    let schemaVersion: Int
+    let minimumReaderVersion: String
+    let minimumWriterVersion: String
+}
+
 enum PanelMode: String {
     case production
     case developmentManaged = "development-managed"
@@ -71,6 +77,23 @@ struct AppConfiguration {
 
     var updatePublicKey: String? { manifest.updatePublicKey }
 
+    /// 只读读取当前 workspace marker，供升级前兼容性门使用；读取失败时宁可不提供更新候选。
+    var updateWorkspaceCompatibility: () -> UpdateWorkspaceCompatibility? {
+        let markerURL = URL(fileURLWithPath: workRoot)
+            .appendingPathComponent(".summit-workbench/workspace.json")
+        return {
+            guard let data = try? Data(contentsOf: markerURL),
+                  let marker = try? JSONDecoder().decode(UpdateWorkspaceMarker.self, from: data) else {
+                return nil
+            }
+            return UpdateWorkspaceCompatibility(
+                schemaVersion: marker.schemaVersion,
+                minimumReaderVersion: marker.minimumReaderVersion,
+                minimumWriterVersion: marker.minimumWriterVersion
+            )
+        }
+    }
+
     func panelURL(for frontendBuild: String, port: Int) -> URL {
         var components = URLComponents()
         components.scheme = "http"
@@ -114,6 +137,18 @@ struct AppConfiguration {
     }
 }
 
+private struct UpdateWorkspaceMarker: Decodable {
+    let schemaVersion: Int
+    let minimumReaderVersion: String
+    let minimumWriterVersion: String
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case minimumReaderVersion = "min_reader_version"
+        case minimumWriterVersion = "min_writer_version"
+    }
+}
+
 struct ServiceIdentity: Decodable {
     let productID: String
     let apiProtocol: Int
@@ -153,6 +188,7 @@ enum NativeMessage {
     case openExternal(URL)
     case saveTextFile(filename: String, content: String)
     case automationSettingsChanged(enabled: Bool)
+    case updateAutoCheckChanged(enabled: Bool)
     case checkForUpdates
 
     init?(body: Any) {
@@ -181,6 +217,9 @@ enum NativeMessage {
         case "automationSettingsChanged":
             guard let enabled = dictionary["enabled"] as? Bool else { return nil }
             self = .automationSettingsChanged(enabled: enabled)
+        case "updateAutoCheckChanged":
+            guard let enabled = dictionary["enabled"] as? Bool else { return nil }
+            self = .updateAutoCheckChanged(enabled: enabled)
         case "checkForUpdates": self = .checkForUpdates
         default: return nil
         }

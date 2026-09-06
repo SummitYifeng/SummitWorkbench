@@ -1,6 +1,6 @@
 # ADR 0039 · 内部 arm64 签名更新 feed
 
-- 状态：已完成（P1-07；内部 arm64 feed 与 N-1→N 真机验收通过）
+- 状态：进行中（P1-07C；本地实现与门禁完成，protected secrets、远端 tag release 和真机验收待补）
 - 日期：2026-09-06
 - 依据：产品化计划 P1-07、ADR 0032/0038、用户平台约束（仅 M2+ Apple Silicon、内部/个人自用）
 
@@ -14,24 +14,24 @@
 
 采用一个小而明确的 JSON feed，不在本包引入 Sparkle 自动安装依赖。每个 artifact 包含
 版本、build、`arm64` 架构、最低 macOS、HTTPS 下载地址、DMG 大小、SHA-256、release
-notes 和 Ed25519 签名。签名正文由固定字段按换行拼接，Python 发布脚本和 Swift App
+notes、workspace schema compatibility 和 Ed25519 签名。签名正文由固定字段按换行拼接，Python 发布脚本和 Swift App
 共同实现；App 只信任自身 manifest 中固定的公钥，不信任 feed 自己携带的公钥。
 
 App 首次准备好工作台后默认每天后台检查，顶部“检查更新”可手动触发。候选必须满足
 架构、最低系统、版本/build 更高、HTTPS、大小/hash/签名字段有效；签名不通过则拒绝。
-用户可选择跳过版本或稍后提醒。确认下载后先落到 Application Support 的 updates 目录，
-校验大小和 SHA-256，再打开 DMG；不会自动替换 App、写入 vault、改 profile 或触发同步。
-没有 feed 配置时保持当前 App 正常工作并记录稳定错误码。
+用户可选择跳过版本或稍后提醒。确认下载前先检查 workspace schema compatibility，随后落到
+Application Support 的 updates 目录，校验大小和 SHA-256，再打开 DMG；不会自动替换 App、
+写入 vault、改 profile 或触发同步。没有 feed 配置时保持当前 App 正常工作并给出可见反馈。
 
-发布脚本只在显式提供 `UPDATE_SIGNING_KEY_PATH` 与 `UPDATE_FEED_URL` 时生成 feed；私钥不
+发布脚本只在显式提供 `UPDATE_SIGNING_KEY_PATH`、`UPDATE_FEED_URL` 与
+`UPDATE_DOWNLOAD_URL` 时生成 feed；tag release 额外强制 OpenSSL 3 真实生成/验签。私钥不
 写入 manifest、DMG、日志、metadata 或仓库。普通内部 ad-hoc DMG 可以在无私钥时继续构建，
-但不会冒充可自动更新的发布包。
+但不会冒充可自动更新的发布包；tag job 失败时只允许保留 draft，不得发布 partial latest。
 
 ## 验收与边界
 
-生产接线、安全拒绝路径、真实 HTTPS feed 和 Ed25519 签名均已验证。用户在 M2+ Mac Studio
-上完成 build 108→build 109 更新，工作区/数据完整，重启后正常，检查更新显示已是最新。
-开发环境的 OpenSSL 不支持 Ed25519，因此真实签名生成单测按能力安全跳过；发布使用支持
-Ed25519 的 Homebrew OpenSSL。下载中断、磁盘不足和回滚启动有临时目录/注入式保护测试，
-未在真机上单独执行。用户明确本产品仅内部/个人自用，不需要 Apple Developer ID、
-notarization、Apple Store、Windows、Intel 或第二台 Mac。
+本地已验证 workflow actionlint、OpenSSL 3 真实 Ed25519 生成/验签，以及 Swift 注入式行为
+测试。GitHub tag release 的 protected secrets、真实远端上传、真机和双设备验收属于外部
+证据，当前不宣称已通过。公开更新仓库只提供完整性（HTTPS、SHA-256、Ed25519），不提供
+保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer ID/notarization、
+Apple Store、Windows 和 Intel 分发。

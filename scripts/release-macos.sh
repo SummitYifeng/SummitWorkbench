@@ -11,6 +11,7 @@ UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
 UPDATE_DOWNLOAD_URL="${UPDATE_DOWNLOAD_URL:-}"
 UPDATE_SIGNING_KEY_PATH="${UPDATE_SIGNING_KEY_PATH:-}"
 OPENSSL_BIN="${OPENSSL_BIN:-openssl}"
+REQUIRE_SIGNED_UPDATE="${REQUIRE_SIGNED_UPDATE:-false}"
 
 case "$ARCH" in
   arm64) ;;
@@ -29,6 +30,14 @@ if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
   [[ -f "$UPDATE_SIGNING_KEY_PATH" ]] || { echo "✗ 找不到更新 feed 私钥：$UPDATE_SIGNING_KEY_PATH" >&2; exit 1; }
   UPDATE_PUBLIC_KEY="$($OPENSSL_BIN pkey -in "$UPDATE_SIGNING_KEY_PATH" -pubout -outform DER \
     | tail -c 32 | base64 | tr -d '\n')"
+  OPENSSL_VERSION="$($OPENSSL_BIN version)"
+  [[ "$OPENSSL_VERSION" == OpenSSL\ 3.* ]] || {
+    echo "✗ 签名发布必须使用 OpenSSL 3，当前为：$OPENSSL_VERSION" >&2
+    exit 1
+  }
+elif [[ "$REQUIRE_SIGNED_UPDATE" == true ]]; then
+  echo "✗ tag 发布必须提供受保护的 UPDATE_SIGNING_KEY_PATH" >&2
+  exit 1
 fi
 
 VERSION="$($PYTHON - "$REPO_ROOT/pyproject.toml" <<'PY'
@@ -76,7 +85,9 @@ if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
     --output "$RELEASE_TMP/package/$UPDATE_FEED_NAME" \
     --private-key "$UPDATE_SIGNING_KEY_PATH" --version "$VERSION" --build "$BUILD_NUMBER" \
     --architecture "$ARCH" --minimum-macos "13.0" --download-url "$UPDATE_DOWNLOAD_URL" \
-    --dmg "$DMG_TMP" --release-notes "SummitWorkbench $VERSION 内部更新"
+    --dmg "$DMG_TMP" --release-notes "SummitWorkbench $VERSION 内部更新" \
+    --workspace-schema-version "2" --workspace-min-reader-version "$VERSION" \
+    --workspace-min-writer-version "$VERSION" --require-openssl3
 else
   echo "ℹ 未配置独立更新 feed 私钥：本次内部包不发布可验证更新 feed" >&2
 fi
