@@ -79,20 +79,27 @@ jobs:
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           UPDATE_REPO_TOKEN: ${{ secrets.UPDATE_REPO_TOKEN }}
-          UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
-          UPDATE_DOWNLOAD_URL: ${{ vars.UPDATE_DOWNLOAD_URL }}
+          CONFIGURED_UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
+          CONFIGURED_UPDATE_DOWNLOAD_URL: ${{ vars.UPDATE_DOWNLOAD_URL }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           [[ -n "$UPDATE_SIGNING_KEY" ]] || { echo "missing release secret UPDATE_SIGNING_KEY" >&2; exit 1; }
           [[ -n "$UPDATE_REPO_TOKEN" ]] || { echo "missing release secret UPDATE_REPO_TOKEN" >&2; exit 1; }
-          [[ "$UPDATE_FEED_URL" == https://* ]] || { echo "UPDATE_FEED_URL must be HTTPS" >&2; exit 1; }
-          [[ "$UPDATE_DOWNLOAD_URL" == https://* ]] || { echo "UPDATE_DOWNLOAD_URL must be HTTPS" >&2; exit 1; }
           if [[ "${{ steps.version.outputs.channel }}" == "rc" ]]; then
             EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/download/$GITHUB_REF_NAME/update-feed.json"
+            UPDATE_FEED_URL="$EXPECTED_FEED_URL"
           else
             EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/latest/download/update-feed.json"
+            UPDATE_FEED_URL="$CONFIGURED_UPDATE_FEED_URL"
           fi
           EXPECTED_DOWNLOAD_URL="https://github.com/$UPDATE_REPOSITORY/releases/download/$GITHUB_REF_NAME/SummitWorkbench-$RELEASE_VERSION-arm64-INTERNAL-DEV.dmg"
+          if [[ "${{ steps.version.outputs.channel }}" == "rc" ]]; then
+            UPDATE_DOWNLOAD_URL="$EXPECTED_DOWNLOAD_URL"
+          else
+            UPDATE_DOWNLOAD_URL="$CONFIGURED_UPDATE_DOWNLOAD_URL"
+          fi
+          [[ "$UPDATE_FEED_URL" == https://* ]] || { echo "UPDATE_FEED_URL must be HTTPS" >&2; exit 1; }
+          [[ "$UPDATE_DOWNLOAD_URL" == https://* ]] || { echo "UPDATE_DOWNLOAD_URL must be HTTPS" >&2; exit 1; }
           [[ "$UPDATE_FEED_URL" == "$EXPECTED_FEED_URL" ]] || {
             echo "UPDATE_FEED_URL must be $EXPECTED_FEED_URL" >&2
             exit 1
