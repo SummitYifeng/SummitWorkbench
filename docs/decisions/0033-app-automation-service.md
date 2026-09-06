@@ -1,6 +1,6 @@
 # ADR 0033 · App 内自动化 worker 与 SMAppService
 
-- 状态：🟡 P1-01 现场修复中；SMAppService 注册/取消需在目标 Mac 做一次可逆黑盒确认
+- 状态：✅ P1-01 完成；SMAppService 注册/取消已通过目标 Mac 可逆黑盒确认
 - 日期：2026-09-06
 - 里程碑：v0.4.1 → P1-01
 - 依据：计划 P1-01、ADR 0031 主设备声明、ADR 0032 arm64 内部分发
@@ -55,4 +55,4 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
 
 - `AutomationServiceManager` 现在对首次安装的 `.notFound` 与 `.notRegistered` 都调用 `register()`；`.enabled` 不重复注册，`.requiresApproval` 等待系统批准，停用只对可注销状态调用 `unregister()`。
 - 系统服务通过 `AutomationServiceControlling` 注入，原生状态行为由 fake service 覆盖四种状态；Python 测试新增 autouse 临时 HOME，避免默认测试读取或污染真实用户目录。
-- build 15：`AutomationServiceManagerTests` 通过；全量 Python 测试 `733 passed, 1 skipped`，ruff/format/mypy、前端构建、脚本语法、Swift arm64 编译与内部 DMG 验证通过。待用户首次启用 build 15 后观察真实 `register()` 结果。
+- build 15：`AutomationServiceManagerTests` 通过；全量 Python 测试 `733 passed, 1 skipped`，ruff/format/mypy、前端构建、脚本语法、Swift arm64 编译与内部 DMG 验证通过；用户首次启用 build 15 后已在系统“App 后台活动”看到 SummitWorkbench，真实 `register()` 闭环通过。
