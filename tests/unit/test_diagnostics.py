@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
@@ -28,7 +29,7 @@ def _context(tmp_path: Path) -> AppContext:
         WorkspaceManifest(
             workspace_id=str(uuid4()),
             display_name="Diagnostics test workspace",
-            created_at="2026-09-06T00:00:00Z",
+            created_at=datetime(2026, 9, 6, tzinfo=UTC),
             min_reader_version="0.1.0",
             min_writer_version="0.1.0",
         ),

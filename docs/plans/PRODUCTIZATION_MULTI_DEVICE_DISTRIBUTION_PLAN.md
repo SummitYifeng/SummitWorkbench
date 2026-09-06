@@ -1663,7 +1663,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-05
 
 - 状态：完成 `[x]`（离线实现、隐私 canary 验收与全量质量门通过；不进入 P1-06）
-- Git commit：`c6658af`（实现）、`<待收口>`（前端产物、计划与 ADR；均将推送至 `origin/main`）
+- Git commit：`c6658af`（实现）、`edbda48`（前端产物、计划与 ADR；均将推送至 `origin/main`）
 - 变更摘要：新增 Python/Swift 统一字段语义的本地结构化 JSONL logger，默认 5 MiB 轮转并保留
   3 个备份；新增中央 redactor，覆盖敏感字段、会议正文、prompt/response、Authorization、
   Bearer、Cookie、远程 credential URL、canary 和本机路径，读取旧日志时再次脱敏；新增只读诊断
