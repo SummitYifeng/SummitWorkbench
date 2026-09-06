@@ -11,6 +11,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from datetime import UTC, datetime
@@ -18,9 +19,11 @@ from pathlib import Path
 
 from summit_workbench.updates.feed import signing_payload
 
+OPENSSL_BIN = os.environ.get("OPENSSL_BIN", "openssl")
+
 
 def _run(*args: str, input_data: bytes | None = None) -> bytes:
-    return subprocess.check_output(args, input=input_data)
+    return subprocess.check_output((OPENSSL_BIN, *args), input=input_data)
 
 
 def _public_key(private_key: Path) -> str:

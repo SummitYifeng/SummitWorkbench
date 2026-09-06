@@ -9,6 +9,7 @@ BUILD_NUMBER="${BUILD_NUMBER:-}"
 FINAL_ROOT="${RELEASE_OUTPUT_DIR:-$REPO_ROOT/dist/releases}"
 UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
 UPDATE_SIGNING_KEY_PATH="${UPDATE_SIGNING_KEY_PATH:-}"
+OPENSSL_BIN="${OPENSSL_BIN:-openssl}"
 
 case "$ARCH" in
   arm64) ;;
@@ -24,7 +25,7 @@ command -v shasum >/dev/null || { echo "✗ 需要 shasum" >&2; exit 1; }
 if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
   [[ -n "$UPDATE_FEED_URL" ]] || { echo "✗ 提供更新 feed 私钥时必须同时提供 UPDATE_FEED_URL" >&2; exit 1; }
   [[ -f "$UPDATE_SIGNING_KEY_PATH" ]] || { echo "✗ 找不到更新 feed 私钥：$UPDATE_SIGNING_KEY_PATH" >&2; exit 1; }
-  UPDATE_PUBLIC_KEY="$(openssl pkey -in "$UPDATE_SIGNING_KEY_PATH" -pubout -outform DER \
+  UPDATE_PUBLIC_KEY="$($OPENSSL_BIN pkey -in "$UPDATE_SIGNING_KEY_PATH" -pubout -outform DER \
     | tail -c 32 | base64 | tr -d '\n')"
 fi
 
