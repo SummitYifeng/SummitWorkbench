@@ -21,6 +21,10 @@ case "$ARCH" in
   arm64) ;;
   *) echo "✗ 本产品仅支持 arm64 Apple Silicon（M2 及以上）：$ARCH" >&2; exit 1 ;;
 esac
+[[ "$ARCH" == "$(uname -m)" ]] || {
+  echo "✗ 构建架构必须与 macOS runner 架构一致：runner=$(uname -m) requested=$ARCH" >&2
+  exit 1
+}
 if [[ "$RELEASE_BUILD" == true && "$BUILD_NUMBER" == 0 ]]; then
   echo "✗ 正式/候选构建必须显式提供 BUILD_NUMBER（CI run 或发布参数）" >&2
   exit 1

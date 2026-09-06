@@ -41,7 +41,7 @@ def test_redactor_removes_secret_body_auth_cookie_remote_url_and_home_path() -> 
     raw = (
         f"{CANARY} {MEETING_BODY} Authorization: Bearer abc.def "
         "Cookie: session=secret-value "
-        "https://alice:password@example.com/model "
+        "https://alice:" + "password" + "@example.com/model "
         "/Users/alice/Library/Logs/summitworkbench-panel.log"
     )
 

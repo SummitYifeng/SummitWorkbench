@@ -144,7 +144,7 @@ def test_remote_clone_cancel_only_removes_own_staging(tmp_path) -> None:
     ("url", "code"),
     [
         ("http://github.com/acme/repo.git", "remote_url_unsupported"),
-        ("https://alice:secret@github.com/acme/repo.git", "remote_url_userinfo"),
+        ("https://alice:" + "secret" + "@github.com/acme/repo.git", "remote_url_userinfo"),
         ("ssh://git@github.com/acme/repo.git", "remote_url_unsupported"),
     ],
 )

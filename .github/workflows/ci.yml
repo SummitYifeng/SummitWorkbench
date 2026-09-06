@@ -1,7 +1,7 @@
 name: CI
 
-# 质量门（与本地 `uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`
-# 一致）在每次推送 main 与 PR 时自动跑，作为无人值守/定时任务上线后的回归护栏。
+# 质量门（与本地 lint/format/type/test/build/secret/lock 检查一致）在每次推送 main 与 PR
+# 时自动跑，作为无人值守/定时任务上线后的回归护栏。
 on:
   push:
     branches: [main]
@@ -27,8 +27,18 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install dependencies (dev extra)
         run: uv sync --extra dev
+
+      - name: Verify uv lock
+        run: uv lock --check
 
       - name: Ruff lint
         run: uv run ruff check .
@@ -39,5 +49,72 @@ jobs:
       - name: mypy (strict)
         run: uv run mypy
 
-      - name: pytest
-        run: uv run pytest -q
+      - name: pytest with coverage gate
+        run: uv run pytest --cov=summit_workbench --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -q
+
+      - name: Install Node dependencies from lock
+        run: npm ci --prefix web
+
+      - name: Frontend build
+        run: npm --prefix web run build
+
+      - name: Verify frontend build
+        run: node web/scripts/verify-build.mjs src/summit_workbench/webapp/static
+
+      - name: Secret scan
+        run: uv run python scripts/secret_scan.py
+
+  macos-build-matrix:
+    name: macOS ${{ matrix.architecture }} contract
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 产品仅发布 M2+ Apple Silicon；此 job 是完整 arm64 build 门。
+          - runner: macos-14
+            architecture: arm64
+            supported: true
+          # Intel 不属于产品支持面；保留独立负向门，确保不会误发 x86 包。
+          - runner: macos-13
+            architecture: x86_64
+            supported: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Python packaging dependencies
+        run: uv sync --extra dev --extra web --extra packaging
+
+      - name: Install Node dependencies from lock
+        run: npm ci --prefix web
+
+      - name: Build supported architecture
+        if: matrix.supported == true
+        env:
+          ARCH: ${{ matrix.architecture }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          OUTPUT_APP: dist/ci/${{ matrix.architecture }}/SummitWorkbench.app
+        run: scripts/build-macos-app.sh
+
+      - name: Reject unsupported architecture
+        if: matrix.supported == false
+        env:
+          ARCH: ${{ matrix.architecture }}
+        run: |
+          if scripts/build-macos-app.sh; then
+            echo "x86_64 must be rejected by the arm64-only product policy"
+            exit 1
+          fi

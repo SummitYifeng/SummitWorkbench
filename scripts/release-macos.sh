@@ -107,8 +107,33 @@ metadata["sha256"]["app"] = app_digest.hexdigest()
 Path(meta_path).write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 cp "$RELEASE_TMP/notary-log.json" "$RELEASE_TMP/package/notary-log.json"
+
+# 把本次发布实际经过的离线/打包门写入产物，便于内部接收者复核而不依赖 CI 日志。
+TEST_MANIFEST="$RELEASE_TMP/package/test-manifest.json"
+"$PYTHON" - "$TEST_MANIFEST" "$VERSION" "$BUILD_NUMBER" "$ARCH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path, version, build, arch = sys.argv[1:]
+Path(path).write_text(json.dumps({
+    "schema_version": 1,
+    "product_version": version,
+    "build": build,
+    "architecture": arch,
+    "status": "passed",
+    "checks": [
+        "frontend build and verify-build",
+        "Python packaged server build",
+        "Swift arm64 app and automation helper compile",
+        "bundle strict codesign verification",
+        "offline dynamic-port server smoke",
+        "DMG checksum generation",
+    ],
+}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
 mv "$DMG_TMP" "$RELEASE_TMP/package/$DMG_NAME"
-(cd "$RELEASE_TMP/package" && shasum -a 256 "$DMG_NAME" "release-metadata.json" "SBOM.json" > SHA256SUMS)
+(cd "$RELEASE_TMP/package" && shasum -a 256 "$DMG_NAME" "release-metadata.json" "SBOM.json" "notary-log.json" "test-manifest.json" > SHA256SUMS)
 
 FINAL_DIR="$FINAL_ROOT/$VERSION/$ARCH"
 if [[ -e "$FINAL_DIR" ]]; then

@@ -1,0 +1,79 @@
+name: Internal macOS release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # macos-14 是本产品唯一支持的 Apple Silicon release runner。
+    runs-on: macos-14
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag and runner architecture before signing
+        id: version
+        env:
+        run: |
+          VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          print(tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"])
+          PY
+          )"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$TAG_VERSION" == "$VERSION" ]] || {
+            echo "tag $GITHUB_REF_NAME does not match pyproject version v$VERSION"
+            exit 1
+          }
+          [[ "$(uname -m)" == "arm64" ]] || {
+            echo "release runner must be arm64 Apple Silicon"
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install locked dependencies
+        run: |
+          uv sync --extra dev --extra web --extra packaging
+          uv lock --check
+          npm ci --prefix web
+
+      - name: Secret scan
+        run: uv run python scripts/secret_scan.py
+
+      - name: Build internal arm64 DMG
+        env:
+          ARCH: arm64
+          BUILD_NUMBER: ${{ github.run_number }}
+          RELEASE_OUTPUT_DIR: dist/ci-release
+        run: scripts/release-macos.sh
+
+      - name: Run packaged integration tests
+        env:
+          WB_PACKAGED_APP: dist/ci-release/${{ steps.version.outputs.version }}/arm64/SummitWorkbench.app
+        run: uv run pytest -m integration -q
+
+      - name: Upload release package and test manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: SummitWorkbench-${{ github.ref_name }}-arm64
+          path: dist/ci-release/**
+          if-no-files-found: error

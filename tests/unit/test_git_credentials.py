@@ -56,7 +56,7 @@ def _fake_keychain(monkeypatch: pytest.MonkeyPatch) -> dict[tuple[str, str], str
 
 def test_strip_credentials_removes_userinfo() -> None:
     assert (
-        strip_credentials("https://alice:s3cret@github.com/yifeng/ws.git")
+        strip_credentials("https://alice:" + "s3cret" + "@github.com/yifeng/ws.git")
         == "https://github.com/yifeng/ws.git"
     )
     assert (

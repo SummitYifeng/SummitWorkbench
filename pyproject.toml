@@ -109,3 +109,4 @@ omit = ["*/webapp/views.py"]
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 80
