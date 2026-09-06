@@ -10,7 +10,7 @@
 >
 > 目标执行模型：Codex `gpt-5.6-luna`；每个新任务只实施一个工作包
 >
-> 关联文档：`DEVELOPMENT_PLAN.md`、`HANDOFF_HARDENING_P0_P1.md`、ADR 0016–0031
+> 关联文档：`DEVELOPMENT_PLAN.md`、ADR 0016–0031
 
 ## 0. 这份计划怎么用
 

@@ -47,7 +47,7 @@
 | [0040](0040-thread-activity-events.md) | P2-01A | 🚧 thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
 | [0041](0041-remote-normalization-acceptance.md) | P1-07D | 🚧 HTTPS remote 规范化、只读 preflight、RC 候选与一次性双设备验收 |
 
-M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
+M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
 配套的写侧原子写归并（`repositories/_atomic.py`）随 LHF #2 一并完成。
 正式使用前再做四项加固（ADR 0019–0022）+ CI 质量门/覆盖率体检，`v0.1.0` 首发；

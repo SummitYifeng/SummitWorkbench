@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
@@ -225,7 +224,3 @@ def run_automation_job(
         )
     _record_settings(context, settings, job, outcome, now=current)
     return outcome
-
-
-def worker_json(result: WorkerResult) -> str:
-    return json.dumps(result.as_dict(), ensure_ascii=False, indent=2)

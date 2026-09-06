@@ -77,7 +77,7 @@ SummitWorkbench/
 4. **M3 带上下文启动与收尾**（规划中）：交互式工作会话的上下文拼接与自动写回。
 5. **M4 分流录入**（规划中）：`wb task`、`wb note` 与 inbox 路由。
 
-M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PRD L44 严格验收 6/6）在进入 M2 前全部真机通过，记录见 [docs/plans/M1_ACCEPTANCE.md](docs/plans/M1_ACCEPTANCE.md)。
+M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PRD L44 严格验收 6/6）在进入 M2 前全部真机通过（验收记录已并入 `docs/decisions/` 的 M1 ADR 索引）。
 
 ## 硬边界
 
