@@ -17,7 +17,8 @@ origin 仍是 GitHub SSH remote。生产同步必须有一个可验证、可诊�
 2. 设置中心提供 preview/apply/rollback 事务。preview 在临时 clone 中验证 PAT 认证、仓库
    身份、workspace marker、branch/upstream、fetch 与 ahead/behind；apply 重新验证后才更新
    origin、本机 profile 和 workspace-scoped Keychain。事务不提交、不推送、不改 vault，失败
-   恢复旧 URL/profile，事务记录绝不含 PAT。
+   恢复旧 URL/profile，事务记录绝不含 PAT。旧 schema 的只读保护对这三个受控端点例外，
+   以打破“迁移要求 HTTPS、转换又被只读拦截”的循环；其它 vault/profile 写入仍被只读保护。
 3. acceptance preflight 是只读门：检查 App/build、生产 backend、remote scheme、凭据、
    system Git 与 Dulwich dirty 结果、fetch、ahead/behind、schema 路径、备份可写性和
    automation role，并返回可复制脱敏报告。
@@ -39,3 +40,9 @@ PAT 只在请求生命周期内以 `SecretStr` 传递，绝不进入 URL、profi
 需要用户在 Studio 输入 GitHub username 与 workspace-scoped PAT，点击 preview/apply（如需可
 rollback），然后在 Air 完成一次引导式往返同步。只有该验收成功后，才允许将完全相同的 RC
 DMG 晋升为稳定 `v0.4.3`。
+
+## 操作顺序
+
+旧 schema 工作区应先在设置中心完成 HTTPS remote 预览与转换，再点击“升级工作区 schema”。
+转换成功后重新加载设置页，确认工作区状态为 ready，再执行 schema 迁移；迁移前仍不得有
+未提交改动、ahead/behind 或不可达远端。

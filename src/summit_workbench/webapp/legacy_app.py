@@ -185,6 +185,20 @@ from summit_workbench.workflows.review_apply import (
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Remote normalization is the controlled escape hatch that lets an old-schema
+# workspace become migratable.  It only changes the local origin/profile and
+# workspace-scoped credential after a temporary-clone validation; it does not
+# write vault content, create commits, or push.  Without this exemption the
+# migration gate requires HTTPS while the read-only gate prevents the only
+# operation that can establish HTTPS (a deadlock).
+_SCHEMA_UPGRADE_WRITE_EXEMPTIONS = frozenset(
+    {
+        "/api/settings/git/remote/preview",
+        "/api/settings/git/remote/apply",
+        "/api/settings/git/remote/rollback",
+    }
+)
+
 
 @dataclass(frozen=True)
 class WebContext:
@@ -1191,6 +1205,7 @@ def create_app(
                 and ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
                 and not request.url.path.startswith("/api/onboarding")
                 and request.url.path != "/api/workspace/migration"
+                and request.url.path not in _SCHEMA_UPGRADE_WRITE_EXEMPTIONS
             ):
                 return JSONResponse(
                     status_code=409,

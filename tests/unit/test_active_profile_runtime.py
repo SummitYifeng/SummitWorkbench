@@ -168,6 +168,35 @@ def test_incompatible_active_profile_is_exposed_for_backend_gate(tmp_path: Path)
     assert response.json()["code"] == "workspace_read_only_upgrade_required"
 
 
+def test_remote_normalization_is_allowed_before_schema_upgrade(
+    tmp_path: Path,
+) -> None:
+    """HTTPS normalization must break the old-schema migration deadlock."""
+    home = tmp_path / "home"
+    profile = _profile(home)
+    profile.vault_dir.mkdir(parents=True)
+    save_profile(profile, home=home)
+    set_active_profile(profile.workspace_id, home=home)
+    write_workspace_manifest(
+        profile.vault_dir,
+        _manifest(profile.workspace_id).model_copy(update={"min_writer_version": "9.0.0"}),
+    )
+
+    context = resolve_active_workspace(home=home, app_version="0.5.0")
+    assert context.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
+    ctx = WebContext.from_active_workspace(context)
+    assert ctx is not None
+    client = TestClient(create_app(ctx, static_dir=tmp_path / "missing-static"))
+
+    response = client.post(
+        "/api/settings/git/remote/apply",
+        json={"plan_id": "missing-plan", "git_username": "user", "pat": "pat"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "normalization_plan_missing"
+
+
 def test_cannot_open_profile_gets_restricted_control_plane(tmp_path: Path) -> None:
     home = tmp_path / "home"
     profile = _profile(home)
