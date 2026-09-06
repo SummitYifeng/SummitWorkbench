@@ -1411,7 +1411,9 @@ async function previewGitRemoteNormalization(): Promise<void> {
   }
   try {
     const result = await api<RemoteNormalizationPreviewPayload>('/api/settings/git/remote/preview', {
-      method: 'POST', body: JSON.stringify({ candidate_url: candidate, git_username: username, pat }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_url: candidate, git_username: username, pat }),
     });
     const output = document.getElementById('remote-normalization-result');
     if (output) {
@@ -1434,7 +1436,9 @@ async function applyGitRemoteNormalization(planId: string): Promise<void> {
   const pat = patInput?.value ?? '';
   try {
     const result = await api<{ new_url: string }>('/api/settings/git/remote/apply', {
-      method: 'POST', body: JSON.stringify({ plan_id: planId, git_username: username, pat }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan_id: planId, git_username: username, pat }),
     });
     if (patInput) patInput.value = '';
     const output = document.getElementById('remote-normalization-result');
@@ -1451,7 +1455,9 @@ async function rollbackGitRemoteNormalization(): Promise<void> {
   if (!window.confirm('确认回滚最近一次 remote 转换？')) return;
   try {
     const result = await api<{ restored_url: string }>('/api/settings/git/remote/rollback', {
-      method: 'POST', body: JSON.stringify({ confirmed: true }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed: true }),
     });
     const output = document.getElementById('remote-normalization-result');
     if (output) output.innerHTML = '<div class="success">已恢复：' + esc(result.restored_url) + '</div>';

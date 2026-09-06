@@ -13,6 +13,16 @@ assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
 assert.match(source, /data-action="profile-switch"/, 'profile switch remains wired');
 assert.match(source, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
+assert.match(
+  source,
+  /\/api\/settings\/git\/remote\/preview[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+  'remote preview sends JSON content type',
+);
+assert.match(
+  source,
+  /\/api\/settings\/git\/remote\/apply[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+  'remote apply sends JSON content type',
+);
 assert.match(read('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
 assert.match(read('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
 assert.match(read('src/core/workspace-store.ts'), /subscribe\(/, 'workspace changes are observable');
