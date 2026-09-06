@@ -1643,7 +1643,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-04
 
 - 状态：完成 `[x]`（等价前端重构与 workspace 生命周期门通过；未改变 DOM、样式或交互语义）
-- Git commit：`02bef98`（源代码与测试）、待本包静态产物/文档收口提交
+- Git commit：`02bef98`（源代码与测试）、`ad750ca`（静态产物、计划与 ADR 收口）
 - 变更摘要：`web/src/main.ts` 收敛为 6 行 composition root；原入口实现移入兼容 feature bundle。
   新增 typed API client（统一 error normalization、HTTP 状态与 operation id、请求 AbortController
   以及 dispose）、`WorkspaceStore`（active workspace、scoped key 与 subscriptions dispose），
