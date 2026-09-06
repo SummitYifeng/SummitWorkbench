@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-06
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04 已完成；下一工作包为 P1-05
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05 已完成；下一工作包为 P1-06
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -220,7 +220,7 @@ account = git:<host>:<username>
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [x] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [x] |
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [x] |
-| 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [ ] |
+| 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [x] |
 | 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
 | 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
 | 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
@@ -1659,6 +1659,28 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 真机验证：未执行（本包为前端等价重构；使用离线脚本、TypeScript 编译和构建产物校验，不需要真实
   凭据、Apple Developer ID、第二台 Mac 或飞书权限）。
 - 当前结论：P1-04 完成；下一工作包为 P1-05，本次不进入 P1-05。
+
+### 2026-09-06 · P1-05
+
+- 状态：完成 `[x]`（离线实现、隐私 canary 验收与全量质量门通过；不进入 P1-06）
+- Git commit：`c6658af`（实现）、`<待收口>`（前端产物、计划与 ADR；均将推送至 `origin/main`）
+- 变更摘要：新增 Python/Swift 统一字段语义的本地结构化 JSONL logger，默认 5 MiB 轮转并保留
+  3 个备份；新增中央 redactor，覆盖敏感字段、会议正文、prompt/response、Authorization、
+  Bearer、Cookie、远程 credential URL、canary 和本机路径，读取旧日志时再次脱敏；新增只读诊断
+  预览/导出 API，zip 只包含 `diagnostics.json`，记录版本、arm64 架构、构建、schema 状态、状态
+  摘要、同步计数、配置键名、签名摘要和最近脱敏错误；设置页提供文件清单预览、导出诊断包和打开
+  macOS 日志目录，未添加远程 telemetry。
+- 目标测试：`tests/unit/test_diagnostics.py` 5 passed；Swift 原生 canary/状态契约测试通过；覆盖
+  secret canary、会议正文、Authorization/Cookie、远程凭据 URL、Home 路径、日志轮转、zip 单文件、
+  损坏 schema 可诊断和真实 HOME 隔离。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、
+  `uv run mypy src tests` 通过；`uv run pytest -q`（748 passed，1 skipped，跳过既有需
+  `WB_PACKAGED_APP` 的 packaged-app smoke）；`npm --prefix web run test:frontend`、前端 build 与
+  `verify-build.mjs`、`bash -n` 全部通过；Swift arm64 原生测试通过。
+- 真机验证：未执行本包 GUI 黑盒（诊断出口全部以 TestClient、临时 HOME、Swift arm64 编译和离线
+  canary 验证；不需要 Apple Developer ID、飞书新权限、真实账号或第二台 Mac）。用户若需要安装
+  后确认，可在当前 Mac Studio 设置页点击“查看诊断包清单”“导出诊断包”“打开日志目录”。
+- 遗留：无；P1-06 尚未开始。
 
 ## 16. 外部实现依据
 

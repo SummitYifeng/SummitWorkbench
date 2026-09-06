@@ -50,9 +50,7 @@ def create_app(
             RouteDependencies(
                 app=application,
                 context=context,
-                operation_id=lambda request: str(
-                    getattr(request.state, "operation_id", "unknown")
-                ),
+                operation_id=lambda request: str(getattr(request.state, "operation_id", "unknown")),
             ),
             static_dir=static_dir or Path(__file__).resolve().parent / "static",
             log_path=log_path,
