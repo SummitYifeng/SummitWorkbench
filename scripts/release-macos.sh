@@ -7,6 +7,8 @@ PYTHON="$REPO_ROOT/.venv/bin/python"
 ARCH="${ARCH:-$(uname -m)}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 FINAL_ROOT="${RELEASE_OUTPUT_DIR:-$REPO_ROOT/dist/releases}"
+UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
+UPDATE_SIGNING_KEY_PATH="${UPDATE_SIGNING_KEY_PATH:-}"
 
 case "$ARCH" in
   arm64) ;;
@@ -19,6 +21,12 @@ esac
 [[ -x "$PYTHON" ]] || { echo "✗ 找不到项目 Python：$PYTHON" >&2; exit 1; }
 command -v hdiutil >/dev/null || { echo "✗ 需要 hdiutil" >&2; exit 1; }
 command -v shasum >/dev/null || { echo "✗ 需要 shasum" >&2; exit 1; }
+if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
+  [[ -n "$UPDATE_FEED_URL" ]] || { echo "✗ 提供更新 feed 私钥时必须同时提供 UPDATE_FEED_URL" >&2; exit 1; }
+  [[ -f "$UPDATE_SIGNING_KEY_PATH" ]] || { echo "✗ 找不到更新 feed 私钥：$UPDATE_SIGNING_KEY_PATH" >&2; exit 1; }
+  UPDATE_PUBLIC_KEY="$(openssl pkey -in "$UPDATE_SIGNING_KEY_PATH" -pubout -outform DER \
+    | tail -c 32 | base64 | tr -d '\n')"
+fi
 
 VERSION="$($PYTHON - "$REPO_ROOT/pyproject.toml" <<'PY'
 import sys
@@ -43,6 +51,7 @@ mkdir -p "$RELEASE_TMP/package"
 APP="$RELEASE_TMP/package/SummitWorkbench.app"
 
 ARCH="$ARCH" BUILD_NUMBER="$BUILD_NUMBER" RELEASE_BUILD=true \
+  UPDATE_FEED_URL="$UPDATE_FEED_URL" UPDATE_PUBLIC_KEY="${UPDATE_PUBLIC_KEY:-}" \
   OUTPUT_APP="$APP" SIGNING_IDENTITY="$SIGN_IDENTITY" \
   "$REPO_ROOT/scripts/build-macos-app.sh"
 # 内部 ad-hoc 包只执行本地 bundle/离线验证，不访问 Apple 在线发布服务。
@@ -57,6 +66,18 @@ DMG_TMP="$RELEASE_TMP/$DMG_NAME"
 hdiutil create -volname "SummitWorkbench $VERSION ($ARCH)" -srcfolder "$DMG_STAGE" \
   -format UDZO -ov "$DMG_TMP" >/dev/null
 
+UPDATE_FEED_NAME=""
+if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
+  UPDATE_FEED_NAME="update-feed.json"
+  "$PYTHON" "$REPO_ROOT/scripts/generate-update-feed.py" \
+    --output "$RELEASE_TMP/package/$UPDATE_FEED_NAME" \
+    --private-key "$UPDATE_SIGNING_KEY_PATH" --version "$VERSION" --build "$BUILD_NUMBER" \
+    --architecture "$ARCH" --minimum-macos "13.0" --download-url "$UPDATE_FEED_URL" \
+    --dmg "$DMG_TMP" --release-notes "SummitWorkbench $VERSION 内部更新"
+else
+  echo "ℹ 未配置独立更新 feed 私钥：本次内部包不发布可验证更新 feed" >&2
+fi
+
 printf '{"status":"not-applicable","reason":"internal arm64 M2+ distribution; no Apple Developer ID/notarization required"}\n' \
   > "$RELEASE_TMP/notary-log.json"
 "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP" "$DMG_TMP"
@@ -64,7 +85,7 @@ printf '{"status":"not-applicable","reason":"internal arm64 M2+ distribution; no
 META="$RELEASE_TMP/package/release-metadata.json"
 SBOM="$RELEASE_TMP/package/SBOM.json"
 "$PYTHON" - "$META" "$SBOM" "$VERSION" "$BUILD_NUMBER" "$ARCH" "$DISTRIBUTION" \
-  "$REPO_ROOT" "$APP" "$DMG_TMP" "$RELEASE_TMP/notary-log.json" <<'PY'
+  "$REPO_ROOT" "$APP" "$DMG_TMP" "$RELEASE_TMP/notary-log.json" "$UPDATE_FEED_NAME" <<'PY'
 import hashlib
 import importlib.metadata
 import json
@@ -73,7 +94,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-meta_path, sbom_path, version, build, arch, distribution, repo, app, dmg, notary = sys.argv[1:]
+meta_path, sbom_path, version, build, arch, distribution, repo, app, dmg, notary, update_feed = sys.argv[1:]
 repo_path = Path(repo)
 project = tomllib.loads((repo_path / "pyproject.toml").read_text(encoding="utf-8"))
 commit = subprocess.check_output(["git", "-C", str(repo_path), "rev-parse", "HEAD"], text=True).strip()
@@ -93,6 +114,7 @@ metadata = {
     "app": Path(app).name, "dmg": Path(dmg).name, "sbom": Path(sbom_path).name,
     "notary_log": Path(notary).name,
     "pyproject_dependencies": project["project"].get("dependencies", []),
+    "update_feed": update_feed,
     "sha256": {
         "app": "",
         "dmg": hashlib.sha256(Path(dmg).read_bytes()).hexdigest(),
@@ -133,7 +155,9 @@ Path(path).write_text(json.dumps({
 }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
 mv "$DMG_TMP" "$RELEASE_TMP/package/$DMG_NAME"
-(cd "$RELEASE_TMP/package" && shasum -a 256 "$DMG_NAME" "release-metadata.json" "SBOM.json" "notary-log.json" "test-manifest.json" > SHA256SUMS)
+CHECKSUM_FILES=("$DMG_NAME" "release-metadata.json" "SBOM.json" "notary-log.json" "test-manifest.json")
+if [[ -n "$UPDATE_FEED_NAME" ]]; then CHECKSUM_FILES+=("$UPDATE_FEED_NAME"); fi
+(cd "$RELEASE_TMP/package" && shasum -a 256 "${CHECKSUM_FILES[@]}" > SHA256SUMS)
 
 FINAL_DIR="$FINAL_ROOT/$VERSION/$ARCH"
 if [[ -e "$FINAL_DIR" ]]; then

@@ -518,6 +518,7 @@ function renderShell(): void {
     '<span class="version-status checking" id="version-status">正在检查版本</span>' +
     '<span class="day-pill" id="day-pill">—</span>' +
     '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
+    '<button class="ghost" id="btn-check-updates" title="检查更新">检查更新</button>' +
     '<button class="ghost" id="btn-undo" title="撤销系统改动（只作用于 vault 文件）">↩ 撤销</button>' +
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
@@ -554,6 +555,13 @@ function renderShell(): void {
   });
   (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
     void refreshAll().then(() => toast('已刷新', 'ok'));
+  });
+  (document.getElementById('btn-check-updates') as HTMLButtonElement).addEventListener('click', () => {
+    if (sendNativeMessage({ type: 'checkForUpdates' })) {
+      toast('正在检查更新', 'info');
+    } else {
+      toast('更新检查仅支持已安装的 macOS App', 'info');
+    }
   });
   (document.getElementById('btn-undo') as HTMLButtonElement)?.addEventListener('click', () => {
     void openUndoModal();

@@ -16,6 +16,8 @@ FINAL_APP="$OUTPUT_APP"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 BUILD_NUMBER="${BUILD_NUMBER:-0}"
 RELEASE_BUILD="${RELEASE_BUILD:-false}"
+UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
+UPDATE_PUBLIC_KEY="${UPDATE_PUBLIC_KEY:-}"
 
 case "$ARCH" in
   arm64) ;;
@@ -113,7 +115,7 @@ for source in "$REPO_ROOT"/native/SummitWorkbench/*.swift; do
   [[ "$source" == *"/AutomationHelperMain.swift" ]] || SWIFT_SOURCES+=("$source")
 done
 xcrun swiftc -O -target "$ARCH-apple-macosx13.0" \
-  -framework AppKit -framework WebKit -framework Security -framework ServiceManagement \
+  -framework AppKit -framework WebKit -framework Security -framework ServiceManagement -framework CryptoKit \
   "${SWIFT_SOURCES[@]}" \
   -o "$APP/Contents/MacOS/SummitWorkbench"
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
@@ -162,7 +164,9 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
   "architecture": "$ARCH",
   "distribution": "$RELEASE_LABEL",
   "frontend_build": "$FRONTEND_BUILD",
-  "api_protocol": 2
+  "api_protocol": 2,
+  "update_feed_url": "$UPDATE_FEED_URL",
+  "update_public_key": "$UPDATE_PUBLIC_KEY"
 }
 MANIFEST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null

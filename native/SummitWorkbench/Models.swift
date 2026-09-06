@@ -16,14 +16,24 @@ enum PanelMode: String {
 struct BuildManifest: Decodable {
     let schemaVersion: Int
     let productID: String
+    let version: String?
+    let build: String?
+    let architecture: String?
     let frontendBuild: String
     let apiProtocol: Int
+    let updateFeedURL: String?
+    let updatePublicKey: String?
 
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case productID = "product_id"
+        case version
+        case build
+        case architecture
         case frontendBuild = "frontend_build"
         case apiProtocol = "api_protocol"
+        case updateFeedURL = "update_feed_url"
+        case updatePublicKey = "update_public_key"
     }
 
     func validate() throws {
@@ -52,6 +62,14 @@ struct AppConfiguration {
     let wbBinary: String
     let staticDirectory: String?
     let promptsDirectory: String?
+
+    var updateFeedURL: URL? {
+        guard let raw = manifest.updateFeedURL, let url = URL(string: raw),
+              url.scheme?.lowercased() == "https" else { return nil }
+        return url
+    }
+
+    var updatePublicKey: String? { manifest.updatePublicKey }
 
     func panelURL(for frontendBuild: String, port: Int) -> URL {
         var components = URLComponents()
@@ -135,6 +153,7 @@ enum NativeMessage {
     case openExternal(URL)
     case saveTextFile(filename: String, content: String)
     case automationSettingsChanged(enabled: Bool)
+    case checkForUpdates
 
     init?(body: Any) {
         guard let dictionary = body as? [String: Any],
@@ -162,6 +181,7 @@ enum NativeMessage {
         case "automationSettingsChanged":
             guard let enabled = dictionary["enabled"] as? Bool else { return nil }
             self = .automationSettingsChanged(enabled: enabled)
+        case "checkForUpdates": self = .checkForUpdates
         default: return nil
         }
     }

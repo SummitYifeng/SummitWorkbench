@@ -4,7 +4,7 @@ export interface NativeClientReady {
   serverInstance: string;
 }
 
-export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'copyDiagnostics' } | { type: 'openLogDirectory' } | {
+export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'copyDiagnostics' } | { type: 'openLogDirectory' } | { type: 'checkForUpdates' } | {
   type: 'openExternal';
   url: string;
 } | {

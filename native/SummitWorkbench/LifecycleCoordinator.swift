@@ -8,6 +8,7 @@ final class LifecycleCoordinator {
     private var supervisor: ServiceSupervisor?
     private var panel: PanelWindowController?
     private var automationService: AutomationServiceManager?
+    private var updateCoordinator: UpdateCoordinator?
     private var currentClientBuild: String?
     private var currentClientServerInstance: String?
     private var startInFlight = false
@@ -26,6 +27,14 @@ final class LifecycleCoordinator {
                 let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
                 logger = log
                 automationService = AutomationServiceManager(logger: log)
+                updateCoordinator = UpdateCoordinator(
+                    logger: log,
+                    feedURL: config.updateFeedURL,
+                    publicKeyBase64: config.updatePublicKey,
+                    currentVersion: config.manifest.version ?? "0.0.0",
+                    currentBuild: config.manifest.build ?? "0",
+                    architecture: config.manifest.architecture ?? "arm64"
+                )
                 log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
                 log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
                 let window = PanelWindowController(logger: log)
@@ -120,6 +129,7 @@ final class LifecycleCoordinator {
             panel?.hideStatus()
             logger?.log("client_ready", fields: ["server_instance": serverInstance])
             logger?.log("version_match")
+            updateCoordinator?.checkIfDue()
         case .quit:
             logger?.log("user_quit_requested")
             panel?.showStatus("正在退出…")
@@ -139,6 +149,8 @@ final class LifecycleCoordinator {
             saveTextFile(filename: filename, content: content)
         case .automationSettingsChanged(let enabled):
             automationService?.setEnabled(enabled)
+        case .checkForUpdates:
+            updateCoordinator?.check(manual: true)
         }
     }
 
