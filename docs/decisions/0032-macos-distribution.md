@@ -1,6 +1,6 @@
 # ADR 0032 · macOS 签名分发、notarization 与 DMG
 
-- 状态：✅ 内部 arm64 发布实现完成；M2+ 真机验收待执行
+- 状态：✅ 内部 arm64 发布与 M2+ 真机验收完成
 - 日期：2026-09-06
 - 里程碑：v0.4.1 → P0-13
 - 依据：计划 P0-13（实现要求 1–10、真机矩阵与验收）、P0-12 动态服务生命周期、ADR 0030 packaged Git
@@ -61,5 +61,6 @@ WKWebView 生命周期通道内生效；非原生浏览器仍使用标准下载�
 ## 未执行的外部门
 
 本产品明确不追求 Developer ID、notarization、Intel、Windows 或 App Store 发布。仍需在 M2+ Apple Silicon
-上人工验证 DMG 安装/启动、创建 workspace、profile 切换、升级保留 profile/vault/Keychain，以及删除 App
-后用户数据仍保留；这些验证不需要新增飞书权限。
+上人工验证的 DMG 安装/启动、升级工作区，以及设置中心离线检查和同步状态导出已由用户在本机 Mac Studio
+完成并通过；不需要新增飞书权限。创建新 workspace、profile 切换和删除 App 后数据保留仍可作为后续
+可选回归，不构成当前内部自用发布阻塞。
