@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-06
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05 已完成；下一工作包为 P1-06
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05、P1-06 已完成；下一工作包为 P1-07
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -221,7 +221,7 @@ account = git:<host>:<username>
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [x] |
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [x] |
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [x] |
-| 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
+| 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [x] |
 | 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
 | 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
 | 26 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
@@ -1681,6 +1681,30 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   canary 验证；不需要 Apple Developer ID、飞书新权限、真实账号或第二台 Mac）。用户若需要安装
   后确认，可在当前 Mac Studio 设置页点击“查看诊断包清单”“导出诊断包”“打开日志目录”。
 - 遗留：无；P1-06 尚未开始。
+
+### 2026-09-06 · P1-06
+
+- 状态：完成 `[x]`（CI/覆盖率/发布矩阵实现与本机 arm64 发布演练通过；不进入 P1-07）
+- Git commit：`8b53186`（CI、覆盖率和发布实现）、`<待收口>`（前端产物、计划与 ADR；均将推送至 `origin/main`）
+- 变更摘要：CI 增加 `uv lock --check`、Python lint/format/mypy/pytest-cov 80% 门、模块覆盖率
+  报告、Node 20 + `npm ci` + 前端 build/verify、secret scan；新增 tag 驱动的内部 macOS release
+  workflow，发布前严格校验 tag 与 `pyproject.toml` 版本一致；构建脚本强制 runner 架构与 manifest
+  一致。遵循仅 M2+ Apple Silicon 约束，arm64 执行完整构建，x86_64 独立负向门明确拒绝；发布产物
+  新增 checksum、SBOM、notary 摘要和 test manifest，release job 强制执行 packaged integration。
+- 目标测试：新增 `tests/contract/test_ci_contract.py` 3 项；覆盖 workflow 关键门、tag/version、
+  arm64/x86_64 策略、产物测试清单和架构 metadata。secret scan、`uv lock --check`、Node 锁安装、
+  x86_64 拒绝契约均通过。
+- 全量质量门：`uv run pytest --cov=summit_workbench --cov-report=term-missing --cov-report=xml
+  --cov-fail-under=80 -q`（751 passed，1 skipped，覆盖率 83.28%，跳过既有无
+  `WB_PACKAGED_APP` 的 packaged smoke）；ruff、format、mypy、前端测试/build/verify、Swift arm64
+  测试、secret scan、锁检查和脚本语法全部通过。
+- 发布验收：`BUILD_NUMBER=106 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/p1-06-release
+  scripts/release-macos.sh` 通过，产出 `0.4.1/arm64` 内部 DMG、checksum、SBOM、notary 摘要和
+  test manifest；`WB_PACKAGED_APP=.../SummitWorkbench.app uv run pytest -m integration -q` 为
+  `1 passed, 751 deselected`。
+- 真机验证：未执行 GitHub Actions 云端 workflow；本机 Mac Studio 已完成 arm64 App/DMG 离线发布
+  演练。无需 Apple Developer ID、飞书新权限、真实账号或第二台 Mac。
+- 遗留：无；P1-07 尚未开始。
 
 ## 16. 外部实现依据
 
