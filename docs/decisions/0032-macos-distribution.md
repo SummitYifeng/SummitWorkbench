@@ -33,12 +33,14 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
   47 项 packaged/native 回归、PyInstaller、Swift 离线编译、自包含 server 动态端口 smoke。
 - 修复后重新编译的 arm64 App 在当前 Mac Studio 真实用户环境中约 1 秒完成 `service_ready`，未再进入
   `crashLoop`；此前失败包的残留测试进程已清理。
-- 基于修复提交 `4c13631` 生成的最终 build 6 DMG 已通过完整离线发布验证；metadata 的 Git commit、
+- 基于修复提交 `4c13631` 生成的中间 build 6 DMG 已通过完整离线发布验证；metadata 的 Git commit、
   arm64、内部分发标记和 App/DMG digest 均一致。
 - 真机反馈补丁修复了动态 loopback 端口的 Origin 白名单：生产服务现在只接受当前请求 Host 对应的
   `127.0.0.1:<动态端口>`/`localhost:<动态端口>` 同源请求，空安装向导的草稿保存、升级等写请求可在
   WKWebView 中正常提交，跨来源请求仍被拒绝。
 - 发布 smoke 也改为使用临时 `HOME` 与临时 `runtime.json`，不再受当前 Mac 上运行中的旧 App 影响。
+- 基于提交 `84d59e0` 生成的最终 build 8 DMG 已通过完整离线发布验证；metadata 的 Git commit、
+  arm64、内部分发标记和 App/DMG digest 均一致。
 - `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和

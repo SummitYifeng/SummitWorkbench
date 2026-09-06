@@ -1536,11 +1536,11 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P0-13 现场反馈修复
 
 - 状态：修复完成 `[x]`（动态端口 Origin 兼容已实现；等待用户重新安装 hotfix DMG 验收）
-- Git commit：待本次修复提交（将推送至 `origin/main`）
-- 变更摘要：根据真实 M2+ Mac Studio 反馈，修复生产动态端口下 WKWebView 的 Origin 校验；只把当前请求的 loopback Host 加入同源判断，不放宽外部来源；新增普通生产写请求与空安装 onboarding 草稿保存回归测试。
-- 目标测试：两条回归测试先失败（均复现 `origin_not_allowed`）后通过；本次提交后复跑相关测试、全量质量门，并重新生成 build 7 `INTERNAL-DEV` arm64 DMG。
+- Git commit：84d59e0（实现提交；待收尾提交并推送至 `origin/main`）
+- 变更摘要：根据真实 M2+ Mac Studio 反馈，修复生产动态端口下 WKWebView 的 Origin 校验；只把当前请求的 loopback Host 加入同源判断，不放宽外部来源；新增普通生产写请求与空安装 onboarding 草稿保存回归测试；同时隔离发布 smoke 的临时 `HOME` 与 `runtime.json`，避免被用户正在运行的旧 App 干扰。
+- 目标测试：两条 Origin 回归测试先失败（均复现 `origin_not_allowed`）后通过；`uv run pytest -q`（718 passed，1 skipped，5 warnings）；`BUILD_NUMBER=8 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/releases-final scripts/release-macos.sh` 生成最终 build 8 `INTERNAL-DEV` arm64 DMG 并通过 App/DMG 验证。
 - 真机反馈：旧 build `v2026.09.05-406e449-ac9b2fb7` 能打开向导但点击流程后返回“请求来源不是当前服务同源地址”；原因已定位并修复。无需新增飞书权限、Apple 证书或第二台电脑。
-- 遗留：等待用户安装 build 7 并重新完成“升级这台 Mac 上的旧工作台”流程验证。
+- 遗留：等待用户安装 build 8 并重新完成“升级这台 Mac 上的旧工作台”流程验证。
 
 ## 16. 外部实现依据
 
