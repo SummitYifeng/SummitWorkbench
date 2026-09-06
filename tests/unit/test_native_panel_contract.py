@@ -78,3 +78,15 @@ def test_settings_doctor_declares_json_and_sync_export_supports_native_save() ->
     assert "URL.revokeObjectURL" in export
     assert "saveTextFile" in native
     assert "NSSavePanel" in native
+
+
+def test_p101_uses_smappservice_and_preserves_native_bridge_controls() -> None:
+    all_native = "\n".join(path.read_text(encoding="utf-8") for path in _NATIVE.glob("*.swift"))
+    build = (_ROOT / "scripts" / "build-macos-app.sh").read_text(encoding="utf-8")
+    bridge = (_ROOT / "web" / "src" / "lifecycle" / "native-bridge.ts").read_text(encoding="utf-8")
+    assert "import ServiceManagement" in all_native
+    assert "SMAppService.loginItem" in all_native
+    assert "automationSettingsChanged" in all_native
+    assert "automationSettingsChanged" in bridge
+    assert "Contents/Library/LoginItems" in build
+    assert "codesign" in build

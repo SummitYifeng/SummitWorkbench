@@ -7,6 +7,7 @@ final class LifecycleCoordinator {
     private var logger: StructuredLogger?
     private var supervisor: ServiceSupervisor?
     private var panel: PanelWindowController?
+    private var automationService: AutomationServiceManager?
     private var currentClientBuild: String?
     private var currentClientServerInstance: String?
     private var startInFlight = false
@@ -24,6 +25,7 @@ final class LifecycleCoordinator {
                 configuration = config
                 let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
                 logger = log
+                automationService = AutomationServiceManager(logger: log)
                 log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
                 log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
                 let window = PanelWindowController(logger: log)
@@ -131,6 +133,8 @@ final class LifecycleCoordinator {
             NSWorkspace.shared.open(url)
         case .saveTextFile(let filename, let content):
             saveTextFile(filename: filename, content: content)
+        case .automationSettingsChanged(let enabled):
+            automationService?.setEnabled(enabled)
         }
     }
 

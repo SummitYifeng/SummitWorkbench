@@ -171,6 +171,26 @@ class DoctorPayload(BaseModel):
     online: bool = False
 
 
+class AutomationSettingsPayload(BaseModel):
+    """更新 workspace 本机自动化的一项调度设置。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job: Literal["brief", "weekly", "meeting-sync"]
+    enabled: bool = False
+    hour: Annotated[int, Field(ge=0, le=23)]
+    minute: Annotated[int, Field(ge=0, le=59)]
+    weekdays: list[Annotated[int, Field(ge=0, le=6)]] = Field(max_length=7)
+
+
+class AutomationRunPayload(BaseModel):
+    """手动运行一项自动化任务。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job: Literal["brief", "weekly", "meeting-sync"]
+
+
 class AskHistoryTurn(BaseModel):
     """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
 

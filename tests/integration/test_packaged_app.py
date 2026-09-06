@@ -38,8 +38,10 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
     work_root = tmp_path / "work"
     work_root.mkdir()
     environment = {
+        "HOME": str(tmp_path / "home"),
         "PATH": "/usr/bin:/bin",
         "WORK_ROOT": str(work_root),
+        "WB_RUNTIME_RECORD": str(tmp_path / "runtime.json"),
         "WB_PANEL_MODE": "production",
         "WB_STATIC_DIR": str(static_dir),
         "WB_PROMPTS_DIR": str(resources / "prompts"),

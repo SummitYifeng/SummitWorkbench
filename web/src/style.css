@@ -456,6 +456,13 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .grid2 > div:first-child { grid-column: 1 / -1; }
+.automation-form { margin: 10px 0; }
+.automation-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.automation-enabled { white-space: nowrap; font-size: 13px; }
+.automation-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 12px; }
+.automation-controls input[type="time"] { margin-left: 4px; }
+.weekday { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--muted); }
+.automation-detail { overflow-wrap: anywhere; color: var(--bad); }
 
 /* ---- 项目推进 ---- */
 .card.project { padding: 12px 16px; }

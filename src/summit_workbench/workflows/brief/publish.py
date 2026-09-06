@@ -13,6 +13,7 @@ from pathlib import Path
 
 from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.repositories.git import GitError, GitRepo
+from summit_workbench.repositories.git_backend import CommitIdentity
 
 
 class PublishStatus(StrEnum):
@@ -33,14 +34,29 @@ class PublishResult:
     detail: str = ""
 
 
-def publish_brief(vault_dir: Path, paths: list[Path], *, message: str, push: bool) -> PublishResult:
+def publish_brief(
+    vault_dir: Path,
+    paths: list[Path],
+    *,
+    message: str,
+    push: bool,
+    backend_kind: str | None = None,
+    workspace_id: str | None = None,
+    username: str | None = None,
+    author: CommitIdentity | None = None,
+) -> PublishResult:
     """提交（可选推送）简报文件。任何 git 失败转成可见状态，不抛出。
 
     整个 ``add → commit → (push)`` 序列在工作区锁内进行，与 ``wb sync`` 的
     ``fetch/ff-merge/push`` 互斥，避免并发触发源交错操作同一仓库（LHF #1）。
     锁被占用时不阻塞很久，直接返回 :attr:`PublishStatus.BUSY` 让上层可见。
     """
-    repo = GitRepo(vault_dir)
+    repo = GitRepo(
+        vault_dir,
+        backend_kind=backend_kind,
+        workspace_id=workspace_id,
+        username=username,
+    )
     if not repo.is_git_repo():
         return PublishResult(PublishStatus.NOT_GIT, f"{vault_dir} 不是 git 仓库")
 
@@ -51,7 +67,7 @@ def publish_brief(vault_dir: Path, paths: list[Path], *, message: str, push: boo
                 repo.add(rel)
                 if not repo.has_staged_changes():
                     return PublishResult(PublishStatus.NOTHING_TO_COMMIT, "内容未变，无需提交")
-                repo.commit(message)
+                repo.commit(message, author=author)
             except GitError as exc:
                 return PublishResult(PublishStatus.COMMIT_FAILED, exc.stderr or str(exc))
 

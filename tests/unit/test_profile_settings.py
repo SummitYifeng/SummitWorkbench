@@ -137,6 +137,58 @@ def test_settings_api_exposes_prepare_commit_and_safe_remove(tmp_path: Path, mon
     assert preview.json()["code"] == "confirmation_required"
 
 
+def test_automation_settings_api_roundtrips_and_validates_schedule(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profile = _profile(tmp_path, "automation")
+    set_active_profile(profile.workspace_id, home=tmp_path)
+    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
+    client = TestClient(create_app(WebContext.from_active_workspace(context)))
+
+    listed = client.get("/api/settings/automation")
+    assert listed.status_code == 200
+    assert listed.json()["workspace_id"] == profile.workspace_id
+    assert listed.json()["jobs"]["brief"]["enabled"] is False
+
+    saved = client.put(
+        "/api/settings/automation",
+        json={
+            "job": "brief",
+            "enabled": True,
+            "hour": 9,
+            "minute": 15,
+            "weekdays": [0, 1, 2, 3, 4],
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["job"]["hour"] == 9
+    assert saved.json()["job"]["weekdays"] == [0, 1, 2, 3, 4]
+
+    reread = client.get("/api/settings/automation")
+    assert reread.json()["jobs"]["brief"]["enabled"] is True
+    assert reread.json()["jobs"]["brief"]["minute"] == 15
+
+    invalid = client.put(
+        "/api/settings/automation",
+        json={"job": "brief", "enabled": True, "hour": 24, "minute": 0, "weekdays": []},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["code"] == "validation_error"
+
+
+def test_automation_manual_run_is_blocked_on_secondary(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profile = _profile(tmp_path, "secondary-automation")
+    set_active_profile(profile.workspace_id, home=tmp_path)
+    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
+    client = TestClient(create_app(WebContext.from_active_workspace(context)))
+
+    response = client.post("/api/settings/automation/run", json={"job": "brief"})
+    assert response.status_code == 403
+    assert response.json()["code"] == "not_automation_primary"
+
+
 def test_provider_secret_is_scoped_and_never_written_to_profile(
     tmp_path: Path, monkeypatch
 ) -> None:

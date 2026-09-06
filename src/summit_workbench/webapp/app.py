@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
+from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.domain.workspace import Compatibility, DeviceRole
@@ -94,6 +95,8 @@ from summit_workbench.webapp.api import (
     ArtifactSavePayload,
     AskPayload,
     AutomationPrimaryPayload,
+    AutomationRunPayload,
+    AutomationSettingsPayload,
     BatchDecidePayload,
     CapturePayload,
     DecidePayload,
@@ -1397,6 +1400,82 @@ def create_app(
             raise HTTPException(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc
+
+    def _automation_settings_payload() -> dict[str, object]:
+        from summit_workbench.repositories.automation_settings import load_automation_settings
+
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        try:
+            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
+            ) from exc
+        return {
+            "ok": True,
+            "workspace_id": settings.workspace_id,
+            "jobs": {
+                job.value: schedule.model_dump(mode="json")
+                for job, schedule in ((job, settings.for_job(job)) for job in AutomationJob)
+            },
+        }
+
+    @app.get("/api/settings/automation", response_model=None)
+    def settings_automation() -> dict[str, object]:
+        return _automation_settings_payload()
+
+    @app.put("/api/settings/automation", response_model=None)
+    def update_settings_automation(payload: AutomationSettingsPayload) -> dict[str, object]:
+        from summit_workbench.repositories.automation_settings import (
+            load_automation_settings,
+            save_automation_settings,
+        )
+
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        job = AutomationJob(payload.job)
+        try:
+            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
+            current = settings.for_job(job)
+            settings.jobs[job] = current.model_copy(
+                update={
+                    "enabled": payload.enabled,
+                    "hour": payload.hour,
+                    "minute": payload.minute,
+                    "weekdays": sorted(set(payload.weekdays)),
+                    "next_run_at": None,
+                }
+            )
+            save_automation_settings(settings, home=_settings_home())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
+            ) from exc
+        return {"ok": True, "job": settings.jobs[job].model_dump(mode="json")}
+
+    @app.post("/api/settings/automation/run", response_model=None)
+    def run_settings_automation(
+        request: Request, payload: AutomationRunPayload
+    ) -> dict[str, object] | JSONResponse:
+        blocked = _sync_blocked(request)
+        if blocked is not None:
+            return blocked
+        from summit_workbench.workflows.automation_worker import run_automation_job
+
+        if ctx.active_workspace is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job))
+        return {"ok": result.status.value in {"success", "degraded", "skipped"}, **result.as_dict()}
 
     @app.post("/api/settings/doctor", response_model=None)
     def settings_doctor(payload: DoctorPayload) -> dict[str, object]:

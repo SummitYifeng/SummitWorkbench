@@ -64,7 +64,8 @@ trap cleanup EXIT
 APP="$BUILD_ROOT/SummitWorkbench.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/static" \
   "$APP/Contents/Resources/server" "$APP/Contents/Resources/prompts" \
-  "$APP/Contents/Resources/templates"
+  "$APP/Contents/Resources/templates" "$APP/Contents/Helpers" \
+  "$APP/Contents/Library/LoginItems"
 
 # PyInstaller onedir：业务包全部进入 server，自包含运行时不依赖仓库 .venv。
 "$PYTHON" -m PyInstaller --clean --noconfirm \
@@ -74,6 +75,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/web/static" \
 cp -R "$BUILD_ROOT/server-dist/SummitWorkbenchServer/." "$APP/Contents/Resources/server/"
 # editable 安装元数据只服务于开发环境，不能把本机仓库路径带进可分发 bundle。
 find "$APP/Contents/Resources/server" -name direct_url.json -type f -delete
+
+# 自动化 worker 是独立 PyInstaller 程序：不启动 Web server，不依赖系统 PATH。
+"$PYTHON" -m PyInstaller --clean --noconfirm \
+  --distpath "$BUILD_ROOT/worker-dist" \
+  --workpath "$BUILD_ROOT/worker-work" \
+  "$REPO_ROOT/packaging/SummitWorkbenchWorker.spec"
+cp "$BUILD_ROOT/worker-dist/SummitWorkbenchWorker" "$APP/Contents/Helpers/SummitWorkbenchWorker"
+chmod +x "$APP/Contents/Helpers/SummitWorkbenchWorker"
 
 cp -R "$STATIC_DIR/." "$APP/Contents/Resources/web/static/"
 cp -R "$REPO_ROOT/prompts/." "$APP/Contents/Resources/prompts/"
@@ -95,11 +104,24 @@ if [[ -f "$SRC_ICON" ]] && command -v iconutil >/dev/null && command -v sips >/d
 fi
 
 # 原生壳从 Resources/server 与 Resources/web/static 的相对路径启动服务。
-SWIFT_SOURCES=("$REPO_ROOT"/native/SummitWorkbench/*.swift)
+SWIFT_SOURCES=()
+for source in "$REPO_ROOT"/native/SummitWorkbench/*.swift; do
+  [[ "$source" == *"/AutomationHelperMain.swift" ]] || SWIFT_SOURCES+=("$source")
+done
 xcrun swiftc -O -target "$ARCH-apple-macosx13.0" \
-  -framework AppKit -framework WebKit "${SWIFT_SOURCES[@]}" \
+  -framework AppKit -framework WebKit -framework Security -framework ServiceManagement \
+  "${SWIFT_SOURCES[@]}" \
   -o "$APP/Contents/MacOS/SummitWorkbench"
 chmod +x "$APP/Contents/MacOS/SummitWorkbench"
+
+# SMAppService.loginItem 需要一个嵌套 helper app；它只负责轮询并直接启动 bundle worker。
+HELPER_APP="$APP/Contents/Library/LoginItems/SummitWorkbenchAutomation.app"
+mkdir -p "$HELPER_APP/Contents/MacOS"
+xcrun swiftc -O -target "$ARCH-apple-macosx13.0" \
+  -parse-as-library \
+  "$REPO_ROOT/native/SummitWorkbench/AutomationHelperMain.swift" \
+  -o "$HELPER_APP/Contents/MacOS/SummitWorkbenchAutomation"
+chmod +x "$HELPER_APP/Contents/MacOS/SummitWorkbenchAutomation"
 
 SHORT_VERSION="$PROJECT_VERSION"
 BUNDLE_VERSION="$BUILD_NUMBER"
@@ -140,6 +162,21 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
 }
 MANIFEST
 /usr/bin/plutil -lint "$APP/Contents/Info.plist" >/dev/null
+cat > "$HELPER_APP/Contents/Info.plist" <<HELPER_PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>SummitWorkbenchAutomation</string>
+  <key>CFBundleDisplayName</key><string>SummitWorkbench Automation</string>
+  <key>CFBundleIdentifier</key><string>com.summitworkbench.panel.automation</string>
+  <key>CFBundleVersion</key><string>$BUNDLE_VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$SHORT_VERSION</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleExecutable</key><string>SummitWorkbenchAutomation</string>
+  <key>LSUIElement</key><true/>
+</dict></plist>
+HELPER_PLIST
+/usr/bin/plutil -lint "$HELPER_APP/Contents/Info.plist" >/dev/null
 
 # 先签名 dylib/framework，再签名 PyInstaller executable，最后签名 App；内部包统一使用 ad-hoc。
 ENTITLEMENTS="$REPO_ROOT/packaging/entitlements.plist"
@@ -155,6 +192,9 @@ while IFS= read -r nested; do sign_nested "$nested"; done < <(
   find "$APP/Contents/Resources" \( -name '*.dylib' -o -name '*.framework' \) -print | sort -r
 )
 sign_nested "$APP/Contents/Resources/server/SummitWorkbenchServer"
+sign_nested "$APP/Contents/Helpers/SummitWorkbenchWorker"
+sign_nested "$HELPER_APP/Contents/MacOS/SummitWorkbenchAutomation"
+sign_nested "$HELPER_APP"
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   codesign --force --sign - --timestamp=none "$APP"
 else

@@ -78,3 +78,20 @@ def test_p013_release_contract_is_versioned_arm64_internal_safe() -> None:
     assert "spctl --assess" in verify
     assert "secret" in verify.lower()
     assert "com.apple.security.cs.disable-library-validation" not in entitlements
+
+
+def test_p101_packages_a_self_contained_worker_and_native_helper() -> None:
+    build = (_ROOT / "scripts" / "build-macos-app.sh").read_text(encoding="utf-8")
+    spec = (_ROOT / "packaging" / "SummitWorkbenchWorker.spec").read_text(encoding="utf-8")
+    helper = (_ROOT / "native" / "SummitWorkbench" / "AutomationHelperMain.swift").read_text(
+        encoding="utf-8"
+    )
+    manager = (_ROOT / "native" / "SummitWorkbench" / "AutomationServiceManager.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "SummitWorkbenchWorker.spec" in build
+    assert "Contents/Helpers/SummitWorkbenchWorker" in build
+    assert "worker_entry.py" in spec
+    assert "Process()" in helper
+    assert "SMAppService.loginItem" in manager
+    assert "launchctl" not in manager

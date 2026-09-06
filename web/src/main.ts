@@ -1287,10 +1287,59 @@ interface ProfileSummaryPayload {
   sync_summary: { state: string; pending_commits: number | null; last_sync_at?: string | null };
 }
 
+interface AutomationJobPayload {
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  weekdays: number[];
+  last_run_at?: string | null;
+  last_status: string;
+  last_detail?: string | null;
+  next_run_at?: string | null;
+}
+
+interface AutomationSettingsPayload {
+  workspace_id: string;
+  jobs: Record<string, AutomationJobPayload>;
+}
+
+const AUTOMATION_LABELS: Record<string, string> = {
+  brief: '晨间简报',
+  weekly: '每周复盘',
+  'meeting-sync': '会议同步',
+};
+const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
+
+function automationJobHtml(job: string, schedule: AutomationJobPayload): string {
+  const time = String(schedule.hour).padStart(2, '0') + ':' + String(schedule.minute).padStart(2, '0');
+  const statusLabels: Record<string, string> = {
+    never: '尚未运行', success: '运行成功', degraded: '降级完成', failed: '运行失败',
+    'not-primary': '本机不是主设备', skipped: '本次跳过',
+  };
+  const detail = schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '';
+  const copy = schedule.last_detail
+    ? '<button class="ghost" type="button" data-action="automation-copy" data-summary="' + esc(schedule.last_detail) + '">复制错误摘要</button>'
+    : '';
+  return '<form class="card automation-form" data-job="' + esc(job) + '">' +
+    '<div class="automation-row"><div><strong>' + esc(AUTOMATION_LABELS[job] ?? job) + '</strong>' +
+    '<div class="meta">最近：' + esc(statusLabels[schedule.last_status] ?? schedule.last_status) +
+    (schedule.last_run_at ? ' · ' + esc(schedule.last_run_at) : '') + '</div>' + detail + '</div>' +
+    '<label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
+    '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label>' +
+    '<span class="meta">星期</span>' + WEEKDAY_LABELS.map((label, index) =>
+      '<label class="weekday"><input name="weekday" type="checkbox" value="' + index + '"' +
+      (schedule.weekdays.includes(index) ? ' checked' : '') + '>' + label + '</label>').join('') + '</div>' +
+    '<div class="row"><button class="primary" type="submit">保存</button>' +
+    '<button class="ghost" type="button" data-action="automation-run" data-job="' + esc(job) + '">立即运行</button>' + copy + '</div></form>';
+}
+
 async function renderSettings(view: HTMLElement): Promise<void> {
   view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
   try {
-    const response = await api<{ profiles: ProfileSummaryPayload[] }>('/api/settings/profiles');
+    const [response, automation] = await Promise.all([
+      api<{ profiles: ProfileSummaryPayload[] }>('/api/settings/profiles'),
+      api<AutomationSettingsPayload>('/api/settings/automation'),
+    ]);
     view.innerHTML = '<section class="block"><div class="section-head"><h2 class="section-title">工作台设置</h2>' +
       '<button class="ghost" data-action="settings-doctor">离线检查</button>' +
       '<button class="ghost" data-action="settings-doctor-online">在线检查（会访问网络）</button></div>' +
@@ -1306,6 +1355,8 @@ async function renderSettings(view: HTMLElement): Promise<void> {
         (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到此工作台</button><button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>') +
         '</article>',
       ).join('') + '</section>' +
+      '<section class="block"><h3 class="section-title">App 内自动化</h3><p class="hint">只在这台 Mac 本地运行。只有 workspace 的 automation-primary 会执行写入；辅助设备会安全跳过。</p>' +
+      Object.entries(automation.jobs).map(([job, schedule]) => automationJobHtml(job, schedule)).join('') + '</section>' +
       '<section class="block"><h3 class="section-title">Provider 设置</h3><p class="hint">非秘密配置写入当前 workspace profile；秘密只在提交时进入该 workspace 的 Keychain，不会回显。</p>' +
       '<form id="provider-settings-form" autocomplete="off"><div class="grid2">' +
       '<label>类型<select id="provider-kind"><option value="model">模型</option><option value="feishu">飞书</option><option value="git">Git</option></select></label>' +
@@ -1332,8 +1383,63 @@ async function renderSettings(view: HTMLElement): Promise<void> {
       }).then(() => { (document.getElementById('provider-secret') as HTMLInputElement).value = ''; toast('Provider 设置已保存', 'ok'); })
         .catch((err: unknown) => toast(String(err), 'err'));
     });
+    view.querySelectorAll<HTMLFormElement>('.automation-form').forEach((automationForm) => {
+      automationForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void saveAutomationForm(automationForm);
+      });
+    });
   } catch (err) {
     view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(err)) + '</div>';
+  }
+}
+
+async function saveAutomationForm(form: HTMLFormElement): Promise<void> {
+  const time = (form.elements.namedItem('time') as HTMLInputElement).value || '08:00';
+  const [hour, minute] = time.split(':').map(Number);
+  const weekdays = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="weekday"]:checked'))
+    .map((input) => Number(input.value));
+  try {
+    await api('/api/settings/automation', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        job: form.dataset.job,
+        enabled: (form.elements.namedItem('enabled') as HTMLInputElement).checked,
+        hour, minute, weekdays,
+      }),
+    });
+    const anyEnabled = Boolean(document.querySelector('.automation-form input[name="enabled"]:checked'));
+    sendNativeMessage({ type: 'automationSettingsChanged', enabled: anyEnabled });
+    toast('自动化设置已保存', 'ok');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function runAutomationJob(job: string): Promise<void> {
+  try {
+    const result = await mutation(() => api<{ ok: boolean; status: string; detail?: string | null }>(
+      '/api/settings/automation/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job }),
+      },
+    ));
+    toast(result.detail ? result.status + '：' + result.detail : '自动化任务已完成：' + result.status, result.ok ? 'ok' : 'err');
+    const view = document.getElementById('view-settings');
+    if (view) void renderSettings(view);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function copyAutomationSummary(summary: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(summary);
+    toast('错误摘要已复制', 'ok');
+  } catch {
+    toast('复制失败，请手动记录摘要：' + summary, 'err');
   }
 }
 
@@ -1496,6 +1602,15 @@ document.addEventListener('click', (ev) => {
       method: 'POST', body: JSON.stringify({ workspace_id: workspaceId, confirmed: true }),
     }).then(() => { toast('本机 profile 已移除', 'ok'); void renderSettings(document.getElementById('view-settings') as HTMLElement); })
       .catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'automation-run') {
+    const job = btn.dataset.job ?? '';
+    if (job) void runAutomationJob(job);
+    return;
+  }
+  if (action === 'automation-copy') {
+    void copyAutomationSummary(btn.dataset.summary ?? '');
     return;
   }
   if (action === 'settings-doctor') {

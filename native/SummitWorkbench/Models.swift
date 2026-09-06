@@ -133,6 +133,7 @@ enum NativeMessage {
     case copyDiagnostics
     case openExternal(URL)
     case saveTextFile(filename: String, content: String)
+    case automationSettingsChanged(enabled: Bool)
 
     init?(body: Any) {
         guard let dictionary = body as? [String: Any],
@@ -156,6 +157,9 @@ enum NativeMessage {
                   !filename.contains("/"), !filename.contains("\\"),
                   content.count <= 2_000_000 else { return nil }
             self = .saveTextFile(filename: filename, content: content)
+        case "automationSettingsChanged":
+            guard let enabled = dictionary["enabled"] as? Bool else { return nil }
+            self = .automationSettingsChanged(enabled: enabled)
         default: return nil
         }
     }

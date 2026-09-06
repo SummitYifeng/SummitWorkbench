@@ -11,6 +11,9 @@ export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'copy
   type: 'saveTextFile';
   filename: string;
   content: string;
+} | {
+  type: 'automationSettingsChanged';
+  enabled: boolean;
 };
 
 interface NativeHandler {
