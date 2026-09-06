@@ -247,3 +247,84 @@ print("OK")
     )
     assert completed.returncode == 0, completed.stderr
     assert "OK" in completed.stdout
+
+
+def test_dulwich_https_transport_uses_ca_bundle(monkeypatch, tmp_path) -> None:
+    """P1-07D：HTTPS transport 显式使用可信 CA bundle，修复 frozen OpenSSL 默认 CA 失效。"""
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+
+    from summit_workbench.config.tls_trust import ca_bundle_path
+    from summit_workbench.repositories import dulwich_git
+
+    bundle = ca_bundle_path()
+    assert bundle is not None and bundle.is_file()
+    backend = dulwich_git.DulwichGitBackend(
+        tmp_path / "repo",
+        workspace_id="ws",
+        username="alice",
+        credential_resolver=lambda ws, host, user: SimpleNamespace(password=SecretStr("s")),
+    )
+    kwargs = backend.transport_kwargs("https://github.com/acme/private.git", operation="fetch")
+    pool_manager = kwargs["pool_manager"]
+    assert pool_manager.connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
+    assert os.fsdecode(pool_manager.connection_pool_kw["ca_certs"]) == str(bundle)
+
+
+def test_dulwich_https_transport_never_disables_tls(monkeypatch, tmp_path) -> None:
+    """P1-07D：即便 CA bundle 定位失败，HTTPS transport 也绝不关闭 TLS 校验。"""
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+
+    from summit_workbench.repositories import dulwich_git
+
+    monkeypatch.setattr(dulwich_git, "ca_bundle_path", lambda: None)
+    backend = dulwich_git.DulwichGitBackend(
+        tmp_path / "repo",
+        workspace_id="ws",
+        username="alice",
+        credential_resolver=lambda ws, host, user: SimpleNamespace(password=SecretStr("s")),
+    )
+    kwargs = backend.transport_kwargs("https://github.com/acme/private.git", operation="clone")
+    pool_manager = kwargs["pool_manager"]
+    assert pool_manager.connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
+    assert pool_manager.connection_pool_kw.get("ca_certs") is None
+
+
+def test_ca_bundle_path_frozen_fallback(monkeypatch, tmp_path) -> None:
+    """P1-07D：frozen 数据目录 <bundle>/certifi/cacert.pem 是可靠的 CA 回退。"""
+    import types
+
+    from summit_workbench.config import tls_trust
+
+    fake = tmp_path / "certifi" / "cacert.pem"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("fake-bundle", encoding="utf-8")
+    monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+    monkeypatch.setattr(tls_trust.sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(
+        tls_trust.ssl,
+        "get_default_verify_paths",
+        lambda: types.SimpleNamespace(cafile=None, openssl_cafile=None),
+    )
+    assert tls_trust.ca_bundle_path() == fake
+
+
+def test_classify_remote_boundary_tls_auth_unavailable() -> None:
+    """P1-07D：TLS 失败→GitTlsError，认证失败→GitAuthError，网络失败→GitRemoteUnavailable。"""
+    from summit_workbench.repositories import dulwich_git
+    from summit_workbench.repositories.git_backend import (
+        GitAuthError,
+        GitRemoteUnavailable,
+        GitTlsError,
+    )
+
+    tls = RuntimeError("certificate verify failed: unable to get local issuer certificate")
+    auth = RuntimeError("No valid credentials provided (401)")
+    network = OSError("Connection refused")
+
+    assert isinstance(dulwich_git._classify_remote(tls, "m"), GitTlsError)
+    assert isinstance(dulwich_git._classify_remote(auth, "m"), GitAuthError)
+    assert isinstance(dulwich_git._classify_remote(network, "m"), GitRemoteUnavailable)

@@ -12,6 +12,7 @@ from pathlib import Path
 import uvicorn
 
 from summit_workbench.config.profiles import resolve_active_workspace
+from summit_workbench.config.tls_trust import configure_default_tls_trust
 from summit_workbench.webapp.app import WebContext, create_app
 from summit_workbench.webapp.build_info import (
     WebBuildInfo,
@@ -38,6 +39,9 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    # 打包运行时 OpenSSL 默认 CA 路径不可用；先统一指向随 bundle 分发的 certifi
+    # CA bundle，避免 dulwich/httpx 对 GitHub 报 TLS 校验失败（P1-07D）。
+    configure_default_tls_trust()
     args = _parser().parse_args(argv)
     validate_bind_host(args.host, mode_from_environment(os.environ.get("WB_PANEL_MODE")))
     static_dir = Path(args.static_dir).expanduser() if args.static_dir else None

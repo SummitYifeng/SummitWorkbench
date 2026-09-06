@@ -13,9 +13,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
-import importlib.util
 import os
-import ssl
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -29,6 +27,7 @@ from dulwich.index import IndexEntry
 from dulwich.objects import Blob, Tree
 from dulwich.repo import Repo
 
+from summit_workbench.config.tls_trust import ca_bundle_path
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
@@ -65,21 +64,22 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
     return GitRemoteUnavailable(message)
 
 
-def ca_bundle_path() -> Path | None:
-    """返回打包运行时可用的 CA bundle；不关闭 TLS 校验。"""
-    if importlib.util.find_spec("certifi") is not None:
-        import certifi
+def _https_pool_manager(url: str) -> Any:
+    """为 HTTPS 远端构造带 CA bundle 的 urllib3 连接池（保留 dulwich 代理支持）。
 
-        candidate = Path(certifi.where())
-        if candidate.is_file():
-            return candidate
-    defaults = ssl.get_default_verify_paths()
-    for raw in (defaults.cafile, defaults.openssl_cafile):
-        if raw:
-            candidate = Path(raw)
-            if candidate.is_file():
-                return candidate
-    return None
+    frozen 环境下 OpenSSL 默认 CA 路径不可用（P1-07D：``git_tls_failed``），因此
+    显式把发现的 CA bundle 通过 ``http.sslCAInfo`` 传入 dulwich 的
+    ``default_urllib3_manager``；``sslVerify=true`` 保持 TLS 校验开启。
+    """
+    from dulwich.client import default_urllib3_manager
+    from dulwich.config import ConfigDict
+
+    config = ConfigDict()
+    config.set(b"http", b"sslVerify", b"true")
+    bundle = ca_bundle_path()
+    if bundle is not None:
+        config.set(b"http", b"sslCAInfo", str(bundle).encode("utf-8"))
+    return default_urllib3_manager(config, base_url=url)
 
 
 class _DirNode:
@@ -408,12 +408,13 @@ class DulwichGitBackend:
             raise GitError(f"没有配置 remote {remote}")
         return url.decode("utf-8")
 
-    def transport_kwargs(self, url: str, *, operation: str) -> dict[str, str]:
-        """为 Dulwich HTTP transport 解析一次 workspace-scoped 凭据。
+    def transport_kwargs(self, url: str, *, operation: str) -> dict[str, Any]:
+        """为 Dulwich HTTP transport 解析凭据与带 CA bundle 的连接池。
 
         该方法只返回给当前请求的短生命周期参数；调用方不得把返回值写入配置、
         remote URL 或日志。测试可注入 resolver，production 默认使用 P0-07 的
-        workspace Keychain resolver。
+        workspace Keychain resolver。HTTPS 额外携带一个 TLS 校验开启、且指向
+        可信 CA bundle 的 ``pool_manager``（P1-07D：frozen OpenSSL 默认 CA 失效）。
         """
         parsed = urlsplit(url)
         if parsed.scheme.lower() != "https":
@@ -434,7 +435,11 @@ class DulwichGitBackend:
         except Exception as exc:  # noqa: BLE001 - Keychain errors must be sanitized
             raise GitAuthError("Git workspace 凭据读取失败") from exc
         password = credentials.password.get_secret_value()
-        return {"username": self._username, "password": password}
+        kwargs: dict[str, Any] = {"username": self._username, "password": password}
+        manager = _https_pool_manager(url)
+        if manager is not None:
+            kwargs["pool_manager"] = manager
+        return kwargs
 
     def fetch(self, remote: str = "origin") -> None:
         repo = self._open()

@@ -76,7 +76,12 @@ def test_dulwich_https_transport_callback_is_workspace_scoped(monkeypatch, tmp_p
         credential_resolver=resolve,
     )
     kwargs = backend.transport_kwargs("https://github.com/acme/private.git", operation="fetch")
-    assert kwargs == {"username": "alice", "password": "canary-secret"}
+    assert kwargs["username"] == "alice"
+    assert kwargs["password"] == "canary-secret"
+    # P1-07D：HTTPS transport 必须携带 TLS 校验开启、且指向可信 CA 的连接池。
+    pool_manager = kwargs["pool_manager"]
+    assert pool_manager.connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
+    assert pool_manager.connection_pool_kw.get("ca_certs")
     assert calls == [("workspace-a", "github.com", "alice")]
     assert "canary-secret" not in repr(backend)
 
