@@ -223,7 +223,7 @@ account = git:<host>:<username>
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [x] |
 | 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [x] |
 | 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [~] |
-| 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
+| 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [~] |
 | 26 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
 | 27 | P2-03 组织级 OAuth Broker（可选） | P2 | 明确扩展产品边界 | XL | [ ] |
 
@@ -1059,7 +1059,7 @@ environment、OpenSSL 3 真实签名/验签、workflow actionlint 门、完整�
 
 ## 6. P2 工作包：降低跨设备冲突与可选团队服务
 
-### P2-01 · 追加式操作事件与确定性投影视图
+### P2-01 · 追加式操作事件与确定性投影视图 `[~]`
 
 **目的**：将最容易发生 Git 冲突的共享热点文件，从“整页 RMW”演进为“每次操作一个不可变事件文件”。
 
@@ -1081,6 +1081,13 @@ _vault/_views/...                         # 可重建投影
 5. 采用 `shadow-read -> dual-write -> event-primary -> stop-legacy-write` 四阶段迁移，每阶段可回退并有一致性报告。
 6. 不把 Git commit 当业务事件；Git 只负责传输与历史，业务操作有自己的 operation/event id。
 7. 先对一个低风险 aggregate 做纵向切片，不一次迁移全部 Markdown。
+
+#### P2-01A · thread activity 纵向切片
+
+状态：进行中 `[~]`。本切片只新增 `_vault/_events/<device_id>/<yyyy>/<mm>/<ulid>.json`
+的 thread activity 事件模型、单调 ULID、不可变文件创建、幂等读取、确定性投影与
+Hypothesis 属性测试；不迁移 inbox、会议决策或项目正文，不接入 dual-write，也不改变现有
+Markdown 写路径。后续切片必须另行记录 shadow-read/dual-write 证据后才可扩大范围。
 
 **测试/验收**：属性测试覆盖乱序、重复、时钟相同、离线双设备、投影中途失败；两设备 event 文件 Git merge 无同路径冲突；投影视图与旧格式结果等价。
 
@@ -1742,6 +1749,16 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   `UPDATE_FEED_URL` / `UPDATE_DOWNLOAD_URL` variables，并完成真机/双设备验收后才能改为 `[x]`。
 - 后续：P1-07C 提交推送且远端 job 全绿后，按用户要求只开始 P2-01A 的 thread activity
   事件模型切片。
+
+### 2026-09-06 · P2-01A
+
+- 状态：进行中 `[~]`；仅完成 thread activity 的最小纵向切片。
+- 变更摘要：新增事件模型、带设备命名空间的单调 ULID、`_vault/_events/<device_id>/<yyyy>/<mm>/<ulid>.json`
+  独占创建存储、幂等读取、确定性投影和 Hypothesis 属性测试。
+- 明确未做：不迁移 inbox、会议决策、daily signal/completion events 或项目正文；不接入
+  shadow-read/dual-write/event-primary，不改变既有 Markdown 写路径。
+- 质量门：新增 P2-01A 单测与属性测试，并纳入全库 ruff/mypy/pytest 门；跨设备真实 Git
+  merge 与后续迁移验收仍待后续工作包。
 
 ## 16. 外部实现依据
 
