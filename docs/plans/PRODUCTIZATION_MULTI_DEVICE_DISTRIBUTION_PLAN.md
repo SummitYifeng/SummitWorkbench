@@ -1725,8 +1725,8 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 
 ### 2026-09-06 · P1-07C
 
-- 状态：进行中 `[~]`；先完成 P1-07C 发布闭环，未进入 P2-01。
-- Git commit：待本包本地与远端质量门完成后记录
+- 状态：进行中 `[~]`；P1-07C 本地与远端发布闭环已完成，真机/双设备验收待做。
+- Git commit：`e9d02dd`；tag：`v0.4.1`
 - 变更摘要：新增签名 feed 兼容性筛选与稳定 Ed25519 签名正文；feed 生成脚本计算 DMG
   SHA-256/大小并输出签名、公钥与 release notes，私钥不进入仓库或 App；原生 App 使用
   manifest 中的 HTTPS feed 与固定公钥，按 arm64、最低 macOS、版本/build 和 HTTPS
@@ -1737,20 +1737,18 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 目标测试：更新 feed 选择/拒绝路径、稳定签名载荷、发布脚本静态契约；OpenSSL 3 真实
   Ed25519 生成与验签为强制门，不再允许以跳过替代通过。
 - 全量质量门：`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy`、
-  `uv run pytest --cov=summit_workbench --cov-fail-under=80 -q`（757 passed，2 skipped，
-  覆盖率 83.28%）；前端 build/verify、Swift arm64 原生编译、App smoke 与 packaged
-  integration（1 passed）通过；bash 脚本语法通过。
-- 发布证据：当前只记录本地 OpenSSL 3、注入式 Swift 行为测试和 workflow actionlint；
-  protected release secrets、真实 tag release、DMG/feed 上传和真机/双设备验收尚未宣称通过。
+  `uv run pytest --cov=summit_workbench --cov-fail-under=80 -q`（764 passed，1 skipped，
+  覆盖率 83.32%）；前端 build/verify、Swift arm64 原生编译、App smoke 与 packaged
+  integration、bash 脚本语法均通过。
+- 发布证据：远端 run `34022814752` 的 workflow lint、OpenSSL 3 签名构建、打包集成测试、
+  完整产物上传和公开 `SummitWorkbench-Updates` `v0.4.1` release 均成功；公开 feed 与
+  DMG 的大小/SHA-256 已复核一致。真机/双设备验收仍待做。
 - 安全拒绝：错误架构、最低系统、版本/build、HTTPS、大小、SHA-256、Ed25519 签名和损坏
   下载的拒绝路径由单元/契约测试覆盖；下载不会自动替换 App，也不写入 vault/profile。
 - 未验证项：磁盘不足、真实网络中途断线和回滚启动仍不在真机验收范围，但已有注入式错误
-  路径测试；需要用户配置 `release` environment 的 `UPDATE_SIGNING_KEY` 与
-  `UPDATE_REPO_TOKEN` secrets、`UPDATE_FEED_URL` / `UPDATE_DOWNLOAD_URL` variables。
-  公开产物发布到独立的 `yifeng93/SummitWorkbench-Updates` 仓库；再完成真机/双设备验收后
-  才能改为 `[x]`。
-- 后续：P1-07C 提交推送且远端 job 全绿后，按用户要求只开始 P2-01A 的 thread activity
-  事件模型切片。
+  路径测试；真机/双设备验收后才能改为 `[x]`。
+- 后续：P1-07C 的本地与远端门已通过；P2-01A 已完成 thread activity 的最小事件模型
+  切片，后续继续保持不迁移 inbox、会议决策或项目正文的边界。
 
 ### 2026-09-06 · P2-01A
 

@@ -1,6 +1,6 @@
 # ADR 0039 · 内部 arm64 签名更新 feed
 
-- 状态：进行中（P1-07C；本地实现与门禁完成，protected secrets、远端 tag release 和真机验收待补）
+- 状态：进行中（P1-07C；本地与远端发布闭环完成，真机/双设备验收待补）
 - 日期：2026-09-06
 - 依据：产品化计划 P1-07、ADR 0032/0038、用户平台约束（仅 M2+ Apple Silicon、内部/个人自用）
 
@@ -34,7 +34,8 @@ tag job 失败时只允许保留公开仓库 draft，不得发布 partial latest
 ## 验收与边界
 
 本地已验证 workflow actionlint、OpenSSL 3 真实 Ed25519 生成/验签，以及 Swift 注入式行为
-测试。GitHub tag release 的 protected secrets、真实远端上传、真机和双设备验收属于外部
-证据，当前不宣称已通过。公开更新仓库只提供完整性（HTTPS、SHA-256、Ed25519），不提供
-保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer ID/notarization、
-Apple Store、Windows 和 Intel 分发。
+测试。远端 `v0.4.1` tag release 已在 protected `release` environment 中成功完成；公开
+更新仓库中的 feed 与 DMG 已下载复核，feed 声明的大小和 SHA-256 与 DMG 一致。真机和双
+设备验收仍属于外部证据，尚未宣称通过。公开更新仓库只提供完整性（HTTPS、SHA-256、
+Ed25519），不提供保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer
+ID/notarization、Apple Store、Windows 和 Intel 分发。
