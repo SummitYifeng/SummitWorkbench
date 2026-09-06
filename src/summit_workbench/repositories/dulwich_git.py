@@ -24,6 +24,7 @@ from urllib.parse import urlsplit
 from dulwich import porcelain
 from dulwich.diff_tree import tree_changes
 from dulwich.errors import NotGitRepository
+from dulwich.ignore import IgnoreFilterManager
 from dulwich.index import IndexEntry
 from dulwich.objects import Blob, Tree
 from dulwich.repo import Repo
@@ -312,11 +313,13 @@ class DulwichGitBackend:
 
     @staticmethod
     def _blob_id(data: bytes) -> str:
+        """Return the hexadecimal Git blob id used by the index comparison."""
         return hashlib.sha1(b"blob %d\x00" % len(data) + data).hexdigest()  # noqa: S324
 
     def _worktree_delta(self, repo: Repo) -> tuple[set[str], set[str]]:
         """返回 (已跟踪但有改动, 未跟踪)，路径相对仓库根（posix）。"""
         index = self._index_entries(repo)
+        ignore_manager = IgnoreFilterManager.from_repo(repo)
         changed: set[str] = set()
         untracked: set[str] = set()
         for root, dirs, files in os.walk(self._path):
@@ -324,9 +327,11 @@ class DulwichGitBackend:
             for name in files:
                 rel = os.path.relpath(os.path.join(root, name), self._path).replace(os.sep, "/")
                 if rel in index:
-                    if self._blob_id(Path(root, name).read_bytes()) != index[rel].hex():
+                    if self._blob_id(Path(root, name).read_bytes()).encode("ascii") != index[rel]:
                         changed.add(rel)
                 else:
+                    if ignore_manager.is_ignored(rel):
+                        continue
                     untracked.add(rel)
         changed.update(tracked for tracked in index if not (self._path / tracked).is_file())
         return changed, untracked

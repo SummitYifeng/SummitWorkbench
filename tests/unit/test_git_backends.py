@@ -157,6 +157,27 @@ def test_identity_and_revert_message_recorded(tmp_path: Path) -> None:
         assert commit.author == b"Conformance \xe4\xbd\x9c\xe8\x80\x85 <conformance@example.com>"
 
 
+def test_dulwich_clean_status_honors_blob_ids_and_ignored_files(tmp_path: Path) -> None:
+    """A clean production worktree must ignore valid files such as Finder metadata."""
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    repo = DulwichGitBackend(tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / ".gitignore").write_text(".DS_Store\n", encoding="utf-8")
+    (tmp_path / "repo" / "tracked.md").write_text("stable\n", encoding="utf-8")
+    repo.add([".gitignore", "tracked.md"])
+    repo.commit("wb: clean baseline", author=ID)
+
+    assert not repo.is_dirty()
+    (tmp_path / "repo" / ".DS_Store").write_text("finder\n", encoding="utf-8")
+    (tmp_path / "repo" / "nested").mkdir()
+    (tmp_path / "repo" / "nested" / ".DS_Store").write_text("finder\n", encoding="utf-8")
+    assert not repo.is_dirty()
+
+    (tmp_path / "repo" / "tracked.md").write_text("changed\n", encoding="utf-8")
+    assert repo.is_dirty()
+
+
 def test_backends_produce_equal_semantics(tmp_path: Path) -> None:
     """两种后端跑同一场景：提交主题列表与触碰文件完全一致。"""
     results: dict[str, tuple[list[str], list[str]]] = {}
