@@ -1,0 +1,688 @@
+[
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/",
+    "request_fields": [
+      "msg"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/ask",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "AskPayload",
+    "response_status": 200,
+    "error_codes": [
+      "ask_unavailable"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/capture",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "CapturePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/external-actions",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/external-actions/{operation_id}/reconcile",
+    "request_fields": [
+      "operation_id",
+      "payload"
+    ],
+    "request_model": "ExternalActionReconcilePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/meetings/import",
+    "request_fields": [
+      "file"
+    ],
+    "request_model": "UploadFile",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/meetings/update",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "MeetingEditPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/onboarding/connect",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "OnboardingVaultPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/onboarding/create",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "OnboardingCreatePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/onboarding/preflight",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "OnboardingPreflightPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/onboarding/status",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/onboarding/upgrade",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "OnboardingVaultPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/projects/activate",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProjectPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/projects/archive",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProjectPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/projects/create",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProjectCreatePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/projects/rename",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProjectRenamePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/projects/view",
+    "request_fields": [
+      "name"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/review",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/review/apply",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/review/batch",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "BatchDecidePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/review/decide",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "DecidePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/review/edit",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "EditPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/review/plan",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/run/brief",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/run/weekly",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/session/bootstrap",
+    "request_fields": [
+      "token"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": [
+      "authentication_required"
+    ]
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/settings/automation",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "PUT"
+    ],
+    "path": "/api/settings/automation",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "AutomationSettingsPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/automation/run",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "AutomationRunPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/doctor",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "DoctorPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/profile/commit",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProfileSwitchCommitPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/profile/prepare",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProfileSwitchPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/profile/remove",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProfileRemovePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/settings/profiles",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/provider",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProviderSettingsPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/shutdown",
+    "request_fields": [
+      "x_wb_shutdown"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/state",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/sync/export",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/sync/primary/claim",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "AutomationPrimaryPayload",
+    "response_status": 200,
+    "error_codes": [
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/sync/run",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/sync/status",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/tasks/complete",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "TaskCompletePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/tasks/update",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "TaskEditPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/threads/artifacts",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ArtifactSavePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/threads/logs",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "LogAppendPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/threads/state",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProjectStatePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/undo/diff",
+    "request_fields": [
+      "sha"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/undo/history",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/undo/revert",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "UndoRevertPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/version",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": [
+      "invalid_build_manifest"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/workspace/migration",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "WorkspaceMigrationPayload",
+    "response_status": 200,
+    "error_codes": [
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/ask",
+    "request_fields": [
+      "question"
+    ],
+    "request_model": "str",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/review",
+    "request_fields": [
+      "msg"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/review/apply",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/review/decide",
+    "request_fields": [
+      "candidate_id",
+      "decision"
+    ],
+    "request_model": "str",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/review/edit",
+    "request_fields": [
+      "candidate_id",
+      "description",
+      "due_date",
+      "route",
+      "target_project"
+    ],
+    "request_model": "str",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/review/plan",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/run/brief",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/run/weekly",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  }
+]
