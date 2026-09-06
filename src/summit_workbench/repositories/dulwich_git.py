@@ -27,7 +27,7 @@ from dulwich.index import IndexEntry
 from dulwich.objects import Blob, Tree
 from dulwich.repo import Repo
 
-from summit_workbench.config.tls_trust import ca_bundle_path
+from summit_workbench.config.tls_trust import ca_bundle_path as ca_bundle_path
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,

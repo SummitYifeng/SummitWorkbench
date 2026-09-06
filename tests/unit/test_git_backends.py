@@ -295,6 +295,8 @@ def test_dulwich_https_transport_never_disables_tls(monkeypatch, tmp_path) -> No
 
 def test_ca_bundle_path_frozen_fallback(monkeypatch, tmp_path) -> None:
     """P1-07D：frozen 数据目录 <bundle>/certifi/cacert.pem 是可靠的 CA 回退。"""
+    import ssl
+    import sys
     import types
 
     from summit_workbench.config import tls_trust
@@ -303,9 +305,9 @@ def test_ca_bundle_path_frozen_fallback(monkeypatch, tmp_path) -> None:
     fake.parent.mkdir(parents=True)
     fake.write_text("fake-bundle", encoding="utf-8")
     monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
-    monkeypatch.setattr(tls_trust.sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
     monkeypatch.setattr(
-        tls_trust.ssl,
+        ssl,
         "get_default_verify_paths",
         lambda: types.SimpleNamespace(cafile=None, openssl_cafile=None),
     )
