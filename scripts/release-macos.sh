@@ -8,6 +8,7 @@ ARCH="${ARCH:-$(uname -m)}"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 FINAL_ROOT="${RELEASE_OUTPUT_DIR:-$REPO_ROOT/dist/releases}"
 UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
+UPDATE_DOWNLOAD_URL="${UPDATE_DOWNLOAD_URL:-}"
 UPDATE_SIGNING_KEY_PATH="${UPDATE_SIGNING_KEY_PATH:-}"
 OPENSSL_BIN="${OPENSSL_BIN:-openssl}"
 
@@ -24,6 +25,7 @@ command -v hdiutil >/dev/null || { echo "✗ 需要 hdiutil" >&2; exit 1; }
 command -v shasum >/dev/null || { echo "✗ 需要 shasum" >&2; exit 1; }
 if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
   [[ -n "$UPDATE_FEED_URL" ]] || { echo "✗ 提供更新 feed 私钥时必须同时提供 UPDATE_FEED_URL" >&2; exit 1; }
+  [[ -n "$UPDATE_DOWNLOAD_URL" ]] || { echo "✗ 提供更新 feed 私钥时必须同时提供 UPDATE_DOWNLOAD_URL" >&2; exit 1; }
   [[ -f "$UPDATE_SIGNING_KEY_PATH" ]] || { echo "✗ 找不到更新 feed 私钥：$UPDATE_SIGNING_KEY_PATH" >&2; exit 1; }
   UPDATE_PUBLIC_KEY="$($OPENSSL_BIN pkey -in "$UPDATE_SIGNING_KEY_PATH" -pubout -outform DER \
     | tail -c 32 | base64 | tr -d '\n')"
@@ -73,7 +75,7 @@ if [[ -n "$UPDATE_SIGNING_KEY_PATH" ]]; then
   "$PYTHON" "$REPO_ROOT/scripts/generate-update-feed.py" \
     --output "$RELEASE_TMP/package/$UPDATE_FEED_NAME" \
     --private-key "$UPDATE_SIGNING_KEY_PATH" --version "$VERSION" --build "$BUILD_NUMBER" \
-    --architecture "$ARCH" --minimum-macos "13.0" --download-url "$UPDATE_FEED_URL" \
+    --architecture "$ARCH" --minimum-macos "13.0" --download-url "$UPDATE_DOWNLOAD_URL" \
     --dmg "$DMG_TMP" --release-notes "SummitWorkbench $VERSION 内部更新"
 else
   echo "ℹ 未配置独立更新 feed 私钥：本次内部包不发布可验证更新 feed" >&2

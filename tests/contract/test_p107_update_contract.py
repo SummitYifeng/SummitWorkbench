@@ -37,4 +37,5 @@ def test_p107_native_bridge_and_release_contracts_are_present() -> None:
     assert "UPDATE_PUBLIC_KEY" in build
     assert "generate-update-feed.py" in release
     assert "UPDATE_SIGNING_KEY_PATH" in release
+    assert "UPDATE_DOWNLOAD_URL" in release
     assert "未配置独立更新 feed 私钥" in release
