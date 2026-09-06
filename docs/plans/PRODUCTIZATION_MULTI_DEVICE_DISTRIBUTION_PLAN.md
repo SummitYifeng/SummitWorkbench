@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01 已完成；下一工作包为 P1-02
+> 状态：可执行；P0-01 至 P0-13 已完成；P1-01 处于现场修复/复验；下一工作包为 P1-02
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -216,7 +216,7 @@ account = git:<host>:<username>
 | 15 | P0-12 动态端口、会话认证与原生生命周期 | P0 | P0-05、P0-07C、P0-11A | L | [x] |
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [x] |
 | 17 | P0-13 Apple Silicon 内部 DMG 分发 | P0 | P0-11B、P0-12 | L | [x] |
-| 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [x] |
+| 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [~] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
@@ -1554,13 +1554,20 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 
 ### 2026-09-06 · P1-01
 
-- 状态：完成 `[x]`（实现、离线验收与 arm64 bundle 验收完成；SMAppService 实机注册/取消保留为当前 Mac 的可逆人工黑盒项）
-- Git commit：待收尾提交并推送至 `origin/main`
+- 状态：现场修复中 `[~]`（用户已完成设置页与 bundle 相关验证，但系统“登录项与扩展”未出现 SummitWorkbench Automation；日志记录 SMAppService 取消注册返回 Operation not permitted）
+- Git commit：b2c39c7、42e8405；本次修复待提交并推送至 `origin/main`
 - 变更摘要：新增 workspace 作用域的 `automation.json` 与严格调度模型；设置中心支持晨间简报、每周复盘、会议同步的启停、时间/星期、最近结果和错误摘要复制；新增一次性 `wb worker --job ...` 入口和独立 PyInstaller 单文件 worker，不启动 Web server、不依赖 shell/当前目录/PATH；worker 按 active profile、automation-primary 声明、workspace compatibility 与 dirty-protected 门控，secondary 返回 `not-primary` 且不写 vault/本机结果账本，同一自然日通过 `last_run_at` 防止睡眠唤醒重复写入；新增原生 `SMAppService.loginItem` 管理嵌套 automation helper，启用时校验 helper 版本与 ad-hoc 签名，停用时调用系统注销；旧 `deploy/launchd` 仅保留开发/迁移路径。
 - 目标测试：`tests/unit/test_automation_settings.py`、`tests/unit/test_automation_worker.py`、`tests/unit/test_profile_settings.py`（自动化相关共 10 项）；覆盖设置 round-trip/参数约束、主设备/辅助设备门控、dirty-protected、调度时间与唤醒幂等、手动运行 API。
 - 全量质量门：临时 HOME 下 `uv run pytest -q`（730 passed，1 skipped）；`uv run ruff check .`、`uv run ruff format --check .`、`uv run mypy src tests`；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`；`bash -n scripts/build-macos-app.sh`；Swift arm64 离线编译；`BUILD_NUMBER=11 ... scripts/build-macos-app.sh` 的前端/相关回归、PyInstaller、动态端口 smoke、主 App/helper strict codesign；bundle worker 在空 PATH 下执行成功。
-- 真机验证：未执行 SMAppService 注册/取消黑盒（该步骤会改变本机登录项状态，需在目标 Mac 上启用后停用并检查设置；无须 Apple Developer ID、飞书新权限或第二台 Mac）。
-- 遗留：无代码阻塞；下一工作包为 P1-02。SMAppService 的可逆注册/取消黑盒步骤见 ADR 0033，不影响内部 arm64 开发包继续使用。
+- 真机验证：用户反馈系统设置未出现该登录项；当前日志只出现停用路径失败，尚未形成一次“启用后可见、停用后消失”的有效闭环。
+- 遗留：修复 SMAppService 状态机并重新执行一次可逆黑盒验收；无须 Apple Developer ID、飞书新权限或第二台 Mac。P1-02 必须等该闭环通过后开始。
+
+### 2026-09-06 · P1-01 现场修复（第一次）
+
+- 状态：待真机复验 `[~]`
+- 变更摘要：按 macOS `SMAppService.Status` 明确处理 `notRegistered`、`enabled`、`requiresApproval`、`notFound` 四种状态；避免对已不存在服务调用注销；启用时对待用户批准状态不重复 register；新增注册前后状态、错误域/码与 helper 标识校验日志，避免把系统状态误判为“已注册”。
+- 自动验证：Swift arm64 原生壳编译通过；新增原生状态机契约测试待全量质量门复验。
+- 真机复验：需要安装本次新 DMG 后，仅启用“晨间简报”并保存，确认系统设置出现 “SummitWorkbench Automation”；随后停用全部自动化并保存，确认该项消失。仍不需要 Apple Developer ID、飞书权限或第二台 Mac。
 
 ## 16. 外部实现依据
 

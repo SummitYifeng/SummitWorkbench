@@ -80,6 +80,18 @@ def test_settings_doctor_declares_json_and_sync_export_supports_native_save() ->
     assert "NSSavePanel" in native
 
 
+def test_p101_automation_manager_handles_all_smappservice_states() -> None:
+    manager = _source("AutomationServiceManager.swift")
+    assert "case .notRegistered:" in manager
+    assert "case .enabled:" in manager
+    assert "case .requiresApproval:" in manager
+    assert "case .notFound:" in manager
+    assert "automation_registration_waiting_approval" in manager
+    assert '"status": statusDescription(service.status)' in manager
+    assert '"domain": (error as NSError).domain' in manager
+    assert 'helperBundle.bundleIdentifier == "com.summitworkbench.panel.automation"' in manager
+
+
 def test_p101_uses_smappservice_and_preserves_native_bridge_controls() -> None:
     all_native = "\n".join(path.read_text(encoding="utf-8") for path in _NATIVE.glob("*.swift"))
     build = (_ROOT / "scripts" / "build-macos-app.sh").read_text(encoding="utf-8")

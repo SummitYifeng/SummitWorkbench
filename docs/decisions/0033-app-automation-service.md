@@ -1,6 +1,6 @@
 # ADR 0033 · App 内自动化 worker 与 SMAppService
 
-- 状态：✅ P1-01 实现完成；SMAppService 注册/取消需在目标 Mac 做一次可逆黑盒确认
+- 状态：🟡 P1-01 现场修复中；SMAppService 注册/取消需在目标 Mac 做一次可逆黑盒确认
 - 日期：2026-09-06
 - 里程碑：v0.4.1 → P1-01
 - 依据：计划 P1-01、ADR 0031 主设备声明、ADR 0032 arm64 内部分发
@@ -21,8 +21,9 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
 → `current_snapshot` 通过 dirty/diverged 保护 → workflow 写入。secondary 返回成功的 `not-primary` 跳过结果，不写 vault，也不
 更新本机最近结果账本。会议同步暂以显式安全跳过状态呈现，避免在未有独立幂等实现前产生外部重复动作。
 
-启用任一任务时，原生管理器先检查嵌套 helper 的 `CFBundleVersion` 与主 App build 一致，并用 Security API 验证 helper 签名，
-再注册 `SMAppService`；全部任务停用时注销服务。旧 helper 不会因版本不同继续运行：注册前版本/签名校验失败，worker 运行时还要通过
+启用任一任务时，原生管理器先检查嵌套 helper 的 `CFBundleVersion`、bundle identifier 与主 App build 一致，并用 Security API 验证 helper 签名，
+再按 `SMAppService.Status` 注册 `SMAppService`；`requiresApproval` 等待用户在系统设置批准，不重复 register；`notFound` 不调用注销。
+全部任务停用时仅对已注册或待批准服务注销。旧 helper 不会因版本不同继续运行：注册前版本/签名校验失败，worker 运行时还要通过
 当前 workspace compatibility writer gate。helper 与 worker 随每个 App 包一起构建并按嵌套代码顺序 ad-hoc 签名。
 
 ## 权限与升级
@@ -38,8 +39,7 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
   `SummitWorkbenchWorker` 与嵌套 helper 均为 arm64，主 App `codesign --verify --deep --strict` 通过。
 - `env -i HOME=<临时目录> WB_PANEL_MODE=production <bundle>/Contents/Helpers/SummitWorkbenchWorker --job brief --json`
   成功返回 `skipped/尚未选择工作区`，证明 worker 不要求 PATH。
-- 尚未在目标用户环境执行 SMAppService 注册/取消黑盒；该项只需一次启用→停用检查，残留应为无。具体人工步骤：
+- 目标用户环境首次黑盒发现系统设置未出现登录项，且旧实现停用路径记录 `Operation not permitted`；已补状态机与脱敏诊断日志，待新包复验。具体人工步骤：
   1. 打开当前 P1-01 arm64 App，在“设置 → App 内自动化”只启用“晨间简报”并保存；系统设置的“登录项”应出现 SummitWorkbench Automation。
   2. 回到 App 停用全部自动化并保存；系统设置中该登录项应消失，设置页不应再显示注册失败。
   3. 不需要等待 08:00；可用“立即运行”验证主设备门控和最近结果，确认不会产生重复简报。
-

@@ -18,20 +18,76 @@ final class AutomationServiceManager {
             return
         }
         do {
+            let before = service.status
+            logger.log(
+                "automation_registration_requested",
+                fields: ["enabled": String(enabled), "status": statusDescription(before)]
+            )
             if enabled {
                 try validateHelper()
-                if service.status != .enabled { try service.register() }
-                logger.log("automation_registered")
+                switch before {
+                case .notRegistered:
+                    try service.register()
+                case .enabled:
+                    break
+                case .requiresApproval:
+                    logger.log(
+                        "automation_registration_waiting_approval",
+                        fields: ["status": statusDescription(before)]
+                    )
+                case .notFound:
+                    throw NSError(
+                        domain: "SummitWorkbench.Automation",
+                        code: 4,
+                        userInfo: [NSLocalizedDescriptionKey: "系统找不到 automation helper"]
+                    )
+                @unknown default:
+                    throw NSError(
+                        domain: "SummitWorkbench.Automation",
+                        code: 5,
+                        userInfo: [NSLocalizedDescriptionKey: "系统返回未知 automation 服务状态"]
+                    )
+                }
+                logger.log(
+                    "automation_registered",
+                    fields: ["status": statusDescription(service.status)]
+                )
             } else {
-                if service.status != .notRegistered { try service.unregister() }
-                logger.log("automation_unregistered")
+                switch before {
+                case .enabled, .requiresApproval:
+                    try service.unregister()
+                case .notRegistered, .notFound:
+                    break
+                @unknown default:
+                    break
+                }
+                logger.log(
+                    "automation_unregistered",
+                    fields: ["status": statusDescription(service.status)]
+                )
             }
         } catch {
             logger.log(
                 "automation_registration_failed",
                 level: "error",
-                fields: ["enabled": String(enabled), "message": error.localizedDescription]
+                fields: [
+                    "enabled": String(enabled),
+                    "message": error.localizedDescription,
+                    "domain": (error as NSError).domain,
+                    "code": String((error as NSError).code),
+                    "status": statusDescription(service.status),
+                ]
             )
+        }
+    }
+
+    private func statusDescription(_ status: SMAppService.Status) -> String {
+        switch status {
+        case .notRegistered: return "notRegistered"
+        case .enabled: return "enabled"
+        case .requiresApproval: return "requiresApproval"
+        case .notFound: return "notFound"
+        @unknown default: return "unknown"
         }
     }
 
@@ -45,7 +101,8 @@ final class AutomationServiceManager {
                 userInfo: [NSLocalizedDescriptionKey: "缺少 automation helper"]
             )
         }
-        guard let helperBuild = Bundle(url: helperURL)?.object(
+        guard let helperBundle = Bundle(url: helperURL),
+              let helperBuild = helperBundle.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String, helperBuild == Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
@@ -54,6 +111,15 @@ final class AutomationServiceManager {
                 domain: "SummitWorkbench.Automation",
                 code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "automation helper 版本与 App 不一致"]
+            )
+        }
+        guard let executableURL = helperBundle.executableURL,
+              helperBundle.bundleIdentifier == "com.summitworkbench.panel.automation",
+              FileManager.default.isExecutableFile(atPath: executableURL.path) else {
+            throw NSError(
+                domain: "SummitWorkbench.Automation",
+                code: 6,
+                userInfo: [NSLocalizedDescriptionKey: "automation helper 标识或可执行文件无效"]
             )
         }
         var staticCode: SecStaticCode?
