@@ -2,9 +2,9 @@
 
 > 版本：1.1
 >
-> 日期：2026-09-05
+> 日期：2026-09-06
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02 已完成；下一工作包为 P1-03
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03 已完成；下一工作包为 P1-04
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -218,7 +218,7 @@ account = git:<host>:<username>
 | 17 | P0-13 Apple Silicon 内部 DMG 分发 | P0 | P0-11B、P0-12 | L | [x] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [x] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [x] |
-| 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
+| 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [x] |
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [ ] |
 | 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
@@ -1247,7 +1247,8 @@ _vault/_views/...                         # 可重建投影
 | 0031 | P0-10 | 同步状态机、离线策略、主设备、分叉保护 |
 | 0032 | P0-13 | arm64 内部产物、ad-hoc 签名顺序、版本与发布验证；明确不需要 notarization |
 | 0033 | P1-01 | helper/SMAppService 生命周期、权限、升级兼容 |
-| 0034 | P2-01 | event schema、投影、双写迁移与回滚 |
+| 0034 | P1-02 | 工作区 schema 迁移、备份与安全回滚 |
+| 0035 | P1-03 | Web route contract、显式 AppContext 与兼容拆分边界 |
 
 ADR 必须记录最终实现与验证证据，不得只复制本计划。
 
@@ -1619,6 +1620,25 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 真机验证：未执行（按 §0.1 使用临时目录、fake backend 与离线 TestClient；未访问真实
   私有 remote、真实凭据、第二台 Mac 或真实共享 vault）。
 - 当前结论：P1-02 实现与可离线验证的安全边界全部通过；下一工作包为 P1-03，本次未开始。
+
+### 2026-09-06 · P1-03
+
+- 状态：完成（route contract 与应用工厂拆分完成；legacy compatibility bundle 的超限例外已记录）
+- Git commit：2f8019b（实现；文档索引随本包收口提交）
+- 变更摘要：新增显式 `app_factory.create_app(AppContext)`、`dependencies.py`、`errors.py`、
+  `routers/` 与 `services/` 边界；`app.py` 仅保留旧导入路径兼容层；系统握手/会话和 workspace
+  schema migration 已迁入真实 router/service；其余既有路由暂保留在 `legacy_app.py`，因为它们
+  共享已冻结的 lifespan、认证、profile 切换和 SSR 闭包状态，机械拆分会扩大本包行为变更面。
+  新增可执行的 59 条 route contract snapshot，冻结 method/path/request model/fields/成功状态/错误码。
+- 目标测试：`uv run pytest tests/contract/test_web_route_contract.py tests/unit/test_workspace_migration.py`
+  与 Web 安全/API 回归（63 passed）。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、
+  `uv run mypy src tests`、`uv run pytest -q`（743 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP`
+  的打包 smoke）；前端未改动，沿用 P1-02 已验证的构建产物。
+- 真机验证：未执行（本包只改本地 Python 路由结构；使用临时目录和离线 TestClient，未访问真实
+  凭据、真实远端、Keychain 或第二台 Mac）。
+- 遗留：`legacy_app.py` 是兼容路由 bundle，后续若继续拆分必须以同一 route contract 为门，
+  不得进入 P1-04 的前端 feature 重构范围。
 
 ## 16. 外部实现依据
 
