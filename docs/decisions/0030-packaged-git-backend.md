@@ -1,6 +1,6 @@
 # ADR 0030 · 可打包 Git 后端（system ↔ dulwich）与凭据适配
 
-- 状态：✅ 已实现（P0-09C 离线 production/backend 与 remote clone 接线完成；真实 HTTPS/clean-account 真机门未执行）
+- 状态：✅ 已实现（P0-09C 离线 production/backend 与 remote clone 接线完成；P1-07D 已把打包运行的真实 HTTPS TLS 接到随 bundle 分发的 certifi CA，剩余真机门见「遗留 / 边界」）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-09（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；依赖 P0-01 撤销信任边界、P0-07 workspace/profile 与凭据作用域）
 - 依据：计划 P0-09（能力契约 / 实现要求 1–8 / 测试矩阵 / 决策门）；NFR-3（非破坏性）、NFR-4（凭据不入文件/仓库）
@@ -95,8 +95,8 @@
 - remote onboarding 只接受 HTTPS 无 userinfo URL；clone staging 与目标同文件系统，marker、
   workspace id、当前 App compatibility 均在确认前校验；确认后 atomic move 并创建 secondary
   profile，失败/取消只清理本次 staging 并恢复 registry。
-- `ca_bundle_path()` 可发现打包运行所需 CA 资源；PATH 为空时 Dulwich init/add/commit 已验证，
-  未调用系统 Git。
+- `ca_bundle_path()` 现位于 `config/tls_trust.py`（`dulwich_git` re-export 兼容），可发现打包运行
+  所需 CA 资源；PATH 为空时 Dulwich init/add/commit 已验证，未调用系统 Git。
 
 ## P0-09C 验证与边界
 
@@ -105,3 +105,19 @@
 - 全量质量门：ruff、format、mypy（243 files）通过；pytest（694 passed，1 skipped，跳过既有
   `WB_PACKAGED_APP` smoke）。真实私有 HTTPS、wrong credential/TLS 服务器、代理、clean-account
   与 Apple 签名/公证未执行，继续留在 P0-13 真机矩阵。
+
+## P1-07D TLS 收口
+
+- 打包 PyInstaller server 随 Python 分发的 OpenSSL，其编译期 `OPENSSLDIR` 指向 python.org
+  框架路径（`/Library/Frameworks/...`），该路径既不存在也不随 bundle 分发；而 macOS 系统
+  Keychain 无法被 OpenSSL 的 `set_default_verify_paths()` 读取。因此 dulwich/urllib3 默认的
+  「系统 CA」在打包环境不可用，对 GitHub 报 `git_tls_failed`（系统 git 走 SecureTransport，
+  因此不受影响）。
+- 修复：`config/tls_trust.py` 提供 `ca_bundle_path()`（certifi → frozen
+  `sys._MEIPASS/certifi/cacert.pem` → 系统 OpenSSL 默认路径）与 `configure_default_tls_trust()`
+  （设 `SSL_CERT_FILE`）；`DulwichGitBackend.transport_kwargs` 通过 dulwich 的
+  `default_urllib3_manager` + `http.sslCAInfo` 显式传入 CA bundle，`sslVerify=true` 保持 TLS
+  校验开启；打包 server/worker 入口各调用一次 `configure_default_tls_trust()`。两个打包 spec
+  均已收集 `(certifi.where(), "certifi")`。
+- 分类边界保持：TLS 失败→`GitTlsError`、认证失败→`GitAuthError`、网络失败→
+  `GitRemoteUnavailable`，绝不把 TLS 失败误报为离线/远端不可达；凭据不入 URL/日志/异常。
