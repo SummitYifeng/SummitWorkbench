@@ -165,6 +165,8 @@ Path(path).write_text(json.dumps({
         "bundle strict codesign verification",
         "offline dynamic-port server smoke",
         "DMG checksum generation",
+        "P1-07D dual-device schema/sync/divergence acceptance",
+        "P1-07D read-only acceptance preflight contract",
     ],
 }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY
