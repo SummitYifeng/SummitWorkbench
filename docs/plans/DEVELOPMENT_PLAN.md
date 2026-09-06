@@ -6,7 +6,7 @@
 >
 > 依据：`docs/product/PRD.md` v1.1
 >
-> 当前实施状态：**M1 全部完成，PRD L44 严格验收 6/6 通过**（真机，验收见 ADR 0008–0014）；下一步 M2 晨间简报
+> 当前实施状态：**M0 / M1 / M2 已完成**；当前在 M3 前先收口产品化 P1-07D。最近已发布候选为 `v0.4.3-rc.5`，其后的 packaged TLS 修复仍需进入新 RC，并完成 Studio GitHub HTTPS preview/apply 与 Studio + Air 真机往返；在此之前不进入 P2-01B，M3 尚未开始。
 
 ## 1. 计划目标
 

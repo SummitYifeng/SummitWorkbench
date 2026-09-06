@@ -2,9 +2,9 @@
 
 > 版本：1.1
 >
-> 日期：2026-09-06
+> 日期：2026-09-07
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05、P1-06 已完成；P1-07 `[~]`
+> 状态：可执行；P0-01 至 P0-13、P1-01 至 P1-06 已完成；P1-07D 源码修复完成但仍为 `[~]`，等待包含 TLS 修复的新 RC 与 Studio + Air 真机闭环
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -1768,14 +1768,23 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 后续：先完成 P1-07D RC 候选、预检和唯一一次 Studio/Air 真机往返；在此之前不发布稳定
   `v0.4.3`，也不进入 P2-01B。P2-01A 继续保持不迁移 inbox、会议决策或项目正文的边界。
 
-### 2026-09-06 · P1-07D 远端规范化与双设备验收
+### 2026-09-06 至 2026-09-07 · P1-07D 远端规范化与双设备验收
 
-- 状态：进行中 `[~]`；代码、测试、计划和 ADR 已加入，等待 RC 候选包与一次真机验收。
+- 状态：进行中 `[~]`；remote 规范化、自动验收与 packaged TLS 源码修复均已加入，但最近发布的
+  `v0.4.3-rc.5` 不包含 TLS 修复，等待新 RC 与一次真机验收。
 - 实现：生产 remote HTTPS 门与 `remote_scheme_unsupported`；可预览/可回滚的 GitHub SSH →
   HTTPS 转换事务；只读 acceptance preflight；两个临时 HOME/clone/bare remote 的 v1→v2、
   fast-forward、离线追加、diverged-protected、数据保留与迁移失败回滚自动验收。
-- 发布：`v0.4.3-rc.1` 走 draft/prerelease，不更新 latest；稳定 `v0.4.3` 只能在真机验收后
-  晋升相同 DMG，禁止重建。公开更新仓库只提供完整性，不提供保密性。
+- 候选迭代：`rc.2` 修复候选 feed URL，`rc.3` 放行旧 schema 下的受控 remote 转换，`rc.4`
+  修复 JSON 请求头，`rc.5` 修复自有 orphan server 重启；这些候选均走 draft/prerelease，
+  不更新 latest。
+- TLS 阻塞：提交 `ba946b9` 新增 certifi/frozen CA 解析与 Dulwich 显式 CA pool，server/worker
+  入口统一 TLS 信任；`463e719` / `b5c316a` 补 ADR 与 strict typing，随后清理与测试解释器修复
+  至 `ee30db4`。TLS 相关 32 项、全库 778 passed / 1 skipped、ruff/format/mypy 均通过；真实
+  GitHub TLS 握手通过，但尚无包含该修复的 tag/DMG。
+- 下一门：从当前 HEAD 生成新 RC，先在 Studio 对真实 GitHub 执行 preview/apply，再在 Air
+  完成引导式往返同步。只有两步均通过，才能把同一 DMG 晋升稳定 `v0.4.3`；禁止重建。
+  P1-07D 完成前不得进入 P2-01B。
 
 ### 2026-09-06 · v0.4.2 packaged App 修复
 

@@ -34,7 +34,7 @@
 | [0027](0027-write-path-hardening-undo-activity.md) | v0.4.1 维护加固 | 写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复（P0/P0'/P1）：全库 RMW 加工作区锁与原子写、apply 乐观合并、幂等账本容错读、线程序号防撞；autocommit（wb: 提交）+ /api/undo/* 一键还原（只作用 vault 文件）；updated=实质更新 / activity_at=活动痕迹拆分（>14 天停滞点名不再被机器活动刷失明）|
 | [0028](0028-external-action-outbox.md) | v0.4.1 加固 P0-04 | 飞书外部动作 Outbox 与不确定态：prepared/sending/succeeded/failed/unknown/reconciled 状态机、请求指纹、unknown 禁止自动重试、人工核对 |
 | [0029](0029-workspace-profile-device.md) | v0.4.1 加固 P0-07 / P0-07C | ✅ 已实现：Workspace/Profile/Device 与 production active-profile 运行时接线 |
-| [0030](0030-packaged-git-backend.md) | v0.4.1 加固 P0-09 / P0-09C | ✅ 已实现：双 Git backend、workspace-scoped HTTPS 凭据与 remote clone |
+| [0030](0030-packaged-git-backend.md) | v0.4.1 加固 P0-09 / P0-09C | ✅ 已实现：双 Git backend、workspace-scoped HTTPS 凭据、remote clone 与 packaged certifi TLS 信任链 |
 | [0031](0031-multi-device-sync.md) | v0.4.1 加固 P0-10 / P0-10C | ✅ 已实现：同步持久状态、全写边界与 automation-primary 声明 |
 | [0032](0032-macos-distribution.md) | v0.4.1 加固 P0-13 | ✅ M2+ arm64 内部 DMG 与 ad-hoc 发布流水线；真机验收待执行 |
 | [0033](0033-app-automation-service.md) | v0.4.1 加固 P1-01 | ✅ App 内自动化 worker、主设备门控与 SMAppService helper |
@@ -45,7 +45,7 @@
 | [0038](0038-ci-coverage-release-matrix.md) | v0.4.1 加固 P1-06 | ✅ CI、80% 覆盖率门与 M2+ arm64 发布矩阵 |
 | [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07C | 🚧 v0.4.2 真机安装/创建 workspace/更新检查通过；Dulwich 修复与双设备同步验收转入 P1-07D |
 | [0040](0040-thread-activity-events.md) | P2-01A | 🚧 thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
-| [0041](0041-remote-normalization-acceptance.md) | P1-07D | 🚧 HTTPS remote 规范化、只读 preflight、RC 候选与一次性双设备验收 |
+| [0041](0041-remote-normalization-acceptance.md) | P1-07D | 🚧 HTTPS remote 规范化、只读 preflight 与双设备验收；`rc.5` 后 TLS 修复待新 RC 真机闭环 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
@@ -55,3 +55,6 @@ M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR
 工作台 → 飞书双向写回与真机核实（ADR 0025），`v0.3.0` 发布版；
 知识线程改造 P0–P3（ADR 0026），`v0.4.0` 发布版（M3 仍未开始）。
 写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复（ADR 0027），`v0.4.1` 维护加固发布（M3 仍未开始）。
+多设备与可分发产品化已推进到 P1-07D：最近已发布 `v0.4.3-rc.5`，其后 packaged Git TLS
+源码修复已完成；仍需新 RC 的 Studio GitHub HTTPS preview/apply 与 Studio + Air 往返验收，
+通过后才能晋升稳定 `v0.4.3`。P2-01A 仅保留最小事件切片，P2-01B 与 M3 均未开始。

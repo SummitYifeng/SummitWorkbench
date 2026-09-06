@@ -1,3 +1,36 @@
+## [Unreleased] - 2026-09-07
+
+> 当前源码位于 `v0.4.3-rc.5` 之后；以下修复尚未进入可安装候选包，P1-07D 仍未完成。
+
+- 修复 PyInstaller server/worker 使用的 OpenSSL 默认 CA 路径不存在时，Dulwich/urllib3 对
+  GitHub HTTPS 报 `git_tls_failed`：统一解析并分发 certifi CA bundle，在 HTTPS transport
+  显式传入 `http.sslCAInfo`，保持 `sslVerify=true` / `CERT_REQUIRED`，并在两个打包入口设置
+  默认 TLS 信任路径。
+- 保持远端错误分类边界：TLS、认证与网络不可达分别映射到独立错误，不把 TLS 失败误报为离线。
+- 清理过期一次性交接文档与未使用的 `worker_json()`；修复相应文档引用和测试解释器选择。
+- 源码质量门复核：全库 778 passed、1 skipped（仅缺少 `WB_PACKAGED_APP` 的打包集成项），
+  ruff、format、mypy（299 个文件）通过；真实 GitHub TLS 握手通过。仍需新 RC 的打包后
+  GitHub preview/apply 与 Studio + Air 真机验收。
+
+## [0.4.3-rc.5] - 2026-09-06
+
+- 原生 App 重启时可根据 runtime record 与精确 server 可执行路径识别并终止自身遗留进程；
+  未知进程仍不会被接管或终止。
+
+## [0.4.3-rc.4] - 2026-09-06
+
+- 修复设置中心 remote preview/apply/rollback 请求缺少 JSON `Content-Type` 导致后端拒绝的问题。
+
+## [0.4.3-rc.3] - 2026-09-06
+
+- 允许旧 schema 的只读工作区执行受控 remote preview/apply/rollback，打破“迁移要求 HTTPS、
+  HTTPS 转换又被只读门阻止”的循环；其它写入仍保持只读保护。
+
+## [0.4.3-rc.2] - 2026-09-06
+
+- 候选 release 的 feed 与 DMG URL 改为按 tag 自动推导，继续使用 draft/prerelease 且不更新
+  `latest`。
+
 ## [0.4.3-rc.1] - 2026-09-06
 
 > 候选版本，尚未稳定发布；等待一次 Studio + Air 双设备真机验收。

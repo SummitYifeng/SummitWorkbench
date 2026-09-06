@@ -6,7 +6,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.1` 维护加固发布（ADR 0027：写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复，514 项全绿），前身 `v0.4.0` 发布版：M0 / M1 / M2 全部完成并真机验证（PRD L44 严格验收 6/6）+ 韧性/使用前加固（ADR 0016–0022）；v0.2 把用户日常入口收敛到**本地 Web 工作台**（SPA）与**原生 macOS 桌面 App** 并完成晨间简报 v2（ADR 0024）；v0.3 补全「工作台 → 飞书」双向写回（ADR 0025：一键完成/行内编辑任务与会议、审批新建日历日程，真机核实）；v0.4 落地「业务线程 = vault 一等公民」（ADR 0026：知识线程建档/线视图/推进日志/产物入库/简报与周复盘信号/显示名，P0–P3）；v0.4.1 维护加固发布（ADR 0027：写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义 updated↔activity_at 拆分，质量门 514 项全绿）；下一步 M3 带上下文启动与收尾 |
+| 当前阶段 | `v0.4.3` 候选 / P1-07D 收口：M0 / M1 / M2 与产品化 P0、P1-01 至 P1-06 已完成；最近已发布 `v0.4.3-rc.5`，其后已完成 packaged Git TLS 源码修复，但尚未生成包含该修复的新 RC，也未完成 Studio GitHub HTTPS preview/apply 与 Studio + Air 往返验收。P1-07D 仍为 `[~]`，不进入 P2-01B；M3 尚未开始。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -83,9 +83,11 @@
 
 不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.1）
+## 当前交付边界（v0.4.3 候选）
 
-已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；v0.3 双向写回经真机核实；v0.4 完成知识线程改造（P0–P3）并经真机验收；v0.4.1 完成稳定性审计加固（写路径并发加固 + 系统写回自动留痕与面板撤销 + 停滞语义修复）：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；当前在 M3 前收口多设备与分发产品化：
+
+- **v0.4.3 候选 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。最近已发布/安装的是 `v0.4.3-rc.5`；packaged OpenSSL CA 路径导致的 `git_tls_failed` 已在其后完成源码修复并通过源码测试，但仍需生成新 RC、在 Studio 验证真实 GitHub preview/apply，再完成 Air 往返同步。稳定 `v0.4.3` 尚未发布，P2-01B 不得提前开始。
 
 - **v0.4.1 · 写路径并发加固 + 撤销 + 停滞语义（ADR 0027，P0/P0'/P1）**：全库「读 → 变换 → 整文件原子重写」RMW 原语（审批页/inbox/档案追加/当日笔记与快照/线程日志产物/项目建档激活归档/清扫）整体放入工作区锁（与 publish_brief / sync 同一把 .wb.lock；锁只包文件临界区，绝不跨 LLM/网络调用）；裸写全量改原子写；审批 apply 收尾乐观合并（并发勾选/编辑不被整页重写吞掉）；幂等账本容错读（坏行隔离 .quarantine）；线程日志/产物序号分配同锁防静默覆盖。系统侧写回成功后自动 git 留痕（显式路径 + `wb:` 前缀，非 git 优雅降级），面板顶栏新增 **「↩ 撤销」**（最近 `wb:` 提交差异预览 → git revert 一键还原；只作用于 vault 文件，飞书侧副作用不可撤销，界面文案明示）。档案 frontmatter `updated` 收窄为实质更新，日志/产物只刷新 **`activity_at`**：首页「最近活跃」读 activity_at，「>14 天未更新」与周复盘停滞点名读 updated，不再被机器高频活动刷失明。质量门 **514 项全绿**（ruff + format + mypy strict + pytest），前端重新构建并重新装机。
 
@@ -101,4 +103,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-下一步 M3（带上下文启动与收尾）。变更记录见 `CHANGELOG.md`。
+下一步先完成 P1-07D：从当前源码生成新 RC → Studio 真实 GitHub HTTPS preview/apply → Studio + Air 往返验收 → 同一 DMG 晋升稳定 `v0.4.3`。按当前产品化计划，随后才进入 P2-01B；M3（带上下文启动与收尾）仍保持未开始。变更记录见 `CHANGELOG.md`。

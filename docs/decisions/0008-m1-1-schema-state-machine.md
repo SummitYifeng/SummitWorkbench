@@ -3,7 +3,7 @@
 - 状态：✅ 纯领域实现完成，质量门全绿（ruff / mypy strict / pytest 119）
 - 日期：2026-08-31
 - 里程碑：M1-1（稳定 schema 与状态机）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-1；PRD §3.1.9 L14/L21/L22/L41；`docs/plans/M1_KICKOFF.md`
+- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-1；PRD §3.1.9 L14/L21/L22/L41
 
 ## 背景
 
