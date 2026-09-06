@@ -84,6 +84,21 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         assert payload["frontend_build"] == manifest["frontend_build"]
         protocol = payload["api_protocol"]
         assert isinstance(protocol, int) and protocol >= 2
+
+        created_workspace = tmp_path / "created-workspace"
+        create_request = Request(
+            f"http://127.0.0.1:{port}/api/onboarding/create",
+            data=json.dumps({"work_root": str(created_workspace)}).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-WB-Session-Token": "integration-session-token",
+            },
+        )
+        with urlopen(create_request, timeout=5) as response:
+            create_payload = json.load(response)
+        assert create_payload["ok"] is True
+        assert (created_workspace / "_vault" / "inbox.md").is_file()
     finally:
         process.terminate()
         process.wait(timeout=5)

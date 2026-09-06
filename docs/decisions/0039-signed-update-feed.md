@@ -34,7 +34,8 @@ tag job 失败时只允许保留公开仓库 draft，不得发布 partial latest
 ## 验收与边界
 
 本地已验证 workflow actionlint、OpenSSL 3 真实 Ed25519 生成/验签，以及 Swift 注入式行为
-测试。远端 `v0.4.1` tag release 已在 protected `release` environment 中成功完成；公开
+测试。远端 `v0.4.1` tag release 已在 protected `release` environment 中成功完成；后续
+`v0.4.2` 修复 packaged App 内置模板路径并重新发布后，公开
 更新仓库中的 feed 与 DMG 已下载复核，feed 声明的大小和 SHA-256 与 DMG 一致。真机和双
 设备验收仍属于外部证据，尚未宣称通过。公开更新仓库只提供完整性（HTTPS、SHA-256、
 Ed25519），不提供保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer

@@ -168,7 +168,17 @@ def default_vault_templates_dir() -> Path:
     override = os.environ.get(_TEMPLATES_DIR_ENV)
     if override:
         return Path(override).expanduser()
-    return Path(__file__).resolve().parents[3] / "templates" / "vault"
+    module_path = Path(__file__).resolve()
+    # 源码运行时目录位于仓库根目录下；PyInstaller onedir 将模块放在
+    # ``Resources/server/_internal``，模板则随 onedir data 一起位于同一层。
+    # 从当前模块向上寻找实际存在的 templates/vault，避免把 Resources/server
+    # 错当成资源根目录。
+    for parent in module_path.parents:
+        candidate = parent / "templates" / "vault"
+        if candidate.is_dir():
+            return candidate
+    # 保留一个稳定的失败路径，让上层给出可诊断的 onboarding 错误。
+    return module_path.parents[3] / "templates" / "vault"
 
 
 # ---- 只读预检 ----

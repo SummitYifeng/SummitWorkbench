@@ -23,6 +23,7 @@ from summit_workbench.repositories.profile_registry import (
     profile_ids,
 )
 from summit_workbench.repositories.workspace_manifest import load_workspace_manifest
+from summit_workbench.workflows import onboarding
 from summit_workbench.workflows.onboarding import (
     OnboardingError,
     connect_workspace,
@@ -35,6 +36,35 @@ from summit_workbench.workflows.onboarding import (
 
 DAY = "2026-09-05"
 APP_VERSION = "9.9.9"  # 测试注入：新 marker 的 min 版本
+
+
+def test_default_templates_resolves_pyinstaller_internal_data(monkeypatch, tmp_path: Path) -> None:
+    module_path = (
+        tmp_path
+        / "SummitWorkbench.app"
+        / "Contents"
+        / "Resources"
+        / "server"
+        / "_internal"
+        / "summit_workbench"
+        / "workflows"
+        / "onboarding.py"
+    )
+    bundled_templates = (
+        tmp_path
+        / "SummitWorkbench.app"
+        / "Contents"
+        / "Resources"
+        / "server"
+        / "_internal"
+        / "templates"
+        / "vault"
+    )
+    bundled_templates.mkdir(parents=True)
+    monkeypatch.delenv("WB_VAULT_TEMPLATES", raising=False)
+    monkeypatch.setattr(onboarding, "__file__", str(module_path))
+
+    assert onboarding.default_vault_templates_dir() == bundled_templates
 
 
 def _templates(tmp_path: Path) -> Path:

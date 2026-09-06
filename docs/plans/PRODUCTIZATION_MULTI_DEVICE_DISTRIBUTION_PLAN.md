@@ -1750,6 +1750,13 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 后续：P1-07C 的本地与远端门已通过；P2-01A 已完成 thread activity 的最小事件模型
   切片，后续继续保持不迁移 inbox、会议决策或项目正文的边界。
 
+### 2026-09-06 · v0.4.2 packaged App 修复
+
+- 触发：新 Mac Air 真机首次创建 workspace 时暴露 `Resources/server/templates/vault` 不存在。
+- 修复：运行时沿模块父路径定位 PyInstaller onedir 的 `server/_internal/templates/vault`，并
+  将 packaged App 的真实 `/api/onboarding/create` 加入集成门，防止只测 `/api/version` 漏报。
+- 目标：修复后重新生成并发布 `v0.4.2`，再由新 Mac Air 完成安装与 workspace 创建验收。
+
 ### 2026-09-06 · P2-01A
 
 - 状态：进行中 `[~]`；仅完成 thread activity 的最小纵向切片。
