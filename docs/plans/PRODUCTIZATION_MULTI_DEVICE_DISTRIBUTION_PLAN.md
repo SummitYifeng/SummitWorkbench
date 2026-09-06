@@ -1594,7 +1594,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-02 工作区 schema 迁移、备份与回滚
 
 - 状态：完成 `[x]`（离线实现与验收完成；真实远端/跨设备真机门未执行）
-- Git commit：本次实现收口提交待写入；完成后推送至 `origin/main`
+- Git commit：`23c9e89`、`6dc6081`（实现与前端产物；本条记录收口提交后推送至 `origin/main`）
 - 变更摘要：
   - `WorkspaceManifest` 当前 schema 提升到 v2；schema v1 在存在迁移路径时进入
     `read-only-upgrade-required`，schema 0/损坏/未来未知 schema 仍拒绝或只读保护；迁移
