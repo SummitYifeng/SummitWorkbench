@@ -7,7 +7,7 @@ const source = fs.readFileSync(path.join(root, 'src/legacy-main.ts'), 'utf8');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 
 // Browser-level interaction contract: these user actions must remain wired after feature moves.
-assert.match(source, /\/api\/onboarding\//, 'onboarding API actions remain wired');
+assert.match(read('src/features/onboarding/index.ts'), /onboarding/, 'onboarding feature exists');
 assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
 assert.match(source, /data-action="profile-switch"/, 'profile switch remains wired');

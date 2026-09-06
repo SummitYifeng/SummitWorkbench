@@ -40,6 +40,7 @@
 | [0033](0033-app-automation-service.md) | v0.4.1 加固 P1-01 | ✅ App 内自动化 worker、主设备门控与 SMAppService helper |
 | [0034](0034-workspace-schema-migration.md) | v0.4.1 加固 P1-02 | ✅ 工作区 schema 迁移、备份、同步就绪门与安全回滚 |
 | [0035](0035-webapp-route-service-split.md) | v0.4.1 加固 P1-03 | ✅ Web route contract、显式 AppContext 与兼容拆分边界 |
+| [0036](0036-frontend-feature-lifecycle-boundaries.md) | v0.4.1 加固 P1-04 | ✅ 前端 feature 边界、typed API client 与 workspace 生命周期 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

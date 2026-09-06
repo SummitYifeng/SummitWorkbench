@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-06
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03 已完成；下一工作包为 P1-04
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04 已完成；下一工作包为 P1-05
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -219,7 +219,7 @@ account = git:<host>:<username>
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [x] |
 | 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [x] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [x] |
-| 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
+| 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [x] |
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [ ] |
 | 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [ ] |
 | 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [ ] |
@@ -1639,6 +1639,26 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   凭据、真实远端、Keychain 或第二台 Mac）。
 - 遗留：`legacy_app.py` 是兼容路由 bundle，后续若继续拆分必须以同一 route contract 为门，
   不得进入 P1-04 的前端 feature 重构范围。
+
+### 2026-09-06 · P1-04
+
+- 状态：完成 `[x]`（等价前端重构与 workspace 生命周期门通过；未改变 DOM、样式或交互语义）
+- Git commit：`02bef98`（源代码与测试）、待本包静态产物/文档收口提交
+- 变更摘要：`web/src/main.ts` 收敛为 6 行 composition root；原入口实现移入兼容 feature bundle。
+  新增 typed API client（统一 error normalization、HTTP 状态与 operation id、请求 AbortController
+  以及 dispose）、`WorkspaceStore`（active workspace、scoped key 与 subscriptions dispose），
+  drafts/问答存储统一使用 workspace 作用域；profile commit 后统一清理 workspace store 并中止在途请求。
+  建立 onboarding/workspace/projects/threads/review/sync/settings feature 边界，保留既有 vanilla TS、
+  DOM、样式、键盘行为和 native bridge。
+- 目标测试：前端 build identity、feature structure、onboarding/sync banner/review apply/profile switch
+  浏览器交互契约测试；TypeScript strict compile。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、
+  `uv run mypy src tests`、`uv run pytest -q`（743 passed，1 skipped，跳过既有需 `WB_PACKAGED_APP`
+  的打包 smoke）；`npm --prefix web run test:frontend`、`npx tsc --noEmit`、
+  `npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（本包为前端等价重构；使用离线脚本、TypeScript 编译和构建产物校验，不需要真实
+  凭据、Apple Developer ID、第二台 Mac 或飞书权限）。
+- 当前结论：P1-04 完成；下一工作包为 P1-05，本次不进入 P1-05。
 
 ## 16. 外部实现依据
 
