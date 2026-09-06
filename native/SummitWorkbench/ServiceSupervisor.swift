@@ -114,6 +114,13 @@ final class ServiceSupervisor {
 
     private func startOwnedService() {
         guard !desiredStop else { finish(nil); return }
+        if let record = RuntimeRecord.load(), record.terminateOwnedServer(at: configuration.wbBinary) {
+            logger.log("orphan_service_termination", fields: ["pid": String(record.pid)])
+            let work = DispatchWorkItem { [weak self] in self?.startOwnedService() }
+            restartWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+            return
+        }
         setState(.starting)
         let child = Process()
         child.executableURL = URL(fileURLWithPath: configuration.wbBinary)

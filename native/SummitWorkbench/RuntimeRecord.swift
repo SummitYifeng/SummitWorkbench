@@ -72,6 +72,26 @@ struct RuntimeRecord: Codable {
         return true
     }
 
+    /// A newly launched App may inherit a live server after the previous App
+    /// process was force-closed. Only identify it as ours when the runtime
+    /// record and the exact bundled executable both match; never adopt or kill
+    /// an arbitrary process by port, PID age, or product name alone.
+    func ownsServer(at serverExecutable: String) -> Bool {
+        guard productID == panelProductID,
+              pid != getpid(),
+              kill(pid, 0) == 0,
+              let actual = executablePath(for: pid) else { return false }
+        let expectedPath = URL(fileURLWithPath: serverExecutable).standardizedFileURL.path
+        let actualPath = URL(fileURLWithPath: actual).standardizedFileURL.path
+        return actualPath == expectedPath
+    }
+
+    @discardableResult
+    func terminateOwnedServer(at serverExecutable: String) -> Bool {
+        guard ownsServer(at: serverExecutable) else { return false }
+        return kill(pid, SIGTERM) == 0
+    }
+
     private func executablePath(for pid: Int32) -> String? {
         commandOutput(arguments: ["-p", String(pid), "-o", "comm="])?.trimmingCharacters(in: .whitespacesAndNewlines)
     }

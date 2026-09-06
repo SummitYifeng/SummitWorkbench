@@ -31,6 +31,8 @@ def test_service_supervisor_has_identity_gate_and_recovery_states() -> None:
     assert "service_crash_loop" in source
     assert "service_restart_scheduled" in source
     assert "terminateOwnedProcessBeforeRetry" in source
+    assert "terminateOwnedServer" in runtime
+    assert "orphan_service_termination" in source
     assert "desiredStop" in source
     assert "RuntimeRecord" in source
     assert "dateDecodingStrategy = .iso8601" in runtime

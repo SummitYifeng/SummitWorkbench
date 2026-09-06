@@ -28,6 +28,8 @@ origin 仍是 GitHub SSH remote。生产同步必须有一个可验证、可诊�
 5. `v0.4.3-rc.N` 只进入 draft/prerelease 渠道，feed 使用 tag-specific URL，不更新 `latest`。
    候选包完成 packaged integration 与双设备自动验收后，再由用户做唯一一次 Studio/Air 真机
    验收。稳定 `v0.4.3` 必须从同一 RC DMG 原资产晋升，哈希不变，禁止重新构建。
+6. 若 App 被强制退出而遗留自有 server，下一次启动只在 runtime record 与当前 bundle
+   server 可执行文件精确匹配时终止该孤儿进程并重新启动；未知进程仍绝不接管或终止。
 
 ## 安全边界
 
