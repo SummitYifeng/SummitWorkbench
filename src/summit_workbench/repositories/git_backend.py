@@ -22,6 +22,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 _GIT_BACKEND_ENV = "WB_GIT_BACKEND"
 SUPPORTED_KINDS = ("system", "dulwich")
@@ -37,6 +38,10 @@ class GitError(RuntimeError):
 
 class GitRemoteUnavailable(GitError):
     """远端不可达 / 不存在（fetch/push 网络层或仓库层失败）。"""
+
+
+class GitRemoteSchemeUnsupported(GitError):
+    """生产同步拒绝非 HTTPS remote（SSH/scp-style 等）。"""
 
 
 class GitAuthError(GitError):
@@ -90,6 +95,7 @@ class GitBackend(Protocol):
 
     def has_remote(self, name: str = "origin") -> bool: ...
     def remote_url(self, name: str = "origin") -> str | None: ...
+    def set_remote_url(self, url: str, name: str = "origin") -> None: ...
     def add_remote(self, name: str, url: str) -> None: ...
     def current_branch(self) -> str: ...
     def head_revision(self) -> str: ...
@@ -130,3 +136,13 @@ def backend_kind() -> str:
 def production_backend_kind() -> str:
     """production/packaged 的固定 backend；不读取环境变量。"""
     return "dulwich"
+
+
+def require_https_remote(url: str) -> None:
+    """Enforce the production remote contract without echoing URL credentials."""
+    try:
+        parsed = urlsplit(url.strip())
+    except ValueError as exc:
+        raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote") from exc
+    if parsed.scheme.lower() != "https" or not parsed.hostname:
+        raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote（remote_scheme_unsupported）")

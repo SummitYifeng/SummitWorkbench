@@ -324,6 +324,21 @@
   },
   {
     "method": [
+      "POST"
+    ],
+    "path": "/api/settings/acceptance-preflight",
+    "request_fields": [
+      "_payload"
+    ],
+    "request_model": "AcceptancePreflightPayload",
+    "response_status": 200,
+    "error_codes": [
+      "acceptance_preflight_failed",
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
       "GET"
     ],
     "path": "/api/settings/automation",
@@ -367,6 +382,49 @@
     "request_model": "DoctorPayload",
     "response_status": 200,
     "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/git/remote/apply",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "GitRemoteNormalizationPlanPayload",
+    "response_status": 200,
+    "error_codes": [
+      "normalization_plan_missing",
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/git/remote/preview",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "GitRemoteNormalizationPayload",
+    "response_status": 200,
+    "error_codes": [
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/git/remote/rollback",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "GitRemoteRollbackPayload",
+    "response_status": 200,
+    "error_codes": [
+      "confirmation_required"
+    ]
   },
   {
     "method": [

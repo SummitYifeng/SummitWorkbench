@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from summit_workbench import __version__
 from summit_workbench.config.app_support import runtime_dir
+from summit_workbench.config.git_credentials import strip_credentials
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import store_workspace_credential, workspace_account
 from summit_workbench.domain.workspace import (
@@ -17,6 +18,7 @@ from summit_workbench.domain.workspace import (
     LocalProfile,
     evaluate_manifest_compatibility,
 )
+from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.local_sync_state import load_sync_state
 from summit_workbench.repositories.onboarding_draft import clear_onboarding_draft
 from summit_workbench.repositories.profile_registry import (
@@ -49,6 +51,7 @@ class ProfileSummary:
     active: bool
     provider_status: dict[str, str]
     sync_summary: dict[str, object]
+    remote_url: str | None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -61,6 +64,7 @@ class ProfileSummary:
             "active": self.active,
             "provider_status": self.provider_status,
             "sync_summary": self.sync_summary,
+            "remote_url": self.remote_url,
         }
 
 
@@ -92,9 +96,19 @@ def list_profile_summaries(*, home: Path) -> list[ProfileSummary]:
                 active=is_active,
                 provider_status=_provider_status(profile),
                 sync_summary=_sync_summary(workspace_id, home=home),
+                remote_url=_remote_url(profile),
             )
         )
     return summaries
+
+
+def _remote_url(profile: LocalProfile) -> str | None:
+    """Read the origin URL without network access or userinfo leakage."""
+    try:
+        url = GitRepo(profile.vault_dir, backend_kind="dulwich").remote_url("origin")
+    except Exception:
+        return profile.git_remote_url
+    return strip_credentials(url) if url else profile.git_remote_url
 
 
 def prepare_profile_switch(*, home: Path, target_workspace_id: str) -> ProfileSwitchPlan:

@@ -22,7 +22,11 @@ from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.domain.workspace import SUPPORTED_WORKSPACE_SCHEMA, WorkspaceManifest
 from summit_workbench.repositories._atomic import atomic_write_bytes, atomic_write_text
 from summit_workbench.repositories.git import GitError, GitRepo
-from summit_workbench.repositories.git_backend import AheadBehind
+from summit_workbench.repositories.git_backend import (
+    AheadBehind,
+    GitRemoteSchemeUnsupported,
+    require_https_remote,
+)
 from summit_workbench.repositories.workspace_manifest import (
     WorkspaceManifestError,
     load_workspace_manifest,
@@ -213,6 +217,16 @@ def _require_ready(repo: GitRepo) -> None:
             "工作区没有可验证的 Git 远端，迁移要求同步状态 ready",
             code="migration_sync_not_ready",
         )
+    try:
+        remote_url = repo.remote_url("origin")
+        if not remote_url:
+            raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote")
+        require_https_remote(remote_url)
+    except GitRemoteSchemeUnsupported as exc:
+        raise WorkspaceMigrationError(
+            "当前 Git remote 不是 HTTPS，请先在设置中心完成 remote 规范化",
+            code="remote_scheme_unsupported",
+        ) from exc
     if repo.is_dirty():
         raise WorkspaceMigrationError(
             "工作树存在未提交改动，迁移要求先达到 ready",

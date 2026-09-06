@@ -83,6 +83,15 @@ def store_credential(ref: CredentialRef, value: SecretStr) -> None:
     )
 
 
+def delete_credential(ref: CredentialRef) -> None:
+    """删除 workspace 事务失败时刚写入的 generic password。"""
+    _run_security(
+        ["delete-generic-password", "-s", ref.service, "-a", ref.account],
+        action="删除",
+        ref=ref,
+    )
+
+
 def redact(value: object) -> str:
     """把可能含敏感内容的对象渲染成安全字符串（用于日志 / 诊断输出）。"""
     if isinstance(value, SecretStr):
@@ -131,6 +140,11 @@ def resolve_workspace_credential(workspace_id: str, account: str) -> SecretStr:
 def store_workspace_credential(workspace_id: str, account: str, value: SecretStr) -> None:
     """只写 workspace 作用域命名（旧命名绝不由此入口写入）。"""
     store_credential(workspace_credential_ref(workspace_id, account), value)
+
+
+def delete_workspace_credential(workspace_id: str, account: str) -> None:
+    """删除指定 workspace 作用域凭据；缺失时仍由调用方决定是否忽略。"""
+    delete_credential(workspace_credential_ref(workspace_id, account))
 
 
 def resolve_legacy_credential_for_migration(ref: CredentialRef) -> SecretStr:

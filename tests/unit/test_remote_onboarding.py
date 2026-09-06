@@ -143,9 +143,9 @@ def test_remote_clone_cancel_only_removes_own_staging(tmp_path) -> None:
 @pytest.mark.parametrize(
     ("url", "code"),
     [
-        ("http://github.com/acme/repo.git", "remote_url_unsupported"),
+        ("http://github.com/acme/repo.git", "remote_scheme_unsupported"),
         ("https://alice:" + "secret" + "@github.com/acme/repo.git", "remote_url_userinfo"),
-        ("ssh://git@github.com/acme/repo.git", "remote_url_unsupported"),
+        ("ssh://git@github.com/acme/repo.git", "remote_scheme_unsupported"),
     ],
 )
 def test_remote_url_validation_is_stable(url: str, code: str) -> None:

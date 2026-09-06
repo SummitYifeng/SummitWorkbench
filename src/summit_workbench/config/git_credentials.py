@@ -17,6 +17,7 @@ from urllib.parse import urlsplit, urlunsplit
 from pydantic import SecretStr
 
 from summit_workbench.config.secrets import (
+    delete_workspace_credential,
     resolve_workspace_credential,
     store_workspace_credential,
     workspace_account,
@@ -53,6 +54,11 @@ def resolve_git_credentials(workspace_id: str, host: str, username: str) -> GitC
 def store_git_credentials(workspace_id: str, host: str, username: str, password: SecretStr) -> None:
     """把某远端凭据写入 workspace 作用域 Keychain（只写作用域命名）。"""
     store_workspace_credential(workspace_id, git_account(host, username), password)
+
+
+def delete_git_credentials(workspace_id: str, host: str, username: str) -> None:
+    """删除一次转换写入的 workspace-scoped Git credential。"""
+    delete_workspace_credential(workspace_id, git_account(host, username))
 
 
 def profile_identity(profile: LocalProfile) -> CommitIdentity:

@@ -48,6 +48,7 @@ _PROFILE_TOML_KEYS = (
     "timezone",
     "user_email",
     "git_username",
+    "git_remote_url",
 )
 
 

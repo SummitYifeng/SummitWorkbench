@@ -119,6 +119,8 @@ class LocalProfile(BaseModel):
     user_email: Annotated[str, Field(max_length=254)] | None = None
     # P0-09C：HTTPS remote 的公开账号名；密码只存在 workspace-scoped Keychain。
     git_username: Annotated[str, Field(max_length=200)] | None = None
+    # P1-07D: normalized production origin (credentials never stored here).
+    git_remote_url: Annotated[str, Field(max_length=2000)] | None = None
 
 
 class DeviceIdentity(BaseModel):

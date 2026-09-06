@@ -36,6 +36,8 @@ from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.git_backend import (
     GitAuthError,
     GitNonFastForward,
+    GitRemoteSchemeUnsupported,
+    require_https_remote,
 )
 from summit_workbench.repositories.local_sync_state import save_sync_state
 from summit_workbench.workflows.external_actions import workspace_id_for_vault
@@ -135,7 +137,17 @@ def _sync_single_repo(
     if not repo.has_remote():
         return SyncState.UNCONFIGURED, None
     try:
+        remote_url = repo.remote_url("origin")
+        if not remote_url:
+            return SyncState.UNCONFIGURED, None
+        # Development/CLI conformance fixtures may use local-path remotes. The
+        # packaged active-workspace path passes Dulwich explicitly and is the
+        # production boundary where HTTPS is mandatory.
+        if backend_kind == "dulwich":
+            require_https_remote(remote_url)
         repo.fetch()
+    except GitRemoteSchemeUnsupported:
+        return SyncState.REMOTE_SCHEME_UNSUPPORTED, None
     except GitAuthError:
         return SyncState.AUTH_REQUIRED, None
     except GitError as exc:

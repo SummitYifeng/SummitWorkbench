@@ -1,3 +1,15 @@
+## [0.4.3-rc.1] - 2026-09-06
+
+> 候选版本，尚未稳定发布；等待一次 Studio + Air 双设备真机验收。
+
+- P1-07D：生产同步正式限定 HTTPS remote；SSH/scp-style remote 明确返回
+  `remote_scheme_unsupported`。
+- 设置中心新增可预览、可回滚的 GitHub SSH → HTTPS 转换事务与脱敏 acceptance preflight。
+- 修复 Dulwich clean-worktree 判定，补充 ignored directory、未跟踪文件、已跟踪删除和双设备
+  schema/sync/divergence 回归。
+- 候选 release 使用 draft/prerelease 渠道，不更新 `latest`；公开更新仓库只提供完整性，不
+  提供保密性。
+
 ## [0.4.2] - 2026-09-06
 
 修复 macOS 自包含 App 首次创建 workspace 时找不到 PyInstaller 内置 vault 模板的问题；

@@ -39,8 +39,15 @@ jobs:
           PY
           )"
           TAG_VERSION="${GITHUB_REF_NAME#v}"
-          [[ "$TAG_VERSION" == "$VERSION" ]] || {
-            echo "tag $GITHUB_REF_NAME does not match pyproject version v$VERSION"
+          if [[ "$TAG_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]]; then
+            CHANNEL="rc"
+            BASE_VERSION="${BASH_REMATCH[1]}"
+          else
+            CHANNEL="stable"
+            BASE_VERSION="$TAG_VERSION"
+          fi
+          [[ "$BASE_VERSION" == "$VERSION" ]] || {
+            echo "tag $GITHUB_REF_NAME does not match pyproject version v$VERSION (or v$VERSION-rc.N)"
             exit 1
           }
           [[ "$(uname -m)" == "arm64" ]] || {
@@ -48,6 +55,7 @@ jobs:
             exit 1
           }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -79,7 +87,11 @@ jobs:
           [[ -n "$UPDATE_REPO_TOKEN" ]] || { echo "missing release secret UPDATE_REPO_TOKEN" >&2; exit 1; }
           [[ "$UPDATE_FEED_URL" == https://* ]] || { echo "UPDATE_FEED_URL must be HTTPS" >&2; exit 1; }
           [[ "$UPDATE_DOWNLOAD_URL" == https://* ]] || { echo "UPDATE_DOWNLOAD_URL must be HTTPS" >&2; exit 1; }
-          EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/latest/download/update-feed.json"
+          if [[ "${{ steps.version.outputs.channel }}" == "rc" ]]; then
+            EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/download/$GITHUB_REF_NAME/update-feed.json"
+          else
+            EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/latest/download/update-feed.json"
+          fi
           EXPECTED_DOWNLOAD_URL="https://github.com/$UPDATE_REPOSITORY/releases/download/$GITHUB_REF_NAME/SummitWorkbench-$RELEASE_VERSION-arm64-INTERNAL-DEV.dmg"
           [[ "$UPDATE_FEED_URL" == "$EXPECTED_FEED_URL" ]] || {
             echo "UPDATE_FEED_URL must be $EXPECTED_FEED_URL" >&2
@@ -120,6 +132,9 @@ jobs:
           WB_PACKAGED_APP: dist/ci-release/${{ steps.version.outputs.version }}/arm64/SummitWorkbench.app
         run: uv run pytest -m integration -q
 
+      - name: Run P1-07D dual-device acceptance gate
+        run: uv run pytest tests/integration/test_acceptance_dual_device.py -m integration -q
+
       - name: Upload fully verified package as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -140,9 +155,13 @@ jobs:
               exit 1
             }
           else
-            gh release create "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" --draft \
+            EXTRA_FLAGS=()
+            if [[ "${{ steps.version.outputs.channel }}" == "rc" ]]; then
+              EXTRA_FLAGS+=(--prerelease)
+            fi
+            gh release create "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" --draft "${EXTRA_FLAGS[@]}" \
               --title "SummitWorkbench ${{ steps.version.outputs.version }}" \
-              --notes "Verified internal arm64 release; update feed and DMG are integrity-protected."
+              --notes "Verified internal arm64 ${{ steps.version.outputs.channel }} candidate; update feed and DMG are integrity-protected."
           fi
 
       - name: Upload complete assets to public draft

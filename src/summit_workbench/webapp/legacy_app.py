@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from summit_workbench.providers.llm.config import ModelConfig
     from summit_workbench.workflows.ask.ask import AskTurn
 
+from summit_workbench import __version__
 from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
@@ -92,6 +93,7 @@ from summit_workbench.repositories.thread_notes import (
     save_thread_artifact,
 )
 from summit_workbench.webapp.api import (
+    AcceptancePreflightPayload,
     ArtifactSavePayload,
     AskPayload,
     AutomationPrimaryPayload,
@@ -103,6 +105,9 @@ from summit_workbench.webapp.api import (
     DoctorPayload,
     EditPayload,
     ExternalActionReconcilePayload,
+    GitRemoteNormalizationPayload,
+    GitRemoteNormalizationPlanPayload,
+    GitRemoteRollbackPayload,
     LogAppendPayload,
     MeetingEditPayload,
     OnboardingCreatePayload,
@@ -142,6 +147,7 @@ from summit_workbench.webapp.security import (
     validate_bind_host,
 )
 from summit_workbench.webapp.views import render_dashboard, render_plan, render_review
+from summit_workbench.workflows.acceptance_preflight import acceptance_preflight
 from summit_workbench.workflows.external_actions import (
     authorize_retry,
     reconcile_not_found,
@@ -162,6 +168,13 @@ from summit_workbench.workflows.profile_settings import (
     prepare_profile_switch,
     remove_local_profile,
     update_provider_settings,
+)
+from summit_workbench.workflows.remote_normalization import (
+    RemoteNormalizationError,
+    RemoteNormalizationPlan,
+    apply_remote_normalization,
+    preview_remote_normalization,
+    rollback_remote_normalization,
 )
 from summit_workbench.workflows.review_apply import (
     ApplyReport,
@@ -1063,6 +1076,7 @@ def create_app(
     server_instance = server_instance or new_server_instance()
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     switch_plans: dict[str, object] = {}
+    remote_normalization_plans: dict[str, RemoteNormalizationPlan] = {}
     profile_switch_in_progress = False
 
     def _operation_id(request: Request) -> str:
@@ -1294,6 +1308,178 @@ def create_app(
                 ctx.active_workspace.device_id if ctx.active_workspace is not None else None
             ),
             "profiles": [item.as_dict() for item in summaries],
+        }
+
+    @app.post("/api/settings/acceptance-preflight", response_model=None)
+    def settings_acceptance_preflight(
+        request: Request, _payload: AcceptancePreflightPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Run the read-only P1-07D gate and return a copyable redacted report."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以运行验收预检",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        try:
+            report = acceptance_preflight(
+                ctx.vault_dir,
+                home=ctx.active_workspace.home,
+                workspace_id=ctx.workspace_id,
+                app_version=__version__,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except Exception:  # noqa: BLE001 - report boundary must stay redacted
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="acceptance_preflight_failed",
+                    message="验收预检无法完成；请查看本机诊断，不会显示凭据或远端密钥",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        return {
+            "ok": report.ok,
+            "workspace_id": report.workspace_id,
+            "app_version": report.app_version,
+            "checks": [item.__dict__ for item in report.checks],
+            "report": report.text,
+        }
+
+    @app.post("/api/settings/git/remote/preview", response_model=None)
+    def settings_git_remote_preview(
+        request: Request, payload: GitRemoteNormalizationPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Validate a candidate HTTPS origin in a temporary clone; no local mutation."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以规范化 Git remote",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        try:
+            from pydantic import SecretStr
+
+            plan = preview_remote_normalization(
+                ctx.vault_dir,
+                workspace_id=ctx.workspace_id,
+                username=payload.git_username,
+                pat=SecretStr(payload.pat),
+                candidate_url=payload.candidate_url,
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=_operation_id(request)
+                ),
+            )
+        remote_normalization_plans[plan.plan_id] = plan
+        return {
+            "ok": True,
+            "plan_id": plan.plan_id,
+            "workspace_id": plan.workspace_id,
+            "old_url": plan.old_url,
+            "candidate_url": plan.candidate_url,
+            "branch": plan.branch,
+            "candidate_fetched": plan.candidate.fetched,
+            "candidate_ahead": plan.candidate.ahead,
+            "candidate_behind": plan.candidate.behind,
+            "note": "预览未修改 origin、profile、vault、提交、推送或 Keychain",
+        }
+
+    @app.post("/api/settings/git/remote/apply", response_model=None)
+    def settings_git_remote_apply(
+        request: Request, payload: GitRemoteNormalizationPlanPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Revalidate a preview then atomically apply origin/profile/keychain."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以规范化 Git remote",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        plan = remote_normalization_plans.get(payload.plan_id)
+        if plan is None or plan.workspace_id != ctx.workspace_id:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="normalization_plan_missing",
+                    message="转换预览已失效，请重新预览",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        try:
+            from pydantic import SecretStr
+
+            transaction = apply_remote_normalization(
+                ctx.vault_dir,
+                plan,
+                username=payload.git_username,
+                pat=SecretStr(payload.pat),
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=_operation_id(request)
+                ),
+            )
+        remote_normalization_plans.pop(payload.plan_id, None)
+        return {
+            "ok": True,
+            "transaction_id": transaction.transaction_id,
+            "old_url": transaction.old_url,
+            "new_url": transaction.new_url,
+            "note": "origin/profile/Keychain 已更新；未提交、未推送、未修改 vault 内容",
+        }
+
+    @app.post("/api/settings/git/remote/rollback", response_model=None)
+    def settings_git_remote_rollback(
+        request: Request, payload: GitRemoteRollbackPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Rollback the last applied remote normalization transaction."""
+        if not payload.confirmed or ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="confirmation_required",
+                    message="请明确确认回滚当前 remote 转换",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        try:
+            transaction = rollback_remote_normalization(
+                ctx.vault_dir,
+                workspace_id=ctx.workspace_id,
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=_operation_id(request)
+                ),
+            )
+        return {
+            "ok": True,
+            "transaction_id": transaction.transaction_id,
+            "restored_url": transaction.old_url,
+            "note": "origin/profile 已恢复；未提交、未推送、未修改 vault 内容",
         }
 
     @app.post("/api/settings/profile/prepare", response_model=None)

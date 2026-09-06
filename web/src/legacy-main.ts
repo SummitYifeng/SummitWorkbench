@@ -1324,6 +1324,7 @@ interface ProfileSummaryPayload {
   active: boolean;
   provider_status: Record<string, string>;
   sync_summary: { state: string; pending_commits: number | null; last_sync_at?: string | null };
+  remote_url?: string | null;
 }
 
 interface ProfileListPayload {
@@ -1345,6 +1346,22 @@ interface AutomationJobPayload {
 interface AutomationSettingsPayload {
   workspace_id: string;
   jobs: Record<string, AutomationJobPayload>;
+}
+
+interface RemoteNormalizationPreviewPayload {
+  plan_id: string;
+  old_url: string;
+  candidate_url: string;
+  branch: string;
+  candidate_fetched: boolean;
+  candidate_ahead: number;
+  candidate_behind: number;
+}
+
+interface AcceptancePreflightPayload {
+  ok: boolean;
+  report: string;
+  checks: Array<{ name: string; status: string; detail: string }>;
 }
 
 const AUTOMATION_LABELS: Record<string, string> = {
@@ -1377,6 +1394,87 @@ function automationJobHtml(job: string, schedule: AutomationJobPayload): string 
     '<button class="ghost" type="button" data-action="automation-run" data-job="' + esc(job) + '">立即运行</button>' + copy + '</div></form>';
 }
 
+function httpsCandidate(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('https://')) return url;
+  const scp = url.match(/^git@github\.com:(.+)$/);
+  return scp ? 'https://github.com/' + scp[1] : '';
+}
+
+async function previewGitRemoteNormalization(): Promise<void> {
+  const candidate = (document.getElementById('remote-candidate-url') as HTMLInputElement | null)?.value.trim() ?? '';
+  const username = (document.getElementById('remote-github-username') as HTMLInputElement | null)?.value.trim() ?? '';
+  const pat = (document.getElementById('remote-github-pat') as HTMLInputElement | null)?.value ?? '';
+  if (!candidate || !username || !pat) {
+    toast('请填写 HTTPS 地址、GitHub username 和 workspace-scoped PAT', 'err');
+    return;
+  }
+  try {
+    const result = await api<RemoteNormalizationPreviewPayload>('/api/settings/git/remote/preview', {
+      method: 'POST', body: JSON.stringify({ candidate_url: candidate, git_username: username, pat }),
+    });
+    const output = document.getElementById('remote-normalization-result');
+    if (output) {
+      output.innerHTML = '<div class="success">预览通过：候选仓库已认证、workspace marker、分支/upstream 和 fetch 均通过。' +
+        '<br>当前：' + esc(result.old_url) + '<br>候选：' + esc(result.candidate_url) +
+        '<br>branch：' + esc(result.branch) + ' · ahead ' + result.candidate_ahead + ' · behind ' + result.candidate_behind +
+        '<div class="row"><button class="primary" type="button" data-action="git-remote-apply" data-plan="' + esc(result.plan_id) + '">确认并转换</button>' +
+        '<button class="ghost" type="button" data-action="git-remote-rollback">取消</button></div></div>';
+    }
+    toast('候选 remote 预览通过；尚未修改本机配置', 'ok');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function applyGitRemoteNormalization(planId: string): Promise<void> {
+  if (!window.confirm('确认将 origin 和本机 profile 转换为 HTTPS？不会提交、推送或修改 vault 内容。')) return;
+  const username = (document.getElementById('remote-github-username') as HTMLInputElement | null)?.value.trim() ?? '';
+  const patInput = document.getElementById('remote-github-pat') as HTMLInputElement | null;
+  const pat = patInput?.value ?? '';
+  try {
+    const result = await api<{ new_url: string }>('/api/settings/git/remote/apply', {
+      method: 'POST', body: JSON.stringify({ plan_id: planId, git_username: username, pat }),
+    });
+    if (patInput) patInput.value = '';
+    const output = document.getElementById('remote-normalization-result');
+    if (output) output.innerHTML = '<div class="success">转换完成：' + esc(result.new_url) +
+      '<br>未提交、未推送、未修改 vault。若需撤销，可使用“回滚最近一次转换”。</div>';
+    toast('Git remote 已转换为 HTTPS', 'ok');
+    void renderSettings(document.getElementById('view-settings') as HTMLElement);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function rollbackGitRemoteNormalization(): Promise<void> {
+  if (!window.confirm('确认回滚最近一次 remote 转换？')) return;
+  try {
+    const result = await api<{ restored_url: string }>('/api/settings/git/remote/rollback', {
+      method: 'POST', body: JSON.stringify({ confirmed: true }),
+    });
+    const output = document.getElementById('remote-normalization-result');
+    if (output) output.innerHTML = '<div class="success">已恢复：' + esc(result.restored_url) + '</div>';
+    toast('remote 转换已回滚', 'ok');
+    void renderSettings(document.getElementById('view-settings') as HTMLElement);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function runAcceptancePreflight(): Promise<void> {
+  try {
+    const result = await api<AcceptancePreflightPayload>('/api/settings/acceptance-preflight', {
+      method: 'POST', body: JSON.stringify({}),
+    });
+    const output = document.getElementById('acceptance-preflight-result');
+    if (output) output.innerHTML = '<pre class="diagnostics-output">' + esc(result.report) + '</pre>';
+    toast(result.ok ? '验收预检通过' : '验收预检未通过，请查看报告', result.ok ? 'ok' : 'err');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
 async function renderSettings(view: HTMLElement): Promise<void> {
   view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
   try {
@@ -1384,6 +1482,8 @@ async function renderSettings(view: HTMLElement): Promise<void> {
       api<ProfileListPayload>('/api/settings/profiles'),
       api<AutomationSettingsPayload>('/api/settings/automation'),
     ]);
+    const activeProfile = response.profiles.find((profile) => profile.active);
+    const candidateUrl = httpsCandidate(activeProfile?.remote_url);
     view.innerHTML = '<section class="block"><div class="section-head"><h2 class="section-title">工作台设置</h2>' +
       '<button class="ghost" data-action="settings-doctor">离线检查</button>' +
       '<button class="ghost" data-action="settings-doctor-online">在线检查（会访问网络）</button></div>' +
@@ -1402,6 +1502,18 @@ async function renderSettings(view: HTMLElement): Promise<void> {
         (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到此工作台</button><button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>') +
         '</article>',
       ).join('') + '</section>' +
+      '<section class="block"><h3 class="section-title">生产 Git remote 规范化</h3>' +
+      '<p class="hint">生产模式只接受 HTTPS。这里会先在临时 clone 中验证认证、仓库身份、workspace marker、分支/upstream 和 fetch；确认后才更新 origin、profile 和 workspace-scoped Keychain。不会记录 PAT，不会提交、推送或改动 vault。</p>' +
+      '<form id="remote-normalization-form" autocomplete="off"><div class="grid2">' +
+      '<label>候选 HTTPS remote<input id="remote-candidate-url" type="url" value="' + esc(candidateUrl) + '" placeholder="https://github.com/owner/repo.git"></label>' +
+      '<label>GitHub username<input id="remote-github-username" autocomplete="username" placeholder="你的 GitHub 用户名"></label>' +
+      '<label>workspace-scoped PAT<input id="remote-github-pat" type="password" autocomplete="new-password" placeholder="只在本次验证/转换中使用"></label></div>' +
+      '<div class="row"><button class="primary" type="button" data-action="git-remote-preview">预览 HTTPS 转换</button>' +
+      '<button class="ghost" type="button" data-action="git-remote-rollback">回滚最近一次转换</button></div></form>' +
+      '<div id="remote-normalization-result"></div></section>' +
+      '<section class="block"><h3 class="section-title">只读 acceptance preflight</h3>' +
+      '<p class="hint">统一检查 App/build、production backend、HTTPS remote、凭据、双后端 dirty 一致性、fetch、ahead/behind、schema 路径、备份和 automation role。报告已脱敏，可复制给支持人员。</p>' +
+      '<button class="ghost" type="button" data-action="acceptance-preflight">运行只读预检</button><div id="acceptance-preflight-result"></div></section>' +
       '<section class="block"><h3 class="section-title">App 内自动化</h3><p class="hint">只在这台 Mac 本地运行。只有 workspace 的 automation-primary 会执行写入；辅助设备会安全跳过。</p>' +
       Object.entries(automation.jobs).map(([job, schedule]) => automationJobHtml(job, schedule)).join('') + '</section>' +
       '<section class="block"><h3 class="section-title">更新</h3><label class="automation-enabled"><input id="auto-update-check" type="checkbox"' +
@@ -1694,6 +1806,23 @@ document.addEventListener('click', (ev) => {
   if (action === 'workspace-migrate') {
     const deviceId = btn.dataset.device ?? '';
     if (deviceId) void migrateWorkspace(deviceId);
+    return;
+  }
+  if (action === 'git-remote-preview') {
+    void previewGitRemoteNormalization();
+    return;
+  }
+  if (action === 'git-remote-apply') {
+    const planId = btn.dataset.plan ?? '';
+    if (planId) void applyGitRemoteNormalization(planId);
+    return;
+  }
+  if (action === 'git-remote-rollback') {
+    void rollbackGitRemoteNormalization();
+    return;
+  }
+  if (action === 'acceptance-preflight') {
+    void runAcceptancePreflight();
     return;
   }
   if (action === 'profile-remove') {

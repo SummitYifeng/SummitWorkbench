@@ -129,6 +129,9 @@ class SystemGitBackend:
         cp = self._run("remote", "get-url", name)
         return cp.stdout.strip() or None
 
+    def set_remote_url(self, url: str, name: str = "origin") -> None:
+        self._must("remote", "set-url", name, url)
+
     def add_remote(self, name: str, url: str) -> None:
         self._must("remote", "add", name, url)
 

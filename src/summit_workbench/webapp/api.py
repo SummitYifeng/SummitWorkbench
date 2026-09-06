@@ -157,6 +157,36 @@ class ProfileRemovePayload(BaseModel):
     confirmed: bool = False
 
 
+class GitRemoteNormalizationPayload(BaseModel):
+    """Candidate HTTPS origin and one-time PAT (never persisted by the API)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_url: str = Field(min_length=1, max_length=2_048)
+    git_username: str = Field(min_length=1, max_length=200)
+    pat: str = Field(min_length=1, max_length=100_000)
+
+
+class GitRemoteNormalizationPlanPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plan_id: str = Field(min_length=8, max_length=100)
+    git_username: str = Field(min_length=1, max_length=200)
+    pat: str = Field(min_length=1, max_length=100_000)
+
+
+class GitRemoteRollbackPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed: bool = False
+
+
+class AcceptancePreflightPayload(BaseModel):
+    """Read-only release/dual-device acceptance gate request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ProviderSettingsPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

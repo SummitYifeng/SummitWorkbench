@@ -21,7 +21,11 @@ from summit_workbench.domain.sync import (
 )
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile
 from summit_workbench.repositories.git import GitError, GitRepo
-from summit_workbench.repositories.git_backend import CommitIdentity, GitAuthError
+from summit_workbench.repositories.git_backend import (
+    CommitIdentity,
+    GitAuthError,
+    GitRemoteSchemeUnsupported,
+)
 from summit_workbench.repositories.local_sync_state import (
     load_sync_state,
     save_sync_state,
@@ -94,6 +98,9 @@ def test_offline_and_auth_classification() -> None:
     assert classify_repo_error(offline) is SyncState.OFFLINE_LOCAL_AHEAD
     auth = GitAuthError("认证失败", stderr="Authentication failed")
     assert classify_repo_error(auth) is SyncState.AUTH_REQUIRED
+    assert classify_repo_error(GitRemoteSchemeUnsupported("remote_scheme_unsupported")) is (
+        SyncState.REMOTE_SCHEME_UNSUPPORTED
+    )
     assert state_from_counts(pending=1, ahead=0, behind=0, reachable=False) is (
         SyncState.OFFLINE_LOCAL_AHEAD
     )

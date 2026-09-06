@@ -96,6 +96,9 @@ class GitRepo:
     def remote_url(self, name: str = "origin") -> str | None:
         return self._backend.remote_url(name)
 
+    def set_remote_url(self, url: str, name: str = "origin") -> None:
+        self._backend.set_remote_url(url, name)
+
     def current_branch(self) -> str:
         return self._backend.current_branch()
 

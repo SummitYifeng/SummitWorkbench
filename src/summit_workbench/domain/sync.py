@@ -29,6 +29,7 @@ from summit_workbench.repositories.git_backend import (
     GitAuthError,
     GitConflictError,
     GitNonFastForward,
+    GitRemoteSchemeUnsupported,
     GitRemoteUnavailable,
     GitTlsError,
 )
@@ -60,6 +61,7 @@ class SyncState(StrEnum):
     DIVERGED_PROTECTED = "diverged-protected"
     DIRTY_PROTECTED = "dirty-protected"
     AUTH_REQUIRED = "auth-required"
+    REMOTE_SCHEME_UNSUPPORTED = "remote-scheme-unsupported"
     ERROR = "error"
 
 
@@ -104,6 +106,8 @@ def classify_repo_error(error: BaseException) -> SyncState:
     """单个仓库同步失败 → workspace 级状态类别。"""
     if isinstance(error, GitAuthError | GitTlsError):
         return SyncState.AUTH_REQUIRED
+    if isinstance(error, GitRemoteSchemeUnsupported):
+        return SyncState.REMOTE_SCHEME_UNSUPPORTED
     if is_offline_error(error):
         return SyncState.OFFLINE_LOCAL_AHEAD
     if isinstance(error, GitNonFastForward):
@@ -118,6 +122,7 @@ def combine_repo_states(states: list[SyncState]) -> SyncState:
     if not states:
         return SyncState.UNCONFIGURED
     priorities = {
+        SyncState.REMOTE_SCHEME_UNSUPPORTED: 10,
         SyncState.AUTH_REQUIRED: 9,
         SyncState.DIVERGED_PROTECTED: 8,
         SyncState.DIRTY_PROTECTED: 7,
@@ -155,6 +160,7 @@ def next_step_for(state: SyncState, *, online: bool) -> str:
         SyncState.DIVERGED_PROTECTED: "已分叉：不自动覆盖任一侧，请人工核对后处理",
         SyncState.DIRTY_PROTECTED: "工作树有未提交改动：先本地提交或确认后再同步",
         SyncState.AUTH_REQUIRED: "需要重新配置 Git 凭据（workspace 作用域 Keychain）",
+        SyncState.REMOTE_SCHEME_UNSUPPORTED: "生产同步只支持 HTTPS；请在设置中心转换 SSH remote",
         SyncState.ERROR: "同步失败，请查看错误详情",
     }
     if not online and state in {

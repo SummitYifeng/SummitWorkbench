@@ -206,6 +206,15 @@ class DulwichGitBackend:
         url = self._config_get(repo, (b"remote", name.encode("utf-8")), b"url")
         return url.decode("utf-8") if url is not None else None
 
+    def set_remote_url(self, url: str, name: str = "origin") -> None:
+        repo = self._open()
+        config = repo.get_config()
+        section = (b"remote", name.encode("utf-8"))
+        if self._config_get(repo, section, b"url") is None:
+            raise GitError(f"没有配置 remote {name}")
+        config.set(section, b"url", url.encode("utf-8"))
+        config.write_to_path()
+
     def add_remote(self, name: str, url: str) -> None:
         repo = self._open()
         config = repo.get_config()
@@ -492,10 +501,16 @@ class DulwichGitBackend:
         repo = self._open()
         upstream = self._upstream_sha(repo)
         head = self._head_sha(repo)
-        if head is None or self._ancestor_count(repo, upstream, head) == 0:
+        if head is None:
             raise GitNonFastForward("无法快进合并（存在分叉，需人工处理）")
         if head == upstream:
             return
+        # The two ancestor counts are the authoritative relation.  In
+        # particular, a diverged pair has both counts > 0; checking only the
+        # upstream walker can incorrectly treat that pair as fast-forwardable.
+        counts = self.ahead_behind()
+        if counts.ahead != 0 or counts.behind == 0:
+            raise GitNonFastForward("无法快进合并（存在分叉，需人工处理）")
         self._move_to(repo, upstream)
 
     def _move_to(self, repo: Repo, target: bytes) -> None:

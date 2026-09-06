@@ -1057,9 +1057,26 @@ environment、OpenSSL 3 真实签名/验签、workflow actionlint 门、完整�
 环境传入。没有 feed 或公钥时，App 保持可用并给用户“更新源未配置”的反馈，不会回退到不
 验证的下载。真实 release secrets 与真机/双设备验收仍是外部验收项，不在仓库内伪造通过。
 
+#### P1-07D · 远端规范化与一次性双设备验收闭环 `[~]`
+
+P1-07D 在稳定 `v0.4.3` 之前收口。生产模式只接受 HTTPS remote；SSH/scp-style remote
+明确返回 `remote_scheme_unsupported`。设置中心的 SSH → HTTPS 转换先在临时 clone 验证
+GitHub username/PAT、仓库身份、workspace marker、branch/upstream 和 fetch，成功后才
+更新 origin、本机 profile 与 workspace-scoped Keychain；失败恢复旧 URL/profile，不改 vault、
+不提交、不推送、不记录凭据。只读 acceptance preflight 输出 App/build、backend、remote、
+凭据、双后端 dirty、fetch、ahead/behind、schema 路径、备份和 automation role 的脱敏报告。
+
+自动验收使用两个临时 HOME、两个 clone 和 bare remote，覆盖 schema v1→v2、fast-forward、
+双端离线追加、恢复联网、non-ff/diverged-protected、数据保留、迁移失败回滚及 dirty 回归。
+`v0.4.3-rc.N` 只进 draft/prerelease 渠道，不更新 latest；候选包与自动验收全绿后，由用户
+做唯一一次 Studio + Air 真机往返同步。稳定发布只能晋升相同 DMG，哈希必须不变，禁止重建。
+公开更新仓库只提供完整性，不提供保密性。
+
 ## 6. P2 工作包：降低跨设备冲突与可选团队服务
 
 ### P2-01 · 追加式操作事件与确定性投影视图 `[~]`
+
+P1-07D 完成前不进入 P2-01B；已有 P2-01A 只保留 thread activity 最小切片，未扩大迁移范围。
 
 **目的**：将最容易发生 Git 冲突的共享热点文件，从“整页 RMW”演进为“每次操作一个不可变事件文件”。
 
@@ -1725,7 +1742,8 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 
 ### 2026-09-06 · P1-07C
 
-- 状态：进行中 `[~]`；P1-07C 本地与远端发布闭环已完成，真机/双设备验收待做。
+- 状态：进行中 `[~]`；P1-07C 的签名发布链路完成，但 Dulwich clean-worktree 修复与双设备
+  同步验收尚未纳入稳定发布，转入 P1-07D。
 - Git commit：`e9d02dd`；tag：`v0.4.1`
 - 变更摘要：新增签名 feed 兼容性筛选与稳定 Ed25519 签名正文；feed 生成脚本计算 DMG
   SHA-256/大小并输出签名、公钥与 release notes，私钥不进入仓库或 App；原生 App 使用
@@ -1747,8 +1765,17 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   下载的拒绝路径由单元/契约测试覆盖；下载不会自动替换 App，也不写入 vault/profile。
 - 未验证项：磁盘不足、真实网络中途断线和回滚启动仍不在真机验收范围，但已有注入式错误
   路径测试；真机/双设备验收后才能改为 `[x]`。
-- 后续：P1-07C 的本地与远端门已通过；P2-01A 已完成 thread activity 的最小事件模型
-  切片，后续继续保持不迁移 inbox、会议决策或项目正文的边界。
+- 后续：先完成 P1-07D RC 候选、预检和唯一一次 Studio/Air 真机往返；在此之前不发布稳定
+  `v0.4.3`，也不进入 P2-01B。P2-01A 继续保持不迁移 inbox、会议决策或项目正文的边界。
+
+### 2026-09-06 · P1-07D 远端规范化与双设备验收
+
+- 状态：进行中 `[~]`；代码、测试、计划和 ADR 已加入，等待 RC 候选包与一次真机验收。
+- 实现：生产 remote HTTPS 门与 `remote_scheme_unsupported`；可预览/可回滚的 GitHub SSH →
+  HTTPS 转换事务；只读 acceptance preflight；两个临时 HOME/clone/bare remote 的 v1→v2、
+  fast-forward、离线追加、diverged-protected、数据保留与迁移失败回滚自动验收。
+- 发布：`v0.4.3-rc.1` 走 draft/prerelease，不更新 latest；稳定 `v0.4.3` 只能在真机验收后
+  晋升相同 DMG，禁止重建。公开更新仓库只提供完整性，不提供保密性。
 
 ### 2026-09-06 · v0.4.2 packaged App 修复
 

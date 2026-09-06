@@ -174,7 +174,24 @@ def test_dulwich_clean_status_honors_blob_ids_and_ignored_files(tmp_path: Path) 
     (tmp_path / "repo" / "nested" / ".DS_Store").write_text("finder\n", encoding="utf-8")
     assert not repo.is_dirty()
 
+    (tmp_path / "repo" / "ignored-directory").mkdir()
+    (tmp_path / "repo" / "ignored-directory" / "cache.bin").write_bytes(b"cache")
+    (tmp_path / "repo" / ".gitignore").write_text(
+        ".DS_Store\nignored-directory/\n", encoding="utf-8"
+    )
+    repo.add([".gitignore"])
+    repo.commit("wb: ignore generated directory", author=ID)
+    assert not repo.is_dirty()
+
+    (tmp_path / "repo" / "real-untracked.txt").write_text("must be reported\n", encoding="utf-8")
+    assert repo.is_dirty()
+    (tmp_path / "repo" / "real-untracked.txt").unlink()
+
     (tmp_path / "repo" / "tracked.md").write_text("changed\n", encoding="utf-8")
+    assert repo.is_dirty()
+    repo.add(["tracked.md"])
+    repo.commit("wb: restore tracked file", author=ID)
+    (tmp_path / "repo" / "tracked.md").unlink()
     assert repo.is_dirty()
 
 

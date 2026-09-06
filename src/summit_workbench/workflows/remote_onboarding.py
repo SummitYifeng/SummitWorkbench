@@ -75,7 +75,10 @@ def validate_remote_url(url: str) -> str:
     except ValueError as exc:
         raise RemoteCloneError("remote_url_invalid", "remote URL 无法解析") from exc
     if parsed.scheme.lower() != "https" or not parsed.hostname or not parsed.path:
-        raise RemoteCloneError("remote_url_unsupported", "remote clone 只支持 HTTPS URL")
+        raise RemoteCloneError(
+            "remote_scheme_unsupported",
+            "remote clone 只支持 HTTPS URL（remote_scheme_unsupported）",
+        )
     if parsed.username is not None or parsed.password is not None or "@" in parsed.netloc:
         raise RemoteCloneError("remote_url_userinfo", "remote URL 不允许包含账号或密码")
     try:
