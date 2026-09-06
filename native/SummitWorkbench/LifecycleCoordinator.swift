@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 final class LifecycleCoordinator {
     private var configuration: AppConfiguration?
@@ -128,6 +129,29 @@ final class LifecycleCoordinator {
             copyDiagnostics()
         case .openExternal(let url):
             NSWorkspace.shared.open(url)
+        case .saveTextFile(let filename, let content):
+            saveTextFile(filename: filename, content: content)
+        }
+    }
+
+    private func saveTextFile(filename: String, content: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = filename
+        panel.canCreateDirectories = true
+        panel.allowedContentTypes = [.json]
+        panel.message = "保存 SummitWorkbench 本机同步状态副本"
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try content.write(to: url, atomically: true, encoding: .utf8)
+                self?.logger?.log("sync_snapshot_exported")
+            } catch {
+                self?.logger?.log(
+                    "sync_snapshot_export_failed",
+                    level: "error",
+                    fields: ["message": error.localizedDescription]
+                )
+            }
         }
     }
 

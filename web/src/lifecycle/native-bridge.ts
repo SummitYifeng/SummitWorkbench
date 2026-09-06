@@ -7,6 +7,10 @@ export interface NativeClientReady {
 export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'copyDiagnostics' } | {
   type: 'openExternal';
   url: string;
+} | {
+  type: 'saveTextFile';
+  filename: string;
+  content: string;
 };
 
 interface NativeHandler {
@@ -35,4 +39,3 @@ export function sendNativeMessage(message: NativeMessage): boolean {
 export function notifyClientReady(clientBuild: string, serverInstance: string): void {
   sendNativeMessage({ type: 'clientReady', clientBuild, serverInstance });
 }
-

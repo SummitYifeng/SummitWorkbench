@@ -41,10 +41,19 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
 - 发布 smoke 也改为使用临时 `HOME` 与临时 `runtime.json`，不再受当前 Mac 上运行中的旧 App 影响。
 - 基于提交 `84d59e0` 生成的最终 build 8 DMG 已通过完整离线发布验证；metadata 的 Git commit、
   arm64、内部分发标记和 App/DMG digest 均一致。
+- 根据 M2+ Mac Studio 黑盒反馈，设置中心离线 doctor 请求补齐 JSON `Content-Type`；同步状态副本导出
+  在原生 WKWebView 中改走受控 `NSSavePanel`，浏览器环境保留下载回退，临时 Blob URL 延迟释放。
+  原生消息限制文件名不得包含路径分隔符且内容不超过 2 MB；对应前端/Swift 契约测试先失败后通过。
 - `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和
   notary `not-applicable` 摘要。
+
+## 现场反馈修复 2
+
+本次修复不改变内部 arm64、ad-hoc、无 notarization 的发布决策。新的原生保存消息只在当前 App 的
+WKWebView 生命周期通道内生效；非原生浏览器仍使用标准下载回退。离线 doctor 不访问网络，导出仅包含
+脱敏同步状态，不读 Keychain/token。
 
 ## 未执行的外部门
 

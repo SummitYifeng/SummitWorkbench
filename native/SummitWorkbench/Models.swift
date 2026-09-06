@@ -132,6 +132,7 @@ enum NativeMessage {
     case quit
     case copyDiagnostics
     case openExternal(URL)
+    case saveTextFile(filename: String, content: String)
 
     init?(body: Any) {
         guard let dictionary = body as? [String: Any],
@@ -148,6 +149,13 @@ enum NativeMessage {
             guard let raw = dictionary["url"] as? String, raw.count <= 2048,
                   let url = URL(string: raw), ["http", "https"].contains(url.scheme?.lowercased()) else { return nil }
             self = .openExternal(url)
+        case "saveTextFile":
+            guard let filename = dictionary["filename"] as? String,
+                  let content = dictionary["content"] as? String,
+                  !filename.isEmpty, filename.count <= 200,
+                  !filename.contains("/"), !filename.contains("\\"),
+                  content.count <= 2_000_000 else { return nil }
+            self = .saveTextFile(filename: filename, content: content)
         default: return nil
         }
     }

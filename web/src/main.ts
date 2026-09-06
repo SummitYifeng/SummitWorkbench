@@ -1351,7 +1351,11 @@ async function switchProfile(workspaceId: string): Promise<void> {
 
 async function runSettingsDoctor(online = false): Promise<void> {
   const result = await api<{ ok: boolean; checks: { name: string; status: string; detail: string }[] }>(
-    '/api/settings/doctor', { method: 'POST', body: JSON.stringify({ online }) },
+    '/api/settings/doctor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ online }),
+    },
   );
   const failed = result.checks.filter((check) => check.status === 'fail').length;
   const label = online ? '在线检查' : '离线检查';
@@ -2447,12 +2451,26 @@ async function retrySync(): Promise<void> {
 async function exportSyncSnapshot(): Promise<void> {
   try {
     const data = await api<SyncStatusPayload>('/api/sync/export');
-    const blob = new Blob([JSON.stringify(data, null, 2) + '\n'], { type: 'application/json' });
+    const content = JSON.stringify(data, null, 2) + '\n';
+    if (sendNativeMessage({
+      type: 'saveTextFile',
+      filename: 'summitworkbench-sync-status.json',
+      content,
+    })) {
+      toast('请选择保存位置', 'info');
+      return;
+    }
+    const blob = new Blob([content], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = 'summitworkbench-sync-status.json';
+    link.style.display = 'none';
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 1000);
   } catch (err) {
     toast(String(err), 'err');
   }

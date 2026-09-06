@@ -1542,6 +1542,15 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 真机反馈：旧 build `v2026.09.05-406e449-ac9b2fb7` 能打开向导但点击流程后返回“请求来源不是当前服务同源地址”；原因已定位并修复。无需新增飞书权限、Apple 证书或第二台电脑。
 - 遗留：等待用户安装 build 8 并重新完成“升级这台 Mac 上的旧工作台”流程验证。
 
+### 2026-09-06 · P0-13 现场反馈修复 2
+
+- 状态：修复完成（等待用户重新安装 hotfix DMG 验收）
+- Git commit：待提交
+- 变更摘要：根据 M2+ Mac Studio 黑盒测试反馈，修复设置中心“离线检查”缺少 JSON `Content-Type` 导致的参数校验错误；同步状态“导出本机副本”改为原生 macOS `NSSavePanel` 保存，浏览器环境保留下载回退，并延迟释放临时 Blob URL，避免 WKWebView 点击无可见结果。原生消息对文件名与内容长度做边界校验，不接受路径穿越。
+- 目标测试：`test_native_panel_contract.py` 新增回归契约（先失败后通过）；Swift 原生壳离线编译通过；临时 HOME 下全量 `pytest`（719 passed，1 skipped）与前端产物验证通过。
+- 真机待验收：在本机 Mac Studio 安装新的 `INTERNAL-DEV` arm64 DMG，进入“设置”点击“离线检查”应显示完成/检查结果；点击“导出本机副本”应弹出 macOS 保存位置选择器并成功生成 JSON 文件。
+- 遗留：无代码阻塞；不需要 Apple Developer ID、飞书新权限、第二台 Mac、Intel 或 Windows。
+
 ## 16. 外部实现依据
 
 - Apple：Notarizing macOS software before distribution

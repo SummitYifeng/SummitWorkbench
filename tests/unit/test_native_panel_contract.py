@@ -60,3 +60,21 @@ def test_web_native_bridge_reports_ready_and_supports_native_quit() -> None:
     assert "postMessage" in bridge
     assert "notifyClientReady(CLIENT_BUILD, remote.server_instance)" in main
     assert "sendNativeMessage({ type: 'quit' })" in main
+
+
+def test_settings_doctor_declares_json_and_sync_export_supports_native_save() -> None:
+    bridge = (_ROOT / "web" / "src" / "lifecycle" / "native-bridge.ts").read_text(encoding="utf-8")
+    main = (_ROOT / "web" / "src" / "main.ts").read_text(encoding="utf-8")
+    native = _source("Models.swift") + "\n" + _source("LifecycleCoordinator.swift")
+
+    doctor = main[main.index("async function runSettingsDoctor") :]
+    export = main[main.index("async function exportSyncSnapshot") :]
+    assert "headers: { 'Content-Type': 'application/json' }" in doctor
+    assert "saveTextFile" in bridge
+    assert "sendNativeMessage({" in export
+    assert "type: 'saveTextFile'" in export
+    assert "document.body.appendChild(link)" in export
+    assert "window.setTimeout(() =>" in export
+    assert "URL.revokeObjectURL" in export
+    assert "saveTextFile" in native
+    assert "NSSavePanel" in native
