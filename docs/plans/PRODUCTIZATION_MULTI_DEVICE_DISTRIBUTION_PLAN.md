@@ -1782,6 +1782,9 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   入口统一 TLS 信任；`463e719` / `b5c316a` 补 ADR 与 strict typing，随后清理与测试解释器修复
   至 `ee30db4`。TLS 相关 32 项、全库 778 passed / 1 skipped、ruff/format/mypy 均通过；真实
   GitHub TLS 握手通过，但尚无包含该修复的 tag/DMG。
+- 打包阻塞复核：加入仅供测试的安全只读 TLS 诊断，实际 PyInstaller server/worker 进程均已
+  证明 bundle 内 certifi CA 可定位、SSL context 保持 `CERT_REQUIRED`，且 Dulwich HTTPS
+  transport 的 pool manager 绑定该 CA；诊断不输出路径、凭据或真实工作区内容。
 - 下一门：从当前 HEAD 生成新 RC，先在 Studio 对真实 GitHub 执行 preview/apply，再在 Air
   完成引导式往返同步。只有两步均通过，才能把同一 DMG 晋升稳定 `v0.4.3`；禁止重建。
   P1-07D 完成前不得进入 P2-01B。

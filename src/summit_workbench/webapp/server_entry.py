@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import secrets
 import socket
@@ -12,7 +13,7 @@ from pathlib import Path
 import uvicorn
 
 from summit_workbench.config.profiles import resolve_active_workspace
-from summit_workbench.config.tls_trust import configure_default_tls_trust
+from summit_workbench.config.tls_trust import configure_default_tls_trust, tls_runtime_diagnostic
 from summit_workbench.webapp.app import WebContext, create_app
 from summit_workbench.webapp.build_info import (
     WebBuildInfo,
@@ -35,6 +36,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-root", default=os.environ.get("WORK_ROOT"))
     parser.add_argument("--static-dir", default=os.environ.get("WB_STATIC_DIR"))
     parser.add_argument("--runtime-record", default=os.environ.get("WB_RUNTIME_RECORD"))
+    parser.add_argument(
+        "--tls-diagnostic",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
@@ -43,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
     # CA bundle，避免 dulwich/httpx 对 GitHub 报 TLS 校验失败（P1-07D）。
     configure_default_tls_trust()
     args = _parser().parse_args(argv)
+    if args.tls_diagnostic:
+        print(json.dumps(tls_runtime_diagnostic(), ensure_ascii=False, sort_keys=True))
+        return
     validate_bind_host(args.host, mode_from_environment(os.environ.get("WB_PANEL_MODE")))
     static_dir = Path(args.static_dir).expanduser() if args.static_dir else None
     if static_dir is None or not static_dir.is_dir():

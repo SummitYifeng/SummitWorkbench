@@ -121,3 +121,7 @@
   均已收集 `(certifi.where(), "certifi")`。
 - 分类边界保持：TLS 失败→`GitTlsError`、认证失败→`GitAuthError`、网络失败→
   `GitRemoteUnavailable`，绝不把 TLS 失败误报为离线/远端不可达；凭据不入 URL/日志/异常。
+- 新增仅供集成测试调用的只读诊断：冻结 server 使用 `--tls-diagnostic`，worker 使用
+  `WB_TLS_DIAGNOSTIC=1`，只返回 CA 来源/存在性、SSL context 校验模式和 Dulwich pool
+  配置的布尔/枚举值，不输出路径或秘密。真实 PyInstaller server/worker 进程均已用该诊断
+  证明 bundle CA 被找到、context 为 `CERT_REQUIRED` 且 HTTPS transport 实际使用该 CA。

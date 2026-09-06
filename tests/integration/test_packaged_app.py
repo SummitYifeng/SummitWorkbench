@@ -8,6 +8,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+from typing import cast
 from urllib.request import Request, urlopen
 
 import pytest
@@ -17,6 +18,31 @@ def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _run_tls_diagnostic(executable: Path, environment: dict[str, str]) -> dict[str, object]:
+    result = subprocess.run(
+        [str(executable), "--tls-diagnostic"]
+        if executable.name == "SummitWorkbenchServer"
+        else [str(executable)],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert result.stderr == ""
+    payload = cast(dict[str, object], json.loads(result.stdout))
+    assert payload["ca_bundle_present"] is True
+    assert payload["ca_bundle_source"] == "pyinstaller-bundle"
+    assert payload["ssl_context_status"] == "ok"
+    assert payload["ssl_context_verify_mode"] == "CERT_REQUIRED"
+    assert payload["ssl_context_check_hostname"] is True
+    assert payload["dulwich_transport_status"] == "ok"
+    assert payload["dulwich_ca_bundle_present"] is True
+    assert payload["dulwich_cert_reqs"] == "CERT_REQUIRED"
+    return payload
 
 
 @pytest.mark.integration
@@ -29,7 +55,9 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
     manifest = json.loads((resources / "build-manifest.json").read_text(encoding="utf-8"))
     static_dir = resources / "web" / "static"
     server = resources / "server" / "SummitWorkbenchServer"
+    worker = app / "Contents" / "Helpers" / "SummitWorkbenchWorker"
     assert server.is_file() and server.stat().st_mode & 0o111
+    assert worker.is_file() and worker.stat().st_mode & 0o111
     assert static_dir.is_dir()
     static_meta = json.loads((static_dir / "build-meta.json").read_text(encoding="utf-8"))
     assert manifest["frontend_build"] == static_meta["frontend_build"]
@@ -47,6 +75,14 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         "WB_PROMPTS_DIR": str(resources / "prompts"),
         "WB_SESSION_TOKEN": "integration-session-token",
     }
+    diagnostic_environment = {
+        "HOME": str(tmp_path / "home"),
+        "PATH": "/usr/bin:/bin",
+        "WB_PANEL_MODE": "production",
+    }
+    _run_tls_diagnostic(server, diagnostic_environment)
+    diagnostic_environment["WB_TLS_DIAGNOSTIC"] = "1"
+    _run_tls_diagnostic(worker, diagnostic_environment)
     process = subprocess.Popen(
         [
             str(server),

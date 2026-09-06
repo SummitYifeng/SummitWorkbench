@@ -70,4 +70,64 @@ def configure_default_tls_trust() -> Path | None:
     return bundle
 
 
-__all__ = ["ca_bundle_path", "configure_default_tls_trust"]
+def tls_runtime_diagnostic() -> dict[str, object]:
+    """Return a safe, path-free diagnostic for a packaged TLS runtime.
+
+    This is intentionally read-only and reports only booleans/enums.  Packaged
+    integration tests use it from the frozen server/worker executables so they
+    can prove that the bundle CA is found and that Dulwich receives it without
+    exposing a user path or any credential.
+    """
+    bundle = ca_bundle_path()
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    in_frozen_bundle = False
+    if bundle is not None and frozen_root:
+        try:
+            in_frozen_bundle = bundle.resolve().is_relative_to(Path(frozen_root).resolve())
+        except OSError:
+            in_frozen_bundle = False
+
+    result: dict[str, object] = {
+        "ca_bundle_present": bundle is not None and bundle.is_file(),
+        "ca_bundle_source": "pyinstaller-bundle" if in_frozen_bundle else "external-or-none",
+        "ssl_cert_file_configured": bool(os.environ.get(_SSL_CERT_FILE_ENV)),
+        "ssl_context_status": "not-checked",
+        "ssl_context_verify_mode": None,
+        "ssl_context_check_hostname": None,
+        "dulwich_transport_status": "not-checked",
+        "dulwich_ca_bundle_present": False,
+        "dulwich_cert_reqs": None,
+        "dulwich_proxy_manager": None,
+    }
+    if bundle is None or not bundle.is_file():
+        result["ssl_context_status"] = "ca_bundle_missing"
+        result["dulwich_transport_status"] = "ca_bundle_missing"
+        return result
+
+    try:
+        context = ssl.create_default_context(cafile=str(bundle))
+    except (OSError, ssl.SSLError):
+        result["ssl_context_status"] = "ca_bundle_load_failed"
+    else:
+        result["ssl_context_status"] = "ok"
+        result["ssl_context_verify_mode"] = context.verify_mode.name
+        result["ssl_context_check_hostname"] = context.check_hostname
+
+    try:
+        from summit_workbench.repositories.dulwich_git import _https_pool_manager
+
+        manager = _https_pool_manager("https://github.com")
+        kwargs = manager.connection_pool_kw
+        ca_certs = kwargs.get("ca_certs")
+        result["dulwich_transport_status"] = "ok"
+        result["dulwich_ca_bundle_present"] = (
+            bool(ca_certs) and Path(os.fsdecode(ca_certs)).is_file()
+        )
+        result["dulwich_cert_reqs"] = kwargs.get("cert_reqs")
+        result["dulwich_proxy_manager"] = type(manager).__name__
+    except (OSError, RuntimeError, ValueError):
+        result["dulwich_transport_status"] = "transport_setup_failed"
+    return result
+
+
+__all__ = ["ca_bundle_path", "configure_default_tls_trust", "tls_runtime_diagnostic"]

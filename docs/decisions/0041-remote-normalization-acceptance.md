@@ -54,6 +54,9 @@ username 与 workspace-scoped PAT，点击 preview/apply（如需可 rollback）
   TLS 校验始终保持开启。错误分类仍严格区分 TLS、认证与网络不可达。
 - 离线/源码证据：TLS/凭据/打包契约相关 32 项测试通过；全库 778 passed、1 skipped，ruff、
   format、mypy 通过；同一 HTTPS pool manager 对 GitHub 的真实 TLS 握手返回 200。
+- 打包证据补齐：实际构建的 PyInstaller server/worker 通过安全只读诊断分别报告 bundle CA
+  可定位、SSL context `CERT_REQUIRED`、Dulwich HTTPS pool 的 CA 文件存在且
+  `cert_reqs=CERT_REQUIRED`；不依赖 PAT、真实 remote、Keychain 或 vault。
 - 尚未验证：修复尚未进入任何已发布 tag/DMG，故不能据此宣称 packaged App 真机问题已闭环。
   下一证据必须来自新 RC 的 Studio 真实 preview/apply；其后才执行 Air 往返同步。
 
