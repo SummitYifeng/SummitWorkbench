@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  UPDATE_REPOSITORY: yifeng93/SummitWorkbench-Updates
+
 jobs:
   workflow-lint:
     name: GitHub Actions workflow lint
@@ -67,12 +70,25 @@ jobs:
       - name: Prepare protected update configuration
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_REPO_TOKEN: ${{ secrets.UPDATE_REPO_TOKEN }}
           UPDATE_FEED_URL: ${{ vars.UPDATE_FEED_URL }}
           UPDATE_DOWNLOAD_URL: ${{ vars.UPDATE_DOWNLOAD_URL }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           [[ -n "$UPDATE_SIGNING_KEY" ]] || { echo "missing release secret UPDATE_SIGNING_KEY" >&2; exit 1; }
+          [[ -n "$UPDATE_REPO_TOKEN" ]] || { echo "missing release secret UPDATE_REPO_TOKEN" >&2; exit 1; }
           [[ "$UPDATE_FEED_URL" == https://* ]] || { echo "UPDATE_FEED_URL must be HTTPS" >&2; exit 1; }
           [[ "$UPDATE_DOWNLOAD_URL" == https://* ]] || { echo "UPDATE_DOWNLOAD_URL must be HTTPS" >&2; exit 1; }
+          EXPECTED_FEED_URL="https://github.com/$UPDATE_REPOSITORY/releases/latest/download/update-feed.json"
+          EXPECTED_DOWNLOAD_URL="https://github.com/$UPDATE_REPOSITORY/releases/download/$GITHUB_REF_NAME/SummitWorkbench-$RELEASE_VERSION-arm64-INTERNAL-DEV.dmg"
+          [[ "$UPDATE_FEED_URL" == "$EXPECTED_FEED_URL" ]] || {
+            echo "UPDATE_FEED_URL must be $EXPECTED_FEED_URL" >&2
+            exit 1
+          }
+          [[ "$UPDATE_DOWNLOAD_URL" == "$EXPECTED_DOWNLOAD_URL" ]] || {
+            echo "UPDATE_DOWNLOAD_URL must be $EXPECTED_DOWNLOAD_URL" >&2
+            exit 1
+          }
           KEY_PATH="$RUNNER_TEMP/update-signing-key.pem"
           (umask 077 && printf '%s\n' "$UPDATE_SIGNING_KEY" > "$KEY_PATH")
           test "$(stat -f '%Lp' "$KEY_PATH")" = 600
@@ -111,19 +127,44 @@ jobs:
           path: dist/ci-release/**
           if-no-files-found: error
 
-      # Create and fill a draft first. A signing, test, or asset upload failure leaves
-      # only a draft and can never publish a partial latest release.
-      - name: Create draft GitHub release
+      # Create and fill a draft in the public update repository first. A signing,
+      # test, or asset upload failure leaves only a draft and can never publish a
+      # partial latest release.
+      - name: Create draft public update release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --title "SummitWorkbench ${{ steps.version.outputs.version }}" --notes "Verified internal arm64 release; update feed and DMG are integrity-protected."
+          GH_TOKEN: ${{ secrets.UPDATE_REPO_TOKEN }}
+        run: |
+          if existing_draft="$(gh release view "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            [[ "$existing_draft" == true ]] || {
+              echo "a published release already exists for $GITHUB_REF_NAME" >&2
+              exit 1
+            }
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" --draft \
+              --title "SummitWorkbench ${{ steps.version.outputs.version }}" \
+              --notes "Verified internal arm64 release; update feed and DMG are integrity-protected."
+          fi
 
-      - name: Upload complete release assets to draft
+      - name: Upload complete assets to public draft
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/ci-release/${{ steps.version.outputs.version }}/arm64/* --clobber
+          GH_TOKEN: ${{ secrets.UPDATE_REPO_TOKEN }}
+        run: |
+          PACKAGE_DIR="dist/ci-release/${{ steps.version.outputs.version }}/arm64"
+          ASSETS=(
+            "$PACKAGE_DIR/SummitWorkbench-${{ steps.version.outputs.version }}-arm64-INTERNAL-DEV.dmg"
+            "$PACKAGE_DIR/update-feed.json"
+            "$PACKAGE_DIR/release-metadata.json"
+            "$PACKAGE_DIR/SBOM.json"
+            "$PACKAGE_DIR/notary-log.json"
+            "$PACKAGE_DIR/test-manifest.json"
+            "$PACKAGE_DIR/SHA256SUMS"
+          )
+          for asset in "${ASSETS[@]}"; do
+            test -f "$asset" || { echo "missing release asset: $asset" >&2; exit 1; }
+          done
+          gh release upload "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" "${ASSETS[@]}" --clobber
 
-      - name: Publish complete release
+      - name: Publish complete public update release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+          GH_TOKEN: ${{ secrets.UPDATE_REPO_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$UPDATE_REPOSITORY" --draft=false

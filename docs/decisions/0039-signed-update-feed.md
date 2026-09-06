@@ -24,9 +24,12 @@ Application Support 的 updates 目录，校验大小和 SHA-256，再打开 DMG
 写入 vault、改 profile 或触发同步。没有 feed 配置时保持当前 App 正常工作并给出可见反馈。
 
 发布脚本只在显式提供 `UPDATE_SIGNING_KEY_PATH`、`UPDATE_FEED_URL` 与
-`UPDATE_DOWNLOAD_URL` 时生成 feed；tag release 额外强制 OpenSSL 3 真实生成/验签。私钥不
-写入 manifest、DMG、日志、metadata 或仓库。普通内部 ad-hoc DMG 可以在无私钥时继续构建，
-但不会冒充可自动更新的发布包；tag job 失败时只允许保留 draft，不得发布 partial latest。
+`UPDATE_DOWNLOAD_URL` 时生成 feed；tag release 从受保护的 `release` environment 取得
+Ed25519 私钥及公开更新仓库配置，并额外强制 OpenSSL 3 真实生成/验签。公开更新仓库为
+`yifeng93/SummitWorkbench-Updates`；私有代码仓库不作为 App 的匿名下载源。跨仓库发布所需
+的写入凭据通过 `UPDATE_REPO_TOKEN` secret 提供。私钥不写入 manifest、DMG、日志、metadata
+或任何仓库。普通内部 ad-hoc DMG 可以在无私钥时继续构建，但不会冒充可自动更新的发布包；
+tag job 失败时只允许保留公开仓库 draft，不得发布 partial latest。
 
 ## 验收与边界
 

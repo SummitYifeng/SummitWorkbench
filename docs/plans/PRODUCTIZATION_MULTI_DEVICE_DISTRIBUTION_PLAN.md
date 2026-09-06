@@ -1745,8 +1745,10 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 安全拒绝：错误架构、最低系统、版本/build、HTTPS、大小、SHA-256、Ed25519 签名和损坏
   下载的拒绝路径由单元/契约测试覆盖；下载不会自动替换 App，也不写入 vault/profile。
 - 未验证项：磁盘不足、真实网络中途断线和回滚启动仍不在真机验收范围，但已有注入式错误
-  路径测试；需要用户配置 `release` environment 的 `UPDATE_SIGNING_KEY` secret、
-  `UPDATE_FEED_URL` / `UPDATE_DOWNLOAD_URL` variables，并完成真机/双设备验收后才能改为 `[x]`。
+  路径测试；需要用户配置 `release` environment 的 `UPDATE_SIGNING_KEY` 与
+  `UPDATE_REPO_TOKEN` secrets、`UPDATE_FEED_URL` / `UPDATE_DOWNLOAD_URL` variables。
+  公开产物发布到独立的 `yifeng93/SummitWorkbench-Updates` 仓库；再完成真机/双设备验收后
+  才能改为 `[x]`。
 - 后续：P1-07C 提交推送且远端 job 全绿后，按用户要求只开始 P2-01A 的 thread activity
   事件模型切片。
 
