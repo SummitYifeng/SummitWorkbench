@@ -43,3 +43,10 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
   1. 打开当前 P1-01 arm64 App，在“设置 → App 内自动化”只启用“晨间简报”并保存；系统设置的“登录项”应出现 SummitWorkbench Automation。
   2. 回到 App 停用全部自动化并保存；系统设置中该登录项应消失，设置页不应再显示注册失败。
   3. 不需要等待 08:00；可用“立即运行”验证主设备门控和最近结果，确认不会产生重复简报。
+
+### 现场复验结果（build 14）
+
+- 用户已安装包含稳定 `SummitWorkbench.app` bundle 名称的 build 14，仍未在“App 后台活动”看到 `SummitWorkbench Automation`。
+- 最新日志仍为 `automation_registration_requested(status=notFound)`，随后 `automation_registration_failed(code=4, message=系统找不到 automation helper)`；因此不能把系统中看到的两个 `wb` 项当作新服务。
+- `sfltool dumpbtm` 显示两个 `wb` 来自旧版 legacy LaunchAgent：`~/Library/LaunchAgents/com.summitworkbench.brief.plist` 与 `com.summitworkbench.weekly.plist`，可执行文件均为仓库 `.venv/bin/wb`。
+- 当前阻塞：bundle 内 helper 已存在、Info.plist 标识与版本匹配、arm64 与 strict codesign 均通过，但真实 macOS 环境中的 `SMAppService.loginItem(identifier:)` 仍返回 `notFound`；需进一步确认 API 对 ad-hoc 签名、主 App 位置/注册数据库或 helper bundle 结构的额外约束。

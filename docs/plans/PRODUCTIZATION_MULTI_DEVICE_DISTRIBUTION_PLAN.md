@@ -1569,6 +1569,13 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 自动验证：Swift arm64 原生壳编译通过；新增原生状态机契约测试待全量质量门复验。
 - 真机复验：需要安装本次新 DMG 后，仅启用“晨间简报”并保存，确认系统设置出现 “SummitWorkbench Automation”；随后停用全部自动化并保存，确认该项消失。仍不需要 Apple Developer ID、飞书权限或第二台 Mac。
 
+### 2026-09-06 · P1-01 现场复验（build 14）
+
+- 状态：阻塞待进一步 debug `[~]`
+- 真机反馈：稳定名称 App 已安装，但“App 后台活动”仍没有 `SummitWorkbench Automation`；日志仍返回 `SMAppService` `notFound`（错误码 4：系统找不到 automation helper）。
+- 旁证：系统中两个 `wb` 是旧版 `~/Library/LaunchAgents/com.summitworkbench.brief.plist` 与 `com.summitworkbench.weekly.plist`，可执行文件指向仓库 `.venv/bin/wb`，不是 P1-01 的嵌套 helper。
+- 当前结论：代码已提交、推送且离线/打包质量门通过；真实 macOS 的 SMAppService helper 解析仍未闭环，暂停进入 P1-02，交由更高模型继续定位。
+
 ## 16. 外部实现依据
 
 - Apple：Notarizing macOS software before distribution
