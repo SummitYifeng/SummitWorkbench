@@ -1545,9 +1545,10 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P0-13 现场反馈修复 2
 
 - 状态：修复完成（等待用户重新安装 hotfix DMG 验收）
-- Git commit：待提交
+- Git commit：cc3e1ac（已推送至 `origin/main`）
 - 变更摘要：根据 M2+ Mac Studio 黑盒测试反馈，修复设置中心“离线检查”缺少 JSON `Content-Type` 导致的参数校验错误；同步状态“导出本机副本”改为原生 macOS `NSSavePanel` 保存，浏览器环境保留下载回退，并延迟释放临时 Blob URL，避免 WKWebView 点击无可见结果。原生消息对文件名与内容长度做边界校验，不接受路径穿越。
-- 目标测试：`test_native_panel_contract.py` 新增回归契约（先失败后通过）；Swift 原生壳离线编译通过；临时 HOME 下全量 `pytest`（719 passed，1 skipped）与前端产物验证通过。
+- 目标测试：`test_native_panel_contract.py` 新增回归契约（先失败后通过）；Swift 原生壳离线编译通过；临时 HOME 下全量 `pytest`（719 passed，1 skipped）；`BUILD_NUMBER=10 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/releases-hotfix-doctor-export scripts/release-macos.sh` 生成 DMG 并通过 App/DMG 验证。
+- 产物：`dist/releases-hotfix-doctor-export/0.4.1/arm64/SummitWorkbench-0.4.1-arm64-INTERNAL-DEV.dmg`；SHA256 `4434f789e0c808a5177dadfdd99d399eee1b8f8325f8441448e258f53d38454e`；metadata Git commit `cc3e1ac`、build `10`。
 - 真机待验收：在本机 Mac Studio 安装新的 `INTERNAL-DEV` arm64 DMG，进入“设置”点击“离线检查”应显示完成/检查结果；点击“导出本机副本”应弹出 macOS 保存位置选择器并成功生成 JSON 文件。
 - 遗留：无代码阻塞；不需要 Apple Developer ID、飞书新权限、第二台 Mac、Intel 或 Windows。
 

@@ -44,6 +44,9 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
 - 根据 M2+ Mac Studio 黑盒反馈，设置中心离线 doctor 请求补齐 JSON `Content-Type`；同步状态副本导出
   在原生 WKWebView 中改走受控 `NSSavePanel`，浏览器环境保留下载回退，临时 Blob URL 延迟释放。
   原生消息限制文件名不得包含路径分隔符且内容不超过 2 MB；对应前端/Swift 契约测试先失败后通过。
+- 基于修复提交 `cc3e1ac` 生成的 build 10 arm64 `INTERNAL-DEV` DMG 已通过完整离线发布验证；DMG SHA256
+  为 `4434f789e0c808a5177dadfdd99d399eee1b8f8325f8441448e258f53d38454e`，metadata 的 Git commit、
+  build、架构和内部分发标记一致。
 - `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和
