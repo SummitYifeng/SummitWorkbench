@@ -19,7 +19,7 @@ def test_p107_native_update_path_is_signed_and_vault_free() -> None:
     assert "isValidSignature" in source
     assert "checkIfDue" in lifecycle
     assert "check(manual: true)" in lifecycle
-    assert "NSWorkspace.shared.open(url)" in source
+    assert "NSWorkspace.shared.open(destination)" in source
     assert "写入 vault" in source
     assert "URLSession.shared.dataTask" in source
     assert "update_feed_url" in models
