@@ -51,6 +51,7 @@ def test_build_and_install_scripts_are_self_contained_and_atomic() -> None:
     assert "Resources/server" in build
     assert "Resources/web/static" in build
     assert "codesign --verify --deep --strict" in build
+    assert "--runtime-record" in build
     assert "BACKUP_APP" in install
     assert "STAGED_APP" in install
     assert "--replace-running" in install

@@ -38,6 +38,7 @@ notary 摘要；metadata 记录产品版本、build、架构、最低 macOS、Gi
 - 真机反馈补丁修复了动态 loopback 端口的 Origin 白名单：生产服务现在只接受当前请求 Host 对应的
   `127.0.0.1:<动态端口>`/`localhost:<动态端口>` 同源请求，空安装向导的草稿保存、升级等写请求可在
   WKWebView 中正常提交，跨来源请求仍被拒绝。
+- 发布 smoke 也改为使用临时 `HOME` 与临时 `runtime.json`，不再受当前 Mac 上运行中的旧 App 影响。
 - `scripts/verify-macos-release.sh dist/SummitWorkbench.app` 通过：内部 ad-hoc strict codesign、
   bundle 清单、开发路径/secret scan、动态端口 `/api/version` 离线启动。
 - `scripts/release-macos.sh` 在临时输出目录生成 arm64 `INTERNAL-DEV.dmg`、checksum、SBOM、metadata 和

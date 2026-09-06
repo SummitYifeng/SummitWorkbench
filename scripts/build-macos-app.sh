@@ -171,14 +171,17 @@ if [[ "$SMOKE_PORT" == 0 ]]; then
 fi
 WB_SESSION_TOKEN="$($PYTHON -c 'import secrets; print(secrets.token_urlsafe(32))')"
 SMOKE_ROOT="$BUILD_ROOT/smoke-work"
-mkdir -p "$SMOKE_ROOT"
+SMOKE_HOME="$BUILD_ROOT/smoke-home"
+SMOKE_RECORD="$SMOKE_HOME/runtime.json"
+mkdir -p "$SMOKE_ROOT" "$SMOKE_HOME"
 SMOKE_SERVER="$APP/Contents/Resources/server/SummitWorkbenchServer"
-WORK_ROOT="$SMOKE_ROOT" WB_PANEL_MODE=production \
+HOME="$SMOKE_HOME" WORK_ROOT="$SMOKE_ROOT" WB_PANEL_MODE=production \
   WB_SESSION_TOKEN="$WB_SESSION_TOKEN" \
   WB_STATIC_DIR="$APP/Contents/Resources/web/static" \
   WB_PROMPTS_DIR="$APP/Contents/Resources/prompts" \
   "$SMOKE_SERVER" --host 127.0.0.1 --port "$SMOKE_PORT" --work-root "$SMOKE_ROOT" \
-  --static-dir "$APP/Contents/Resources/web/static" >"$BUILD_ROOT/smoke.log" 2>&1 &
+  --runtime-record "$SMOKE_RECORD" --static-dir "$APP/Contents/Resources/web/static" \
+  >"$BUILD_ROOT/smoke.log" 2>&1 &
 SMOKE_PID=$!
 for attempt in {1..40}; do
   if curl -fsS --max-time 1 -H "X-WB-Session-Token: $WB_SESSION_TOKEN" "http://127.0.0.1:$SMOKE_PORT/api/version" >"$BUILD_ROOT/version.json" 2>/dev/null; then break; fi
