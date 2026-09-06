@@ -74,6 +74,7 @@ def test_p013_release_contract_is_versioned_arm64_internal_safe() -> None:
     assert "create-dmg" in release or "hdiutil" in release
     assert "shasum" in release or "shasum" in verify
     assert "SBOM" in release or "sbom" in release.lower()
+    assert 'APP="$RELEASE_TMP/package/SummitWorkbench.app"' in release
     assert "codesign --verify --strict" in verify
     assert "spctl --assess" in verify
     assert "secret" in verify.lower()

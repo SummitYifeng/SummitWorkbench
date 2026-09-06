@@ -39,7 +39,7 @@ workspace id，不依赖 shell、当前目录或 `PATH`，也不启动 Web serve
   `SummitWorkbenchWorker` 与嵌套 helper 均为 arm64，主 App `codesign --verify --deep --strict` 通过。
 - `env -i HOME=<临时目录> WB_PANEL_MODE=production <bundle>/Contents/Helpers/SummitWorkbenchWorker --job brief --json`
   成功返回 `skipped/尚未选择工作区`，证明 worker 不要求 PATH。
-- 目标用户环境首次黑盒发现系统设置未出现登录项，且旧实现停用路径记录 `Operation not permitted`；已补状态机与脱敏诊断日志，待新包复验。具体人工步骤：
+- 目标用户环境首次黑盒发现系统设置未出现登录项，进一步发现 `/Applications` 同时存在旧的 `SummitWorkbench.app` 与带版本后缀的新 App；相同 bundle identifier 使系统返回 `notFound`。已补状态机与脱敏诊断日志，并将 DMG 内 App bundle 改为稳定名称以便安装时覆盖旧版本，待新包复验。具体人工步骤：
   1. 打开当前 P1-01 arm64 App，在“设置 → App 内自动化”只启用“晨间简报”并保存；系统设置的“登录项”应出现 SummitWorkbench Automation。
   2. 回到 App 停用全部自动化并保存；系统设置中该登录项应消失，设置页不应再显示注册失败。
   3. 不需要等待 08:00；可用“立即运行”验证主设备门控和最近结果，确认不会产生重复简报。

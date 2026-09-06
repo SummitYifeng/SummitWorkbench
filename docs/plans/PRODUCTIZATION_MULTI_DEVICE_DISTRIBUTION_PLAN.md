@@ -1565,7 +1565,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-01 现场修复（第一次）
 
 - 状态：待真机复验 `[~]`
-- 变更摘要：按 macOS `SMAppService.Status` 明确处理 `notRegistered`、`enabled`、`requiresApproval`、`notFound` 四种状态；避免对已不存在服务调用注销；启用时对待用户批准状态不重复 register；新增注册前后状态、错误域/码与 helper 标识校验日志，避免把系统状态误判为“已注册”。
+- 变更摘要：按 macOS `SMAppService.Status` 明确处理 `notRegistered`、`enabled`、`requiresApproval`、`notFound` 四种状态；避免对已不存在服务调用注销；启用时对待用户批准状态不重复 register；新增注册前后状态、错误域/码与 helper 标识校验日志；发布 DMG 内 App 改用稳定 `SummitWorkbench.app` 名称，安装时覆盖同 bundle identifier 的旧 App，避免系统将 helper 解析为 `notFound`。
 - 自动验证：Swift arm64 原生壳编译通过；新增原生状态机契约测试待全量质量门复验。
 - 真机复验：需要安装本次新 DMG 后，仅启用“晨间简报”并保存，确认系统设置出现 “SummitWorkbench Automation”；随后停用全部自动化并保存，确认该项消失。仍不需要 Apple Developer ID、飞书权限或第二台 Mac。
 

@@ -38,7 +38,9 @@ RELEASE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/summitworkbench-release.XXXXXX")"
 cleanup() { rm -rf "$RELEASE_TMP"; }
 trap cleanup EXIT
 mkdir -p "$RELEASE_TMP/package"
-APP="$RELEASE_TMP/package/SummitWorkbench-$VERSION-$ARCH${SUFFIX}.app"
+# App bundle 使用稳定名称，拖入 Applications 时覆盖旧版本，避免相同 bundle id 的旧/新 App 并存，
+# 从而让 SMAppService 能唯一解析 Contents/Library/LoginItems 下的 helper。
+APP="$RELEASE_TMP/package/SummitWorkbench.app"
 
 ARCH="$ARCH" BUILD_NUMBER="$BUILD_NUMBER" RELEASE_BUILD=true \
   OUTPUT_APP="$APP" SIGNING_IDENTITY="$SIGN_IDENTITY" \
