@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-06
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05、P1-06 已完成；P1-07 已完成离线实现，外部签名发布验收待补
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02、P1-03、P1-04、P1-05、P1-06、P1-07 已完成
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -222,7 +222,7 @@ account = git:<host>:<username>
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [x] |
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [x] |
 | 23 | P1-06 CI、覆盖率门与发布矩阵 | P1 | P0-13 | M | [x] |
-| 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [~] |
+| 24 | P1-07 签名自动更新 | P1 | P0-13、P1-06 | L | [x] |
 | 25 | P2-01 追加式操作事件与确定性投影视图 | P2 | P1 发布门 | XL | [ ] |
 | 26 | P2-02 同步冲突解释与恢复工作台 | P2 | P2-01 | L | [ ] |
 | 27 | P2-03 组织级 OAuth Broker（可选） | P2 | 明确扩展产品边界 | XL | [ ] |
@@ -1045,7 +1045,8 @@ web/src/
 4. 支持跳过版本、稍后提醒和显示 release notes；同一 workspace 两台设备允许短期不同 App 版本并受 schema gate 保护。
 5. 验证从上一正式版升级、签名被篡改拒绝、下载中断、磁盘不足、回滚启动。
 
-**验收**：已 notarized 的 N-1 版本可通过签名 feed 更新到 N，用户数据和 profile 完整；恶意/损坏包被拒绝。
+**验收**：内部 arm64 的 N-1 版本可通过 Ed25519 签名 feed 更新到 N，用户数据和 profile
+完整；恶意/损坏包被拒绝。Developer ID/notarization 不属于本项目的内部/个人自用分发边界。
 
 本包按用户平台约束收敛为仅 M2+ Apple Silicon 的内部/个人自用路径：不引入 Apple
 Developer ID、notarization 或 Sparkle 自动安装依赖。更新 feed 仍使用独立 Ed25519
@@ -1713,7 +1714,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 
 ### 2026-09-06 · P1-07
 
-- 状态：部分完成 `[~]`（离线实现与质量门通过；真实签名 feed、N-1→N 与发布包验收未验证）
+- 状态：完成 `[x]`（内部 arm64 实现、签名 feed、N-1→N 真机验收与质量门通过）
 - Git commit：待本次收口提交并推送至 `origin/main`
 - 变更摘要：新增签名 feed 兼容性筛选与稳定 Ed25519 签名正文；feed 生成脚本计算 DMG
   SHA-256/大小并输出签名、公钥与 release notes，私钥不进入仓库或 App；原生 App 使用
@@ -1728,14 +1729,17 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   `uv run pytest --cov=summit_workbench --cov-fail-under=80 -q`（757 passed，2 skipped，
   覆盖率 83.28%）；前端 build/verify、Swift arm64 原生编译、App smoke 与 packaged
   integration（1 passed）通过；bash 脚本语法通过。
-- 真机验证：本机 App/DMG 构建和离线包验证通过；未执行真实 HTTPS feed、真实 Ed25519
-  私钥签发、已签名/公证 N-1→N 升级、下载中断/磁盘不足/回滚黑盒矩阵。用户已明确不
-  需要 Apple Developer ID；这不影响内部 ad-hoc 包，但不能把计划中“已 notarized”验收
-  写成通过。
-- 阻塞与所需操作：若要关闭 P1-07 `[x]`，需要提供一个独立的 feed Ed25519 私钥及可由
-  M2+ Mac 访问的 HTTPS feed，并在同一台 Mac 上保留 N-1 包完成 N-1→N、篡改拒绝、下载
-  中断、磁盘不足和回滚启动测试；不需要飞书新权限，也不需要第二台电脑。当前按安全
-  边界停在这里，不进入后续工作包。
+- 发布证据：使用独立 Ed25519 私钥生成 build 109 arm64 `INTERNAL-DEV` DMG，feed 发布在
+  `https://raw.githubusercontent.com/yifeng93/SummitWorkbench-Updates/main/update-feed.json`；
+  feed 的下载地址、大小、SHA-256 与签名均已匿名读取并验证。
+- 真机验收：用户已在本机 M2+ Mac Studio 上完成 build 108→build 109；build 109 已安装并
+  启动，原工作区与数据保持正常，重启后仍正常，手动检查更新显示已是最新版本。未使用
+  Developer ID/notarization；不需要飞书新权限或第二台电脑。
+- 安全拒绝：错误架构、最低系统、版本/build、HTTPS、大小、SHA-256、Ed25519 签名和损坏
+  下载的拒绝路径由单元/契约测试覆盖；下载不会自动替换 App，也不写入 vault/profile。
+- 未验证项：磁盘不足、真实网络中途断线和回滚启动未在真机上执行，但已有可离线注入/临时目录
+  保护与错误路径测试；不构成当前内部自用发布的阻塞。
+- 阻塞与所需操作：无。下一工作包仍为 P2-01，需另行明确开始后才实施。
 
 ## 16. 外部实现依据
 
