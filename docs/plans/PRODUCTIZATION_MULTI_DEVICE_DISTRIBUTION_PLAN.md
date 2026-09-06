@@ -1756,6 +1756,9 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 修复：运行时沿模块父路径定位 PyInstaller onedir 的 `server/_internal/templates/vault`，并
   将 packaged App 的真实 `/api/onboarding/create` 加入集成门，防止只测 `/api/version` 漏报。
 - 目标：修复后重新生成并发布 `v0.4.2`，再由新 Mac Air 完成安装与 workspace 创建验收。
+- 真机证据：用户报告另一台 Apple Silicon MacBook Air 上 v0.4.2 安装、首次创建 workspace、
+  手动“检查更新”和自动检查开关均通过；未使用真实工作数据。
+- 边界：P1-07 继续保持 `[~]`，workspace 同步、跨设备合并与回滚仍未做真机验收。
 
 ### 2026-09-06 · P2-01A
 

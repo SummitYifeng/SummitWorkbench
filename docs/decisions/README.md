@@ -43,7 +43,7 @@
 | [0036](0036-frontend-feature-lifecycle-boundaries.md) | v0.4.1 加固 P1-04 | ✅ 前端 feature 边界、typed API client 与 workspace 生命周期 |
 | [0037](0037-diagnostics-privacy-supportability.md) | v0.4.1 加固 P1-05 | ✅ 诊断包、结构化日志、脱敏与本地可支持性 |
 | [0038](0038-ci-coverage-release-matrix.md) | v0.4.1 加固 P1-06 | ✅ CI、80% 覆盖率门与 M2+ arm64 发布矩阵 |
-| [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07C | 🚧 发布闭环与外部验收进行中；内部 arm64 Ed25519 更新 feed / 手动下载 |
+| [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07C | ✅ v0.4.2 发布闭环与 MacBook Air 真机安装/创建 workspace/更新检查通过；双设备同步验收待做 |
 | [0040](0040-thread-activity-events.md) | P2-01A | 🚧 thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
