@@ -1715,7 +1715,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-07
 
 - 状态：完成 `[x]`（内部 arm64 实现、签名 feed、N-1→N 真机验收与质量门通过）
-- Git commit：待本次收口提交并推送至 `origin/main`
+- Git commit：`9742d5c`（已推送至 `origin/main`）
 - 变更摘要：新增签名 feed 兼容性筛选与稳定 Ed25519 签名正文；feed 生成脚本计算 DMG
   SHA-256/大小并输出签名、公钥与 release notes，私钥不进入仓库或 App；原生 App 使用
   manifest 中的 HTTPS feed 与固定公钥，按 arm64、最低 macOS、版本/build 和 HTTPS
