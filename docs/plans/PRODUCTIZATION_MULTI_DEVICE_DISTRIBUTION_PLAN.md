@@ -1685,7 +1685,7 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 ### 2026-09-06 · P1-06
 
 - 状态：完成 `[x]`（CI/覆盖率/发布矩阵实现与本机 arm64 发布演练通过；不进入 P1-07）
-- Git commit：`8b53186`（CI、覆盖率和发布实现）、`<待收口>`（前端产物、计划与 ADR；均将推送至 `origin/main`）
+- Git commit：`8b53186`（CI、覆盖率和发布实现）、`c675215`（前端产物、计划与 ADR；均将推送至 `origin/main`）
 - 变更摘要：CI 增加 `uv lock --check`、Python lint/format/mypy/pytest-cov 80% 门、模块覆盖率
   报告、Node 20 + `npm ci` + 前端 build/verify、secret scan；新增 tag 驱动的内部 macOS release
   workflow，发布前严格校验 tag 与 `pyproject.toml` 版本一致；构建脚本强制 runner 架构与 manifest
