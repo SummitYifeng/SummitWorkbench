@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +35,7 @@ def test_generator_emits_sha256_size_signature_and_public_key(tmp_path: Path) ->
 
     subprocess.run(
         [
+            sys.executable,
             str(ROOT / "scripts" / "generate-update-feed.py"),
             "--output",
             str(output),
