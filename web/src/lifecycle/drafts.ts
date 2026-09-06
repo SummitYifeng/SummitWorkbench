@@ -1,8 +1,10 @@
+import { workspaceScopedKey } from '../core/workspace-store';
+
 export const DRAFT_STORAGE_KEY = 'wb.draft.snapshot.v1';
 const MAX_DRAFT_AGE_MS = 30 * 60 * 1000;
 
 function draftStorageKey(workspaceId?: string): string {
-  return workspaceId ? DRAFT_STORAGE_KEY + '.' + workspaceId : DRAFT_STORAGE_KEY;
+  return workspaceScopedKey(DRAFT_STORAGE_KEY, workspaceId ?? null);
 }
 
 export interface ReviewDraftFields {
