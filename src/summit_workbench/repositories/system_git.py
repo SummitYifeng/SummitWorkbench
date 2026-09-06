@@ -135,6 +135,9 @@ class SystemGitBackend:
     def current_branch(self) -> str:
         return self._must("rev-parse", "--abbrev-ref", "HEAD")
 
+    def head_revision(self) -> str:
+        return self._must("rev-parse", "HEAD")
+
     def has_upstream(self) -> bool:
         return (
             self._run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").returncode == 0

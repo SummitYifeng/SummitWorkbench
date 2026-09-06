@@ -99,6 +99,10 @@ class GitRepo:
     def current_branch(self) -> str:
         return self._backend.current_branch()
 
+    def head_revision(self) -> str:
+        """返回当前 HEAD 的完整 revision（备份审计使用，不修改仓库）。"""
+        return self._backend.head_revision()
+
     def has_upstream(self) -> bool:
         return self._backend.has_upstream()
 

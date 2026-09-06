@@ -27,7 +27,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 本包实现的 workspace schema 版本；高于它按「只读保护、不猜字段」处理（§2.4）。
-SUPPORTED_WORKSPACE_SCHEMA = 1
+SUPPORTED_WORKSPACE_SCHEMA = 2
 # 本机 profile / device 存储 schema 版本。
 LOCAL_SCHEMA_VERSION = 1
 
@@ -80,6 +80,10 @@ class WorkspaceManifest(BaseModel):
     created_at: datetime
     min_reader_version: str
     min_writer_version: str
+    # P1-02：只记录已执行的 workspace marker 迁移，不承载本机身份或秘密。
+    migration_history: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=100
+    )
 
     @field_validator("workspace_id")
     @classmethod
@@ -145,14 +149,17 @@ def evaluate_manifest_compatibility(manifest: WorkspaceManifest, app_version: st
     规则：
     - ``schema_version`` 超出本包支持范围：未来整数版本 → 只读保护（不猜字段语义，
       §2.4）；损坏/未知（≤0）→ cannot-open。
+    - 低于当前版本但存在受支持迁移路径的旧 schema → 只读保护，等待显式迁移。
     - schema 为当前版本时按 min_reader/min_writer 门控：
       ``app < min_reader_version`` → cannot-open；``app < min_writer_version`` →
       read-only-upgrade-required；否则 read-write。
     """
     if manifest.schema_version > SUPPORTED_WORKSPACE_SCHEMA:
         return Compatibility.READ_ONLY_UPGRADE_REQUIRED
-    if manifest.schema_version < SUPPORTED_WORKSPACE_SCHEMA:
+    if manifest.schema_version <= 0:
         return Compatibility.CANNOT_OPEN
+    if manifest.schema_version < SUPPORTED_WORKSPACE_SCHEMA:
+        return Compatibility.READ_ONLY_UPGRADE_REQUIRED
     if not app_at_least(app_version, manifest.min_reader_version):
         return Compatibility.CANNOT_OPEN
     if not app_at_least(app_version, manifest.min_writer_version):

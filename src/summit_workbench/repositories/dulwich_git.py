@@ -231,6 +231,12 @@ class DulwichGitBackend:
             raise GitError("HEAD 不指向任何分支")
         return ref_name[len(b"refs/heads/") :].decode("utf-8")
 
+    def head_revision(self) -> str:
+        head = self._head_sha(self._open())
+        if head is None:
+            raise GitError("HEAD 没有指向任何提交")
+        return head.decode("ascii")
+
     def has_upstream(self) -> bool:
         repo = self._open()
         ref_name = self._head_ref_name(repo)

@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-05
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01 已完成；下一工作包为 P1-02
+> 状态：可执行；P0-01 至 P0-13、P1-01、P1-02 已完成；下一工作包为 P1-03
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -217,7 +217,7 @@ account = git:<host>:<username>
 | 16 | P0-11B 设置中心与安全 profile 切换 | P0 | P0-11A、P0-12 | L | [x] |
 | 17 | P0-13 Apple Silicon 内部 DMG 分发 | P0 | P0-11B、P0-12 | L | [x] |
 | 18 | P1-01 App 内定时任务与自动化主设备 | P1 | P0-10C、P0-13 | L | [x] |
-| 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [ ] |
+| 19 | P1-02 工作区 schema 迁移、备份与回滚 | P1 | P0-07C | M | [x] |
 | 20 | P1-03 后端路由/服务拆分 | P1 | P0 发布门 | M | [ ] |
 | 21 | P1-04 前端 feature 拆分与状态管理 | P1 | P1-03 | L | [ ] |
 | 22 | P1-05 诊断包、日志、隐私与可支持性 | P1 | P0-07C、P1-03 | M | [ ] |
@@ -1590,6 +1590,35 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
 - 全量质量门：`733 passed, 1 skipped`；ruff、format、mypy、前端构建验证、脚本语法、原生 fake 状态测试、Swift arm64 编译与 build 15 App/DMG 离线发布验证均通过。
 - 真机验收：用户已在 Mac Studio 首次启用 build 15 的“晨间简报”，并在“系统设置 → 通用 → 登录项与扩展 → App 后台活动”看到 `SummitWorkbench`；未出现 `SMAppServiceErrorDomain` 错误。
 - 当前结论：P1-01 全部实现、自动质量门、build 15 发布验证与真机注册展示均通过；下一工作包为 P1-02，仍不混入本包。
+
+### 2026-09-06 · P1-02 工作区 schema 迁移、备份与回滚
+
+- 状态：完成 `[x]`（离线实现与验收完成；真实远端/跨设备真机门未执行）
+- Git commit：本次实现收口提交待写入；完成后推送至 `origin/main`
+- 变更摘要：
+  - `WorkspaceManifest` 当前 schema 提升到 v2；schema v1 在存在迁移路径时进入
+    `read-only-upgrade-required`，schema 0/损坏/未来未知 schema 仍拒绝或只读保护；迁移
+    后保留前一版本 reader 兼容并提升 `min_writer_version`。
+  - 新增 `MigrationRegistry` 与唯一相邻迁移 `workspace-v1-to-v2`；未知字段保留，
+    `migration_history` 记录已执行边，重复调用只返回 `already-current`，不重复写入或提交。
+  - 新增工作区锁内迁移事务：Git remote/upstream、干净工作树、fetch 后 ahead/behind 为
+    0 才允许继续；本机 backups 记录 manifest、marker 快照、SHA-256、App version、
+    workspace id 与 Git HEAD；每步 marker 原子写入。
+  - 成功只生成 `wb: migrate workspace vN -> vN+1` 提交并 push；写入/提交/push 任一阶段
+    失败恢复快照并写脱敏 failure report，push 已产生本地提交时通过安全 revert 回滚，
+    不使用 reset、force、stash 或覆盖远端。
+  - 设置中心在旧 schema 只读状态显示“升级工作区 schema”，要求用户确认当前设备，
+    调用 `/api/workspace/migration`，成功后请求原生壳重新打开新的 compatibility context。
+- 目标测试：`uv run pytest tests/unit/test_workspace_migration.py -q`（9 passed）；覆盖
+  registry 相邻边、设备确认、dirty/remote/diverged 拒绝、未来 schema、备份 checksum、
+  重复迁移、异常恢复、push 失败安全 revert 与只读状态 API 放行。
+- 全量质量门：`git diff --check`、`uv run ruff check .`、`uv run ruff format --check .`、
+  `uv run mypy src tests` 通过；`uv run pytest -q`（742 passed，1 skipped，跳过既有需
+  `WB_PACKAGED_APP` 的打包 smoke，5 warnings）；`npm --prefix web run build` 与
+  `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 真机验证：未执行（按 §0.1 使用临时目录、fake backend 与离线 TestClient；未访问真实
+  私有 remote、真实凭据、第二台 Mac 或真实共享 vault）。
+- 当前结论：P1-02 实现与可离线验证的安全边界全部通过；下一工作包为 P1-03，本次未开始。
 
 ## 16. 外部实现依据
 

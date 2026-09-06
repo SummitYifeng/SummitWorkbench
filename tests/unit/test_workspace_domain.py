@@ -29,7 +29,7 @@ UUID_V4 = str(uuid.uuid4())
 
 def _manifest(**overrides: object) -> WorkspaceManifest:
     base: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "workspace_id": UUID_V4,
         "display_name": "Yifeng Workbench",
         "created_at": "2026-09-05T00:00:00Z",
@@ -139,7 +139,7 @@ def test_below_min_reader_is_cannot_open() -> None:
 
 def test_future_schema_version_is_read_only_protected() -> None:
     """更高 schema_version（未来已知形状）：只读保护，不猜字段语义（§2.4）。"""
-    manifest = _manifest(schema_version=2, min_reader_version="0.4.1", min_writer_version="0.4.1")
+    manifest = _manifest(schema_version=3, min_reader_version="0.4.1", min_writer_version="0.4.1")
     assert (
         evaluate_manifest_compatibility(manifest, "0.4.1")
         is Compatibility.READ_ONLY_UPGRADE_REQUIRED

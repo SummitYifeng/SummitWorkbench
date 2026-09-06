@@ -1287,6 +1287,11 @@ interface ProfileSummaryPayload {
   sync_summary: { state: string; pending_commits: number | null; last_sync_at?: string | null };
 }
 
+interface ProfileListPayload {
+  profiles: ProfileSummaryPayload[];
+  current_device_id?: string | null;
+}
+
 interface AutomationJobPayload {
   enabled: boolean;
   hour: number;
@@ -1337,7 +1342,7 @@ async function renderSettings(view: HTMLElement): Promise<void> {
   view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
   try {
     const [response, automation] = await Promise.all([
-      api<{ profiles: ProfileSummaryPayload[] }>('/api/settings/profiles'),
+      api<ProfileListPayload>('/api/settings/profiles'),
       api<AutomationSettingsPayload>('/api/settings/automation'),
     ]);
     view.innerHTML = '<section class="block"><div class="section-head"><h2 class="section-title">工作台设置</h2>' +
@@ -1352,6 +1357,9 @@ async function renderSettings(view: HTMLElement): Promise<void> {
         esc(profile.sync_summary.state + ' · 待推送 ' + String(profile.sync_summary.pending_commits ?? '—')) +
         '</p><p class="meta">Provider：' +
         esc(Object.entries(profile.provider_status).map(([key, value]) => key + ' ' + value).join(' · ')) + '</p>' +
+        (profile.active && profile.compatibility === 'read-only-upgrade-required' && response.current_device_id
+          ? '<button class="primary" data-action="workspace-migrate" data-device="' + esc(response.current_device_id) + '">升级工作区 schema</button>'
+          : '') +
         (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到此工作台</button><button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>') +
         '</article>',
       ).join('') + '</section>' +
@@ -1453,6 +1461,22 @@ async function switchProfile(workspaceId: string): Promise<void> {
   clearDraftSnapshot(remoteVersion?.workspace_id);
   if (committed.restart_required && sendNativeMessage({ type: 'quit' })) return;
   window.location.reload();
+}
+
+async function migrateWorkspace(deviceId: string): Promise<void> {
+  if (!window.confirm('迁移前必须确认同步状态 ready、工作树干净且远端可达。确定由当前 Mac 执行？')) return;
+  try {
+    const result = await mutation(() => api<{ status: string; restart_required?: boolean }>('/api/workspace/migration', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmed_device_id: deviceId }),
+    }));
+    toast(result.status === 'already-current' ? '工作区已经是最新 schema' : '工作区迁移完成，即将重新打开', 'ok');
+    if (result.status !== 'already-current' && sendNativeMessage({ type: 'quit' })) return;
+    window.location.reload();
+  } catch (err) {
+    toast(String(err), 'err');
+  }
 }
 
 async function runSettingsDoctor(online = false): Promise<void> {
@@ -1593,6 +1617,11 @@ document.addEventListener('click', (ev) => {
   if (action === 'profile-switch') {
     const workspaceId = btn.dataset.workspace ?? '';
     if (workspaceId) void switchProfile(workspaceId).catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'workspace-migrate') {
+    const deviceId = btn.dataset.device ?? '';
+    if (deviceId) void migrateWorkspace(deviceId);
     return;
   }
   if (action === 'profile-remove') {

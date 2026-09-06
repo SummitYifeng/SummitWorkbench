@@ -38,6 +38,7 @@
 | [0031](0031-multi-device-sync.md) | v0.4.1 加固 P0-10 / P0-10C | ✅ 已实现：同步持久状态、全写边界与 automation-primary 声明 |
 | [0032](0032-macos-distribution.md) | v0.4.1 加固 P0-13 | ✅ M2+ arm64 内部 DMG 与 ad-hoc 发布流水线；真机验收待执行 |
 | [0033](0033-app-automation-service.md) | v0.4.1 加固 P1-01 | ✅ App 内自动化 worker、主设备门控与 SMAppService helper |
+| [0034](0034-workspace-schema-migration.md) | v0.4.1 加固 P1-02 | ✅ 工作区 schema 迁移、备份、同步就绪门与安全回滚 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（见 `../plans/M1_ACCEPTANCE.md`）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

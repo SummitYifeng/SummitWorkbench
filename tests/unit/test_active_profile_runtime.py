@@ -42,7 +42,7 @@ def _profile(
 def _manifest(workspace_id: str) -> WorkspaceManifest:
     return WorkspaceManifest.model_validate(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "workspace_id": workspace_id,
             "display_name": "Chosen",
             "created_at": "2026-09-05T00:00:00Z",

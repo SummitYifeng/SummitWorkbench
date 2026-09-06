@@ -171,6 +171,14 @@ class DoctorPayload(BaseModel):
     online: bool = False
 
 
+class WorkspaceMigrationPayload(BaseModel):
+    """显式确认当前设备执行 workspace schema 迁移。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed_device_id: str = Field(min_length=8, max_length=200)
+
+
 class AutomationSettingsPayload(BaseModel):
     """更新 workspace 本机自动化的一项调度设置。"""
 

@@ -112,3 +112,34 @@ def atomic_write_text(
         except FileNotFoundError:
             pass
         raise
+
+
+def atomic_write_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    ensure_parents: bool = False,
+    new_mode: int | None = None,
+) -> None:
+    """把二进制内容以同样的唯一临时文件 + fsync + replace 语义落盘。"""
+    if ensure_parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    mode = _existing_mode(path)
+    fd, temporary = _open_unique_temp(path)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
+            elif new_mode is not None:
+                os.fchmod(handle.fileno(), new_mode)
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise

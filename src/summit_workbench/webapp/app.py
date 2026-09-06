@@ -122,6 +122,7 @@ from summit_workbench.webapp.api import (
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
+    WorkspaceMigrationPayload,
     brief_payload,
     external_action_payload,
     review_payload,
@@ -1162,6 +1163,7 @@ def create_app(
                 request.method in {"POST", "PATCH", "DELETE"}
                 and ctx.compatibility is Compatibility.CANNOT_OPEN
                 and not request.url.path.startswith("/api/onboarding")
+                and request.url.path != "/api/workspace/migration"
             ):
                 return JSONResponse(
                     status_code=409,
@@ -1175,6 +1177,7 @@ def create_app(
                 request.method in {"POST", "PATCH", "DELETE"}
                 and ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
                 and not request.url.path.startswith("/api/onboarding")
+                and request.url.path != "/api/workspace/migration"
             ):
                 return JSONResponse(
                     status_code=409,
@@ -1319,6 +1322,9 @@ def create_app(
         return {
             "ok": True,
             "active_workspace_id": active_profile_id(home=_settings_home()),
+            "current_device_id": (
+                ctx.active_workspace.device_id if ctx.active_workspace is not None else None
+            ),
             "profiles": [item.as_dict() for item in summaries],
         }
 
@@ -2719,6 +2725,74 @@ def create_app(
 
         clear_onboarding_draft(home=ctx.active_workspace.home if ctx.active_workspace else None)
         return {"ok": True, **result.model_dump(mode="json")}
+
+    # ---- workspace schema migration（P1-02）----
+
+    @app.post("/api/workspace/migration", response_model=None)
+    def api_workspace_migration(
+        request: Request, payload: Annotated[WorkspaceMigrationPayload, Body()]
+    ) -> dict[str, object] | JSONResponse:
+        """显式确认后执行迁移；旧 workspace 的 read-only 门必须为此入口让路。"""
+        active = ctx.active_workspace
+        if active is None or active.profile is None or active.device_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active profile 可以执行 workspace 迁移",
+                    operation_id=_operation_id(request),
+                ),
+            )
+        from summit_workbench.repositories.git import GitRepo
+        from summit_workbench.workflows import workspace_migration
+
+        try:
+            result = workspace_migration.migrate_workspace(
+                ctx.vault_dir,
+                home=active.home,
+                workspace_id=active.workspace_id,
+                device_id=active.device_id,
+                confirmed_device_id=payload.confirmed_device_id,
+                repo=GitRepo(
+                    ctx.vault_dir,
+                    backend_kind=ctx.git_backend_kind,
+                    workspace_id=active.workspace_id,
+                    username=active.profile.git_username,
+                ),
+            )
+        except workspace_migration.WorkspaceMigrationError as exc:
+            status_code = {
+                "migration_busy": 423,
+                "migration_remote_unreachable": 503,
+                "migration_failed": 500,
+            }.get(exc.code, 409)
+            return JSONResponse(
+                status_code=status_code,
+                content=error_payload(
+                    code=exc.code,
+                    message=str(exc),
+                    operation_id=_operation_id(request),
+                    details=(
+                        {"failure_report": str(exc.failure_report)}
+                        if exc.failure_report is not None
+                        else None
+                    ),
+                ),
+            )
+        return {
+            "ok": True,
+            "status": result.status,
+            "workspace_id": result.workspace_id,
+            "from_version": result.from_version,
+            "to_version": result.to_version,
+            "backup_dir": str(result.backup_dir) if result.backup_dir is not None else None,
+            "backup_manifest": (
+                str(result.backup_manifest) if result.backup_manifest is not None else None
+            ),
+            "backup_snapshot": (
+                str(result.backup_snapshot) if result.backup_snapshot is not None else None
+            ),
+        }
 
     # ---- 多设备同步（P0-10）----
 

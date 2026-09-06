@@ -26,7 +26,7 @@ WS_ID = str(uuid.uuid4())
 
 def _manifest(**overrides: object) -> WorkspaceManifest:
     base: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "workspace_id": WS_ID,
         "display_name": "Yifeng Workbench",
         "created_at": "2026-09-05T00:00:00Z",

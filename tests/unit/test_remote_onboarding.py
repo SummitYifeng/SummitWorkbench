@@ -26,7 +26,7 @@ from summit_workbench.workflows.remote_onboarding import (
 
 def _manifest(workspace_id: str, *, min_reader: str = "0.1.0") -> WorkspaceManifest:
     return WorkspaceManifest(
-        schema_version=1,
+        schema_version=2,
         workspace_id=workspace_id,
         display_name="Remote workspace",
         created_at=datetime(2026, 9, 5, tzinfo=UTC),

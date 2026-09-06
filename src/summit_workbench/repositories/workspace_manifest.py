@@ -55,6 +55,10 @@ def write_workspace_manifest(vault_dir: Path, manifest: WorkspaceManifest) -> Pa
     （marker 随 Git 同步，非本机敏感文件）。
     """
     path = manifest_path(vault_dir)
-    text = json.dumps(manifest.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
+    payload = manifest.model_dump(mode="json")
+    # P1-02 的迁移历史只有在实际执行过迁移时才写入；保持 v1 marker 的最小形状。
+    if not manifest.migration_history:
+        payload.pop("migration_history", None)
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     atomic_write_text(path, text, ensure_parents=True)
     return path

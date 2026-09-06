@@ -40,6 +40,7 @@ from summit_workbench.domain.onboarding import (
     PreflightReport,
 )
 from summit_workbench.domain.workspace import (
+    SUPPORTED_WORKSPACE_SCHEMA,
     Compatibility,
     DeviceRole,
     LocalProfile,
@@ -274,7 +275,7 @@ def preflight(
 def _new_manifest(workspace_id: str, display_name: str, app_version: str) -> WorkspaceManifest:
     return WorkspaceManifest.model_validate(
         {
-            "schema_version": 1,
+            "schema_version": SUPPORTED_WORKSPACE_SCHEMA,
             "workspace_id": workspace_id,
             "display_name": display_name,
             "created_at": datetime.now(UTC).isoformat(),
