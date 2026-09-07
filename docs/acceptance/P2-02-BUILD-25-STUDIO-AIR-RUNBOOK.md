@@ -143,6 +143,15 @@ Air 的 build 29 preflight 首次回传为 `RESULT: FAIL`，唯一失败项是 `
 Keychain、双后端 dirty 一致性、fetch、`ahead=0; behind=0`、schema 路径、备份可写和
 `secondary` 角色全部 PASS。双机共同基线现已满足，可进入下一节冲突恢复实测。
 
+本轮主路径已完成：Air 生成普通双父恢复提交 `c95b6c1`（父节点数 2），并生成后续脱敏审计
+提交 `8a6a543`；审计记录显示 `event_count=4`、`aggregate_count=1`、
+`generated_view_count=1`、`rebuilt_view_count=1`，事件和登记视图均已保留，人工 Markdown
+按“保留本机/采用远端”落地，未知视图与二进制均生成双方副本。Studio 普通快进后与 Air
+同为 `8a6a543`，双方工作树 clean、ahead/behind 均为 `0/0`。
+
+主路径通过不等于退出门全部关闭：脏工作树拒绝和审计写入失败的现场状态仍需补记；现有自动化
+测试已覆盖这两条保护分支，但在现场补证前 P2-02/ADR 0043 继续保持 `[~]`。
+
 本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
 `rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
 收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
