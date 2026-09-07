@@ -1141,8 +1141,9 @@ P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：�
 base/local/remote revision 快照的临时准备结果，并拒绝快照过期或当前 worktree 脏；
 人工选择也可在同一快照保护下生成临时候选树：`keep-remote` 只替换候选路径，
 `preserve-both` 保留确定性的 `.remote` 副本；经过显式确认后，workflow 可将候选路径
-原子写回并创建普通双父 merge commit。UI/API 接线、普通 push 编排和未知派生视图处理
-仍待后续阶段；当前已新增显式确认的本地 `/api/sync/conflict/recover` 入口。
+原子写回并创建普通双父 merge commit。当前已完成 UI/API 接线和显式确认的本地
+`/api/sync/conflict/recover` 入口；普通 push 编排、恢复审计事件和未知派生视图处理
+仍待后续阶段。
 
 **目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
 
