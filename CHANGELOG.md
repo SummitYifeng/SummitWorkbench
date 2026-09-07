@@ -1,9 +1,13 @@
 ## [Unreleased] - 2026-09-07
 
 > P1-07D 已完成：Studio + Air 双设备真机验收闭环（同一候选包 build 23，SHA-256 见
-> `release-metadata.json`），进入 P2-01B 的前置门已解除。以下修复均已提交本地源码。
+> `release-metadata.json`），build 24 已在 Air 完成覆盖安装与增量冒烟，进入 P2-01B 的前置门已解除。
 
-- build 24 内部 arm64 DMG 已由干净提交 `ac97db4aebb53147a394d83a34d9ed978d42b91e` 生成并通过 App/DMG 离线验证；产物 `dist/releases-build24/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` 的 SHA-256 为 `ef02907d637be755fe825d60b58fea8e1f67fe47cebcf03e782d2caf6f0e6590`。Studio 增量检查已确认 build 24、HTTPS remote、fetch、同步 ready/待推送 0；Air 增量检查待在 Air 本机完成。
+- P2-02：未知 `_views/**` 不再误判为可自动重建；改为人工 `preserve-both`，保留确定性的
+  `.remote` 副本，并在保护态 UI 只展示安全选项；已定义的 thread activity 视图继续在
+  临时目录确定性重建。
+
+- build 24 内部 arm64 DMG 已由干净提交 `ac97db4aebb53147a394d83a34d9ed978d42b91e` 生成并通过 App/DMG 离线验证；产物 `dist/releases-build24/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` 的 SHA-256 为 `ef02907d637be755fe825d60b58fea8e1f67fe47cebcf03e782d2caf6f0e6590`。Studio 与 Air 增量检查均确认 build 24、HTTPS remote、preflight、基础同步、secondary profile、简报/周报友好跳过及零写入。
 
 - 修复 DulwichGitBackend `fetch()`/`push()` 传 URL 而非 remote 名，导致
   `refs/remotes/origin/*` 永不更新：push 成功后 `ahead/behind` 与 `pending_wb_commits`
@@ -24,7 +28,7 @@
   不再显示红色 `ApiError`；写入仍被 automation 角色门控跳过，绝不执行。
 - 同步发现不再把 onboarding 遗留的 `.summit-workbench-remote-*` staging 目录当 workspace
   仓库同步。
-- 质量门：`790 passed, 1 skipped`；ruff check / ruff format / mypy 通过；build 23 打包集成与
+- 质量门：`823 passed, 1 skipped`；ruff check / ruff format / mypy 通过；build 23 打包集成与
   TLS 诊断通过。Studio（automation-primary）与 Air（secondary）用同一 DMG 完成 remote
   preview/apply、schema 迁移、preflight 全 PASS、Studio↔Air 双向同步、Air 离线写入恢复、
   双端离线冲突进入 `diverged-protected`（不 force/reset/rebase/stash、不丢数据）。

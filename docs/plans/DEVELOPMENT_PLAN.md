@@ -6,7 +6,7 @@
 >
 > 依据：`docs/product/PRD.md` v1.1
 >
-> 当前实施状态：**M0 / M1 / M2 已完成**；产品化 **P1-07D 已收口**（Studio + Air 真机往返闭环，见 `PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN.md`）。下一步进入 **P2-01B**（追加式操作事件与确定性投影视图），随后 **P2-02** 同步冲突解释与恢复工作台；**M3 尚未开始**。
+> 当前实施状态：**M0 / M1 / M2 已完成**；产品化 **P1-07D、P2-01B 已收口**（Studio + Air 真机往返与 build 24 增量冒烟闭环，见 `PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN.md`）。当前收口 **P2-02** 同步冲突解释与恢复工作台；**M3 尚未开始**。
 
 ## 1. 计划目标
 
