@@ -133,6 +133,12 @@ build 29 Studio 现场追加 dual-write 已验证：提交 `cd3d47b` 同时包�
 Studio 的 build 29 acceptance preflight 全部 PASS（Dulwich、HTTPS、Keychain、双后端 dirty、
 fetch、ahead/behind、schema、备份和 automation-primary）。
 
+Air 的 build 29 preflight 首次回传为 `RESULT: FAIL`，唯一失败项是 `ahead=0; behind=5`；
+其余项目全部 PASS，且工作树 clean、角色为 `secondary`。这表示 Air 仅落后远端 5 个提交，
+尚未进入冲突恢复流程。由于 Air 没有本地领先提交或脏文件，可在 Air 工作台点击一次“立即重试”
+执行普通 fast-forward；若状态变为 `ahead=0; behind=0`，再继续本流程；若出现 dirty、ahead>0
+或 diverged，立即停止并保留现场。
+
 本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
 `rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
 收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
