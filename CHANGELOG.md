@@ -8,6 +8,9 @@
 - P2-02 实现已收口；build 28 已在 Studio + Air 完成 Markdown、未知视图与 binary 的普通双父
   恢复、脱敏审计、普通 push 和最终同 HEAD。独立复核发现现场审计的事件/已登记视图计数均为
   `0`，且三条保护分支缺少可复核现场记录，因此 P2-02 继续保持 `[~]`，待同一 build 28 补验。
+- build 28 现场追加 dual-write 时发现打包服务只提交 event、遗漏同事务的 legacy Markdown；已在
+  `run_local_mutation` 增加主返回路径兜底并补 Dulwich 回归测试，build 29 重新打包，P2-02 现场验收
+  改用 build 29。
 - 当前主线质量门独立复核：`826 passed, 1 skipped`，覆盖率 `82.15%`，另有 packaged App smoke
   `1 passed`；ruff、格式检查、mypy、前端契约与生产构建、依赖锁、release 验证和 secret scan 均通过。
 

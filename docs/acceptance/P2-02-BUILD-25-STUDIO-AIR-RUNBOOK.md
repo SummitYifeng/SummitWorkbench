@@ -1,6 +1,6 @@
-# P2-02 build 28 · Studio + Air 一次性真实验收流程
+# P2-02 build 29 · Studio + Air 一次性真实验收流程
 
-状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 已完成双机恢复主路径，但退出门仍需补齐事件/已登记视图和现场保护分支证据。
+状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 现场暴露 dual-write 主返回 Markdown 漏提交，build 29 已修复并重新打包；退出门仍需补齐事件/已登记视图和现场保护分支证据。
 范围：仅 P2-02。P2-03 不在本流程内，也不因本流程获得授权。
 
 ## 1. 候选包与证据
@@ -13,19 +13,19 @@
 | 项目 | 值 |
 |---|---|
 | 产品 | `com.summitworkbench.panel` |
-| 版本 / build | `0.4.3` / `28` |
+| 版本 / build | `0.4.3` / `29` |
 | 架构 / 分发 | `arm64` / `INTERNAL-DEV` |
-| 源码 revision | `ebfaeac240958fd56d3cef66de866bd85d20f62f` |
-| 前端 build identity | `v2026.09.07-ebfaeac-6b225c82` |
-| DMG | `dist/p202-build28/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` |
-| DMG 大小 | `50,063,558` bytes |
-| DMG SHA-256 | `3e6c7ef3ffcf9c5c7df5fe4662734fcf068d8ac680a1ed27deffbdcb31ba30a0` |
+| 源码 revision | `697c239` |
+| 前端 build identity | `v2026.09.07-697c239-6b225c82` |
+| DMG | `dist/releases-build29/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` |
+| DMG 大小 | `50,066,803` bytes |
+| DMG SHA-256 | `53bc3f4d32658e80d39347d6374e8e68f1d36c69c07817da150d4a012b368a8a` |
 
-接收设备必须安装这一个 build 28 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
+接收设备必须安装这一个 build 29 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
 安装前在两台设备上各自核对 DMG 大小和 SHA-256。凭据只在系统 Keychain/PAT 提示处输入，
 不得粘贴进终端参数、截图、诊断包、Git 或聊天。
 
-build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store，导致进入真实分叉详情时抛出内部错误；build 26 已修复并增加回归测试。build 26 的现场失败原因：选择校验请求误带接口禁止的 `confirmed` 字段；build 27 已分离选择校验与恢复确认请求，并增加浏览器契约测试。build 27 的现场发现远端单边保留副本会在再次恢复时产生重复 `.remote` 路径；build 28 已改为原样接收远端单边副本，并增加回归测试。
+build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store，导致进入真实分叉详情时抛出内部错误；build 26 已修复并增加回归测试。build 26 的现场失败原因：选择校验请求误带接口禁止的 `confirmed` 字段；build 27 已分离选择校验与恢复确认请求，并增加浏览器契约测试。build 27 的现场发现远端单边保留副本会在再次恢复时产生重复 `.remote` 路径；build 28 已改为原样接收远端单边副本，并增加回归测试。build 28 的现场追加 dual-write 又发现主返回 Markdown 漏提交；build 29 已在本地事务入口兜底并增加 Dulwich 回归测试。
 
 已自动通过的门：
 
@@ -121,8 +121,8 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 ## 3. 2026-09-07 独立复核结果
 
-已从 `main` / `origin/main` 的共同 HEAD `2cb63cc` 复核源码与 build 28 产物。DMG 大小和
-SHA-256 与上表一致，bundle identity 为 `0.4.3 (28)`，packaged App smoke、TLS diagnostic、
+已从 `main` / `origin/main` 的共同 HEAD `697c239` 复核源码与 build 29 产物。DMG 大小和
+SHA-256 与上表一致，bundle identity 为 `0.4.3 (29)`，packaged App smoke、TLS diagnostic、
 strict codesign、动态端口启动和 release 验证均通过。受控验收 vault 当前工作树 clean，
 本机 HEAD 与 upstream 同为 `ac5df49`；历史中存在两个普通双父恢复提交 `d5f204a`、`babe7ae`，
 对应脱敏审计提交均已保留，未知视图和 binary 的本地/`.remote` 副本均存在。
@@ -133,18 +133,18 @@ strict codesign、动态端口启动和 release 验证均通过。受控验收 v
 回归测试，但当前保留的现场记录不足以独立确认三条真机保护分支。P2-02 因此继续保持 `[~]`，
 不得仅凭双父提交和最终同 HEAD 改为 `[x]`。
 
-代码复核确认 build 28 的 migration mode 默认安全回退到 `legacy`，现有真机配置也没有持久化
-`dual-write` 开关；这解释了追加日志提交中没有 event。产品所有者已选择 1A：仅验收时为 App
-进程显式启用 `dual-write`，验收结束恢复默认 `legacy`，不新增图形化设置或新 build。
+代码复核确认 build 29 的 migration mode 默认安全回退到 `legacy`，现有真机配置也没有持久化
+`dual-write` 开关；产品所有者已选择 1A：仅验收时为 App 进程显式启用 `dual-write`，验收结束
+恢复默认 `legacy`，不新增图形化设置。
 
-补验无需重新构建：继续使用哈希不变的 build 28，在合成验收 vault 中补做 event + 已登记视图
+使用 build 29，在合成验收 vault 中补做 event + 已登记视图
 分叉，并保存三条保护分支的脱敏状态码/短 revision 证据；随后再次确认双方 clean、HEAD/远端一致。
 
 ## 4. 退出判定与暂停点
 
 只有以下条件全部满足，才把 P2-02 和 ADR 0043 改为 `[x]`：
 
-- 同一个 build 28 DMG 在 Studio + Air 完成上述流程；
+- 同一个 build 29 DMG 在 Studio + Air 完成上述流程；
 - 解释、人工选择、`preserve-both`、临时预检、显式确认、普通双父提交、脱敏审计和普通 push
   均有现场证据；
 - 远端变化、脏工作树、审计失败保护分支均按预期拒绝或保持可见；
