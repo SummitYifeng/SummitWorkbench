@@ -208,3 +208,42 @@ def test_dual_write_event_is_in_the_same_git_commit_as_legacy_note(tmp_path: Pat
     changed = git("show", "--format=", "--name-only", "HEAD").splitlines()
     assert "logs/2026-01-02-001.md" in changed
     assert any(path.startswith("_events/device-a/") for path in changed)
+
+
+def test_local_mutation_defensively_commits_path_business_return(tmp_path: Path) -> None:
+    """A projection-only changed_paths report must not orphan the source note."""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(vault), *args], check=True, capture_output=True, text=True
+        ).stdout
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    (vault / "seed.md").write_text("seed", encoding="utf-8")
+    git("add", "--", "seed.md")
+    git("commit", "-q", "-m", "seed")
+
+    migration = _migration(vault)
+
+    def mutate(operation_id: str) -> LocalMutationOutcome[Path]:
+        path = append_work_log(
+            vault,
+            projects=["thread-a"],
+            text="legacy note",
+            now=datetime(2026, 1, 3, tzinfo=UTC),
+            activity_migration=migration,
+            causation_operation_id=operation_id,
+        )
+        # Simulate a caller that reports only the projection path.
+        return LocalMutationOutcome(path, migration.last_write_paths)
+
+    result = run_local_mutation(vault, "threads/logs", mutate, backend_kind="dulwich")
+    assert result.commit_result.status is CommitStatus.COMMITTED
+    changed = git("show", "--format=", "--name-only", "HEAD").splitlines()
+    assert "logs/2026-01-03-001.md" in changed
+    assert any(path.startswith("_events/device-a/") for path in changed)

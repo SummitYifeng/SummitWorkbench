@@ -71,7 +71,14 @@ def run_local_mutation[T](
     operation_id = str(uuid4())
     with workspace_lock(vault_dir.parent):
         outcome = mutation(operation_id)
-        changed_paths = tuple(Path(path) for path in outcome.changed_paths)
+        # The primary business result is often the newly-created legacy file.  Keep it
+        # in the explicit commit set even if a caller only reports auxiliary paths
+        # (for example, a dual-write event path).  This preserves the transaction
+        # invariant that the user-visible source and its projections share one commit.
+        candidate_paths = list(outcome.changed_paths)
+        if isinstance(outcome.business_return, (Path, str)):
+            candidate_paths.insert(0, outcome.business_return)
+        changed_paths = tuple(dict.fromkeys(Path(path) for path in candidate_paths))
         commit_result = commit_paths(
             vault_dir,
             list(changed_paths),
