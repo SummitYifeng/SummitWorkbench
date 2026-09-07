@@ -45,6 +45,7 @@ from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
+from summit_workbench.domain.sync_conflict import explain_conflict
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.domain.workspace import Compatibility, DeviceRole
 from summit_workbench.observability.status import build_status
@@ -3112,6 +3113,13 @@ def create_app(
     def api_sync_status() -> dict[str, object]:
         """当前 workspace 同步状态（供 UI banner；不执行任何 git 写）。"""
         return _sync_payload()
+
+    @app.get("/api/sync/conflict/explain", response_model=None)
+    def api_sync_conflict_explain(paths: str | None = None) -> dict[str, object]:
+        """Explain conflict handling without fetching, merging, or writing anything."""
+        raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
+        explanation = explain_conflict(_current_sync_snapshot().state, raw_paths)
+        return {"ok": True, "conflict": explanation.as_dict()}
 
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:

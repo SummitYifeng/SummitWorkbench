@@ -58,6 +58,21 @@ def test_sync_status_and_run_on_plain_vault(tmp_path, monkeypatch, client) -> No
     assert run.json()["ok"] is True
 
 
+def test_conflict_explanation_is_read_only_and_classifies_paths(client) -> None:
+    response = client.get(
+        "/api/sync/conflict/explain",
+        params={"paths": "_events/device-a/2026/09/e.json,logs/2026-09-07-001.md"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["conflict"]["manual_required"] is True
+    assert [item["kind"] for item in payload["conflict"]["items"]] == [
+        "append-only-event",
+        "manual-markdown",
+    ]
+
+
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200
