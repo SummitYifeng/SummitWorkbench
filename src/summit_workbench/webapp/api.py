@@ -304,6 +304,7 @@ class OnboardingRemoteStagePayload(BaseModel):
     target_vault: str = Field(min_length=1, max_length=2_048)
     expected_workspace_id: str | None = Field(default=None, max_length=200)
     git_username: str = Field(min_length=1, max_length=200)
+    pat: str | None = Field(default=None, max_length=100_000)
 
 
 class OnboardingRemoteConfirmPayload(BaseModel):
@@ -311,6 +312,7 @@ class OnboardingRemoteConfirmPayload(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
     user_email: str | None = Field(default=None, max_length=320)
+    pat: str | None = Field(default=None, max_length=100_000)
 
 
 class AutomationPrimaryPayload(BaseModel):

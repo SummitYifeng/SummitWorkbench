@@ -129,6 +129,49 @@ def test_remote_clone_staging_confirm_creates_secondary_profile(tmp_path) -> Non
     assert not staged.staging_dir.exists()
 
 
+def test_stage_remote_clone_forwards_pat_credential_resolver(tmp_path) -> None:
+    """P1-07D：Air onboarding 的 PAT 经 credential_resolver 进入 clone，绝不落盘。"""
+    from typing import cast
+
+    from summit_workbench.repositories.git_backend import GitBackend
+    from summit_workbench.workflows import remote_onboarding as module
+
+    seen_kwargs: dict[str, object] | None = None
+
+    class _RecordingBackend:
+        def __init__(self, path: Path, **kwargs: object) -> None:
+            self.path = path
+            self.kwargs = kwargs
+
+        def clone(self, url: str, destination: Path) -> None:
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / "README.md").write_text("remote\n", encoding="utf-8")
+            write_workspace_manifest(destination, _manifest(str(uuid4())))
+
+    def factory(path: Path, **kwargs: object) -> GitBackend:
+        nonlocal seen_kwargs
+        seen_kwargs = kwargs
+        return cast(GitBackend, _RecordingBackend(path, **kwargs))
+
+    def resolver(ws: str, host: str, user: str) -> GitCredentials:
+        return GitCredentials(ws, host, user, SecretStr("canary-pat"))
+
+    target = tmp_path / "work" / "_vault"
+    target.parent.mkdir()
+    staged = module.stage_remote_clone(
+        "https://github.com/acme/private.git",
+        target,
+        workspace_id=None,
+        username="alice",
+        home=tmp_path / "home",
+        backend_factory=factory,
+        credential_resolver=resolver,
+    )
+    assert staged.workspace_id is not None
+    assert seen_kwargs is not None and seen_kwargs.get("credential_resolver") is resolver
+    module.cancel_remote_clone(staged)
+
+
 def test_remote_clone_cancel_only_removes_own_staging(tmp_path) -> None:
     target = tmp_path / "work" / "_vault"
     target.parent.mkdir()

@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from html import escape
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -620,7 +620,7 @@ ul{line-height:1.9;padding-left:22px}.success{color:#166534;background:#f0fdf4;p
 </style></head><body><main id="wizard"><div class="progress" id="progress"></div><section id="content"></section><div id="error"></div></main>
 <script>
 (() => {
-  const state={flow:null,step:0,work_root:'',vault_dir:'',display_name:'',device_name:'',git_mode:'skipped',remote_url:'',expected_workspace_id:'',git_username:'',automation_role:'primary',stage_id:null};
+  const state={flow:null,step:0,work_root:'',vault_dir:'',display_name:'',device_name:'',git_mode:'skipped',remote_url:'',expected_workspace_id:'',git_username:'',pat:'',automation_role:'primary',stage_id:null};
   const steps=['location','git','model','feishu','role','check'];
   const content=document.getElementById('content'), progress=document.getElementById('progress'), error=document.getElementById('error');
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -640,7 +640,7 @@ ul{line-height:1.9;padding-left:22px}.success{color:#166534;background:#f0fdf4;p
       html+=field('display_name','显示名称',state.display_name,'text','我的工作台');
     } else if(steps[state.step]==='git'){
       html+='<p>可以先只在本机使用，之后再连接私有远端。连接远端时，向导只调用后端服务，不在页面执行 Git。</p><div class="choices"><button class="secondary" data-git="local">仅本机使用</button><button class="secondary" data-git="remote">连接私有 HTTPS 远端</button><button class="secondary" data-git="skipped">稍后设置</button></div>';
-      if(state.git_mode==='remote')html+=field('remote_url','HTTPS 远端地址',state.remote_url,'url','https://git.example.com/team/workspace.git')+field('git_username','远端用户名',state.git_username,'text','你的用户名')+field('expected_workspace_id','预期 workspace id（连接已有远端时填写）',state.expected_workspace_id,'text','从原设备的工作区信息复制');
+      if(state.git_mode==='remote')html+=field('remote_url','HTTPS 远端地址',state.remote_url,'url','https://git.example.com/team/workspace.git')+field('git_username','远端用户名',state.git_username,'text','你的用户名')+field('expected_workspace_id','预期 workspace id（连接已有远端时填写）',state.expected_workspace_id,'text','从原设备的工作区信息复制')+field('pat','GitHub PAT（仅本次 clone 与保存到本机 Keychain，不落盘）',state.pat,'password','ghp_…');
     } else if(steps[state.step]==='model'){
       html+='<p>模型配置可稍后在设置中心完成。跳过不会影响本地捕捉和知识库使用。</p><div class="notice">当前选择：稍后设置。此步骤不收集或保存任何密钥。</div>';
     } else if(steps[state.step]==='feishu'){
@@ -650,9 +650,9 @@ ul{line-height:1.9;padding-left:22px}.success{color:#166534;background:#f0fdf4;p
     } else {html+='<p>请确认后完成设置。最终结果以服务端返回的 workspace/device 信息为准。</p><ul><li>流程：'+esc(state.flow)+'</li><li>位置：'+esc(state.work_root||state.vault_dir)+'</li><li>同步：'+esc(state.git_mode)+'</li><li>设备角色：'+esc(state.automation_role)+'</li></ul>'}
     html+='<div class="row"><button class="text" data-back="1">返回</button><div><button data-next="1">'+(steps[state.step]==='check'?'完成设置':'继续')+'</button></div></div>';content.innerHTML=html;
   }
-  function read(){for(const id of ['work_root','vault_dir','display_name','remote_url','git_username','expected_workspace_id']){const el=document.getElementById(id);if(el)state[id]=el.value.trim()}const role=document.getElementById('automation_role');if(role)state.automation_role=role.value}
+  function read(){for(const id of ['work_root','vault_dir','display_name','remote_url','git_username','expected_workspace_id','pat']){const el=document.getElementById(id);if(el)state[id]=el.value.trim()}const role=document.getElementById('automation_role');if(role)state.automation_role=role.value}
   async function next(){read();const current=steps[state.step];if(current==='location'){const path=state.flow==='create-new'?state.work_root:state.vault_dir;await api('/api/onboarding/preflight',{method:'POST',body:JSON.stringify({flow:state.flow==='connect-existing'?'connect-local':state.flow,path})})}if(current==='git'&&state.git_mode==='remote'&&!state.remote_url)throw new Error('请填写 HTTPS 远端地址');if(current==='check')return complete();state.step++;await save();render()}
-  async function complete(){await save();let d;if(state.flow==='create-new')d=await api('/api/onboarding/create',{method:'POST',body:JSON.stringify({work_root:state.work_root,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.flow==='upgrade-existing')d=await api('/api/onboarding/upgrade',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.git_mode==='remote'){const staged=await api('/api/onboarding/remote/stage',{method:'POST',body:JSON.stringify({remote_url:state.remote_url,target_vault:state.vault_dir,expected_workspace_id:state.expected_workspace_id||null,git_username:state.git_username})});d=await api('/api/onboarding/remote/confirm',{method:'POST',body:JSON.stringify({stage_id:staged.stage_id,display_name:state.display_name||null,device_name:state.device_name||null})})}else d=await api('/api/onboarding/connect',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:'secondary'})});await api('/api/onboarding/draft',{method:'DELETE'});content.innerHTML='<h2>设置完成</h2><div class="success">工作区已准备好。workspace id：'+esc(d.workspace_id)+'<br>本机 device id：'+esc(d.device_id)+'<br><br>请重新打开 SummitWorkbench 进入工作台。</div>';progress.textContent='完成';}
+  async function complete(){await save();let d;if(state.flow==='create-new')d=await api('/api/onboarding/create',{method:'POST',body:JSON.stringify({work_root:state.work_root,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.flow==='upgrade-existing')d=await api('/api/onboarding/upgrade',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.git_mode==='remote'){const staged=await api('/api/onboarding/remote/stage',{method:'POST',body:JSON.stringify({remote_url:state.remote_url,target_vault:state.vault_dir,expected_workspace_id:state.expected_workspace_id||null,git_username:state.git_username,pat:state.pat||null})});d=await api('/api/onboarding/remote/confirm',{method:'POST',body:JSON.stringify({stage_id:staged.stage_id,display_name:state.display_name||null,device_name:state.device_name||null,pat:state.pat||null})})}else d=await api('/api/onboarding/connect',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:'secondary'})});await api('/api/onboarding/draft',{method:'DELETE'});content.innerHTML='<h2>设置完成</h2><div class="success">工作区已准备好。workspace id：'+esc(d.workspace_id)+'<br>本机 device id：'+esc(d.device_id)+'<br><br>请重新打开 SummitWorkbench 进入工作台。</div>';progress.textContent='完成';}
   document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;try{if(b.dataset.flow){state.flow=b.dataset.flow;state.step=0;state.automation_role=state.flow==='connect-existing'?'secondary':'primary';await save();render()}else if(b.dataset.git){state.git_mode=b.dataset.git;render()}else if(b.dataset.back){if(state.step===0){state.flow=null;render()}else{state.step--;await save();render()}}else if(b.dataset.next){await next()}}catch(err){setError(err)}});
   (async()=>{try{const d=(await api('/api/onboarding/draft')).draft;if(d){Object.assign(state,d);state.flow=d.flow;state.step=Math.max(0,steps.indexOf(d.step));render()}else render()}catch(e){setError(e)}})();
 })();
@@ -874,6 +874,19 @@ def _create_restricted_app(
             stage_remote_clone,
         )
 
+        credential_resolver = None
+        if payload.pat:
+            from pydantic import SecretStr
+
+            from summit_workbench.config.git_credentials import GitCredentials
+
+            pat = SecretStr(payload.pat)
+
+            def resolve(_ws: str, host: str, _username: str) -> GitCredentials:
+                return GitCredentials(_ws, host, payload.git_username, pat)
+
+            credential_resolver = resolve
+
         try:
             staged = stage_remote_clone(
                 payload.remote_url,
@@ -881,6 +894,7 @@ def _create_restricted_app(
                 workspace_id=payload.expected_workspace_id,
                 username=payload.git_username,
                 home=active_workspace.home,
+                credential_resolver=credential_resolver,
             )
         except RemoteCloneError as exc:
             return JSONResponse(
@@ -929,6 +943,19 @@ def _create_restricted_app(
                 device_name=payload.device_name,
                 user_email=payload.user_email,
             )
+            if payload.pat:
+                from urllib.parse import urlsplit
+
+                from pydantic import SecretStr
+
+                from summit_workbench.config.git_credentials import store_git_credentials
+                from summit_workbench.workflows.remote_onboarding import RemoteCloneStage
+
+                staged_info = cast(RemoteCloneStage, staged)
+                host = urlsplit(staged_info.remote_url).hostname or ""
+                store_git_credentials(
+                    staged_info.workspace_id, host, staged_info.username, SecretStr(payload.pat)
+                )
         except RemoteCloneError as exc:
             return JSONResponse(
                 status_code=409,
