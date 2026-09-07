@@ -1471,7 +1471,9 @@ async function rollbackGitRemoteNormalization(): Promise<void> {
 async function runAcceptancePreflight(): Promise<void> {
   try {
     const result = await api<AcceptancePreflightPayload>('/api/settings/acceptance-preflight', {
-      method: 'POST', body: JSON.stringify({}),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     });
     const output = document.getElementById('acceptance-preflight-result');
     if (output) output.innerHTML = '<pre class="diagnostics-output">' + esc(result.report) + '</pre>';

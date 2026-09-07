@@ -23,6 +23,11 @@ assert.match(
   /\/api\/settings\/git\/remote\/apply[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
   'remote apply sends JSON content type',
 );
+assert.match(
+  source,
+  /\/api\/settings\/acceptance-preflight[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+  'acceptance preflight sends JSON content type',
+);
 assert.match(read('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
 assert.match(read('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
 assert.match(read('src/core/workspace-store.ts'), /subscribe\(/, 'workspace changes are observable');

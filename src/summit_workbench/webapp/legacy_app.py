@@ -196,6 +196,7 @@ _SCHEMA_UPGRADE_WRITE_EXEMPTIONS = frozenset(
         "/api/settings/git/remote/preview",
         "/api/settings/git/remote/apply",
         "/api/settings/git/remote/rollback",
+        "/api/settings/acceptance-preflight",
     }
 )
 
