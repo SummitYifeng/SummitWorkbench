@@ -79,7 +79,13 @@ def test_preflight_is_green_for_https_clean_workspace(
 ) -> None:
     home, vault, workspace_id = _setup(tmp_path, remote="https://github.com/owner/repo.git")
     fake = FakeRepo(vault, "https://github.com/owner/repo.git")
-    monkeypatch.setattr(module, "GitRepo", lambda *args, **kwargs: fake)
+    seen_kwargs: list[dict[str, object]] = []
+
+    def repo_factory(*args: object, **kwargs: object) -> FakeRepo:
+        seen_kwargs.append(kwargs)
+        return fake
+
+    monkeypatch.setattr(module, "GitRepo", repo_factory)
     monkeypatch.setattr(module, "resolve_git_credentials", lambda *args: SecretStr("secret"))
 
     report = module.acceptance_preflight(
@@ -95,6 +101,7 @@ def test_preflight_is_green_for_https_clean_workspace(
     assert "[PASS] remote-scheme" in report.text
     assert "[PASS] dirty-consistency" in report.text
     assert "[PASS] schema-path" in report.text
+    assert any(item.get("username") == "alice" for item in seen_kwargs)
 
 
 def test_preflight_explicitly_reports_unsupported_remote_and_dirty_mismatch(

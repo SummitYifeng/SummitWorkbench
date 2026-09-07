@@ -67,7 +67,12 @@ def acceptance_preflight(
     """Run non-destructive checks; fetch only updates remote-tracking refs."""
     checks: list[PreflightCheck] = []
     profile = load_profile(workspace_id, home=home)
-    repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
+    repo = GitRepo(
+        vault_dir,
+        backend_kind=backend_kind,
+        workspace_id=workspace_id,
+        username=profile.git_username if profile is not None else None,
+    )
     system_repo = GitRepo(vault_dir, backend_kind="system", workspace_id=workspace_id)
     remote_url: str | None = None
 
