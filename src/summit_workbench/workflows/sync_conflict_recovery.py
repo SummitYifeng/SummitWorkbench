@@ -295,7 +295,9 @@ def inspect_divergence(
     )
 
 
-def _copy_regular_files(source: Path, destination: Path) -> None:
+def _copy_regular_files(
+    source: Path, destination: Path, *, excluded_top_level: frozenset[str] = frozenset()
+) -> None:
     """Copy only regular event files; symlinks never enter the staging area."""
     if not source.is_dir():
         return
@@ -303,6 +305,8 @@ def _copy_regular_files(source: Path, destination: Path) -> None:
         if path.is_symlink() or not path.is_file():
             continue
         relative = path.relative_to(source)
+        if relative.parts and relative.parts[0] in excluded_top_level:
+            continue
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, target)
@@ -463,6 +467,145 @@ def validate_automatic_recovery(
         prepared.close()
 
 
+def prepare_manual_recovery(
+    vault_dir: Path,
+    details: DivergenceDetails,
+    *,
+    workspace_id: str,
+    selections: Mapping[str, SelectionChoice | str],
+    backend_kind: str | None = None,
+) -> RecoveryPreparation:
+    """Prepare a complete human-selected candidate tree without writing the vault.
+
+    The candidate starts from the clean local worktree. ``keep-remote`` replaces
+    one selected path from the fetched remote revision; ``preserve-both`` keeps
+    the local path and writes the remote bytes to a deterministic ``.remote``
+    sibling. Automatic event collection and the defined view rebuild use the same
+    rules as :func:`prepare_automatic_recovery`.
+    """
+    selection = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections=selections,
+    )
+    if selection.status != "validated":
+        return RecoveryPreparation(
+            status=selection.status,
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code=selection.error_code,
+        )
+    repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
+    if not _snapshot_matches(repo, details):
+        return RecoveryPreparation(
+            status="stale",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code="conflict_snapshot_stale",
+        )
+    if repo.is_dirty():
+        return RecoveryPreparation(
+            status="rejected",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code="current_worktree_dirty",
+        )
+
+    event_paths = tuple(
+        path for path in details.paths if path.kind is ConflictKind.APPEND_ONLY_EVENT
+    )
+    generated_view_items = tuple(
+        path for path in details.paths if path.kind is ConflictKind.GENERATED_VIEW
+    )
+    generated_views = len(generated_view_items)
+    rebuildable_views = tuple(
+        path for path in generated_view_items if path.path == "_views/thread-activity.json"
+    )
+    temporary = tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-")
+    staging = Path(temporary.name)
+    try:
+        _copy_regular_files(vault_dir, staging, excluded_top_level=frozenset({".git"}))
+        for path in event_paths:
+            if len(path.changed_on) == 2 and path.local_sha256 != path.remote_sha256:
+                raise ValueError("event_path_collision")
+            if "remote" in path.changed_on and "local" not in path.changed_on:
+                data = repo.read_file_at(details.remote.revision, path.path)
+                if data is None:
+                    raise ValueError("remote_event_missing")
+                target = staging / path.path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+
+        manual_paths = {path.path: path for path in details.paths if not path.automatic}
+        for raw_path, raw_choice in selections.items():
+            normalized_path = classify_conflict_path(raw_path).path
+            item = manual_paths[normalized_path]
+            choice = SelectionChoice(raw_choice)
+            if choice is SelectionChoice.KEEP_LOCAL:
+                continue
+            remote_data = repo.read_file_at(details.remote.revision, item.path)
+            if remote_data is None:
+                raise ValueError("remote_content_missing")
+            if choice is SelectionChoice.KEEP_REMOTE:
+                target = staging / item.path
+            else:
+                target = staging / f"{item.path}.remote"
+                if target.exists():
+                    raise ValueError("preserve_both_path_collision")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(remote_data)
+
+        store = ThreadActivityEventStore(
+            staging,
+            workspace_id=workspace_id,
+            device_id="recovery-validation",
+        )
+        events = store.read_workspace_events()
+        projection = store.project_workspace()
+        if rebuildable_views:
+            target = staging / "_views" / "thread-activity.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(render_thread_activity_view(projection))
+    except ValueError as exc:
+        temporary.cleanup()
+        error_code = str(exc) or "manual_recovery_failed"
+        return RecoveryPreparation(
+            status="rejected",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            generated_view_count=generated_views,
+            error_code=error_code,
+        )
+    except Exception:  # noqa: BLE001 - safe visible validation result
+        temporary.cleanup()
+        return RecoveryPreparation(
+            status="projection-failed",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            generated_view_count=generated_views,
+            error_code="event_projection_failed",
+        )
+    return RecoveryPreparation(
+        status="view-rebuild-pending" if len(rebuildable_views) != generated_views else "validated",
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        event_count=len(events),
+        aggregate_count=len(projection),
+        generated_view_count=generated_views,
+        rebuilt_view_count=len(rebuildable_views),
+        staging_dir=staging,
+        _temporary=temporary,
+    )
+
+
 def validate_manual_selections(
     details: DivergenceDetails,
     *,
@@ -550,6 +693,7 @@ __all__ = [
     "TemporaryValidation",
     "inspect_divergence",
     "prepare_automatic_recovery",
+    "prepare_manual_recovery",
     "recovery_manifest_bytes",
     "validate_manual_selections",
     "validate_automatic_recovery",

@@ -25,13 +25,16 @@
 4. `prepare_automatic_recovery` 提供快照绑定的临时准备结果：再次核对 base/local/remote
    revision，拒绝 dirty worktree，并在调用方上下文结束时清理 staging；准备结果不暴露
    绝对临时路径，也不写入当前 vault。
-5. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
-   验证后才可提出可审计的恢复动作；当前仍不执行工作树替换、人工选择写回或审计提交。
+5. `prepare_manual_recovery` 在同一快照保护下从干净 local worktree 生成候选树：
+   `keep-remote` 只替换 staging 中的选择路径，`preserve-both` 以确定性的 `.remote` 兄弟
+   文件保留远端副本；当前仍不执行工作树替换、人工选择写回或审计提交。
+6. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
+   验证后才可提出可审计的恢复动作。
 
 ## 验收
 
 已覆盖分类稳定性、路径越界拒绝、混合冲突的人工确认提示、自动项必须先进入临时 worktree
 验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、已定义
 thread activity 视图的确定性临时重建、快照绑定的临时准备、dirty/stale 保护、人工选择
-预检，以及五个 Web API 只读/预检契约；临时 worktree 实际恢复、生成视图写回和人工确认
-写回留待 P2-02 后续阶段。
+候选树、preserve-both 保留规则、人工选择预检，以及五个 Web API 只读/预检契约；临时
+worktree 实际恢复、生成视图写回和人工确认写回留待 P2-02 后续阶段。

@@ -11,6 +11,7 @@ from summit_workbench.workflows.sync_conflict_recovery import (
     SelectionChoice,
     inspect_divergence,
     prepare_automatic_recovery,
+    prepare_manual_recovery,
     validate_automatic_recovery,
     validate_manual_selections,
 )
@@ -301,3 +302,64 @@ def test_prepare_automatic_recovery_owns_ephemeral_staging_and_rejects_stale_sna
     assert stale.status == "stale"
     assert stale.error_code == "conflict_snapshot_stale"
     assert stale.staging_dir is None
+
+
+def test_prepare_manual_recovery_applies_remote_choice_only_in_staging(tmp_path: Path) -> None:
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "notes.md", "remote\n", "wb: remote note")
+    repo.push()
+    _commit(other_repo, other, "notes.md", "local\n", "wb: local note")
+    other_repo.fetch()
+
+    details = inspect_divergence(other)
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={"notes.md": SelectionChoice.KEEP_REMOTE},
+    ) as prepared:
+        assert prepared.ready is True
+        assert prepared.staging_dir is not None
+        assert (prepared.staging_dir / "notes.md").read_text() == "remote\n"
+        assert (other / "notes.md").read_text() == "local\n"
+        assert other_repo.head_revision() == details.local.revision
+
+
+def test_prepare_manual_recovery_preserves_remote_copy_deterministically(tmp_path: Path) -> None:
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "attachment.bin", "remote\n", "wb: remote binary")
+    repo.push()
+    _commit(other_repo, other, "attachment.bin", "local\n", "wb: local binary")
+    other_repo.fetch()
+
+    details = inspect_divergence(other)
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={"attachment.bin": SelectionChoice.PRESERVE_BOTH},
+    ) as prepared:
+        assert prepared.ready is True
+        assert prepared.staging_dir is not None
+        assert (prepared.staging_dir / "attachment.bin").read_text() == "local\n"
+        assert (prepared.staging_dir / "attachment.bin.remote").read_text() == "remote\n"

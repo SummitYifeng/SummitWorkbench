@@ -1139,7 +1139,9 @@ P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：�
 `view-rebuild-pending`，不猜测业务语义。同时提供人工选择预检并拒绝过期/不完整/非法
 选择；不执行 fetch、merge、工作树替换或 force push。自动项现在还可生成带
 base/local/remote revision 快照的临时准备结果，并拒绝快照过期或当前 worktree 脏；
-临时 worktree 实际恢复、生成视图写回和人工确认后的审计提交仍待后续阶段。
+人工选择也可在同一快照保护下生成临时候选树：`keep-remote` 只替换候选路径，
+`preserve-both` 保留确定性的 `.remote` 副本；临时 worktree 实际恢复、生成视图写回和
+人工确认后的审计提交仍待后续阶段。
 
 **目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
 
