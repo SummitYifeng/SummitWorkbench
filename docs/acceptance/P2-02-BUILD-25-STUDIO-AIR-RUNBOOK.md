@@ -127,6 +127,12 @@ strict codesign、动态端口启动和 release 验证均通过。受控验收 v
 本机 HEAD 与 upstream 同为 `ac5df49`；历史中存在两个普通双父恢复提交 `d5f204a`、`babe7ae`，
 对应脱敏审计提交均已保留，未知视图和 binary 的本地/`.remote` 副本均存在。
 
+build 29 Studio 现场追加 dual-write 已验证：提交 `cd3d47b` 同时包含
+`logs/2026-09-07-005.md` 与 `_events/.../01M1Y2MCP8TDG3XKHF8WXEE8GM.json`，工作树 clean，
+本机 HEAD 与 `origin/main` 一致；event payload 仅含日期、来源路径和类型，不含正文或凭据。
+Studio 的 build 29 acceptance preflight 全部 PASS（Dulwich、HTTPS、Keychain、双后端 dirty、
+fetch、ahead/behind、schema、备份和 automation-primary）。
+
 本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
 `rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
 收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
