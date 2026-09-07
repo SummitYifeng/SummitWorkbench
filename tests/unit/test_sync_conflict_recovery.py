@@ -318,6 +318,7 @@ def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: 
         assert audit["merge_revision"] == applied.revision
         assert audit["local_revision"] == details.local.revision
         assert "vault" not in json.dumps(audit)
+        assert applied.as_dict()["audit"] == {"status": "committed", "error_code": None}
     other_repo.push()
     assert other_repo.ahead_behind().ahead == 0
     assert other_repo.ahead_behind().behind == 0

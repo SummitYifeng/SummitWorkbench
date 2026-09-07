@@ -15,6 +15,7 @@ assert.match(source, /\/api\/sync\/conflict\/recover/, 'conflict recovery remain
 assert.match(source, /\/api\/sync\/conflict\/export/, 'conflict package export remains wired');
 assert.match(source, /unknown-generated-view/, 'unknown generated views have a safe fallback label');
 assert.match(source, /preserve-both/, 'unknown generated views keep both copies');
+assert.match(source, /脱敏审计记录未完成/, 'audit failure remains visible after recovery commit');
 assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is explicit and write-free');
 assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
