@@ -6,7 +6,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.3` 候选 / P1-07D 收口：M0 / M1 / M2 与产品化 P0、P1-01 至 P1-06 已完成；最近已发布 `v0.4.3-rc.5`，其后已完成 packaged Git TLS 源码修复，但尚未生成包含该修复的新 RC，也未完成 Studio GitHub HTTPS preview/apply 与 Studio + Air 往返验收。P1-07D 仍为 `[~]`，不进入 P2-01B；M3 尚未开始。 |
+| 当前阶段 | `v0.4.3` 候选 / P1-07D 已完成：M0 / M1 / M2 与产品化 P0、P1-01 至 P1-06 已完成；候选包 build 23 已在 Mac Studio 与 MacBook Air 完成同包双机验收。下一步进入 P2-01B；M3 尚未开始。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -87,7 +87,9 @@
 
 已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；当前在 M3 前收口多设备与分发产品化：
 
-- **v0.4.3 候选 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。最近已发布/安装的是 `v0.4.3-rc.5`；packaged OpenSSL CA 路径导致的 `git_tls_failed` 已在其后完成源码修复并通过源码测试，但仍需生成新 RC、在 Studio 验证真实 GitHub preview/apply，再完成 Air 往返同步。稳定 `v0.4.3` 尚未发布，P2-01B 不得提前开始。
+- **v0.4.3 候选 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。候选包 build 23 已在 Mac Studio 与 MacBook Air 安装同一 DMG 并完成完整双机闭环，P1-07D 正式通过。稳定 `v0.4.3` 仍未发布；当前仅进入 P2-01B 的 thread activity 事件切片，不迁移 inbox、会议决策或项目正文。
+
+- **P2-01B（ADR 0042）**：仅针对已有 thread activity 事件切片接入 `shadow-read → dual-write`。保留旧 Markdown 结果为当前用户可见真源，新增事件投影对比、确定性差异诊断、一致性报告和可回退开关；覆盖乱序、重复事件、双设备离线写入、投影失败及新旧结果等价测试。全局 inbox、会议决策和项目正文暂不迁移。
 
 - **v0.4.1 · 写路径并发加固 + 撤销 + 停滞语义（ADR 0027，P0/P0'/P1）**：全库「读 → 变换 → 整文件原子重写」RMW 原语（审批页/inbox/档案追加/当日笔记与快照/线程日志产物/项目建档激活归档/清扫）整体放入工作区锁（与 publish_brief / sync 同一把 .wb.lock；锁只包文件临界区，绝不跨 LLM/网络调用）；裸写全量改原子写；审批 apply 收尾乐观合并（并发勾选/编辑不被整页重写吞掉）；幂等账本容错读（坏行隔离 .quarantine）；线程日志/产物序号分配同锁防静默覆盖。系统侧写回成功后自动 git 留痕（显式路径 + `wb:` 前缀，非 git 优雅降级），面板顶栏新增 **「↩ 撤销」**（最近 `wb:` 提交差异预览 → git revert 一键还原；只作用于 vault 文件，飞书侧副作用不可撤销，界面文案明示）。档案 frontmatter `updated` 收窄为实质更新，日志/产物只刷新 **`activity_at`**：首页「最近活跃」读 activity_at，「>14 天未更新」与周复盘停滞点名读 updated，不再被机器高频活动刷失明。质量门 **514 项全绿**（ruff + format + mypy strict + pytest），前端重新构建并重新装机。
 
@@ -103,4 +105,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-下一步先完成 P1-07D：从当前源码生成新 RC → Studio 真实 GitHub HTTPS preview/apply → Studio + Air 往返验收 → 同一 DMG 晋升稳定 `v0.4.3`。按当前产品化计划，随后才进入 P2-01B；M3（带上下文启动与收尾）仍保持未开始。变更记录见 `CHANGELOG.md`。
+下一步实施 P2-01B：仅把已有 thread activity 事件切片接入 `shadow-read → dual-write`，生成确定性投影对比与差异诊断报告，并保留可回退开关。inbox、会议决策和项目正文仍沿用现有路径，不在本工作包迁移；M3（带上下文启动与收尾）仍保持未开始。变更记录见 `CHANGELOG.md`。
