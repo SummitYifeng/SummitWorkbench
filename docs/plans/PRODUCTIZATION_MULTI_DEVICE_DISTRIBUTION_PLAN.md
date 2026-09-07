@@ -1131,10 +1131,11 @@ P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：�
 
 ### P2-02 · 同步冲突解释与恢复工作台 `[~]`
 
-第一阶段与恢复计划切片已完成：新增只读 `/api/sync/conflict/explain` 和
-`/api/sync/conflict/plan`，对 event、派生视图、Markdown 和二进制/未知格式给出稳定分类、
-安全阶段和禁止动作；不执行 fetch、merge、工作树替换或 force push。自动收集、派生视图
-重建、临时 worktree 实际验证和人工确认写回仍待后续阶段。
+第一阶段与恢复计划切片已完成：新增只读 `/api/sync/conflict/explain`、
+`/api/sync/conflict/plan` 和 `/api/sync/conflict/details`，对 event、派生视图、Markdown
+和二进制/未知格式给出稳定分类、安全阶段、禁止动作及双侧结构化差异元数据；不执行
+fetch、merge、工作树替换或 force push。自动收集、派生视图重建、临时 worktree 实际验证
+和人工确认写回仍待后续阶段。
 
 **目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
 

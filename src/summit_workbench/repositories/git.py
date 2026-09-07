@@ -16,6 +16,7 @@ from typing import Any
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
+    CommitMetadata,
     GitBackend,
     backend_kind,
 )
@@ -109,6 +110,9 @@ class GitRepo:
     def has_upstream(self) -> bool:
         return self._backend.has_upstream()
 
+    def upstream_revision(self) -> str:
+        return self._backend.upstream_revision()
+
     def is_dirty(self) -> bool:
         return self._backend.is_dirty()
 
@@ -159,6 +163,18 @@ class GitRepo:
 
     def files_changed_by(self, sha: str) -> list[str]:
         return self._backend.files_changed_by(sha)
+
+    def merge_base(self, left: str, right: str) -> str:
+        return self._backend.merge_base(left, right)
+
+    def files_changed_between(self, base: str, head: str) -> list[str]:
+        return self._backend.files_changed_between(base, head)
+
+    def commit_metadata(self, sha: str) -> CommitMetadata:
+        return self._backend.commit_metadata(sha)
+
+    def read_file_at(self, revision: str, path: str) -> bytes | None:
+        return self._backend.read_file_at(revision, path)
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
         """grep 提交主题的最近提交，返回 ``(sha, ISO 时间, 主题)``（供 wb 撤销历史）。"""

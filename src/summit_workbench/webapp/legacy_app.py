@@ -63,6 +63,7 @@ from summit_workbench.repositories.external_action_outbox import (
     latest_action,
     latest_actions,
 )
+from summit_workbench.repositories.git import GitError
 from summit_workbench.repositories.project_registry import (
     archive_project,
     create_project_note,
@@ -3127,6 +3128,41 @@ def create_app(
         raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
         plan = plan_conflict_recovery(_current_sync_snapshot().state, raw_paths)
         return {"ok": True, "recovery_plan": plan.as_dict()}
+
+    @app.get("/api/sync/conflict/details", response_model=None)
+    def api_sync_conflict_details(paths: str | None = None) -> dict[str, object]:
+        """Return safe structured details from already-fetched divergence refs."""
+        snapshot = _current_sync_snapshot()
+        if snapshot.state.value != "diverged-protected":
+            return {
+                "ok": True,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "当前 workspace 不在 diverged-protected 状态",
+            }
+        raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
+        from summit_workbench.workflows.sync_conflict_recovery import inspect_divergence
+
+        try:
+            details = inspect_divergence(
+                ctx.vault_dir,
+                backend_kind=ctx.git_backend_kind,
+                workspace_id=ctx.workspace_id,
+                paths=raw_paths or None,
+            )
+        except (ValueError, GitError):
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "分叉详情暂时无法读取，请保留当前保护态并导出诊断",
+            }
+        return {
+            "ok": True,
+            "available": True,
+            "state": snapshot.state.value,
+            "details": details.as_dict(),
+        }
 
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:

@@ -510,6 +510,18 @@
     "method": [
       "GET"
     ],
+    "path": "/api/sync/conflict/details",
+    "request_fields": [
+      "paths"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/sync/conflict/explain",
     "request_fields": [
       "paths"

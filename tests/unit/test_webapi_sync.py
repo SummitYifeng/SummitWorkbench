@@ -86,6 +86,18 @@ def test_conflict_recovery_plan_is_read_only_and_exposes_safe_stage(client) -> N
     assert "force-push" in plan["forbidden_actions"]
 
 
+def test_conflict_details_is_not_applicable_outside_divergence(client) -> None:
+    response = client.get("/api/sync/conflict/details")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "available": False,
+        "state": "unconfigured",
+        "reason": "当前 workspace 不在 diverged-protected 状态",
+    }
+
+
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200

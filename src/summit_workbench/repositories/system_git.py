@@ -13,6 +13,7 @@ from pathlib import Path
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
+    CommitMetadata,
     GitAuthError,
     GitConflictError,
     GitError,
@@ -146,6 +147,9 @@ class SystemGitBackend:
             self._run("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").returncode == 0
         )
 
+    def upstream_revision(self) -> str:
+        return self._must("rev-parse", "--verify", "@{u}")
+
     # ---- 工作树 / 暂存区 ----
 
     def is_dirty(self) -> bool:
@@ -258,6 +262,36 @@ class SystemGitBackend:
         if cp.returncode != 0:
             raise _classify("files_changed_by", f"git show {sha} 失败", cp.stderr)
         return sorted({line for line in cp.stdout.splitlines() if line.strip()})
+
+    def merge_base(self, left: str, right: str) -> str:
+        return self._must("merge-base", left, right)
+
+    def files_changed_between(self, base: str, head: str) -> list[str]:
+        cp = self._run("diff", "--name-only", base, head, "--")
+        if cp.returncode != 0:
+            raise _classify("files_changed_between", "读取提交间变更路径失败", cp.stderr)
+        return sorted({line for line in cp.stdout.splitlines() if line.strip()})
+
+    def commit_metadata(self, sha: str) -> CommitMetadata:
+        cp = self._run("show", "-s", "--format=%H%x09%aI%x09%s", sha, "--")
+        if cp.returncode != 0:
+            raise _classify("commit_metadata", "读取提交元数据失败", cp.stderr)
+        parts = cp.stdout.rstrip("\n").split("\t", 2)
+        if len(parts) != 3:
+            raise GitError("提交元数据格式无效")
+        return CommitMetadata(revision=parts[0], authored_at=parts[1], subject=parts[2])
+
+    def read_file_at(self, revision: str, path: str) -> bytes | None:
+        cp = subprocess.run(
+            ["git", "-C", str(self._path), "cat-file", "blob", f"{revision}:{path}"],
+            capture_output=True,
+            check=False,
+        )
+        if cp.returncode == 0:
+            return cp.stdout
+        if cp.returncode == 128:
+            return None
+        raise _classify("read_file_at", "读取提交文件失败", cp.stderr.decode("utf-8", "replace"))
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
         cp = self._run("log", f"--grep={pattern}", f"-n{limit}", "--pretty=%H%x09%aI%x09%s", "--")

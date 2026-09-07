@@ -31,6 +31,7 @@ from summit_workbench.config.tls_trust import ca_bundle_path as ca_bundle_path
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
+    CommitMetadata,
     GitAuthError,
     GitBackendRuntimeError,
     GitCertificateError,
@@ -320,6 +321,9 @@ class DulwichGitBackend:
             self._config_get(repo, (b"branch", branch), b"remote") is not None
             and self._config_get(repo, (b"branch", branch), b"merge") is not None
         )
+
+    def upstream_revision(self) -> str:
+        return self._upstream_sha(self._open()).decode("ascii")
 
     def _upstream_sha(self, repo: Repo) -> bytes:
         """@ {u} 语义：branch.<name>.remote + merge 对应的远端追踪 ref。"""
@@ -727,6 +731,42 @@ class DulwichGitBackend:
             path = change.new.path if change.new is not None else change.old.path
             names.add(path.decode("utf-8"))
         return sorted(names)
+
+    def merge_base(self, left: str, right: str) -> str:
+        from dulwich.graph import find_merge_base
+
+        repo = self._open()
+        bases = find_merge_base(
+            repo.object_store,
+            [self._resolve_sha(repo, left), self._resolve_sha(repo, right)],
+        )
+        if not bases:
+            raise GitError("两个提交没有共同祖先")
+        return sorted(base.decode("ascii") for base in bases)[0]
+
+    def files_changed_between(self, base: str, head: str) -> list[str]:
+        repo = self._open()
+        base_commit = self._commit(repo, base)
+        head_commit = self._commit(repo, head)
+        old = self._flatten(repo, base_commit.tree)
+        new = self._flatten(repo, head_commit.tree)
+        return sorted(path for path in set(old) | set(new) if old.get(path) != new.get(path))
+
+    def commit_metadata(self, sha: str) -> CommitMetadata:
+        commit = self._commit(self._open(), sha)
+        subject = commit.message.decode("utf-8", "replace").strip().splitlines()[0]
+        authored_at = datetime.datetime.fromtimestamp(commit.author_time, datetime.UTC).isoformat()
+        return CommitMetadata(
+            revision=commit.id.decode("ascii"), authored_at=authored_at, subject=subject
+        )
+
+    def read_file_at(self, revision: str, path: str) -> bytes | None:
+        repo = self._open()
+        commit = self._commit(repo, revision)
+        entry = self._flatten(repo, commit.tree).get(path)
+        if entry is None:
+            return None
+        return repo[entry[1]].data  # type: ignore[attr-defined]
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
         repo = self._open()
