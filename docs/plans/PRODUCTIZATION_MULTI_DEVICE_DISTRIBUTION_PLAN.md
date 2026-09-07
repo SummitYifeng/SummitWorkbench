@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-07
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01 至 P1-06 已完成；P1-07D 源码修复完成但仍为 `[~]`，等待包含 TLS 修复的新 RC 与 Studio + Air 真机闭环
+> 状态：可执行；P0-01 至 P0-13、P1-01 至 P1-06、**P1-07D** 已完成（Studio + Air 真机闭环，候选包 build 23）。下一步进入 P2-01B。
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -1057,7 +1057,7 @@ environment、OpenSSL 3 真实签名/验签、workflow actionlint 门、完整�
 环境传入。没有 feed 或公钥时，App 保持可用并给用户“更新源未配置”的反馈，不会回退到不
 验证的下载。真实 release secrets 与真机/双设备验收仍是外部验收项，不在仓库内伪造通过。
 
-#### P1-07D · 远端规范化与一次性双设备验收闭环 `[~]`
+#### P1-07D · 远端规范化与一次性双设备验收闭环 `[x]`
 
 P1-07D 在稳定 `v0.4.3` 之前收口。生产模式只接受 HTTPS remote；SSH/scp-style remote
 明确返回 `remote_scheme_unsupported`。设置中心的 SSH → HTTPS 转换先在临时 clone 验证
@@ -1071,6 +1071,14 @@ GitHub username/PAT、仓库身份、workspace marker、branch/upstream 和 fetc
 `v0.4.3-rc.N` 只进 draft/prerelease 渠道，不更新 latest；候选包与自动验收全绿后，由用户
 做唯一一次 Studio + Air 真机往返同步。稳定发布只能晋升相同 DMG，哈希必须不变，禁止重建。
 公开更新仓库只提供完整性，不提供保密性。
+
+> **P1-07D 验收结果（2026-09-07，已闭环）**：最终候选包 build 23（git `23b7455`，DMG
+> SHA-256 `7ea55042…5ffc89f9`）在 Mac Studio（automation-primary，device `51885d3d`）与
+> MacBook Air（secondary，device `8fd4294b`）安装同一 DMG。Studio 完成 remote preview/apply
+> 与 schema 迁移；两端 acceptance preflight 全 PASS（fetch PASS、ahead=0/behind=0）；验证
+> Studio→Air 与 Air 离线→Studio 双向同步、pending 归零、Air 自动化安全跳过、双端离线冲突
+> 进入 `diverged-protected`（不 force/reset/rebase/stash、不丢数据）。进入 P2-01B 的前置门
+> 已解除。
 
 ## 6. P2 工作包：降低跨设备冲突与可选团队服务
 

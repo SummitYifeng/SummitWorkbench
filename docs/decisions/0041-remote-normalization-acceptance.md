@@ -1,7 +1,7 @@
 # ADR 0041 · P1-07D 远端规范化与一次性双设备验收
 
-- 状态：进行中；最近已发布 `v0.4.3-rc.5`，其后的 packaged TLS 修复待进入新 RC，再做 Studio + Air 真机闭环
-- 日期：2026-09-06（2026-09-07 更新 TLS 阻塞处理）
+- 状态：已完成（2026-09-07 Studio + Air 真机闭环，候选包 build 23）
+- 日期：2026-09-06（2026-09-07 更新 TLS 阻塞处理与真机闭环）
 - 范围：P1-07D；不进入 P2-01B，不迁移 inbox、会议决策或项目正文
 
 ## 背景
@@ -37,28 +37,28 @@ PAT 只在请求生命周期内以 `SecretStr` 传递，绝不进入 URL、profi
 仓库。公开更新仓库只提供 DMG/feed 的完整性（Ed25519、大小和 SHA-256），不提供保密性；
 任何私有 workspace 内容都不得放入公开更新仓库。
 
-## 未决外部验收
+## 验收结果（2026-09-07 · 已闭环）
 
-`v0.4.3-rc.5` 的 tag `a6e1e12` 早于 TLS 修复提交，因此当前已安装的 rc.5 不能作为最终
-验收候选。需先从包含 `ba946b9..ee30db4` 的当前源码生成新 RC；用户再在 Studio 输入 GitHub
-username 与 workspace-scoped PAT，点击 preview/apply（如需可 rollback），随后在 Air 完成
-一次引导式往返同步。只有该验收成功后，才允许将完全相同的 RC DMG 晋升为稳定 `v0.4.3`。
+最终候选包 build 23（git `23b7455`，DMG SHA-256 `7ea55042…5ffc89f9`）在 Mac Studio
+（automation-primary，device `51885d3d`）与 MacBook Air（secondary，device `8fd4294b`）安装
+同一 DMG。Studio 完成 remote preview/apply 与 schema v1→v2 迁移；两端 acceptance preflight
+全 PASS（fetch PASS、ahead=0/behind=0、dirty=False）；验证 Studio→Air 与 Air 离线→Studio 双向
+同步、pending 归零、Air 自动化安全跳过、双端离线冲突进入 `diverged-protected`
+（不 force/reset/rebase/stash、不丢数据）。进入 P2-01B 的前置门已解除。
 
-## 2026-09-07 · packaged TLS 阻塞处理
+## 2026-09-07 · 收口期追加修复
 
-- 根因：PyInstaller server 使用的 Python/OpenSSL 编译期 `OPENSSLDIR` 指向未随 bundle 分发
-  且本机不存在的 python.org framework 证书目录；Dulwich/urllib3 默认加载不到可信根，因此
-  GitHub 证书校验失败。系统 Git 使用 macOS SecureTransport/Keychain，不受同一缺口影响。
-- 源码修复：`config/tls_trust.py` 统一选择 certifi → frozen `_MEIPASS` → OpenSSL 默认 CA；
-  server/worker 入口设置 `SSL_CERT_FILE`，Dulwich HTTPS transport 同时显式传入 CA bundle，
-  TLS 校验始终保持开启。错误分类仍严格区分 TLS、认证与网络不可达。
-- 离线/源码证据：TLS/凭据/打包契约相关 32 项测试通过；全库 778 passed、1 skipped，ruff、
-  format、mypy 通过；同一 HTTPS pool manager 对 GitHub 的真实 TLS 握手返回 200。
-- 打包证据补齐：实际构建的 PyInstaller server/worker 通过安全只读诊断分别报告 bundle CA
-  可定位、SSL context `CERT_REQUIRED`、Dulwich HTTPS pool 的 CA 文件存在且
-  `cert_reqs=CERT_REQUIRED`；不依赖 PAT、真实 remote、Keychain 或 vault。
-- 尚未验证：修复尚未进入任何已发布 tag/DMG，故不能据此宣称 packaged App 真机问题已闭环。
-  下一证据必须来自新 RC 的 Studio 真实 preview/apply；其后才执行 Air 往返同步。
+- 根因 1（ahead/behind 永不清零）：Dulwich `fetch()/push()` 传 URL 而非 remote 名，导致
+  `_import_remote_refs` 永不执行、`refs/remotes/origin/*` 停在旧值。改为传 remote 名，
+  push 成功后 ahead/behind 与 `pending_wb_commits` 归零，状态不再回退为 `local-ahead`。
+- 根因 2（packaged fetch 失败）：App 经 Finder 启动时无代理环境变量，dulwich 直连
+  `github.com` 被本网络阻断。无 env 代理时回退 macOS 系统代理（`scutil --proxy`），
+  TLS 校验保持 `CERT_REQUIRED` + bundled CA。
+- preflight 报告完整 build identity（version/build/frontend_build/git_revision），fetch 失败
+  输出稳定脱敏码（auth/tls/certificate/proxy/credentials-unavailable/network/backend）与
+  host/credential/CA/proxy 诊断，不含 PAT、URL 路径或本机路径。
+- Air「连接已有工作台」向导新增 PAT 输入与 `connect-remote` 预检流；secondary 的自动化与
+  手动简报/周报生成改为友好跳过（200 `ok=true`），不显示红色 ApiError，写入仍被角色门控。
 
 ## 操作顺序
 

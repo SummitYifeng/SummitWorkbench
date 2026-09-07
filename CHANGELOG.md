@@ -1,16 +1,31 @@
 ## [Unreleased] - 2026-09-07
 
-> 当前源码位于 `v0.4.3-rc.5` 之后；以下修复尚未进入可安装候选包，P1-07D 仍未完成。
+> P1-07D 已完成：Studio + Air 双设备真机验收闭环（同一候选包 build 23，SHA-256 见
+> `release-metadata.json`），进入 P2-01B 的前置门已解除。以下修复均已提交本地源码。
 
-- 修复 PyInstaller server/worker 使用的 OpenSSL 默认 CA 路径不存在时，Dulwich/urllib3 对
-  GitHub HTTPS 报 `git_tls_failed`：统一解析并分发 certifi CA bundle，在 HTTPS transport
-  显式传入 `http.sslCAInfo`，保持 `sslVerify=true` / `CERT_REQUIRED`，并在两个打包入口设置
-  默认 TLS 信任路径。
-- 保持远端错误分类边界：TLS、认证与网络不可达分别映射到独立错误，不把 TLS 失败误报为离线。
-- 清理过期一次性交接文档与未使用的 `worker_json()`；修复相应文档引用和测试解释器选择。
-- 源码质量门复核：全库 778 passed、1 skipped（仅缺少 `WB_PACKAGED_APP` 的打包集成项），
-  ruff、format、mypy（299 个文件）通过；真实 GitHub TLS 握手通过。仍需新 RC 的打包后
-  GitHub preview/apply 与 Studio + Air 真机验收。
+- 修复 DulwichGitBackend `fetch()`/`push()` 传 URL 而非 remote 名，导致
+  `refs/remotes/origin/*` 永不更新：push 成功后 `ahead/behind` 与 `pending_wb_commits`
+  不再永久停留在 1（`local-ahead` 假象），状态机不再在 ready / local-ahead 之间回退。
+- 修复打包 App 从 Finder/LaunchServices 启动时没有代理环境变量、dulwich 直连
+  `github.com` 被阻断的问题：无 env 代理时回退 macOS 系统代理（`scutil --proxy`），
+  TLS 校验保持 `CERT_REQUIRED` + bundled CA，绝不关闭校验。
+- acceptance preflight 报告完整 build identity（`version/build/frontend_build/git_revision`）；
+  fetch 失败输出稳定脱敏码（auth/tls/certificate/proxy/credentials-unavailable/network/
+  backend）与 host/credential/CA/proxy 诊断，不含 PAT、完整 URL 路径或本机路径。
+- 新增 `GitCertificateError` / `GitProxyError` / `GitCredentialsUnavailable` /
+  `GitBackendRuntimeError` 与 `classify_git_error()` 稳定错误码，区分证书、代理、凭据缺失、
+  后端运行时与网络不可达。
+- Air「连接已有工作台」向导新增 PAT 输入：clone 使用短生命周期 credential_resolver，
+  确认后才写入 workspace-scoped Keychain；新增 `connect-remote` 预检流，允许尚未存在的
+  clone 目标目录；confirm 回填 profile 的 `git_remote_url`。PAT 绝不进 draft、日志或 URL。
+- secondary 的自动化「立即运行」与手动简报/周报生成改为友好跳过提示（`200` + `ok=true`），
+  不再显示红色 `ApiError`；写入仍被 automation 角色门控跳过，绝不执行。
+- 同步发现不再把 onboarding 遗留的 `.summit-workbench-remote-*` staging 目录当 workspace
+  仓库同步。
+- 质量门：`790 passed, 1 skipped`；ruff check / ruff format / mypy 通过；build 23 打包集成与
+  TLS 诊断通过。Studio（automation-primary）与 Air（secondary）用同一 DMG 完成 remote
+  preview/apply、schema 迁移、preflight 全 PASS、Studio↔Air 双向同步、Air 离线写入恢复、
+  双端离线冲突进入 `diverged-protected`（不 force/reset/rebase/stash、不丢数据）。
 
 ## [0.4.3-rc.5] - 2026-09-06
 
