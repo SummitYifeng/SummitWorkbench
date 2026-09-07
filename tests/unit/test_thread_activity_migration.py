@@ -4,8 +4,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from summit_workbench.domain.thread_activity import ThreadActivityEvent, project_thread_activity
+from summit_workbench.repositories.autocommit import CommitStatus
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 from summit_workbench.repositories.thread_notes import append_work_log, save_thread_artifact
+from summit_workbench.workflows.local_mutation import LocalMutationOutcome, run_local_mutation
 from summit_workbench.workflows.thread_activity_migration import (
     THREAD_DOC_ACTIVITY_KIND,
     WORK_LOG_ACTIVITY_KIND,
@@ -170,3 +172,39 @@ def test_projection_failure_is_reported_without_exposing_paths(tmp_path: Path) -
     assert report.error_code == "thread_activity_projection_failed"
     assert report.diagnostic == "RuntimeError"
     assert str(vault) not in str(report.as_dict())
+
+
+def test_dual_write_event_is_in_the_same_git_commit_as_legacy_note(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    import subprocess
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", "-C", str(vault), *args], check=True, capture_output=True, text=True
+        ).stdout
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test")
+    (vault / "seed.md").write_text("seed", encoding="utf-8")
+    git("add", "--", "seed.md")
+    git("commit", "-q", "-m", "seed")
+    migration = _migration(vault)
+
+    def mutate(operation_id: str) -> LocalMutationOutcome[Path]:
+        path = append_work_log(
+            vault,
+            projects=["thread-a"],
+            text="legacy note",
+            now=datetime(2026, 1, 2, tzinfo=UTC),
+            activity_migration=migration,
+            causation_operation_id=operation_id,
+        )
+        return LocalMutationOutcome(path, (path, *migration.last_write_paths))
+
+    result = run_local_mutation(vault, "threads/logs", mutate)
+    assert result.commit_result.status is CommitStatus.COMMITTED
+    changed = git("show", "--format=", "--name-only", "HEAD").splitlines()
+    assert "logs/2026-01-02-001.md" in changed
+    assert any(path.startswith("_events/device-a/") for path in changed)

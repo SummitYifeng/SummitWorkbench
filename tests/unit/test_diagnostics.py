@@ -126,6 +126,7 @@ def test_diagnostic_bundle_is_a_single_sanitized_file(tmp_path: Path) -> None:
     assert snapshot["schema_version"] == 1
     assert snapshot["workspace"]["schema_state"] == "valid"  # type: ignore[index]
     assert snapshot["signature"] == {"mode": "internal-ad-hoc", "notarized": False}
+    assert snapshot["thread_activity_consistency"]["status"] == "disabled"  # type: ignore[index]
     assert CANARY not in payload
     assert MEETING_BODY not in payload
     assert "config_keys" in snapshot
