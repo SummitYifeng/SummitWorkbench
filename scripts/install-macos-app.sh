@@ -115,7 +115,12 @@ print(json.loads(open(sys.argv[1], encoding="utf-8").read())["port"])
 PY
     )"
   fi
-  if [[ "$PORT" =~ ^[0-9]+$ ]] && curl -fsS --max-time 1 "http://127.0.0.1:$PORT/api/version" >/dev/null 2>&1; then
+  # Production API routes require the App-owned session token, which is not
+  # available to this installer.  The runtime record binds this port to the
+  # launched workspace service; the native App separately verifies /api/version
+  # with its token before navigating.  Probe the public shell here only for
+  # HTTP readiness, rather than treating an expected 401 as a startup failure.
+  if [[ "$PORT" =~ ^[0-9]+$ ]] && curl -fsS --max-time 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
     # 安装成功即不再保留本轮备份（被替换的旧版），下次安装无需手动清理。
     rm -rf "$BACKUP_APP" || true
     echo "✓ 已安装并启动 $DEST_APP"
