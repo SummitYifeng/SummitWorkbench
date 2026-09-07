@@ -1678,9 +1678,6 @@ def create_app(
     def run_settings_automation(
         request: Request, payload: AutomationRunPayload
     ) -> dict[str, object] | JSONResponse:
-        blocked = _sync_blocked(request)
-        if blocked is not None:
-            return blocked
         from summit_workbench.workflows.automation_worker import run_automation_job
 
         if ctx.active_workspace is None:
@@ -1689,7 +1686,12 @@ def create_app(
                 detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
             )
         result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job))
-        return {"ok": result.status.value in {"success", "degraded", "skipped"}, **result.as_dict()}
+        # secondary/未启用的「跳过」是预期结果，不是错误：返回 ok=true 让前端以提示而非
+        # 报错呈现（P1-07D 要求 Air 自动化安全跳过，绝不运行定时 writer）。
+        return {
+            "ok": result.status.value in {"success", "degraded", "skipped", "not-primary"},
+            **result.as_dict(),
+        }
 
     @app.post("/api/settings/doctor", response_model=None)
     def settings_doctor(payload: DoctorPayload) -> dict[str, object]:

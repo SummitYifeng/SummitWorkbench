@@ -177,16 +177,19 @@ def test_automation_settings_api_roundtrips_and_validates_schedule(
     assert invalid.json()["code"] == "validation_error"
 
 
-def test_automation_manual_run_is_blocked_on_secondary(tmp_path: Path, monkeypatch) -> None:
+def test_automation_manual_run_is_skipped_on_secondary(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     profile = _profile(tmp_path, "secondary-automation")
     set_active_profile(profile.workspace_id, home=tmp_path)
     context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
     client = TestClient(create_app(WebContext.from_active_workspace(context)))
 
+    # secondary 的「立即运行」是预期跳过，不是错误：200 + ok=true + status=not-primary。
     response = client.post("/api/settings/automation/run", json={"job": "brief"})
-    assert response.status_code == 403
-    assert response.json()["code"] == "not_automation_primary"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["status"] == "not-primary"
 
 
 def test_provider_secret_is_scoped_and_never_written_to_profile(
