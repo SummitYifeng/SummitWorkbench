@@ -192,11 +192,20 @@ def _sync_single_repo(
     return SyncState.READY, None
 
 
+_REMOTE_STAGING_PREFIX = ".summit-workbench-remote-"
+
+
 def _discover(work_root: Path) -> list[Path]:
     if not work_root.is_dir():
         return []
     return sorted(
-        (p for p in work_root.iterdir() if p.is_dir() and (p / ".git").exists()),
+        (
+            p
+            for p in work_root.iterdir()
+            if p.is_dir()
+            and (p / ".git").exists()
+            and not p.name.startswith(_REMOTE_STAGING_PREFIX)
+        ),
         key=lambda p: p.name,
     )
 

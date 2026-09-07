@@ -289,3 +289,21 @@ def test_auth_required_distinct_from_offline(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(GitRepo, "push", auth_push)
     state, _ = push_after_commit(a_root)
     assert state is SyncState.AUTH_REQUIRED
+
+
+def test_discover_skips_remote_clone_staging(tmp_path) -> None:
+    """P1-07D：onboarding 的 remote clone staging 目录不作为 workspace 子仓库同步。"""
+    from summit_workbench.workflows.sync_coordinator import _discover
+
+    work = tmp_path / "work"
+    work.mkdir()
+    vault = work / "_vault"
+    vault.mkdir()
+    (vault / ".git").mkdir()
+    staging = work / ".summit-workbench-remote-bd5fjceu"
+    staging.mkdir()
+    (staging / ".git").mkdir()
+
+    discovered = _discover(work)
+    assert vault in discovered
+    assert staging not in discovered
