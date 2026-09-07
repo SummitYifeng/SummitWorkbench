@@ -48,3 +48,7 @@ API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push
 自动化质量门已通过。ADR 保持“待验收”状态，直到下一内部候选包在真实 Studio + Air 上构造
 event、Markdown 与未知/二进制分叉，恢复后确认两端可 fast-forward 到同一 HEAD；不得以临时
 目录或单机模拟替代该退出门。
+
+build 25 的候选包证据与一次性现场步骤见
+`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。在真实双机退出门通过前，P2-02
+仍保持 `[~]`，P2-03 不启动。

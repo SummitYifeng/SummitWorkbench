@@ -62,4 +62,5 @@ M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR
 thread activity 事件切片接入 `shadow-read → dual-write`，提供确定性投影对比、差异诊断、
 一致性报告和可回退开关；暂不迁移全局 inbox、会议决策或项目正文。P2-02 的实现与自动化
 质量门已收口，当前只差真实 Studio + Air 恢复退出验收；通过后进入 M3。P2-03 属于未授权的
-可选云服务，不默认实施。
+可选云服务，不默认实施。build 25 证据及现场 runbook 见
+`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。
