@@ -758,7 +758,7 @@ class DulwichGitBackend:
 
         repo = self._open()
         bases = find_merge_base(
-            repo.object_store,
+            repo,
             [self._resolve_sha(repo, left), self._resolve_sha(repo, right)],
         )
         if not bases:

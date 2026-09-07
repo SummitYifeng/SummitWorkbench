@@ -103,6 +103,35 @@ def test_remote_push_clone_fetch_ff(kind: str, tmp_path: Path) -> None:
     assert (tmp_path / "c" / "f.txt").read_text(encoding="utf-8") == "two"
 
 
+def test_dulwich_merge_base_reads_diverged_refs(tmp_path: Path) -> None:
+    """Production conflict details can resolve a common ancestor with Dulwich."""
+    from dulwich.repo import Repo
+
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    repo = DulwichGitBackend(tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / "base.txt").write_text("base", encoding="utf-8")
+    repo.add(["base.txt"])
+    repo.commit("wb: base", author=ID)
+    base = repo.head_revision()
+
+    (tmp_path / "repo" / "local.txt").write_text("local", encoding="utf-8")
+    repo.add(["local.txt"])
+    repo.commit("wb: local", author=ID)
+    local = repo.head_revision()
+
+    raw_repo = Repo(str(tmp_path / "repo"))
+    raw_repo.refs[b"refs/heads/other"] = base.encode("ascii")
+    raw_repo.refs[b"HEAD"] = b"ref: refs/heads/other"
+    (tmp_path / "repo" / "remote.txt").write_text("remote", encoding="utf-8")
+    repo.add(["remote.txt"])
+    repo.commit("wb: remote", author=ID)
+    remote = repo.head_revision()
+
+    assert repo.merge_base(local, remote) == base
+
+
 @pytest.mark.parametrize("kind", KINDS)
 def test_normal_merge_commit_preserves_both_parents_and_pushes_fast_forward(
     kind: str, tmp_path: Path
