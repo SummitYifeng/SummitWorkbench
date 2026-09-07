@@ -19,6 +19,7 @@ from summit_workbench.repositories.review_page import (
     render_review_page,
     review_path,
 )
+from summit_workbench.webapp import app_factory, legacy_app
 from summit_workbench.webapp.app import WebContext, create_app
 
 
@@ -50,6 +51,11 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
     ctx = WebContext(vault_dir=vault, work_root=tmp_path, timezone="Asia/Shanghai")
     # 显式指向不存在的 static 目录：这些测试验证 SSR 回退路径（构建产物存在时 / 是 SPA）
     return TestClient(create_app(ctx, static_dir=tmp_path / "no-static")), vault
+
+
+def test_web_context_compatibility_exports_share_class() -> None:
+    assert WebContext is app_factory.WebContext
+    assert WebContext is legacy_app.WebContext
 
 
 def test_home_renders_dashboard(tmp_path: Path, monkeypatch) -> None:

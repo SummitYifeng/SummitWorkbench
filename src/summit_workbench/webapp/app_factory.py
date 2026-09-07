@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from summit_workbench.webapp.legacy_app import WebContext
+from summit_workbench.webapp.context import WebContext
 from summit_workbench.webapp.legacy_app import create_app as _create_legacy_app
 
 AppContext = WebContext

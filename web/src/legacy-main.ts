@@ -21,6 +21,10 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
 import { briefCardHtml, type BriefData } from './brief-card';
+import { projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
+import type { ProjectState, ProjectView } from './features/projects';
+import { reviewHtml } from './features/review';
+import type { ExternalAction, ReviewEntry, ReviewGroup, ReviewPayload } from './features/review';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
@@ -55,27 +59,6 @@ interface StatusState {
   backlog: StatusBacklog;
   feishu_auth: StatusFeishu;
 }
-interface ProjectState {
-  name: string;
-  dirty: boolean;
-  ahead: number;
-  behind: number;
-  has_upstream: boolean;
-  inbox_pending: number;
-  next_step: string | null;
-  git_error: string | null;
-  /** ADR 0023：已建档（有效 project-main 档案）与否及其 status */
-  registered: boolean;
-  status: string | null;
-  /** 知识线程项目（无 Work 文件夹的 vault 档案）标记；仓库项目为 false/缺省 */
-  is_thread?: boolean;
-  /** 档案 frontmatter 的 updated（实质更新：建档/激活/归档/改名/状态确认，YYYY-MM-DD）。停滞点名读它。 */
-  updated?: string | null;
-  /** 档案 frontmatter 的 activity_at（活动痕迹：日志/产物入库等，可缺省；首页「最近活跃」展示用） */
-  activity_at?: string | null;
-  /** 显示名（frontmatter `title`，可选）：展示用，规范 ID/别名/文件夹不受影响 */
-  title?: string | null;
-}
 interface StatePayload {
   day: string;
   status: StatusState;
@@ -90,46 +73,6 @@ interface StatePayload {
     server_version: string;
     server_instance: string;
   };
-}
-interface ReviewEntry {
-  candidate_id: string;
-  kind: string;
-  description: string;
-  target_project: string | null;
-  route: string | null;
-  due_date: string | null;
-  start_at: string | null;
-  end_at: string | null;
-  evidence: string | null;
-  decision: string;
-  historical: boolean;
-  actionable: boolean;
-  ai_original: string;
-  meeting_date: string;
-  meeting_title: string;
-  note_link: string;
-  transcript_link: string;
-  apply_error: string | null;
-}
-interface ReviewGroup {
-  meeting_date: string;
-  meeting_title: string;
-  entries: ReviewEntry[];
-}
-interface ReviewPayload {
-  groups: ReviewGroup[];
-  errors: string[];
-}
-interface ExternalAction {
-  operation_id: string;
-  candidate_id: string;
-  kind: string;
-  state: string;
-  attempt: number;
-  timestamp: string;
-  remote_id: string | null;
-  error: string | null;
-  retry_allowed: boolean;
 }
 interface SyncStatusPayload {
   ok: boolean;
@@ -205,40 +148,6 @@ interface SyncConflictRecoveryPayload {
   push?: { ok: boolean; state: string; detail?: string | null } | null;
   reason?: string;
 }
-
-/** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
-interface ProjectView {
-  ok: boolean;
-  message?: string;
-  name: string;
-  title?: string;
-  status: string;
-  updated: string;
-  blocks: Record<string, string[]>;
-  followup_pending: number;
-  inbox_pending: number;
-  timeline: { date: string; kind: string; label: string; title: string; snippet: string }[];
-}
-
-const KIND_LABELS: Record<string, string> = {
-  decision: '决策',
-  'action-item': '行动项',
-  'project-status-change': '状态变化',
-  'task-create': '建任务',
-};
-const ROUTE_LABELS: Record<string, string> = {
-  'feishu-task': '飞书任务',
-  'feishu-meeting': '新建会议',
-  'project-main': '项目主笔记',
-  'project-followup': '跟进事项',
-  'project-inbox': '项目 inbox',
-  'global-inbox': '全局 inbox',
-};
-const DECISION_LABELS: Record<string, string> = {
-  pending: '待确认',
-  approved: '已批准',
-  rejected: '已拒绝',
-};
 
 let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
@@ -700,7 +609,7 @@ function renderToday(view: HTMLElement): void {
     '<section class="block">' +
     '<h3 class="section-title">导入会议纪要</h3>' + importZone +
     '</section>' +
-    projectsHtml() +
+    projectsHtml(state.projects, state.day) +
     '<section class="block">' +
     '<div class="section-head"><h3 class="section-title">今日简报</h3>' +
     '<button class="ghost" data-action="run-brief" title="重新生成今日简报（约 30 秒）">↻ 重新生成</button></div>' + briefHtml +
@@ -940,8 +849,8 @@ function renderAskChat(): void {
     .filter((p) => p.registered)
     .map((p) =>
       '<option value="' + esc(p.name) + '"' + (askScope === p.name ? ' selected' : '') + '>' +
-      esc(dispName(p)) + (p.is_thread ? '（线程）' : '') +
-      (dispName(p) !== p.name ? ' · ' + esc(p.name) : '') + '</option>'
+      esc(projectDisplayName(p)) + (p.is_thread ? '（线程）' : '') +
+      (projectDisplayName(p) !== p.name ? ' · ' + esc(p.name) : '') + '</option>'
     )
     .join('');
   main.innerHTML =
@@ -1068,236 +977,28 @@ function renderReview(view: HTMLElement): void {
     view.innerHTML = '<div class="loading">加载审批页…</div>';
     return;
   }
-  const pending = state?.status.pending_review ?? 0;
-  const errorsHtml = review.errors.length
-    ? '<div class="msg err">审批页解析错误：<br>' + review.errors.map(esc).join('<br>') + '</div>'
-    : '';
-  const groupsHtml = review.groups.length
-    ? review.groups.map((g, gi) => {
-        const cards = g.entries.map(entryCard).join('');
-        const groupPending = g.entries.filter((e) => e.decision === 'pending').length;
-        return '<div class="meeting-head">' +
-          '<span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
-          '<span class="meeting-title">' + esc(g.meeting_title) + '</span>' +
-          '<span class="group-actions">' +
-          '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + gi + '"' +
-          (groupPending === 0 ? ' disabled' : '') + '>✓ 全批(' + groupPending + ')</button>' +
-          '<button class="ghost" data-action="group-decide" data-decision="rejected" data-group="' + gi + '"' +
-          (groupPending === 0 ? ' disabled' : '') + '>✗ 全拒</button>' +
-          '</span></div>' + cards;
-      }).join('')
-    : '<div class="empty"><p>暂无待确认候选。</p>' +
-      '<p class="hint">导入会议逐字稿后，提取结果会出现在这里。</p></div>';
-  const approvedPending = review.groups.reduce(
-    (n, g) => n + g.entries.filter((e) => e.decision === 'approved' && !e.apply_error).length,
-    0,
-  );
-  const applyNudge = approvedPending > 0
-    ? '<p class="apply-nudge">' + approvedPending + ' 条已批准、尚未写回 —— 点「应用（写回）」后才会真正写入项目/创建飞书任务</p>'
-    : '';
-  const projectOptions = state && state.projects.length
-    ? '<datalist id="wb-project-options">' +
-      state.projects.map((p) => '<option value="' + esc(p.name) + '">' + esc(dispName(p)) + '</option>').join('') +
-      '</datalist>'
-    : '';
-  const externalHtml = renderExternalActions();
-  view.innerHTML =
-    '<div class="review-toolbar">' +
-    '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
-    '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
-    '<div class="form-row">' +
-    '<button class="ghost" data-action="reject-expired" title="把截止日期早于今天的待确认条目批量置为拒绝">一键拒绝过期项</button>' +
-    '<button class="ghost" data-action="plan">预演应用</button>' +
-    '<button class="primary" data-action="apply">应用（写回）</button>' +
-    '</div></div>' +
-    errorsHtml +
-    externalHtml +
-    '<div id="review-groups">' + groupsHtml + '</div>' +
-    projectOptions +
-    '<div id="plan-result"></div>';
-}
-
-function renderExternalActions(): string {
-  if (!externalActions.length) return '';
-  const labels: Record<string, string> = {
-    prepared: '已准备', sending: '发送中', succeeded: '已创建', failed: '创建失败',
-    unknown: '结果未知', 'reconciled-succeeded': '已核对创建', 'reconciled-not-found': '已核对未找到',
-  };
-  const rows = externalActions.map((a) => {
-    const label = labels[a.state] ?? a.state;
-    let controls = '';
-    if (a.state === 'unknown') {
-      controls = '<button class="ghost" data-action="external-recheck" data-operation="' + esc(a.operation_id) + '">重新核对</button>' +
-        '<button class="ghost" data-action="external-confirm-created" data-operation="' + esc(a.operation_id) + '">确认已创建</button>' +
-        '<button class="ghost" data-action="external-confirm-not-found" data-operation="' + esc(a.operation_id) + '">确认未创建</button>';
-    } else if (a.state === 'reconciled-not-found') {
-      controls = '<button class="ghost" data-action="external-retry" data-operation="' + esc(a.operation_id) + '">确认后重试</button>';
-    }
-    const detail = a.error ? ' · ' + esc(a.error) : (a.remote_id ? ' · ' + esc(a.remote_id) : '');
-    return '<div class="external-action-row"><span><strong>' + esc(label) + '</strong> · ' + esc(a.candidate_id) + detail + '</span><span class="row">' + controls + '</span></div>';
-  }).join('');
-  return '<section class="external-actions"><h4>外部写回状态</h4>' + rows + '<p class="hint">结果未知时不会自动再次创建；请先核对，只有确认未创建后才能再次重试。</p></section>';
-}
-
-/** 'YYYY-MM-DD' 差值（天）；任一非法返回 -1。 */
-function dayDiff(later: string | null | undefined, earlier: string | null | undefined): number {
-  if (!later || !earlier) return -1;
-  const a = Date.parse(later + 'T00:00:00Z');
-  const b = Date.parse(earlier + 'T00:00:00Z');
-  if (Number.isNaN(a) || Number.isNaN(b)) return -1;
-  return Math.round((a - b) / 86400000);
-}
-
-/** 项目展示名：优先 frontmatter `title`（显示名），否则用规范 ID。 */
-function dispName(p: ProjectState): string {
-  return (p.title && p.title.trim()) || p.name;
-}
-
-function projectChips(p: ProjectState): string[] {
-  const chips: string[] = [];
-  if (p.is_thread) {
-    chips.push('知识线程');
-    // P1 语义拆分：展示「最近活跃」用 activity_at（日志/产物等机器活动痕迹）；
-    // 「>14 天未更新」停滞提示仍读 updated（实质更新），避免被高频机器活动刷失明。
-    const recent = p.activity_at || p.updated;
-    if (recent) chips.push('最近活跃 ' + recent);
-    if (p.updated) {
-      const stale = dayDiff(state?.day, p.updated);
-      if (p.status === 'active' && stale > 14) chips.push('⚠ ' + stale + ' 天未更新');
-    }
-    return chips;
-  }
-  if (p.dirty) chips.push('未提交改动');
-  if (p.behind > 0) chips.push('落后 ' + p.behind + ' 提交');
-  if (p.ahead > 0) chips.push('领先 ' + p.ahead + ' 提交');
-  if (p.inbox_pending > 0) chips.push(p.inbox_pending + ' 条 inbox');
-  if (p.git_error) chips.push('git 异常');
-  return chips;
-}
-
-function projectCard(p: ProjectState): string {
-  const chips = projectChips(p);
-  const chipsHtml = chips.length
-    ? '<div class="chips">' + chips.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>'
-    : '<span class="chip ok-chip">正常</span>';
-  const step = p.next_step
-    ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + esc(p.next_step) + '</span></div>'
-    : '<div class="project-step muted-step"><span class="step-label">下一步</span><span class="step-text">主笔记还没写下一步</span></div>';
-  const quick = p.registered
-    ? '<button class="ghost card-quick" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
-      '<button class="ghost card-quick" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
-    : '';
-  return (
-    '<div class="card project' + (p.dirty || p.behind > 0 || p.inbox_pending > 0 ? ' attention' : '') + '">' +
-    '<div class="card-head"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(dispName(p)) + '</button>' + chipsHtml + '</div>' +
-    step +
-    '<div class="card-foot">' + quick +
-    '<button class="ghost card-archive" data-action="project-archive" data-name="' + esc(p.name) + '" data-confirm="1">归档</button>' +
-    '</div>' +
-    '</div>'
+  view.innerHTML = reviewHtml(
+    review,
+    state?.status.pending_review ?? 0,
+    state?.day ?? '',
+    state?.projects ?? [],
+    externalActions,
   );
 }
 
-// ---------- 项目推进（ADR 0023：工作台精选） ----------
-
-/** 是否在工作台上：已建档且 status = active（首页推进卡只显示这些）。 */
-function isOnHome(p: ProjectState): boolean {
-  return p.registered && p.status === 'active';
-}
-
-/** 是否新文件夹：还没建立 project-main 档案。 */
-function isNewProject(p: ProjectState): boolean {
-  return !p.registered;
-}
-
-function projectStatusBadge(p: ProjectState): string {
-  if (!p.registered) return '<span class="badge is-new">新</span>';
-  if (p.status === 'active') return '<span class="badge is-home">在工作台</span>';
-  if (p.status === 'archived') return '<span class="badge is-archived">已归档</span>';
-  return '<span class="badge is-archived">' + esc(p.status ?? '未知') + '</span>';
-}
-
-function projectsHtml(): string {
-  if (!state) return '';
-  const onHome = state.projects.filter(isOnHome);
-  const fresh = state.projects.filter(isNewProject);
-  if (onHome.length === 0 && fresh.length === 0) return '';
-  const banner = fresh.length
-    ? '<div class="new-projects"><div class="new-projects-head">' +
-      '<strong>新文件夹</strong>' +
-      '<span class="hint">尚未建立项目档案 · 加入工作台后才会出现在上方推进卡</span></div>' +
-      fresh.map((p) =>
-        '<div class="new-project-row"><span class="project-name">' + esc(p.name) + '</span>' +
-        '<span class="row-actions">' +
-        '<button class="ok" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>' +
-        '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>' +
-        '</span></div>'
-      ).join('') +
-      '</div>'
-    : '';
-  const emptyNote = onHome.length === 0
-    ? '<div class="empty"><p>工作台上还没有项目——加入上方新文件夹，或在「项目」页管理。</p></div>'
-    : '';
-  return (
-    '<section class="block">' +
-    '<div class="section-head"><h3 class="section-title">项目推进</h3>' +
-    '<button class="ghost" data-action="goto-projects">管理全部 →</button></div>' +
-    banner +
-    onHome.map(projectCard).join('') +
-    emptyNote +
-    '</section>'
-  );
-}
-
-function projectRow(p: ProjectState): string {
-  const chips = projectChips(p);
-  const chipsHtml = chips.length
-    ? '<div class="chips">' + chips.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>'
-    : '';
-  const step = p.next_step
-    ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + esc(p.next_step) + '</span></div>'
-    : '';
-  const action = isOnHome(p)
-    ? '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>'
-    : '<button class="ghost" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>';
-  const quick = p.registered
-    ? '<button class="ghost" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
-      '<button class="ghost" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
-    : '';
-  return (
-    '<div class="card project-row">' +
-    '<div class="project-row-main">' +
-    '<div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(dispName(p)) + '</button>' + projectStatusBadge(p) + '</div>' +
-    chipsHtml +
-    step +
-    '</div>' +
-    '<div class="project-row-actions">' + quick + action + '</div>' +
-    '</div>'
-  );
-}
-
-function projectsListHtml(query: string): string {
-  if (!state) return '<div class="loading">加载中…</div>';
-  const q = query.trim().toLowerCase();
-  const matched = state.projects.filter((p) => !q || p.name.toLowerCase().includes(q));
-  if (matched.length === 0) {
-    return '<div class="empty"><p>' + (q ? '没有匹配「' + esc(q) + '」的项目' : '暂无项目文件夹') + '</p></div>';
-  }
-  const rank = (p: ProjectState): number => (isOnHome(p) ? 0 : isNewProject(p) ? 1 : 2);
-  const sorted = [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-  return sorted.map(projectRow).join('');
-}
 
 function renderProjects(view: HTMLElement): void {
   if (!state) {
     view.innerHTML = '<div class="loading">加载中…</div>';
     return;
   }
+  const projects = state.projects;
+  const today = state.day;
   const query = (view.querySelector<HTMLInputElement>('#project-search'))?.value ?? '';
-  const total = state.projects.length;
-  const onHome = state.projects.filter(isOnHome).length;
-  const fresh = state.projects.filter(isNewProject).length;
-  const archived = state.projects.filter((p) => p.status === 'archived').length;
+  const total = projects.length;
+  const onHome = projects.filter((p) => p.registered && p.status === 'active').length;
+  const fresh = projects.filter((p) => !p.registered).length;
+  const archived = projects.filter((p) => p.status === 'archived').length;
   view.innerHTML =
     '<div class="section-head"><h3 class="section-title">全部项目</h3>' +
     '<span class="hint">共 ' + total + ' · 在工作台 ' + onHome + ' · 新 ' + fresh + ' · 已归档 ' + archived + '</span></div>' +
@@ -1313,11 +1014,11 @@ function renderProjects(view: HTMLElement): void {
     '</div>' +
     '<div id="projects-list"></div>';
   const listEl = document.getElementById('projects-list') as HTMLElement;
-  listEl.innerHTML = projectsListHtml(query);
+  listEl.innerHTML = projectsListHtml(query, projects, today, true);
   const search = view.querySelector<HTMLInputElement>('#project-search');
   search?.addEventListener('input', () => {
     const el = document.getElementById('projects-list');
-    if (el) el.innerHTML = projectsListHtml(search.value);
+    if (el) el.innerHTML = projectsListHtml(search.value, projects, today, true);
   });
 }
 
@@ -1726,70 +1427,6 @@ async function runSettingsDoctor(online = false): Promise<void> {
   toast(failed ? label + '发现 ' + failed + ' 项问题' : label + '完成', failed ? 'err' : 'ok');
 }
 
-function entryCard(e: ReviewEntry): string {
-  const decision = DECISION_LABELS[e.decision] ?? e.decision;
-  const kind = KIND_LABELS[e.kind] ?? e.kind;
-  const today = state?.day ?? '';
-  const expired = e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today;
-  const meta = [
-    e.target_project ? '目标：' + esc(e.target_project) : '目标：unresolved',
-    e.route ? '落点：' + (ROUTE_LABELS[e.route] ?? e.route) : '落点：未定',
-    e.due_date ? '截止：' + esc(e.due_date) + (expired ? '（已过期）' : '') : '',
-    e.start_at
-      ? '会议时间：' + esc(e.start_at.replace('T', ' ')) + (e.end_at ? ' ~ ' + esc(e.end_at.replace('T', ' ')) : '')
-      : '',
-    e.evidence ? '依据：' + esc(e.evidence) : '',
-    e.historical ? '历史补导' : '',
-  ].filter(Boolean).join(' · ');
-  const warn = e.actionable ? '' : '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>';
-  const err = e.apply_error ? '<div class="not-actionable">应用出错：' + esc(e.apply_error) + '</div>' : '';
-  const note = e.note_link ? '<span class="wikilink">' + esc(e.note_link) + '</span>' : '';
-  const routeLabel = e.route ? (ROUTE_LABELS[e.route] ?? e.route) : '';
-  const approveLabel = routeLabel ? '✓ 批准 → ' + esc(routeLabel) : '✓ 批准（先在「修改」里选落点）';
-  const approveDisabled = e.route ? '' : ' disabled title="落点未定，请点「修改」设置后再批准"';
-  return (
-    '<div class="card entry ' + e.decision + '" data-id="' + esc(e.candidate_id) + '">' +
-    '<div class="entry-top"><span class="kind">' + esc(kind) + '</span>' +
-    '<span class="badge ' + e.decision + '">' + esc(decision) + '</span></div>' +
-    '<p class="desc">' + esc(e.description) + '</p>' +
-    warn + err +
-    '<div class="meta">' + meta + '</div>' +
-    '<div class="meta">来源：' + note + '</div>' +
-    '<div class="row">' +
-    '<button class="ok" data-action="decide" data-decision="approved"' + approveDisabled + '>' + approveLabel + '</button>' +
-    '<button class="bad" data-action="decide" data-decision="rejected">✗ 拒绝</button>' +
-    (e.decision === 'pending' ? '' : '<button class="ghost" data-action="decide" data-decision="pending">↺ 改回待确认</button>') +
-    '<button class="ghost" data-action="toggle-edit">修改</button>' +
-    '</div>' +
-    '<div class="edit-box" hidden>' +
-    '<form class="edit-form">' +
-    '<input type="hidden" name="candidate_id" value="' + esc(e.candidate_id) + '">' +
-    '<label>正文</label><textarea name="description" rows="2">' + esc(e.description) + '</textarea>' +
-    '<div class="grid2">' +
-    '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="项目 ID 或别名（如 finance-ops）；留空=全局 inbox" value="' + esc(e.target_project ?? '') + '"></div>' +
-    '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
-    '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
-    '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
-    '<div><label>结束时间（新建会议）</label><input name="end_at" type="datetime-local" value="' + esc(e.end_at ?? '') + '"></div>' +
-    '</div>' +
-    '<div class="row">' +
-    (e.decision === 'pending'
-      ? '<button class="primary" type="submit" data-action="save-approve" title="保存修改并标记批准（仍需点「应用（写回）」才真正写回）">保存并批准</button>'
-      : '') +
-    '<button class="ghost" type="submit">仅保存</button>' +
-    '</div>' +
-    '</form></div>' +
-    '</div>'
-  );
-}
-
-function routeOptions(current: string | null): string {
-  const keys = ['', 'feishu-task', 'feishu-meeting', 'project-main', 'project-followup', 'project-inbox', 'global-inbox'];
-  return keys.map((k) => {
-    const label = k === '' ? '（未定）' : ROUTE_LABELS[k] ?? k;
-    return '<option value="' + k + '"' + (k === current ? ' selected' : '') + '>' + label + '</option>';
-  }).join('');
-}
 
 async function reconcileExternalAction(operationId: string, decision: string, remoteId?: string): Promise<void> {
   try {
@@ -2209,8 +1846,8 @@ function openLogModal(defaultProject: string): void {
   const boxes = registered
     .map((p) =>
       '<label class="log-proj"><input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
-      (p.name === defaultProject ? ' checked' : '') + '>' + esc(dispName(p)) +
-      (dispName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
+      (p.name === defaultProject ? ' checked' : '') + '>' + esc(projectDisplayName(p)) +
+      (projectDisplayName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
       (p.is_thread ? ' <span class="hint">(线程)</span>' : '') + '</label>'
     )
     .join('');
@@ -2263,7 +1900,7 @@ function openArtifactModal(defaultProject: string): void {
   const options = registered
     .map((p) =>
       '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') + '>' +
-      esc(dispName(p)) + (dispName(p) !== p.name ? '（' + esc(p.name) + '）' : '') + '</option>'
+      esc(projectDisplayName(p)) + (projectDisplayName(p) !== p.name ? '（' + esc(p.name) + '）' : '') + '</option>'
     )
     .join('');
   openModal(

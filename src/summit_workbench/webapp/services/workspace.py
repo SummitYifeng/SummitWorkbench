@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from summit_workbench.domain.workspace import Compatibility
 from summit_workbench.repositories.git import GitRepo
+from summit_workbench.webapp.context import WebContext
 from summit_workbench.workflows import workspace_migration
+from summit_workbench.workflows.workspace_migration import MigrationResult
 
 
-def migrate_workspace(context: Any, confirmed_device_id: str) -> Any:
+def migrate_workspace(context: WebContext, confirmed_device_id: str) -> MigrationResult:
     """在已注入的 active workspace 上执行 schema migration workflow。"""
     active = context.active_workspace
     if active is None or active.profile is None or active.device_id is None:
@@ -31,7 +31,7 @@ def migrate_workspace(context: Any, confirmed_device_id: str) -> Any:
     )
 
 
-def migration_result_payload(result: Any) -> dict[str, object]:
+def migration_result_payload(result: MigrationResult) -> dict[str, object]:
     """Encode the stable migration response without exposing domain objects."""
     return {
         "ok": True,
