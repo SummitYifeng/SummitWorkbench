@@ -601,10 +601,17 @@ def prepare_manual_recovery(
                 target = staging / item.path
                 candidate_paths.add(item.path)
             else:
-                target = staging / f"{item.path}.remote"
-                if target.exists():
-                    raise ValueError("preserve_both_path_collision")
-                candidate_paths.add(f"{item.path}.remote")
+                # A remote-only item has no local bytes to preserve. Keep its
+                # original path instead of manufacturing a misleading
+                # ``.remote`` sibling (or ``.remote.remote`` on a later pass).
+                if "local" not in item.changed_on:
+                    target = staging / item.path
+                    candidate_paths.add(item.path)
+                else:
+                    target = staging / f"{item.path}.remote"
+                    if target.exists():
+                        raise ValueError("preserve_both_path_collision")
+                    candidate_paths.add(f"{item.path}.remote")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(remote_data)
 

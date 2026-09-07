@@ -235,10 +235,10 @@ def test_unknown_generated_view_requires_preserve_both_fallback(tmp_path: Path) 
         selections={unknown_view.path: SelectionChoice.PRESERVE_BOTH},
     ) as prepared:
         assert prepared.status == "validated"
-        assert prepared.candidate_paths == ("_views/thread.json.remote",)
+        assert prepared.candidate_paths == ("_views/thread.json",)
         assert prepared.staging_dir is not None
-        assert not (prepared.staging_dir / "_views/thread.json").exists()
-        assert (prepared.staging_dir / "_views/thread.json.remote").read_text() == "{}\n"
+        assert (prepared.staging_dir / "_views/thread.json").read_text() == "{}\n"
+        assert not (prepared.staging_dir / "_views/thread.json.remote").exists()
         applied = apply_prepared_recovery(
             other,
             prepared,
@@ -249,10 +249,11 @@ def test_unknown_generated_view_requires_preserve_both_fallback(tmp_path: Path) 
         assert applied.status == "committed"
         assert applied.revision is not None
         assert other_repo.commit_parent_count(applied.revision) == 2
-        assert (other / "_views/thread.json.remote").read_text() == "{}\n"
+        assert (other / "_views/thread.json").read_text() == "{}\n"
+        assert not (other / "_views/thread.json.remote").exists()
         audit = json.loads((other / RECOVERY_AUDIT_PATH).read_text().splitlines()[-1])
         assert audit["merge_revision"] == applied.revision
-        assert audit["applied_paths"] == ["_views/thread.json.remote"]
+        assert audit["applied_paths"] == ["_views/thread.json"]
     other_repo.push()
     assert other_repo.ahead_behind().ahead == 0
     assert other_repo.ahead_behind().behind == 0
@@ -507,3 +508,34 @@ def test_prepare_manual_recovery_preserves_remote_copy_deterministically(tmp_pat
         assert prepared.staging_dir is not None
         assert (prepared.staging_dir / "attachment.bin").read_text() == "local\n"
         assert (prepared.staging_dir / "attachment.bin.remote").read_text() == "remote\n"
+
+
+def test_remote_only_preserve_both_keeps_original_path(tmp_path: Path) -> None:
+    """A one-sided remote artifact must not grow a ``.remote.remote`` sibling."""
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "attachment.bin", "remote\n", "wb: remote binary")
+    repo.push()
+    other_repo.fetch()
+
+    details = inspect_divergence(other)
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={"attachment.bin": SelectionChoice.PRESERVE_BOTH},
+    ) as prepared:
+        assert prepared.ready is True
+        assert prepared.staging_dir is not None
+        assert (prepared.staging_dir / "attachment.bin").read_text() == "remote\n"
+        assert not (prepared.staging_dir / "attachment.bin.remote").exists()
+        assert prepared.candidate_paths == ("attachment.bin",)
