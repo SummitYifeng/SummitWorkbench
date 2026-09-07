@@ -315,18 +315,117 @@ def test_ca_bundle_path_frozen_fallback(monkeypatch, tmp_path) -> None:
 
 
 def test_classify_remote_boundary_tls_auth_unavailable() -> None:
-    """P1-07D：TLS 失败→GitTlsError，认证失败→GitAuthError，网络失败→GitRemoteUnavailable。"""
+    """证书/TLS 握手/认证/网络各自归类到 typed error。"""
     from summit_workbench.repositories import dulwich_git
     from summit_workbench.repositories.git_backend import (
         GitAuthError,
+        GitCertificateError,
         GitRemoteUnavailable,
         GitTlsError,
     )
 
-    tls = RuntimeError("certificate verify failed: unable to get local issuer certificate")
+    cert = RuntimeError("certificate verify failed: unable to get local issuer certificate")
+    tls_handshake = RuntimeError("[SSL: TLSV1_ALERT_PROTOCOL_VERSION] tlsv1 alert protocol version")
     auth = RuntimeError("No valid credentials provided (401)")
     network = OSError("Connection refused")
 
-    assert isinstance(dulwich_git._classify_remote(tls, "m"), GitTlsError)
+    assert isinstance(dulwich_git._classify_remote(cert, "m"), GitCertificateError)
+    assert isinstance(dulwich_git._classify_remote(tls_handshake, "m"), GitTlsError)
     assert isinstance(dulwich_git._classify_remote(auth, "m"), GitAuthError)
     assert isinstance(dulwich_git._classify_remote(network, "m"), GitRemoteUnavailable)
+
+
+def test_classify_remote_proxy_credentials_runtime() -> None:
+    """P1-07D：代理→GitProxyError，凭据缺失→GitCredentialsUnavailable，未知异常→GitBackendRuntimeError。"""
+    from summit_workbench.repositories import dulwich_git
+    from summit_workbench.repositories.git_backend import (
+        GitBackendRuntimeError,
+        GitProxyError,
+    )
+
+    proxy = RuntimeError("Cannot connect to proxy. Tunnel connection failed: 407")
+    unknown = RuntimeError("something totally unexpected happened")
+    assert isinstance(dulwich_git._classify_remote(proxy, "m"), GitProxyError)
+    assert isinstance(dulwich_git._classify_remote(unknown, "m"), GitBackendRuntimeError)
+
+
+def test_classify_git_error_stable_codes() -> None:
+    """classify_git_error 返回稳定脱敏码（auth/tls/cert/proxy/credential/network/runtime）。"""
+    from summit_workbench.repositories.git_backend import (
+        GitAuthError,
+        GitCertificateError,
+        GitCredentialsUnavailable,
+        GitProxyError,
+        GitRemoteUnavailable,
+        GitTlsError,
+        classify_git_error,
+    )
+
+    assert classify_git_error(GitAuthError("x")) == "git_auth_failed"
+    assert classify_git_error(GitTlsError("x")) == "git_tls_failed"
+    assert classify_git_error(GitCertificateError("x")) == "git_certificate_failed"
+    assert classify_git_error(GitProxyError("x")) == "git_proxy_failed"
+    assert classify_git_error(GitCredentialsUnavailable("x")) == "git_credentials_unavailable"
+    assert classify_git_error(GitRemoteUnavailable("x")) == "git_remote_unavailable"
+    assert classify_git_error(RuntimeError("x")) == "git_backend_runtime_error"
+
+
+def test_push_updates_remote_tracking_ref_and_clears_ahead_behind(tmp_path: Path) -> None:
+    """P1-07D：push 成功后 refs/remotes/origin/<branch> 必须同步到本地 head，
+    否则 ahead/behind 与 pending_wb_commits 永不归零（local-ahead 假象）。"""
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+    from summit_workbench.repositories.git_backend import AheadBehind
+
+    bare = tmp_path / "remote.git"
+    DulwichGitBackend(bare).init(bare=True)
+    seed = DulwichGitBackend(tmp_path / "seed")
+    seed.init()
+    (tmp_path / "seed" / "f.txt").write_text("zero", encoding="utf-8")
+    seed.add(["f.txt"])
+    seed.commit("wb: zero", author=ID)
+    seed.add_remote("origin", str(bare))
+    seed.push()
+
+    # clone 会配置 branch.<name>.remote/merge 并建立 refs/remotes/origin/*（真实 vault 亦然）
+    repo = DulwichGitBackend(tmp_path / "repo")
+    repo.clone(str(bare), tmp_path / "repo")
+    assert repo.has_upstream()
+    assert repo.ahead_behind() == AheadBehind(ahead=0, behind=0)
+
+    (tmp_path / "repo" / "f.txt").write_text("one", encoding="utf-8")
+    repo.add(["f.txt"])
+    repo.commit("wb: one", author=ID)
+    assert repo.ahead_behind() == AheadBehind(ahead=1, behind=0)
+    assert repo.pending_wb_commits() == 1
+
+    repo.push()
+    assert repo.ahead_behind() == AheadBehind(ahead=0, behind=0)
+    assert repo.pending_wb_commits() == 0
+
+
+def test_fetch_updates_remote_tracking_ref_for_named_remote(tmp_path: Path) -> None:
+    """P1-07D：fetch 传 remote 名称后必须更新 refs/remotes/origin/*（HTTPS 路径同此语义）。"""
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    bare = tmp_path / "remote.git"
+    DulwichGitBackend(bare).init(bare=True)
+    writer = DulwichGitBackend(tmp_path / "writer")
+    writer.init()
+    (tmp_path / "writer" / "f.txt").write_text("one", encoding="utf-8")
+    writer.add(["f.txt"])
+    writer.commit("wb: one", author=ID)
+    writer.add_remote("origin", str(bare))
+    writer.push()
+
+    reader = DulwichGitBackend(tmp_path / "reader")
+    reader.clone(str(bare), tmp_path / "reader")
+    (tmp_path / "writer" / "f.txt").write_text("two", encoding="utf-8")
+    writer.add(["f.txt"])
+    writer.commit("wb: two", author=ID)
+    writer.push()
+
+    reader.fetch()
+    counts = reader.ahead_behind()
+    assert counts.behind == 1 and counts.ahead == 0
+    reader.ff_merge_upstream()
+    assert (tmp_path / "reader" / "f.txt").read_text(encoding="utf-8") == "two"

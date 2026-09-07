@@ -32,10 +32,14 @@ from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
     GitAuthError,
+    GitBackendRuntimeError,
+    GitCertificateError,
     GitConflictError,
+    GitCredentialsUnavailable,
     GitError,
     GitInvalidRevision,
     GitNonFastForward,
+    GitProxyError,
     GitRemoteUnavailable,
     GitTlsError,
     default_identity,
@@ -55,13 +59,62 @@ def _silenced() -> Any:
 
 
 def _classify_remote(exc: BaseException, message: str) -> GitError:
-    """把 dulwich/网络异常映射成 typed error（文本不含 URL 或凭据）。"""
+    """把 dulwich/网络异常映射成 typed error（文本不含 URL 或凭据）。
+
+    顺序重要：证书 → TLS 握手 → 认证 → 代理 → 网络，避免宽泛标记互相吞并。
+    未命中任何已知标记的异常归为 :class:`GitBackendRuntimeError`，绝不伪装成
+    远端不可达（便于 acceptance preflight 区分「后端 bug」与「网络/凭据/TLS」）。
+    """
     text = f"{type(exc).__name__}: {exc}".casefold()
-    if any(marker in text for marker in ("ssl", "certificate", "tls", "certificate_verify")):
+    if any(
+        marker in text
+        for marker in (
+            "proxy",
+            "proxyerror",
+            "407",
+            "tunnel connection failed",
+            "cannot connect to proxy",
+        )
+    ):
+        return GitProxyError(message)
+    if any(
+        marker in text
+        for marker in (
+            "certificate",
+            "sslcert",
+            "self-signed",
+            "unable to get local issuer",
+            "unknown ca",
+            "certificate_verify",
+        )
+    ):
+        return GitCertificateError(message)
+    if any(marker in text for marker in ("ssl", "tls", "handshake")):
         return GitTlsError(message)
-    if any(marker in text for marker in ("auth", "401", "403", "permission")):
+    if any(
+        marker in text
+        for marker in ("auth", "401", "403", "permission", "unauthorized", "forbidden")
+    ):
         return GitAuthError(message)
-    return GitRemoteUnavailable(message)
+    if any(
+        marker in text
+        for marker in (
+            "timeout",
+            "timed out",
+            "connection refused",
+            "getaddrinfo",
+            "network is unreachable",
+            "name or service not known",
+            "no route to host",
+            "connection reset",
+            "broken pipe",
+            "unreachable",
+            "not found",
+            "could not read",
+        )
+    ):
+        return GitRemoteUnavailable(message)
+    return GitBackendRuntimeError(message)
 
 
 def _https_pool_manager(url: str) -> Any:
@@ -422,7 +475,7 @@ class DulwichGitBackend:
         if parsed.username is not None or parsed.password is not None:
             raise GitAuthError("HTTPS remote 不允许把凭据写入 URL")
         if not self._workspace_id or not self._username:
-            raise GitAuthError("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
+            raise GitCredentialsUnavailable("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
         resolver = self._credential_resolver
         if resolver is None:
             from summit_workbench.config.git_credentials import resolve_git_credentials
@@ -433,7 +486,7 @@ class DulwichGitBackend:
         except GitError:
             raise
         except Exception as exc:  # noqa: BLE001 - Keychain errors must be sanitized
-            raise GitAuthError("Git workspace 凭据读取失败") from exc
+            raise GitCredentialsUnavailable("Git workspace 凭据读取失败") from exc
         password = credentials.password.get_secret_value()
         kwargs: dict[str, Any] = {"username": self._username, "password": password}
         manager = _https_pool_manager(url)
@@ -446,9 +499,12 @@ class DulwichGitBackend:
         url = self._remote_url(repo, remote)
         with _silenced() as sink:
             try:
+                # 传 remote *名称* 而非 URL：porcelain.fetch 仅在 remote_name 非空时
+                # 调用 _import_remote_refs，把远端 refs/heads/* 落到 refs/remotes/<remote>/*。
+                # 传 URL 会得到 remote_name=None，导致 HTTPS 下 ahead/behind 永不更新。
                 porcelain.fetch(
                     repo,
-                    remote_location=url,
+                    remote_location=remote,
                     errstream=sink,
                     **self.transport_kwargs(url, operation="fetch"),
                 )
@@ -558,9 +614,13 @@ class DulwichGitBackend:
             raise GitError("没有可推送的提交")
         with _silenced() as sink:
             try:
+                # 传 remote *名称* 而非 URL：porcelain.push 仅在 remote_name 非空时把
+                # 推送后的 refs 经 _import_remote_refs 落到 refs/remotes/<remote>/*。
+                # 否则 push 成功后 refs/remotes/origin/<branch> 仍停留在旧值，导致
+                # ahead/behind 与 pending_wb_commits 永远不归零（P1-07D local-ahead 假象）。
                 porcelain.push(
                     repo,
-                    remote_location=url,
+                    remote_location=remote,
                     errstream=sink,
                     **self.transport_kwargs(url, operation="push"),
                 )

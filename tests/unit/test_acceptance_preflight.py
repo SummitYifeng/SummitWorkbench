@@ -130,3 +130,70 @@ def test_preflight_explicitly_reports_unsupported_remote_and_dirty_mismatch(
     assert "remote_scheme_unsupported" in report.text
     assert "[FAIL] dirty-consistency: system=True; dulwich=False" in report.text
     assert "[BLOCKED] fetch: remote_scheme_unsupported" in report.text
+
+
+def test_preflight_app_build_reports_full_build_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home, vault, workspace_id = _setup(tmp_path, remote="https://github.com/owner/repo.git")
+    fake = FakeRepo(vault, "https://github.com/owner/repo.git")
+    monkeypatch.setattr(module, "GitRepo", lambda *args, **kwargs: fake)
+    monkeypatch.setattr(module, "resolve_git_credentials", lambda *args: SecretStr("secret"))
+
+    report = module.acceptance_preflight(
+        vault,
+        home=home,
+        workspace_id=workspace_id,
+        app_version="0.4.3",
+        backend_kind="dulwich",
+        build_number="18",
+        frontend_build="v2026.09.07-9a0fa15",
+        git_revision="9a0fa15",
+    )
+
+    assert "version=0.4.3" in report.text
+    assert "build=18" in report.text
+    assert "frontend_build=v2026.09.07-9a0fa15" in report.text
+    assert "git_revision=9a0fa15" in report.text
+
+
+def test_preflight_fetch_failure_reports_redacted_error_classification(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from summit_workbench.repositories.git_backend import GitAuthError
+
+    home, vault, workspace_id = _setup(tmp_path, remote="https://github.com/owner/repo.git")
+
+    class FailingFetchRepo(FakeRepo):
+        def fetch(self, remote: str = "origin") -> None:
+            raise GitAuthError("fetch origin 失败")
+
+    fake = FailingFetchRepo(vault, "https://github.com/owner/repo.git")
+    seen_kwargs: list[dict[str, object]] = []
+
+    def repo_factory(*args: object, **kwargs: object) -> FailingFetchRepo:
+        seen_kwargs.append(kwargs)
+        return fake
+
+    monkeypatch.setattr(module, "GitRepo", repo_factory)
+    monkeypatch.setattr(module, "resolve_git_credentials", lambda *args: SecretStr("secret"))
+
+    report = module.acceptance_preflight(
+        vault,
+        home=home,
+        workspace_id=workspace_id,
+        app_version="0.4.3",
+        backend_kind="dulwich",
+        build_number="18",
+    )
+
+    assert not report.ok
+    assert "error_code=git_auth_failed" in report.text
+    assert "backend=dulwich" in report.text
+    assert "operation=fetch" in report.text
+    assert "host=github.com" in report.text
+    assert "credential_found=true" in report.text
+    # 稳定脱敏：不出现 PAT、完整本机路径或 credential URL 的 path 部分
+    assert "secret" not in report.text
+    assert "owner/repo" not in report.text
+    assert str(vault) not in report.text

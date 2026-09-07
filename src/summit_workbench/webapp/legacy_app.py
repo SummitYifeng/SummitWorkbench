@@ -134,6 +134,7 @@ from summit_workbench.webapp.api import (
 from summit_workbench.webapp.build_info import (
     BuildInfoError,
     WebBuildInfo,
+    discover_build_number,
     mode_from_environment,
     new_server_instance,
 )
@@ -1341,12 +1342,22 @@ def create_app(
                 ),
             )
         try:
+            try:
+                web_info = _build_info()
+                frontend_build = web_info.frontend_build
+                git_revision = web_info.git_revision
+            except BuildInfoError:
+                frontend_build = None
+                git_revision = None
             report = acceptance_preflight(
                 ctx.vault_dir,
                 home=ctx.active_workspace.home,
                 workspace_id=ctx.workspace_id,
                 app_version=__version__,
                 backend_kind=ctx.git_backend_kind or "dulwich",
+                build_number=discover_build_number(),
+                frontend_build=frontend_build,
+                git_revision=git_revision,
             )
         except Exception:  # noqa: BLE001 - report boundary must stay redacted
             return JSONResponse(

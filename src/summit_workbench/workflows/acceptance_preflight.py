@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from summit_workbench import __version__
 from summit_workbench.config.app_support import backups_dir
 from summit_workbench.config.git_credentials import resolve_git_credentials, strip_credentials
+from summit_workbench.config.tls_trust import ca_bundle_path
 from summit_workbench.domain.workspace import (
     Compatibility,
     DeviceRole,
@@ -20,6 +21,7 @@ from summit_workbench.repositories.git_backend import (
     AheadBehind,
     GitError,
     GitRemoteSchemeUnsupported,
+    classify_git_error,
     production_backend_kind,
     require_https_remote,
 )
@@ -56,6 +58,14 @@ def _remote_summary(url: str | None) -> str:
     return f"{parsed.scheme or 'scp'}://{parsed.hostname or 'unknown'}"
 
 
+def _proxy_detected() -> str:
+    """只报告是否存在代理（布尔语义），绝不回显代理 URL/凭据。"""
+    for key in ("https_proxy", "http_proxy", "all_proxy"):
+        if os.environ.get(key):
+            return "detected"
+    return "none"
+
+
 def acceptance_preflight(
     vault_dir: Path,
     *,
@@ -63,6 +73,9 @@ def acceptance_preflight(
     workspace_id: str,
     app_version: str = __version__,
     backend_kind: str = "dulwich",
+    build_number: str | None = None,
+    frontend_build: str | None = None,
+    git_revision: str | None = None,
 ) -> AcceptancePreflightReport:
     """Run non-destructive checks; fetch only updates remote-tracking refs."""
     checks: list[PreflightCheck] = []
@@ -76,13 +89,15 @@ def acceptance_preflight(
     system_repo = GitRepo(vault_dir, backend_kind="system", workspace_id=workspace_id)
     remote_url: str | None = None
 
-    checks.append(
-        _check(
-            "app/build",
-            "pass",
-            f"App {app_version}; production backend={production_backend_kind()}",
-        )
-    )
+    identity = [f"version={app_version}"]
+    if build_number:
+        identity.append(f"build={build_number}")
+    if frontend_build:
+        identity.append(f"frontend_build={frontend_build}")
+    if git_revision:
+        identity.append(f"git_revision={git_revision}")
+    identity.append(f"production backend={production_backend_kind()}")
+    checks.append(_check("app/build", "pass", "; ".join(identity)))
     checks.append(
         _check(
             "production-backend",
@@ -107,18 +122,28 @@ def acceptance_preflight(
             )
         )
 
+    remote_host = urlsplit(strip_credentials(remote_url)).hostname if remote_url else ""
+    credential_available = False
     if profile is None:
         checks.append(_check("credentials", "fail", "active profile missing"))
     elif remote_url and remote_url.startswith("https://") and profile.git_username:
         try:
-            host = urlsplit(remote_url).hostname or ""
-            resolve_git_credentials(workspace_id, host, profile.git_username)
+            resolve_git_credentials(workspace_id, remote_host or "", profile.git_username)
+            credential_available = True
             checks.append(
-                _check("credentials", "pass", f"workspace-scoped Keychain configured for {host}")
+                _check(
+                    "credentials",
+                    "pass",
+                    f"workspace-scoped Keychain configured for {remote_host}",
+                )
             )
         except Exception:
             checks.append(
-                _check("credentials", "fail", "workspace-scoped Git credential unavailable")
+                _check(
+                    "credentials",
+                    "fail",
+                    "git_credentials_unavailable: workspace-scoped Git credential unavailable",
+                )
             )
     else:
         checks.append(_check("credentials", "fail", "HTTPS username/PAT is not configured"))
@@ -145,10 +170,16 @@ def acceptance_preflight(
             repo.fetch()
             counts = repo.ahead_behind()
             checks.append(_check("fetch", "pass", "HTTPS fetch completed"))
-        except GitError:
-            checks.append(
-                _check("fetch", "fail", "HTTPS fetch failed; see credential/network status")
+        except GitError as exc:
+            code = classify_git_error(exc)
+            detail = (
+                f"error_code={code}; backend={backend_kind}; operation=fetch; "
+                f"host={remote_host or 'unknown'}; "
+                f"credential_found={str(credential_available).lower()}; "
+                f"ca_bundle_built={str(ca_bundle_path() is not None).lower()}; "
+                f"ssl_verify=on; proxy={_proxy_detected()}"
             )
+            checks.append(_check("fetch", "fail", detail))
     else:
         checks.append(_check("fetch", "blocked", "remote_scheme_unsupported"))
     try:

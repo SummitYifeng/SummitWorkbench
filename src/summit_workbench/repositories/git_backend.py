@@ -64,6 +64,53 @@ class GitInvalidRevision(GitError):
     """revision 无法解析为仓库中的 commit 对象。"""
 
 
+class GitCredentialsUnavailable(GitError):
+    """HTTPS 凭据缺失或无法从 workspace Keychain 读取（区别于「凭据错误」的 401/403）。"""
+
+
+class GitCertificateError(GitError):
+    """TLS 证书链校验失败（自签名/不受信 CA/吊销），区别于握手或协议层 TLS 失败。"""
+
+
+class GitProxyError(GitError):
+    """HTTP(S) 代理连接或代理认证失败。"""
+
+
+class GitBackendRuntimeError(GitError):
+    """git 后端内部运行时错误（非远端、非凭据、非 TLS 的意外异常）。"""
+
+
+def classify_git_error(error: BaseException) -> str:
+    """把 git 异常映射成稳定、脱敏的诊断码。
+
+    诊断码绝不包含 URL、凭据或本机路径；acceptance preflight 与同步报告用它区分
+    auth / tls / certificate / proxy / credentials-unavailable / network / backend。
+    """
+    if isinstance(error, GitCredentialsUnavailable):
+        return "git_credentials_unavailable"
+    if isinstance(error, GitCertificateError):
+        return "git_certificate_failed"
+    if isinstance(error, GitTlsError):
+        return "git_tls_failed"
+    if isinstance(error, GitProxyError):
+        return "git_proxy_failed"
+    if isinstance(error, GitAuthError):
+        return "git_auth_failed"
+    if isinstance(error, GitRemoteSchemeUnsupported):
+        return "git_remote_scheme_unsupported"
+    if isinstance(error, GitRemoteUnavailable):
+        return "git_remote_unavailable"
+    if isinstance(error, GitNonFastForward):
+        return "git_non_fast_forward"
+    if isinstance(error, GitConflictError):
+        return "git_conflict"
+    if isinstance(error, GitInvalidRevision):
+        return "git_invalid_revision"
+    if isinstance(error, GitError):
+        return "git_error"
+    return "git_backend_runtime_error"
+
+
 @dataclass(frozen=True)
 class AheadBehind:
     ahead: int  # 本地领先 upstream 的提交数（可 push）

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -112,7 +114,11 @@ class WebBuildInfo:
             "server_instance": server_instance,
             "started_at": started_at,
             "mode": mode,
+            "git_revision": self.git_revision,
         }
+        build_number = discover_build_number()
+        if build_number is not None:
+            payload["build"] = build_number
         if workspace_id is not None:
             payload["workspace_id"] = workspace_id
         if device_id is not None:
@@ -173,3 +179,62 @@ def mode_from_environment(value: str | None) -> BuildMode:
     if value in {"production", "development-managed", "development-external"}:
         return cast(BuildMode, value)
     return "development-external"
+
+
+def _discover_build_manifest() -> dict[str, object] | None:
+    """Locate the App bundle ``build-manifest.json`` (build number lives there).
+
+    The frontend ``build-meta.json`` only carries ``frontend_build``/``git_revision``;
+    the numeric release ``build`` is written by the release script into
+    ``Contents/Resources/build-manifest.json``.  In a frozen onedir server the
+    executable sits at ``Contents/Resources/server/SummitWorkbenchServer``, so its
+    parent's parent is ``Contents/Resources``.  This lookup is best-effort and
+    never fails the preflight by itself.
+    """
+    candidates: list[Path] = []
+    env = os.environ.get("WB_BUILD_MANIFEST")
+    if env:
+        candidates.append(Path(env))
+    exe = Path(sys.executable).resolve()
+    candidates.append(exe.parent.parent / "build-manifest.json")
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            raw = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(raw, dict):
+            return raw
+    return None
+
+
+def discover_build_number() -> str | None:
+    """Return the release build number, or ``None`` when not packaged/released."""
+    manifest = _discover_build_manifest()
+    if manifest is None:
+        return None
+    build = manifest.get("build")
+    if build is None or build == "":
+        return None
+    return str(build)
+
+
+def build_identity(static_dir: Path) -> dict[str, str]:
+    """Compose a redacted build-identity payload (version/build/frontend/git)."""
+    try:
+        info = WebBuildInfo.from_static_dir(static_dir)
+        frontend_build = info.frontend_build
+        git_revision = info.git_revision
+    except BuildInfoError:
+        frontend_build = "unknown"
+        git_revision = "unknown"
+    identity: dict[str, str] = {
+        "version": __version__,
+        "frontend_build": frontend_build,
+        "git_revision": git_revision,
+    }
+    build_number = discover_build_number()
+    if build_number is not None:
+        identity["build"] = build_number
+    return identity

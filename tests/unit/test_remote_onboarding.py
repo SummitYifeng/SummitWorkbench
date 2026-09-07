@@ -12,7 +12,10 @@ from pydantic import SecretStr
 from summit_workbench.config.git_credentials import GitCredentials
 from summit_workbench.domain.workspace import WorkspaceManifest
 from summit_workbench.repositories.git import GitRepo
-from summit_workbench.repositories.git_backend import CommitIdentity, GitAuthError
+from summit_workbench.repositories.git_backend import (
+    CommitIdentity,
+    GitCredentialsUnavailable,
+)
 from summit_workbench.repositories.profile_registry import load_profile
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.workflows.remote_onboarding import (
@@ -98,7 +101,7 @@ def test_dulwich_credential_callback_errors_are_sanitized(tmp_path) -> None:
         username="alice",
         credential_resolver=broken,
     )
-    with pytest.raises(GitAuthError) as exc_info:
+    with pytest.raises(GitCredentialsUnavailable) as exc_info:
         backend.transport_kwargs("https://github.com/acme/private.git", operation="fetch")
     assert "canary-secret" not in str(exc_info.value)
 
