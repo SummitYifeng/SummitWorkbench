@@ -153,6 +153,53 @@ interface DiagnosticsPreviewPayload {
   snapshot: Record<string, unknown>;
 }
 
+type ConflictSelection = 'keep-local' | 'keep-remote' | 'preserve-both' | '';
+interface ConflictPathDetail {
+  path: string;
+  kind: string;
+  action: string;
+  automatic: boolean;
+  changed_on: string[];
+  local_sha256: string | null;
+  remote_sha256: string | null;
+  local_event?: Record<string, string> | null;
+  remote_event?: Record<string, string> | null;
+}
+interface ConflictDetails {
+  base_revision: string;
+  local: { revision: string; authored_at: string; changed_path_count: number };
+  remote: { revision: string; authored_at: string; changed_path_count: number };
+  automatic_path_count: number;
+  manual_path_count: number;
+  paths: ConflictPathDetail[];
+}
+interface SyncConflictDetailsPayload {
+  ok: boolean;
+  available: boolean;
+  state: string;
+  details?: ConflictDetails;
+  reason?: string;
+}
+interface RecoveryPreparationSummary {
+  status: string;
+  ok: boolean;
+  event_count: number;
+  aggregate_count: number;
+  generated_view_count: number;
+  rebuilt_view_count: number;
+  candidate_path_count: number;
+  staging_ready: boolean;
+  error_code: string | null;
+}
+interface SyncConflictRecoveryPayload {
+  ok: boolean;
+  available: boolean;
+  state: string;
+  preparation?: RecoveryPreparationSummary;
+  recovery?: { status: string; revision?: string | null; error_code?: string | null };
+  reason?: string;
+}
+
 /** 线视图（P2）：项目/线程档案区块 + 时间线聚合。 */
 interface ProjectView {
   ok: boolean;
@@ -199,6 +246,11 @@ let versionCheckPromise: Promise<void> | null = null;
 let connectionHadFailure = false;
 let restoredDraft: DraftSnapshot | null = null;
 let loadedAskWorkspace = 'unknown';
+let conflictDetails: ConflictDetails | null = null;
+let conflictSelections: Record<string, ConflictSelection> = {};
+let conflictPreparation: RecoveryPreparationSummary | null = null;
+let conflictMessage: string | null = null;
+let conflictBusy = false;
 
 // ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
 
@@ -1797,6 +1849,18 @@ document.addEventListener('click', (ev) => {
     void retrySync();
     return;
   }
+  if (action === 'sync-conflict-details') {
+    void showSyncConflictDetails();
+    return;
+  }
+  if (action === 'sync-conflict-preview') {
+    void previewSyncConflictRecovery();
+    return;
+  }
+  if (action === 'sync-conflict-apply') {
+    void applySyncConflictRecovery();
+    return;
+  }
   if (action === 'sync-export') {
     void exportSyncSnapshot();
     return;
@@ -2757,6 +2821,192 @@ async function refreshAll(): Promise<void> {
   await Promise.all([refreshState(), refreshReview()]);
 }
 
+function conflictKindLabel(kind: string): string {
+  const labels: Record<string, string> = {
+    'append-only-event': '活动事件（自动收集）',
+    'generated-view': '派生视图（重建）',
+    'manual-markdown': 'Markdown（人工选择）',
+    'opaque-binary': '未知/二进制（保留双方）',
+  };
+  return labels[kind] ?? kind;
+}
+
+function conflictSelectionLabel(choice: ConflictSelection): string {
+  const labels: Record<string, string> = {
+    'keep-local': '保留本机',
+    'keep-remote': '采用远端',
+    'preserve-both': '保留双方副本',
+  };
+  return labels[choice] ?? '请选择处理方式';
+}
+
+function conflictRevision(revision: string): string {
+  return revision.length > 12 ? revision.slice(0, 12) + '…' : revision;
+}
+
+function conflictSelectionsPayload(): Record<string, string> {
+  return Object.fromEntries(Object.entries(conflictSelections).filter(([, choice]) => choice)) as Record<string, string>;
+}
+
+function missingConflictSelections(): string[] {
+  return conflictDetails?.paths.filter((item) => !item.automatic && !conflictSelections[item.path]).map((item) => item.path) ?? [];
+}
+
+function renderSyncConflictModal(): void {
+  const modal = document.getElementById('modal') as HTMLElement | null;
+  const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
+  if (!modal || !backdrop || !conflictDetails) return;
+  const details = conflictDetails;
+  const missing = missingConflictSelections();
+  const preparation = conflictPreparation;
+  const message = conflictMessage
+    ? '<div class="msg ' + (preparation?.ok ? 'ok' : 'err') + '">' + esc(conflictMessage) + '</div>' : '';
+  const pathRows = details.paths.map((item) => {
+    const changedOn = item.changed_on.map((side) => side === 'local' ? '本机' : '远端').join('、');
+    const selector = item.automatic
+      ? '<span class="conflict-auto">' + esc(item.action === 'rebuild' ? '合并后重建' : '自动收集') + '</span>'
+      : '<label class="conflict-choice"><span class="sr-only">' + esc(item.path) + '处理方式</span>' +
+        '<select data-conflict-path="' + esc(item.path) + '"' + (conflictBusy ? ' disabled' : '') + '>' +
+        '<option value="">请选择处理方式</option>' +
+        (['keep-local', 'keep-remote', 'preserve-both'] as ConflictSelection[]).map((choice) =>
+          '<option value="' + choice + '"' + (conflictSelections[item.path] === choice ? ' selected' : '') + '>' +
+          conflictSelectionLabel(choice) + '</option>').join('') + '</select></label>';
+    return '<div class="conflict-path"><div class="conflict-path-main"><code>' + esc(item.path) + '</code>' +
+      '<span class="hint">' + esc(conflictKindLabel(item.kind)) + ' · 变更：' + esc(changedOn) + '</span></div>' +
+      '<div class="conflict-path-action">' + selector + '</div></div>';
+  }).join('');
+  const status = preparation
+    ? '<div class="conflict-preflight"><strong>' + (preparation.ok ? '临时预检通过' : '临时预检未通过') + '</strong>' +
+      '<span>事件 ' + preparation.event_count + ' · 聚合 ' + preparation.aggregate_count +
+      ' · 重建视图 ' + preparation.rebuilt_view_count + ' · 候选文件 ' + preparation.candidate_path_count + '</span>' +
+      (preparation.error_code ? '<span class="hint">原因：' + esc(preparation.error_code) + '</span>' : '') + '</div>' : '';
+  modal.innerHTML = '<h3>同步冲突详情</h3>' +
+    '<p class="hint">当前处于保护态。这里只读取已存在的分叉快照，不展示正文；确认前不会修改 vault。</p>' +
+    '<div class="conflict-revisions"><span>共同基线 <code>' + esc(conflictRevision(details.base_revision)) + '</code></span>' +
+    '<span>本机 <code>' + esc(conflictRevision(details.local.revision)) + '</code></span>' +
+    '<span>远端 <code>' + esc(conflictRevision(details.remote.revision)) + '</code></span></div>' +
+    '<div class="conflict-summary">自动处理 ' + details.automatic_path_count + ' 项 · 需要选择 ' + details.manual_path_count + ' 项</div>' +
+    '<div class="conflict-paths">' + (pathRows || '<p class="hint">没有可处理的分叉文件。</p>') + '</div>' + message + status +
+    '<p class="hint conflict-safety">恢复只会创建普通的本地双父提交；不会 force-push、reset、rebase 或 stash。恢复提交完成后，再单独执行“立即重试”进行普通同步。</p>' +
+    '<div class="row"><button class="primary" data-action="sync-conflict-preview"' +
+    (conflictBusy || missing.length > 0 ? ' disabled' : '') + '>临时预检（不写入）</button>' +
+    (preparation?.ok ? '<button class="ok" data-action="sync-conflict-apply"' + (conflictBusy ? ' disabled' : '') + '>确认恢复并创建提交</button>' : '') +
+    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>关闭</button></div>';
+  backdrop.hidden = false;
+  modal.querySelectorAll<HTMLSelectElement>('[data-conflict-path]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const path = select.dataset.conflictPath ?? '';
+      if (path) conflictSelections[path] = select.value as ConflictSelection;
+      conflictMessage = null;
+      renderSyncConflictModal();
+    });
+  });
+}
+
+async function showSyncConflictDetails(): Promise<void> {
+  const modal = document.getElementById('modal') as HTMLElement | null;
+  const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
+  if (!modal || !backdrop) return;
+  modal.innerHTML = '<div class="loading">正在读取分叉详情（只读）…</div>';
+  backdrop.hidden = false;
+  conflictDetails = null;
+  conflictPreparation = null;
+  conflictMessage = null;
+  conflictBusy = false;
+  try {
+    const data = await api<SyncConflictDetailsPayload>('/api/sync/conflict/details');
+    if (!data.ok || !data.available || !data.details) {
+      modal.innerHTML = '<h3>无法读取同步冲突</h3><p class="msg err">' + esc(data.reason ?? '当前已不在冲突保护态，请刷新同步状态。') + '</p>' +
+        '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>';
+      return;
+    }
+    conflictDetails = data.details;
+    conflictSelections = Object.fromEntries(data.details.paths.filter((item) => !item.automatic).map((item) => [item.path, '']));
+    renderSyncConflictModal();
+  } catch (err) {
+    modal.innerHTML = '<h3>无法读取同步冲突</h3><p class="msg err">' + esc(String(err)) + '</p>' +
+      '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>';
+  }
+}
+
+function conflictRecoveryRequest(confirmed: boolean): Record<string, unknown> {
+  if (!conflictDetails) throw new Error('缺少分叉快照');
+  return {
+    base_revision: conflictDetails.base_revision,
+    local_revision: conflictDetails.local.revision,
+    remote_revision: conflictDetails.remote.revision,
+    selections: conflictSelectionsPayload(),
+    confirmed,
+  };
+}
+
+async function previewSyncConflictRecovery(): Promise<void> {
+  if (!conflictDetails || conflictBusy) return;
+  const missing = missingConflictSelections();
+  if (missing.length) {
+    conflictMessage = '请先为所有人工文件选择处理方式。';
+    renderSyncConflictModal();
+    return;
+  }
+  conflictBusy = true;
+  conflictMessage = '正在临时环境预检，当前 vault 不会写入…';
+  renderSyncConflictModal();
+  try {
+    const request = conflictRecoveryRequest(false);
+    if (conflictDetails.manual_path_count > 0) {
+      const selection = await api<{ ok: boolean; selection?: { error_code?: string | null }; reason?: string }>(
+        '/api/sync/conflict/selection/validate',
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) },
+      );
+      if (!selection.ok) {
+        conflictMessage = selection.reason ?? selection.selection?.error_code ?? '人工选择未通过校验。';
+        conflictBusy = false;
+        renderSyncConflictModal();
+        return;
+      }
+    }
+    const data = await api<SyncConflictRecoveryPayload>('/api/sync/conflict/recover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+    });
+    conflictPreparation = data.preparation ?? null;
+    conflictMessage = data.preparation?.ok
+      ? '预检完成。请确认后才会写回并创建提交。'
+      : data.reason ?? '恢复准备未完成。';
+  } catch (err) {
+    conflictMessage = String(err);
+  } finally {
+    conflictBusy = false;
+    renderSyncConflictModal();
+  }
+}
+
+async function applySyncConflictRecovery(): Promise<void> {
+  if (!conflictDetails || !conflictPreparation?.ok || conflictBusy) return;
+  if (!window.confirm('确认将预检结果写回当前 vault，并创建普通的本地双父合并提交？此操作不会自动推送。')) return;
+  conflictBusy = true;
+  let committed = false;
+  conflictMessage = '正在写回并创建本地恢复提交…';
+  renderSyncConflictModal();
+  try {
+    const data = await mutation(() => api<SyncConflictRecoveryPayload>('/api/sync/conflict/recover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflictRecoveryRequest(true)),
+    }));
+    if (data.recovery?.status === 'committed') {
+      committed = true;
+      closeModal();
+      toast('恢复提交已创建，请点击“立即重试”完成普通同步。', 'ok');
+      await Promise.all([refreshSyncBanner(), refreshState()]);
+      return;
+    }
+    conflictMessage = data.reason ?? '恢复未提交：' + (data.recovery?.error_code ?? data.recovery?.status ?? '未知原因');
+  } catch (err) {
+    conflictMessage = String(err);
+  } finally {
+    conflictBusy = false;
+    if (!committed && conflictDetails) renderSyncConflictModal();
+  }
+}
+
 async function refreshSyncBanner(): Promise<void> {
   const el = document.getElementById('sync-banner') as HTMLElement | null;
   if (!el) return;
@@ -2778,12 +3028,14 @@ async function refreshSyncBanner(): Promise<void> {
         ['主设备代际', String(data.automation_primary_generation ?? '—')],
         ['下一步', data.next_step ?? '—'],
       ];
+      const conflictAction = data.state === 'diverged-protected'
+        ? '<button class="ghost" data-action="sync-conflict-details">查看冲突详情</button>' : '';
       el.innerHTML = '<div class="sync-title">同步状态</div>' +
         '<div class="sync-grid">' + rows.map(([label, value]) =>
           '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
         '</div>' +
         (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
-        '<div class="sync-actions"><button class="ghost" data-action="sync-retry">立即重试</button>' +
+        '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
         '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
     }
   } catch {
