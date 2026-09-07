@@ -43,7 +43,7 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 ### A. 安装与共同基线
 
-1. 在 Studio 和 Air 都安装同一个 build 28 DMG，打开 App，连接同一个专用验收 vault 和
+1. 在 Studio 和 Air 都安装同一个 build 29 DMG，打开 App，连接同一个专用验收 vault 和
    同一个 HTTPS Git remote；两台设备使用同一个 `workspace_id`，设备 ID 必须不同。不要
    使用日常 vault 或真实会议正文。
 2. 在两台设备的同步状态中确认：分支为 `main`、远端方案为 HTTPS、工作树 clean、ahead/behind
@@ -54,7 +54,7 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 ### B. 构造三类分叉
 
-1. 本轮已选择“复用 build 28、仅验收时显式启用”（选择 1A），不新增产品设置。完全退出 App
+1. 本轮已选择“复用 build 29、仅验收时显式启用”（选择 1A），不新增产品设置。完全退出 App
    后，用 macOS 一次性进程环境启动：
 
    ```sh
