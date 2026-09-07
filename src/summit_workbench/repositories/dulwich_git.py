@@ -123,15 +123,25 @@ def _https_pool_manager(url: str) -> Any:
     frozen 环境下 OpenSSL 默认 CA 路径不可用（P1-07D：``git_tls_failed``），因此
     显式把发现的 CA bundle 通过 ``http.sslCAInfo`` 传入 dulwich 的
     ``default_urllib3_manager``；``sslVerify=true`` 保持 TLS 校验开启。
+
+    另外：打包 App 经 Finder/LaunchServices 启动时没有代理环境变量，而部分网络下
+    直接连接 github.com 会被阻断（``git_remote_unavailable``）。这里在无 env 代理时
+    显式回退到 macOS 系统代理（``http.proxy``），绝不关闭 TLS 校验。
     """
     from dulwich.client import default_urllib3_manager
     from dulwich.config import ConfigDict
+
+    from summit_workbench.config.network_proxy import system_http_proxy
 
     config = ConfigDict()
     config.set(b"http", b"sslVerify", b"true")
     bundle = ca_bundle_path()
     if bundle is not None:
         config.set(b"http", b"sslCAInfo", str(bundle).encode("utf-8"))
+    if not any(os.environ.get(key) for key in ("https_proxy", "http_proxy", "all_proxy")):
+        proxy = system_http_proxy()
+        if proxy:
+            config.set(b"http", b"proxy", proxy.encode("utf-8"))
     return default_urllib3_manager(config, base_url=url)
 
 

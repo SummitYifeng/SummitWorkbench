@@ -60,10 +60,9 @@ def _remote_summary(url: str | None) -> str:
 
 def _proxy_detected() -> str:
     """只报告是否存在代理（布尔语义），绝不回显代理 URL/凭据。"""
-    for key in ("https_proxy", "http_proxy", "all_proxy"):
-        if os.environ.get(key):
-            return "detected"
-    return "none"
+    from summit_workbench.config.network_proxy import proxy_detected
+
+    return "detected" if proxy_detected() else "none"
 
 
 def acceptance_preflight(

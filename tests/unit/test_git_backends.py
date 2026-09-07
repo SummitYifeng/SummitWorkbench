@@ -429,3 +429,56 @@ def test_fetch_updates_remote_tracking_ref_for_named_remote(tmp_path: Path) -> N
     assert counts.behind == 1 and counts.ahead == 0
     reader.ff_merge_upstream()
     assert (tmp_path / "reader" / "f.txt").read_text(encoding="utf-8") == "two"
+
+
+def test_system_http_proxy_parses_macos_output(monkeypatch) -> None:
+    """P1-07D：macOS 系统代理经 scutil --proxy 解析（HTTPS 优先），不含凭据。"""
+    from summit_workbench.config import network_proxy
+
+    class _Completed:
+        returncode = 0
+        stdout = (
+            "HTTPEnable : 1\nHTTPPort : 7890\nHTTPProxy : 127.0.0.1\n"
+            "HTTPSEnable : 1\nHTTPSPort : 7890\nHTTPSProxy : 127.0.0.1\n"
+            "SOCKSEnable : 1\nSOCKSPort : 7890\nSOCKSProxy : 127.0.0.1\n"
+        )
+
+    class _Subprocess:
+        @staticmethod
+        def run(*_: object, **__: object) -> _Completed:
+            return _Completed()
+
+    monkeypatch.setattr(network_proxy, "subprocess", _Subprocess())
+    assert network_proxy.system_http_proxy() == "http://127.0.0.1:7890"
+    assert network_proxy.proxy_detected() is True
+
+
+def test_system_http_proxy_env_takes_precedence(monkeypatch) -> None:
+    """env 代理优先于系统代理；命中 env 时绝不调用 scutil。"""
+    from summit_workbench.config import network_proxy
+
+    monkeypatch.setenv("https_proxy", "http://env-proxy:9999")
+
+    class _Subprocess:
+        @staticmethod
+        def run(*_: object, **__: object) -> None:
+            raise AssertionError("should not call scutil")
+
+    monkeypatch.setattr(network_proxy, "subprocess", _Subprocess())
+    assert network_proxy.system_http_proxy() == "http://env-proxy:9999"
+
+
+def test_https_pool_manager_honors_system_proxy_when_no_env(monkeypatch) -> None:
+    """P1-07D：无 env 代理时，HTTPS pool 显式回退 macOS 系统代理（不关 TLS 校验）。"""
+    from summit_workbench.config import network_proxy
+    from summit_workbench.repositories import dulwich_git
+
+    monkeypatch.delenv("https_proxy", raising=False)
+    monkeypatch.delenv("http_proxy", raising=False)
+    monkeypatch.delenv("all_proxy", raising=False)
+    monkeypatch.setattr(dulwich_git, "ca_bundle_path", lambda: None)
+    monkeypatch.setattr(network_proxy, "system_http_proxy", lambda: "http://127.0.0.1:7890")
+
+    manager = dulwich_git._https_pool_manager("https://github.com/acme/private.git")
+    assert type(manager).__name__ == "ProxyManager"
+    assert manager.connection_pool_kw["cert_reqs"] == "CERT_REQUIRED"
