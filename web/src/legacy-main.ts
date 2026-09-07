@@ -1862,6 +1862,10 @@ document.addEventListener('click', (ev) => {
     void applySyncConflictRecovery();
     return;
   }
+  if (action === 'sync-conflict-export') {
+    void exportSyncConflictPackage();
+    return;
+  }
   if (action === 'sync-export') {
     void exportSyncSnapshot();
     return;
@@ -2845,6 +2849,22 @@ function conflictRevision(revision: string): string {
   return revision.length > 12 ? revision.slice(0, 12) + '…' : revision;
 }
 
+function conflictEventSummary(event: Record<string, string> | null | undefined): string {
+  if (!event || event.parse_status) return '';
+  return '设备 ' + (event.device_id ?? '—') + ' · 时间 ' + (event.occurred_at ?? '—') +
+    ' · 操作 ' + (event.causation_operation_id ?? '—');
+}
+
+function conflictDigestSummary(item: ConflictPathDetail): string {
+  if (item.kind === 'append-only-event') {
+    return [conflictEventSummary(item.local_event), conflictEventSummary(item.remote_event)].filter(Boolean).join(' / ');
+  }
+  if (item.local_sha256 || item.remote_sha256) {
+    return '摘要 本机 ' + conflictRevision(item.local_sha256 ?? '—') + ' · 远端 ' + conflictRevision(item.remote_sha256 ?? '—');
+  }
+  return '';
+}
+
 function conflictSelectionsPayload(): Record<string, string> {
   return Object.fromEntries(Object.entries(conflictSelections).filter(([, choice]) => choice)) as Record<string, string>;
 }
@@ -2864,6 +2884,7 @@ function renderSyncConflictModal(): void {
     ? '<div class="msg ' + (preparation?.ok ? 'ok' : 'err') + '">' + esc(conflictMessage) + '</div>' : '';
   const pathRows = details.paths.map((item) => {
     const changedOn = item.changed_on.map((side) => side === 'local' ? '本机' : '远端').join('、');
+    const metadata = conflictDigestSummary(item);
     const selector = item.automatic
       ? '<span class="conflict-auto">' + esc(item.action === 'rebuild' ? '合并后重建' : '自动收集') + '</span>'
       : '<label class="conflict-choice"><span class="sr-only">' + esc(item.path) + '处理方式</span>' +
@@ -2873,7 +2894,8 @@ function renderSyncConflictModal(): void {
           '<option value="' + choice + '"' + (conflictSelections[item.path] === choice ? ' selected' : '') + '>' +
           conflictSelectionLabel(choice) + '</option>').join('') + '</select></label>';
     return '<div class="conflict-path"><div class="conflict-path-main"><code>' + esc(item.path) + '</code>' +
-      '<span class="hint">' + esc(conflictKindLabel(item.kind)) + ' · 变更：' + esc(changedOn) + '</span></div>' +
+      '<span class="hint">' + esc(conflictKindLabel(item.kind)) + ' · 变更：' + esc(changedOn) + '</span>' +
+      (metadata ? '<span class="hint conflict-metadata">' + esc(metadata) + '</span>' : '') + '</div>' +
       '<div class="conflict-path-action">' + selector + '</div></div>';
   }).join('');
   const status = preparation
@@ -2892,7 +2914,9 @@ function renderSyncConflictModal(): void {
     '<div class="row"><button class="primary" data-action="sync-conflict-preview"' +
     (conflictBusy || missing.length > 0 ? ' disabled' : '') + '>临时预检（不写入）</button>' +
     (preparation?.ok ? '<button class="ok" data-action="sync-conflict-apply"' + (conflictBusy ? ' disabled' : '') + '>确认恢复并创建提交</button>' : '') +
-    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>关闭</button></div>';
+    '<button class="ghost" data-action="sync-conflict-export"' + (conflictBusy ? ' disabled' : '') + '>导出冲突包</button>' +
+    '<button class="ghost" data-action="copy-diagnostics"' + (conflictBusy ? ' disabled' : '') + '>复制诊断</button>' +
+    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>稍后处理</button></div>';
   backdrop.hidden = false;
   modal.querySelectorAll<HTMLSelectElement>('[data-conflict-path]').forEach((select) => {
     select.addEventListener('change', () => {
@@ -3079,6 +3103,23 @@ async function exportSyncSnapshot(): Promise<void> {
       URL.revokeObjectURL(link.href);
       link.remove();
     }, 1000);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+async function exportSyncConflictPackage(): Promise<void> {
+  try {
+    const response = await fetch('/api/sync/conflict/export', { cache: 'no-store' });
+    if (!response.ok) throw new Error('冲突包导出失败（HTTP ' + response.status + '）');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(await response.blob());
+    link.download = 'summitworkbench-sync-recovery.zip';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+    toast('冲突包已准备下载', 'ok');
   } catch (err) {
     toast(String(err), 'err');
   }

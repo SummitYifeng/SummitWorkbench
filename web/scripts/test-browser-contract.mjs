@@ -12,6 +12,7 @@ assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
 assert.match(source, /data-action="sync-conflict-details"/, 'protected sync opens conflict details');
 assert.match(source, /\/api\/sync\/conflict\/selection\/validate/, 'manual conflict choices are validated');
 assert.match(source, /\/api\/sync\/conflict\/recover/, 'conflict recovery remains wired');
+assert.match(source, /\/api\/sync\/conflict\/export/, 'conflict package export remains wired');
 assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is explicit and write-free');
 assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
