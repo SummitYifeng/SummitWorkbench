@@ -3,6 +3,12 @@
 > P1-07D 已完成：Studio + Air 双设备真机验收闭环（同一候选包 build 23，SHA-256 见
 > `release-metadata.json`），build 24 已在 Studio 与 Air 完成覆盖安装与增量冒烟，进入 P2-01B 的前置门已解除。
 
+- 产品范围已重新确认：当前交付边界止于 P2-02。M3（带上下文启动与会话收尾）和 P2-03（组织级
+  OAuth Broker/新增云服务）均不实施；后续仅处理现有功能的缺陷修复、稳定性维护和明确提出的增量需求。
+- 当前实际使用能力保持不变：DeepSeek Flash 用于会议结构化、快速捕捉分类、简报/复盘与问答；
+  `wb ask` 先按项目、路径、frontmatter 和全文在本地 Markdown 中确定性召回，再把选中的来源交给
+  云端模型回答。会议审批结果可写回项目主笔记或项目 inbox；快速捕捉先进入全局 inbox 并保留项目标签。
+
 - P2-01B 已完成：仅对既有 thread activity 接入 `shadow-read → dual-write`、确定性投影对比、
   差异诊断、一致性报告与回退开关；不迁移 inbox、会议决策或项目正文。
 - P2-02 已完成：build 29 在 Studio + Air 通过双机退出验收，覆盖 Markdown、未知视图、binary、
