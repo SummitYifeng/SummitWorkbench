@@ -233,6 +233,7 @@ def confirm_remote_clone(
                 "created_at": marker.created_at.isoformat(),
                 "user_email": user_email,
                 "git_username": staged.username,
+                "git_remote_url": staged.remote_url,
             }
         )
         save_profile(profile, home=home)

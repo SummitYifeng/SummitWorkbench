@@ -125,6 +125,7 @@ def test_remote_clone_staging_confirm_creates_secondary_profile(tmp_path) -> Non
     profile = load_profile(workspace_id, home=home)
     assert profile is not None
     assert profile.device_role.value == "secondary"
+    assert profile.git_remote_url == "https://github.com/acme/private.git"
     assert target.is_dir()
     assert not staged.staging_dir.exists()
 

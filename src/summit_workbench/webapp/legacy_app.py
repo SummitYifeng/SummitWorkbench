@@ -3008,13 +3008,16 @@ def create_app(
             )
             is AutomationOutcome.NOT_PRIMARY
         ):
+            # P1-07D：secondary 上的手动/定时写入是预期跳过，不是错误。返回 200 友好
+            # 提示（前端以普通提示而非红色 ApiError 呈现），写入本身仍被门控跳过。
             return JSONResponse(
-                status_code=403,
-                content=error_payload(
-                    code="not_automation_primary",
-                    message="本机不是该 workspace 的 automation-primary，定时任务不执行",
-                    operation_id=_operation_id(request),
-                ),
+                status_code=200,
+                content={
+                    "ok": True,
+                    "skipped": True,
+                    "code": "not_automation_primary",
+                    "message": "本机不是该 workspace 的主设备，本次操作已跳过",
+                },
             )
         return None
 

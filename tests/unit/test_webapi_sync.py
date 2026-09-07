@@ -76,14 +76,15 @@ def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> N
     }
 
 
-def test_run_brief_and_weekly_blocked_on_secondary(tmp_path, monkeypatch, client) -> None:
+def test_run_brief_and_weekly_skipped_on_secondary(tmp_path, monkeypatch, client) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     _profile(tmp_path / "fake-home", DeviceRole.SECONDARY)
     for path in ("/api/run/brief", "/api/run/weekly"):
         resp = client.post(path)
-        assert resp.status_code == 403, path
+        assert resp.status_code == 200, path
         body = resp.json()
-        assert body["ok"] is False
+        assert body["ok"] is True
+        assert body["skipped"] is True
         assert body["code"] == "not_automation_primary"
     sync = client.post("/api/sync/run")
     assert sync.status_code == 200
