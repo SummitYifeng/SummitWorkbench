@@ -139,6 +139,10 @@ Air 的 build 29 preflight 首次回传为 `RESULT: FAIL`，唯一失败项是 `
 执行普通 fast-forward；若状态变为 `ahead=0; behind=0`，再继续本流程；若出现 dirty、ahead>0
 或 diverged，立即停止并保留现场。
 
+随后 Air 已完成普通 fast-forward 并重新预检：build 29、Dulwich、HTTPS、workspace-scoped
+Keychain、双后端 dirty 一致性、fetch、`ahead=0; behind=0`、schema 路径、备份可写和
+`secondary` 角色全部 PASS。双机共同基线现已满足，可进入下一节冲突恢复实测。
+
 本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
 `rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
 收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
