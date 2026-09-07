@@ -238,6 +238,23 @@ def test_unknown_generated_view_requires_preserve_both_fallback(tmp_path: Path) 
         assert prepared.staging_dir is not None
         assert not (prepared.staging_dir / "_views/thread.json").exists()
         assert (prepared.staging_dir / "_views/thread.json.remote").read_text() == "{}\n"
+        applied = apply_prepared_recovery(
+            other,
+            prepared,
+            workspace_id="workspace-1",
+            confirm=True,
+            author=IDENTITY,
+        )
+        assert applied.status == "committed"
+        assert applied.revision is not None
+        assert other_repo.commit_parent_count(applied.revision) == 2
+        assert (other / "_views/thread.json.remote").read_text() == "{}\n"
+        audit = json.loads((other / RECOVERY_AUDIT_PATH).read_text().splitlines()[-1])
+        assert audit["merge_revision"] == applied.revision
+        assert audit["applied_paths"] == ["_views/thread.json.remote"]
+    other_repo.push()
+    assert other_repo.ahead_behind().ahead == 0
+    assert other_repo.ahead_behind().behind == 0
 
 
 def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: Path) -> None:
