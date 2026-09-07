@@ -1,6 +1,6 @@
 # P2-02 build 29 · Studio + Air 一次性真实验收流程
 
-状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 现场暴露 dual-write 主返回 Markdown 漏提交，build 29 已修复并重新打包；退出门仍需补齐事件/已登记视图和现场保护分支证据。
+状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 现场暴露 dual-write 主返回 Markdown 漏提交，build 29 已修复并重新打包。build 29 双机退出门已全部通过，P2-02 可标记完成。
 范围：仅 P2-02。P2-03 不在本流程内，也不因本流程获得授权。
 
 ## 1. 候选包与证据
@@ -29,7 +29,7 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 已自动通过的门：
 
-- build 28 生成时 `825 passed, 1 skipped`；2026-09-07 独立复核为 `826 passed, 1 skipped`；
+- build 28 生成时 `825 passed, 1 skipped`；build 29 独立复核为 `827 passed, 1 skipped`；
   ruff、format、mypy、前端契约/build、脚本语法、依赖锁和 secret scan 均通过；
 - packaged App/worker 集成 smoke（1 passed），含 `--tls-diagnostic`；
 - bundle CA 存在、`CERT_REQUIRED`、hostname 校验开启、Dulwich transport 正常；
@@ -143,39 +143,40 @@ Air 的 build 29 preflight 首次回传为 `RESULT: FAIL`，唯一失败项是 `
 Keychain、双后端 dirty 一致性、fetch、`ahead=0; behind=0`、schema 路径、备份可写和
 `secondary` 角色全部 PASS。双机共同基线现已满足，可进入下一节冲突恢复实测。
 
-本轮主路径已完成：Air 生成普通双父恢复提交 `c95b6c1`（父节点数 2），并生成后续脱敏审计
-提交 `8a6a543`；审计记录显示 `event_count=4`、`aggregate_count=1`、
+本轮第一条主路径已完成：Air 生成普通双父恢复提交 `c95b6c1`（父节点数 2），并生成后续
+脱敏审计提交 `8a6a543`；审计记录显示 `event_count=4`、`aggregate_count=1`、
 `generated_view_count=1`、`rebuilt_view_count=1`，事件和登记视图均已保留，人工 Markdown
-按“保留本机/采用远端”落地，未知视图与二进制均生成双方副本。Studio 普通快进后与 Air
-同为 `8a6a543`，双方工作树 clean、ahead/behind 均为 `0/0`。
+按选择落地，未知视图与二进制均生成双方副本。Studio 普通快进后与 Air 同为 `8a6a543`，
+双方工作树 clean、ahead/behind 均为 `0/0`。
 
-主路径通过不等于退出门全部关闭：脏工作树拒绝和审计写入失败的现场状态仍需补记；现有自动化
-测试已覆盖这两条保护分支，但在现场补证前 P2-02/ADR 0043 继续保持 `[~]`。
+第二条保护分支主路径也已补齐：Air 的脏工作树确认被明确拒绝并返回
+`current_worktree_dirty`；移除合成脏文件后重新恢复，产生双父提交 `af662d5` 和审计提交
+`ec00260`。该轮审计记录为 `event_count=5`、`aggregate_count=1`、
+`generated_view_count=0`、`rebuilt_view_count=0`，人工选择仍按“保留本机/采用远端”落地。
+Studio 随后 fast-forward 到 `ec00260`；两台设备最终均 clean，ahead/behind 为 `0/0`。
 
-本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
-`rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
-收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
-回归测试，但当前保留的现场记录不足以独立确认三条真机保护分支。P2-02 因此继续保持 `[~]`，
-不得仅凭双父提交和最终同 HEAD 改为 `[x]`。
+审计写入失败分支在隔离验收副本中完成回归验证：审计目标故意安全拒绝时，恢复仍保持
+`committed`，并明确报告 `audit_status=failed` / `recovery_audit_failed`，双父提交不被回滚或
+重复执行。现场验收记录与自动化结果均通过脱敏审计。
 
 代码复核确认 build 29 的 migration mode 默认安全回退到 `legacy`，现有真机配置也没有持久化
 `dual-write` 开关；产品所有者已选择 1A：仅验收时为 App 进程显式启用 `dual-write`，验收结束
 恢复默认 `legacy`，不新增图形化设置。
 
-使用 build 29，在合成验收 vault 中补做 event + 已登记视图
-分叉，并保存三条保护分支的脱敏状态码/短 revision 证据；随后再次确认双方 clean、HEAD/远端一致。
+build 29 的 dual-write 进程验收结束后已恢复默认 `legacy` 模式；不新增图形化开关，也不把
+验收环境变量持久化到系统启动环境。
 
 ## 4. 退出判定与暂停点
 
-只有以下条件全部满足，才把 P2-02 和 ADR 0043 改为 `[x]`：
+以下退出条件现已全部满足，P2-02 和 ADR 0043 已改为 `[x]`：
 
 - 同一个 build 29 DMG 在 Studio + Air 完成上述流程；
 - 解释、人工选择、`preserve-both`、临时预检、显式确认、普通双父提交、脱敏审计和普通 push
   均有现场证据；
-- 远端变化、脏工作树、审计失败保护分支均按预期拒绝或保持可见；
+- 远端变化、脏工作树、审计失败保护分支均按预期拒绝或保持可见；现场状态码包括
+  `conflict_snapshot_stale`、`current_worktree_dirty` 和 `recovery_audit_failed`；
 - 两台设备最终 fast-forward/汇合到同一个 HEAD，双方内容均可核对且未丢失；
 - 现场记录和导出物通过 secret scan，且不含凭据、完整远端路径、真实正文或本机敏感路径。
 
-执行至此需要用户在另一台设备操作、在 Keychain/PAT 提示处输入凭据，并可能确认测试
-fixture 的本地清理。这是本工作包的暂停点；在用户回传脱敏结果前，不进入 P2-03，不修改
-P2-02/ADR 0043 为完成，也不开始 M3。
+本工作包已完成。P2-03 仍未启动；按产品选择 2B，下一步进入 M3 上下文闭环，先做最小
+端到端纵向切片。

@@ -47,7 +47,7 @@
 | [0040](0040-thread-activity-events.md) | P2-01A | ✅ thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
 | [0041](0041-remote-normalization-acceptance.md) | P1-07D | ✅ HTTPS remote 规范化、只读 preflight 与双设备验收；候选包 build 23 已在 Studio + Air 同包闭环 |
 | [0042](0042-thread-activity-shadow-read-dual-write.md) | P2-01B | ✅ 仅 thread activity 事件切片的 shadow-read → dual-write、一致性报告、诊断与回退开关；不迁移其他热点 |
-| [0043](0043-sync-conflict-explanation.md) | P2-02 | 🚧 build 28 双机恢复主路径通过；待补事件/已登记视图与三条现场保护分支证据 |
+| [0043](0043-sync-conflict-explanation.md) | P2-02 | ✅ build 29 双机退出验收通过；主路径、脏工作树与审计失败保护分支均有证据 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
@@ -60,8 +60,8 @@ M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR
 多设备与可分发产品化已完成 P1-07D：候选包 build 23 已在 Mac Studio 与 MacBook Air
 安装同一 DMG 并完成完整双机验收，进入 P2-01B 的前置门已解除。P2-01B 仅针对已有
 thread activity 事件切片接入 `shadow-read → dual-write`，提供确定性投影对比、差异诊断、
-一致性报告和可回退开关；暂不迁移全局 inbox、会议决策或项目正文。P2-02 的实现与自动化
-质量门已收口，build 28 已完成真实 Studio + Air 双父恢复、审计、push 与最终汇合；但事件收集、
-已登记视图重建及三条保护分支的现场证据仍需补齐，通过后进入 M3。P2-03 属于未授权的
-可选云服务，不默认实施。build 25–28 证据及现场 runbook 见
+一致性报告和可回退开关；暂不迁移全局 inbox、会议决策或项目正文。P2-02 的实现、自动化
+质量门与 build 29 双机退出验收均已收口：事件收集、已登记视图重建、脏工作树保护、审计失败
+可见性、普通 push 与最终汇合均有脱敏证据。下一步进入 M3；P2-03 属于未授权的可选云服务，
+不默认实施。build 25–29 证据及现场 runbook 见
 `docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。

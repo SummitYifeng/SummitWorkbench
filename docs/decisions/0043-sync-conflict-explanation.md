@@ -1,6 +1,6 @@
 # ADR 0043 · P2-02 同步冲突解释与恢复计划
 
-- 状态：实现完成、build 28 双机主路径已通过；退出验收待补齐（2026-09-07）
+- 状态：已完成（build 29 双机退出验收通过，2026-09-07）
 - 范围：`diverged-protected` 等同步保护态的冲突分类与安全建议
 - 前置：P1-07D（ADR 0041）、P2-01B（ADR 0042）
 
@@ -45,12 +45,14 @@ thread activity 视图的确定性临时重建、快照绑定的临时准备、d
 API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push 尝试，以及未知派生视图
 人工 `preserve-both` 回退与确定性 `.remote` 副本；合并成功但审计写入失败时的状态可见性。
 
-自动化质量门已通过。build 28 已在真实 Studio + Air 上完成 Markdown、未知视图和 binary 的
-普通双父恢复、脱敏审计、普通 push 与最终同 HEAD；保留的两个恢复审计和双方副本证明主路径
-成立。但审计中的 `event_count/generated_view_count/rebuilt_view_count` 均为 `0`，没有现场覆盖
-追加事件自动收集与已登记 thread activity 视图重建；快照过期、脏工作树和审计失败也仍缺少
-可独立复核的真机状态证据。因此 ADR 继续保持“待验收”，不得以自动测试替代这些退出门。
+自动化质量门与 build 29 双机退出验收均已通过。第一轮恢复提交 `c95b6c1`、审计提交
+`8a6a543` 覆盖 Markdown、未知视图、binary、追加 event 和已登记视图重建，审计计数为
+`4/1/1`；第二轮脏工作树保护先返回 `current_worktree_dirty`，清理后产生双父提交 `af662d5`
+和审计提交 `ec00260`，计数为 `5/0/0`。Studio fast-forward 后双方最终同为 `ec00260`，
+工作树 clean、ahead/behind `0/0`。隔离验收副本还验证了审计写入失败时保持
+`committed` 并明确报告 `audit_status=failed` / `recovery_audit_failed`。这些证据覆盖了
+主路径与保护分支，ADR 0043 现可视为完成。
 
-build 25–28 的候选包证据、已完成项和补验步骤见
-`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。在真实双机退出门通过前，P2-02
-仍保持 `[~]`，P2-03 不启动。
+build 25–29 的候选包证据、已完成项和补验步骤见
+`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。P2-02 已完成并标记 `[x]`；P2-03
+仍未启动。

@@ -5,15 +5,17 @@
 
 - P2-01B 已完成：仅对既有 thread activity 接入 `shadow-read → dual-write`、确定性投影对比、
   差异诊断、一致性报告与回退开关；不迁移 inbox、会议决策或项目正文。
-- P2-02 实现已收口；build 28 已在 Studio + Air 完成 Markdown、未知视图与 binary 的普通双父
-  恢复、脱敏审计、普通 push 和最终同 HEAD。独立复核发现现场审计的事件/已登记视图计数均为
-  `0`，且三条保护分支缺少可复核现场记录，因此 P2-02 继续保持 `[~]`，待同一 build 28 补验。
+- P2-02 已完成：build 29 在 Studio + Air 通过双机退出验收，覆盖 Markdown、未知视图、binary、
+  追加 event、已登记视图重建、脏工作树拒绝、脱敏审计、普通 push 与最终同 HEAD；P2-02 与
+  ADR 0043 均已标记 `[x]`。第一轮审计计数为 `4/1/1`，第二轮为 `5/0/0`，最终 revision
+  为 `ec00260`，双方 clean 且 ahead/behind `0/0`。
 - build 28 现场追加 dual-write 时发现打包服务只提交 event、遗漏同事务的 legacy Markdown；已在
   `run_local_mutation` 增加主返回路径兜底并补 Dulwich 回归测试，build 29 重新打包，P2-02 现场验收
   改用 build 29。
-- build 29 双机主路径已通过：Air 普通双父恢复 `c95b6c1`、脱敏审计 `8a6a543`，事件/登记视图
-  自动处理计数为 `4/1/1`，Studio 快进后双方同 HEAD 且 clean；脏工作树和审计失败两条保护分支
-  仍待现场补证，P2-02 暂不标记完成。
+- build 29 双机主路径与保护分支均已通过：Air 普通双父恢复 `c95b6c1`、脱敏审计 `8a6a543`，
+  事件/登记视图自动处理计数为 `4/1/1`；脏工作树现场返回 `current_worktree_dirty`，清理后
+  产生双父恢复 `af662d5` 与审计 `ec00260`。隔离验收副本验证审计失败仍保持 `committed` 并
+  报告 `recovery_audit_failed`；Studio 快进后双方同 HEAD 且 clean。
 - 当前主线质量门独立复核：`826 passed, 1 skipped`，覆盖率 `82.15%`，另有 packaged App smoke
   `1 passed`；ruff、格式检查、mypy、前端契约与生产构建、依赖锁、release 验证和 secret scan 均通过。
 
