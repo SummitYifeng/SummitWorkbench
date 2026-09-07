@@ -19,6 +19,7 @@ class OnboardingFlow(StrEnum):
     CREATE_NEW = "create-new"  # 新建：选 Work Root → staging → _vault + marker + profile
     UPGRADE_EXISTING = "upgrade-existing"  # 升级旧 vault：备份 → 写 marker/profile，不动内容
     CONNECT_LOCAL = "connect-local"  # 连接已 clone/拷贝的带 marker vault → 建档
+    CONNECT_REMOTE = "connect-remote"  # 私有 HTTPS remote clone 的目标目录（尚未存在）
 
 
 class PreflightReport(BaseModel):

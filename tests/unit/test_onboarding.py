@@ -232,6 +232,19 @@ def test_preflight_detects_existing_git_dir_without_running_git(tmp_path) -> Non
     assert report.has_git_dir is True
 
 
+def test_connect_remote_preflight_allows_new_target_and_rejects_nonempty(tmp_path) -> None:
+    """P1-07D：Air remote clone 目标目录尚未存在时通过；非空目录被拒绝。"""
+    target = tmp_path / "new-vault"
+    report = preflight(OnboardingFlow.CONNECT_REMOTE, target, home=tmp_path)
+    assert report.ok
+
+    target.mkdir()
+    (target / "f.txt").write_text("x", encoding="utf-8")
+    report = preflight(OnboardingFlow.CONNECT_REMOTE, target, home=tmp_path)
+    assert not report.ok
+    assert any("非空" in reason for reason in report.rejections)
+
+
 # ---- upgrade-existing ----
 
 

@@ -252,7 +252,7 @@ class AskPayload(BaseModel):
 
 
 class OnboardingPreflightPayload(BaseModel):
-    flow: Literal["create-new", "upgrade-existing", "connect-local"]
+    flow: Literal["create-new", "upgrade-existing", "connect-local", "connect-remote"]
     path: str = Field(min_length=1, max_length=2_048)
 
 

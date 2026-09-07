@@ -242,6 +242,21 @@ def preflight(
             for issue in issues:
                 reject(f"模板含个人化内容（{issue}），已拒绝本次创建")
 
+    elif flow is OnboardingFlow.CONNECT_REMOTE:
+        # 私有 HTTPS remote clone 的目标目录：必须尚不存在或为空；marker/git 由
+        # stage_remote_clone 在 clone 后校验，此处只做路径/权限/网盘/空间预检。
+        if exists and not report.empty:
+            reject("目标 vault 已存在且非空，绝不覆盖（connect-remote 需要全新目录）")
+        if not report.writable:
+            reject("目标位置不可写")
+        if not report.space_ok:
+            reject("目标磁盘可用空间不足")
+        if report.cloud_storage:
+            reject(
+                "目标位于网盘同步目录（iCloud/Dropbox/OneDrive 等）：网盘同步含 .git 的"
+                "工作区会损坏 Git 仓库，请换本地目录"
+            )
+
     elif flow in {OnboardingFlow.UPGRADE_EXISTING, OnboardingFlow.CONNECT_LOCAL}:
         if not exists or not target.is_dir():
             reject(f"vault 目录不存在或不是目录：{target}")
