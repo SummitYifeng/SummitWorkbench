@@ -368,6 +368,23 @@ def test_prepare_automatic_recovery_owns_ephemeral_staging_and_rejects_stale_sna
         rendered = json.loads((staging / "_views/thread-activity.json").read_text())
         assert rendered["projection"] == "thread-activity"
         assert rendered["aggregates"][0]["aggregate_id"] == "project-1"
+
+        before_apply = other_repo.head_revision()
+        _commit(repo, root, "remote-later.md", "remote later\n", "wb: remote later")
+        repo.push()
+        other_repo.fetch()
+        stale_apply = apply_prepared_recovery(
+            other,
+            prepared,
+            workspace_id="workspace-1",
+            confirm=True,
+            author=IDENTITY,
+        )
+        assert stale_apply.status == "stale"
+        assert stale_apply.error_code == "conflict_snapshot_stale"
+        assert other_repo.head_revision() == before_apply
+        assert not (other / "_views/thread-activity.json").exists()
+        assert not (other / RECOVERY_AUDIT_PATH).exists()
     assert not staging.exists()
 
     _commit(other_repo, other, "after.md", "after\n", "wb: after snapshot")
