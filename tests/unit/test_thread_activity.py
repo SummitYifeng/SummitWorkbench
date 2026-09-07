@@ -12,6 +12,7 @@ from summit_workbench.domain.thread_activity import (
     MonotonicULIDGenerator,
     ThreadActivityEvent,
     project_thread_activity,
+    render_thread_activity_view,
 )
 from summit_workbench.repositories.thread_activity_events import (
     ThreadActivityEventStore,
@@ -123,3 +124,19 @@ def test_store_rejects_scope_mismatch_and_projection_preserves_last_event(tmp_pa
     assert view.activity_count == 2
     assert view.last_kind == "thread.status.changed"
     assert view.last_payload["index"] == 2
+
+
+def test_rendered_projection_is_deterministic_and_self_identifying() -> None:
+    first = _event(1, "thread-a", 1)
+    last = _event(2, "thread-a", 2, "thread.status.changed")
+    projection = project_thread_activity([last, first])
+
+    rendered = render_thread_activity_view(projection)
+    rendered_again = render_thread_activity_view(dict(reversed(list(projection.items()))))
+
+    assert rendered == rendered_again
+    document = rendered.decode("utf-8")
+    assert '"projection": "thread-activity"' in document
+    assert '"schema_version": 1' in document
+    assert '"activity_count": 2' in document
+    assert len(document.split('"checksum": "')[1].split('"', 1)[0]) == 64

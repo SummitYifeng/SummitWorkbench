@@ -25,7 +25,7 @@ from summit_workbench.domain.sync_conflict import (
     ConflictRecoveryPlan,
     classify_conflict_path,
 )
-from summit_workbench.domain.thread_activity import ThreadActivityEvent
+from summit_workbench.domain.thread_activity import ThreadActivityEvent, render_thread_activity_view
 from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 
@@ -114,6 +114,7 @@ class TemporaryValidation:
     event_count: int = 0
     aggregate_count: int = 0
     generated_view_count: int = 0
+    rebuilt_view_count: int = 0
     error_code: str | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -123,6 +124,7 @@ class TemporaryValidation:
             "event_count": self.event_count,
             "aggregate_count": self.aggregate_count,
             "generated_view_count": self.generated_view_count,
+            "rebuilt_view_count": self.rebuilt_view_count,
             "error_code": self.error_code,
         }
 
@@ -273,7 +275,13 @@ def validate_automatic_recovery(
     event_paths = tuple(
         path for path in details.paths if path.kind is ConflictKind.APPEND_ONLY_EVENT
     )
-    generated_views = sum(path.kind is ConflictKind.GENERATED_VIEW for path in details.paths)
+    generated_view_items = tuple(
+        path for path in details.paths if path.kind is ConflictKind.GENERATED_VIEW
+    )
+    generated_views = len(generated_view_items)
+    rebuildable_views = tuple(
+        path for path in generated_view_items if path.path == "_views/thread-activity.json"
+    )
     with tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-") as temporary:
         staging = Path(temporary)
         _copy_regular_files(vault_dir / "_events", staging / "_events")
@@ -309,11 +317,16 @@ def validate_automatic_recovery(
                 generated_view_count=generated_views,
                 error_code="event_projection_failed",
             )
+        if rebuildable_views:
+            target = staging / "_views" / "thread-activity.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(render_thread_activity_view(projection))
     return TemporaryValidation(
-        status="view-rebuild-pending" if generated_views else "validated",
+        status="view-rebuild-pending" if len(rebuildable_views) != generated_views else "validated",
         event_count=len(events),
         aggregate_count=len(projection),
         generated_view_count=generated_views,
+        rebuilt_view_count=len(rebuildable_views),
     )
 
 

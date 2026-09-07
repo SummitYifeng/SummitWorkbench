@@ -8,6 +8,7 @@ later migration package explicitly moves them.
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -156,9 +157,46 @@ def project_thread_activity(events: Iterable[ThreadActivityEvent]) -> dict[str, 
     }
 
 
+def render_thread_activity_view(projection: Mapping[str, ThreadActivityView]) -> bytes:
+    """Render the defined thread activity projection as stable JSON bytes.
+
+    The checksum covers the projection document without its checksum field.  This
+    makes a temporary rebuild independently verifiable while keeping output
+    stable across event order, mapping order, and repeated runs.
+    """
+    aggregates = [
+        {
+            "aggregate_id": view.aggregate_id,
+            "event_ids": list(view.event_ids),
+            "activity_count": view.activity_count,
+            "last_occurred_at": view.last_occurred_at.astimezone(UTC).isoformat(),
+            "last_kind": view.last_kind,
+            "last_payload": dict(view.last_payload),
+        }
+        for _, view in sorted(projection.items())
+    ]
+    document: dict[str, Any] = {
+        "schema_version": 1,
+        "projection": "thread-activity",
+        "aggregates": aggregates,
+    }
+    canonical = json.dumps(
+        document,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    document["checksum"] = hashlib.sha256(canonical).hexdigest()
+    return (
+        json.dumps(document, ensure_ascii=False, allow_nan=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
 __all__ = [
     "MonotonicULIDGenerator",
     "ThreadActivityEvent",
     "ThreadActivityView",
     "project_thread_activity",
+    "render_thread_activity_view",
 ]

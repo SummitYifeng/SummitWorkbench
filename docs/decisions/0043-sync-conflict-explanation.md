@@ -14,17 +14,20 @@
    `GET /api/sync/conflict/details`、`GET /api/sync/conflict/validate` 和
    `POST /api/sync/conflict/selection/validate` 五个只读/预检接口。
    恢复计划只描述阶段、计数和禁止动作，分叉详情只返回两侧 revision/时间、路径分类、
-   摘要和 event 标识，不返回正文；validate 只在临时非 Git 目录校验 event schema/投影，
-   若包含 `_views` 则明确返回 `view-rebuild-pending`，不把未重建视图算作完成。
+   摘要和 event 标识，不返回正文；validate 只在临时非 Git 目录校验 event schema/投影。
+   已定义的 `_views/thread-activity.json` 会在临时目录重建；未定义视图仍返回
+   `view-rebuild-pending`，不把未重建视图算作完成。
    它们都不 fetch、不 merge、不替换工作树、不 force push，也不改变现有
    `diverged-protected` 写入保护。selection validate 还会校验人工选择是否完整、是否
-   基于当前双侧 revision，但不会执行选择或写回。
+   基于当前双侧 revision，但不会执行选择或写回。已定义的
+   `_views/thread-activity.json`，validate 会在临时目录按 event projection 重建并校验；
+   未定义的 `_views` 仍返回 `view-rebuild-pending`，不会猜测其业务语义。
 4. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
    验证后才可提出可审计的恢复动作；本 ADR 不提前承诺该能力已实现。
 
 ## 验收
 
 已覆盖分类稳定性、路径越界拒绝、混合冲突的人工确认提示、自动项必须先进入临时 worktree
-验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、人工选择
-预检，以及五个 Web API 只读/预检契约；临时 worktree 实际恢复、事件自动收集、生成视图
-重建和人工确认写回留待 P2-02 后续阶段。
+验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、已定义
+thread activity 视图的确定性临时重建、人工选择预检，以及五个 Web API 只读/预检契约；
+临时 worktree 实际恢复、生成视图写回和人工确认写回留待 P2-02 后续阶段。
