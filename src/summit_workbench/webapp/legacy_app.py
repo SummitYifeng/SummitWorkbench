@@ -126,6 +126,7 @@ from summit_workbench.webapp.api import (
     ProjectRenamePayload,
     ProjectStatePayload,
     ProviderSettingsPayload,
+    SyncConflictSelectionPayload,
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
@@ -3243,6 +3244,51 @@ def create_app(
                 "Cache-Control": "no-store, max-age=0",
             },
         )
+
+    @app.post("/api/sync/conflict/selection/validate", response_model=None)
+    def api_sync_conflict_selection_validate(
+        payload: SyncConflictSelectionPayload,
+    ) -> dict[str, object]:
+        """Validate explicit choices against the current read-only divergence snapshot."""
+        snapshot = _current_sync_snapshot()
+        if snapshot.state.value != "diverged-protected":
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "当前 workspace 不在 diverged-protected 状态",
+            }
+        from summit_workbench.workflows.sync_conflict_recovery import (
+            inspect_divergence,
+            validate_manual_selections,
+        )
+
+        try:
+            details = inspect_divergence(
+                ctx.vault_dir,
+                backend_kind=ctx.git_backend_kind,
+                workspace_id=ctx.workspace_id,
+            )
+            result = validate_manual_selections(
+                details,
+                base_revision=payload.base_revision,
+                local_revision=payload.local_revision,
+                remote_revision=payload.remote_revision,
+                selections=payload.selections,
+            )
+        except (ValueError, GitError):
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "当前分叉快照暂时无法读取，请重新打开冲突详情",
+            }
+        return {
+            "ok": result.status == "validated",
+            "available": True,
+            "state": snapshot.state.value,
+            "selection": result.as_dict(),
+        }
 
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:

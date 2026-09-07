@@ -113,6 +113,22 @@ def test_conflict_export_contains_only_recovery_manifest(client) -> None:
     assert "vault body" in manifest["content_policy"]
 
 
+def test_conflict_selection_validation_is_protected_outside_divergence(client) -> None:
+    response = client.post(
+        "/api/sync/conflict/selection/validate",
+        json={
+            "base_revision": "0" * 40,
+            "local_revision": "1" * 40,
+            "remote_revision": "2" * 40,
+            "selections": {},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    assert response.json()["state"] == "unconfigured"
+
+
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200

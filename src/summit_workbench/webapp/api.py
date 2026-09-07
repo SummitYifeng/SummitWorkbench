@@ -181,6 +181,20 @@ class GitRemoteRollbackPayload(BaseModel):
     confirmed: bool = False
 
 
+class SyncConflictSelectionPayload(BaseModel):
+    """Current revision snapshot plus explicit manual conflict choices; validation only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_revision: str = Field(min_length=40, max_length=64)
+    local_revision: str = Field(min_length=40, max_length=64)
+    remote_revision: str = Field(min_length=40, max_length=64)
+    selections: dict[
+        str,
+        Literal["keep-local", "keep-remote", "preserve-both"],
+    ] = Field(default_factory=dict, max_length=1000)
+
+
 class AcceptancePreflightPayload(BaseModel):
     """Read-only release/dual-device acceptance gate request."""
 

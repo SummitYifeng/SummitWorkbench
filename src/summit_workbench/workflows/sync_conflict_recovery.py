@@ -12,7 +12,9 @@ import json
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -28,6 +30,12 @@ from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 
 RecoverySide = Literal["local", "remote"]
+
+
+class SelectionChoice(StrEnum):
+    KEEP_LOCAL = "keep-local"
+    KEEP_REMOTE = "keep-remote"
+    PRESERVE_BOTH = "preserve-both"
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,27 @@ class TemporaryValidation:
             "event_count": self.event_count,
             "aggregate_count": self.aggregate_count,
             "generated_view_count": self.generated_view_count,
+            "error_code": self.error_code,
+        }
+
+
+@dataclass(frozen=True)
+class SelectionValidation:
+    """Preflight result for explicit human choices; it never changes the vault."""
+
+    status: str
+    missing_paths: tuple[str, ...] = ()
+    unexpected_paths: tuple[str, ...] = ()
+    invalid_paths: tuple[str, ...] = ()
+    error_code: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "ok": self.status == "validated",
+            "missing_paths": list(self.missing_paths),
+            "unexpected_paths": list(self.unexpected_paths),
+            "invalid_paths": list(self.invalid_paths),
             "error_code": self.error_code,
         }
 
@@ -288,6 +317,60 @@ def validate_automatic_recovery(
     )
 
 
+def validate_manual_selections(
+    details: DivergenceDetails,
+    *,
+    base_revision: str,
+    local_revision: str,
+    remote_revision: str,
+    selections: Mapping[str, SelectionChoice | str],
+) -> SelectionValidation:
+    """Validate a complete, current manual-selection snapshot without writing."""
+    if (
+        details.base_revision != base_revision
+        or details.local.revision != local_revision
+        or details.remote.revision != remote_revision
+    ):
+        return SelectionValidation(status="stale", error_code="conflict_snapshot_stale")
+
+    normalized: dict[str, SelectionChoice | str] = {}
+    for raw_path, choice in selections.items():
+        try:
+            path = classify_conflict_path(raw_path).path
+        except ValueError:
+            return SelectionValidation(status="invalid", error_code="manual_selection_invalid_path")
+        if path in normalized:
+            return SelectionValidation(
+                status="invalid", error_code="manual_selection_duplicate_path"
+            )
+        normalized[path] = choice
+    manual = {path.path: path for path in details.paths if not path.automatic}
+    received = set(normalized)
+    missing = tuple(sorted(set(manual) - received))
+    unexpected = tuple(sorted(received - set(manual)))
+    invalid: list[str] = []
+    for path, raw_choice in normalized.items():
+        item = manual.get(path)
+        if item is None:
+            continue
+        try:
+            choice = SelectionChoice(raw_choice)
+        except ValueError:
+            invalid.append(path)
+            continue
+        if item.kind is ConflictKind.OPAQUE_BINARY and choice is not SelectionChoice.PRESERVE_BOTH:
+            invalid.append(path)
+    if missing or unexpected or invalid:
+        return SelectionValidation(
+            status="incomplete" if missing else "invalid",
+            missing_paths=missing,
+            unexpected_paths=unexpected,
+            invalid_paths=tuple(sorted(invalid)),
+            error_code="manual_selection_incomplete" if missing else "manual_selection_invalid",
+        )
+    return SelectionValidation(status="validated")
+
+
 def recovery_manifest_bytes(
     state: SyncState,
     plan: ConflictRecoveryPlan,
@@ -315,8 +398,11 @@ __all__ = [
     "ConflictPathDetail",
     "ConflictSide",
     "DivergenceDetails",
+    "SelectionChoice",
+    "SelectionValidation",
     "TemporaryValidation",
     "inspect_divergence",
     "recovery_manifest_bytes",
+    "validate_manual_selections",
     "validate_automatic_recovery",
 ]

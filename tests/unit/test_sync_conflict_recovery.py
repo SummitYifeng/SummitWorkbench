@@ -7,8 +7,10 @@ from summit_workbench.domain.thread_activity import MonotonicULIDGenerator, Thre
 from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.workflows.sync_conflict_recovery import (
+    SelectionChoice,
     inspect_divergence,
     validate_automatic_recovery,
+    validate_manual_selections,
 )
 
 IDENTITY = CommitIdentity("Recovery test", "recovery@example.com")
@@ -73,6 +75,33 @@ def test_inspect_divergence_returns_safe_side_and_event_metadata(tmp_path: Path)
     assert event_detail.remote_event["causation_operation_id"] == "operation-1"
     assert event_detail.local_event is None
     assert all("payload" not in item for item in (event_detail.remote_event or {}))
+
+    note_detail = next(item for item in details.paths if item.path == "notes.md")
+    missing = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections={},
+    )
+    assert missing.status == "incomplete"
+    assert missing.missing_paths == (note_detail.path,)
+    selected = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections={note_detail.path: SelectionChoice.KEEP_LOCAL},
+    )
+    assert selected.status == "validated"
+    stale = validate_manual_selections(
+        details,
+        base_revision="0" * 40,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections={note_detail.path: SelectionChoice.KEEP_LOCAL},
+    )
+    assert stale.error_code == "conflict_snapshot_stale"
 
     event_only = inspect_divergence(air, paths=(event_detail.path,))
     validation = validate_automatic_recovery(
