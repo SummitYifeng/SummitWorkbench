@@ -2830,6 +2830,7 @@ function conflictKindLabel(kind: string): string {
   const labels: Record<string, string> = {
     'append-only-event': '活动事件（自动收集）',
     'generated-view': '派生视图（重建）',
+    'unknown-generated-view': '未知派生视图（保留双方）',
     'manual-markdown': 'Markdown（人工选择）',
     'opaque-binary': '未知/二进制（保留双方）',
   };
@@ -2890,7 +2891,9 @@ function renderSyncConflictModal(): void {
       : '<label class="conflict-choice"><span class="sr-only">' + esc(item.path) + '处理方式</span>' +
         '<select data-conflict-path="' + esc(item.path) + '"' + (conflictBusy ? ' disabled' : '') + '>' +
         '<option value="">请选择处理方式</option>' +
-        (['keep-local', 'keep-remote', 'preserve-both'] as ConflictSelection[]).map((choice) =>
+        ((item.kind === 'unknown-generated-view' || item.kind === 'opaque-binary')
+          ? ['preserve-both'] as ConflictSelection[]
+          : ['keep-local', 'keep-remote', 'preserve-both'] as ConflictSelection[]).map((choice) =>
           '<option value="' + choice + '"' + (conflictSelections[item.path] === choice ? ' selected' : '') + '>' +
           conflictSelectionLabel(choice) + '</option>').join('') + '</select></label>';
     return '<div class="conflict-path"><div class="conflict-path-main"><code>' + esc(item.path) + '</code>' +

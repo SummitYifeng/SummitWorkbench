@@ -47,7 +47,7 @@
 | [0040](0040-thread-activity-events.md) | P2-01A | ✅ thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
 | [0041](0041-remote-normalization-acceptance.md) | P1-07D | ✅ HTTPS remote 规范化、只读 preflight 与双设备验收；候选包 build 23 已在 Studio + Air 同包闭环 |
 | [0042](0042-thread-activity-shadow-read-dual-write.md) | P2-01B | ✅ 仅 thread activity 事件切片的 shadow-read → dual-write、一致性报告、诊断与回退开关；不迁移其他热点 |
-| [0043](0043-sync-conflict-explanation.md) | P2-02 | 🚧 冲突解释、临时准备、显式本地恢复、脱敏审计与普通 push；未知派生视图仍待收口 |
+| [0043](0043-sync-conflict-explanation.md) | P2-02 | 🚧 冲突解释、临时准备、显式本地恢复、脱敏审计与普通 push；未知派生视图人工保留双方回退已接入 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；

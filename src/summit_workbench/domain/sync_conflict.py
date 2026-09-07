@@ -13,6 +13,7 @@ from summit_workbench.domain.sync import SyncState, next_step_for
 class ConflictKind(StrEnum):
     APPEND_ONLY_EVENT = "append-only-event"
     GENERATED_VIEW = "generated-view"
+    UNKNOWN_GENERATED_VIEW = "unknown-generated-view"
     MANUAL_MARKDOWN = "manual-markdown"
     OPAQUE_BINARY = "opaque-binary"
 
@@ -146,13 +147,21 @@ def classify_conflict_path(path: str) -> ConflictItem:
             True,
             "追加式 event 可合并收集，合并后重建 thread activity 投影",
         )
-    if parts and parts[0] == "_views":
+    if safe == "_views/thread-activity.json":
         return ConflictItem(
             safe,
             ConflictKind.GENERATED_VIEW,
             ConflictAction.REBUILD,
             True,
             "派生视图不作为人工事实，合并后从来源重建",
+        )
+    if parts and parts[0] == "_views":
+        return ConflictItem(
+            safe,
+            ConflictKind.UNKNOWN_GENERATED_VIEW,
+            ConflictAction.PRESERVE_BOTH,
+            False,
+            "未登记派生视图没有安全重建器，先保留双方副本，不猜测业务语义",
         )
     if safe.endswith(".md"):
         return ConflictItem(

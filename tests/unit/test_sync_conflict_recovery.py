@@ -166,7 +166,7 @@ def test_validate_automatic_recovery_stops_before_manual_content(tmp_path: Path)
     assert validation.error_code == "manual_items"
 
 
-def test_validate_automatic_recovery_does_not_claim_views_are_rebuilt(tmp_path: Path) -> None:
+def test_unknown_generated_view_requires_preserve_both_fallback(tmp_path: Path) -> None:
     remote = tmp_path / "remote.git"
     GitRepo(remote).backend.init(bare=True)
     root = tmp_path / "root"
@@ -199,12 +199,45 @@ def test_validate_automatic_recovery_does_not_claim_views_are_rebuilt(tmp_path: 
     other_repo.fetch()
 
     details = inspect_divergence(other)
+    unknown_view = next(item for item in details.paths if item.path == "_views/thread.json")
+    assert unknown_view.kind.value == "unknown-generated-view"
+    assert unknown_view.automatic is False
+
     validation = validate_automatic_recovery(other, details, workspace_id="workspace-1")
 
-    assert validation.status == "view-rebuild-pending"
+    assert validation.status == "manual-confirmation-required"
     assert validation.as_dict()["ok"] is False
-    assert validation.generated_view_count == 1
-    assert validation.rebuilt_view_count == 0
+    assert validation.error_code == "manual_items"
+
+    rejected = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections={unknown_view.path: SelectionChoice.KEEP_REMOTE},
+    )
+    assert rejected.status == "invalid"
+    assert rejected.invalid_paths == (unknown_view.path,)
+
+    selected = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections={unknown_view.path: SelectionChoice.PRESERVE_BOTH},
+    )
+    assert selected.status == "validated"
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={unknown_view.path: SelectionChoice.PRESERVE_BOTH},
+    ) as prepared:
+        assert prepared.status == "validated"
+        assert prepared.candidate_paths == ("_views/thread.json.remote",)
+        assert prepared.staging_dir is not None
+        assert not (prepared.staging_dir / "_views/thread.json").exists()
+        assert (prepared.staging_dir / "_views/thread.json.remote").read_text() == "{}\n"
 
 
 def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: Path) -> None:

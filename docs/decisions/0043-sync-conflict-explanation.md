@@ -8,16 +8,18 @@
 
 1. 冲突解释只接受 vault 内相对路径，不读取文件正文，也不返回绝对本机路径、凭据或
    远端 URL。输出按路径稳定排序，便于 UI 和诊断包复用。
-2. `_events/**/*.json` 归类为追加式 event，可在后续恢复阶段自动收集；`_views/**` 归类
-   为可重建派生视图；Markdown 必须人工选择；二进制或未知格式先保留双方副本。
+2. `_events/**/*.json` 归类为追加式 event，可在后续恢复阶段自动收集；已登记的
+   `_views/thread-activity.json` 归类为可重建派生视图；未登记的 `_views/**` 没有安全
+   重建器，必须人工选择 `preserve-both` 并保留确定性的 `.remote` 副本；Markdown 必须人工
+   选择；二进制或未知格式先保留双方副本。
 3. 当前提供五个只读/预检接口：`GET /api/sync/conflict/explain`、`GET /api/sync/conflict/plan`、
    `GET /api/sync/conflict/details`、`GET /api/sync/conflict/validate` 和
    `POST /api/sync/conflict/selection/validate`；另有
    `POST /api/sync/conflict/recover` 作为显式本地恢复入口。
    恢复计划只描述阶段、计数和禁止动作，分叉详情只返回两侧 revision/时间、路径分类、
    摘要和 event 标识，不返回正文；validate 只在临时非 Git 目录校验 event schema/投影。
-   已定义的 `_views/thread-activity.json` 会在临时目录重建；未定义视图仍返回
-   `view-rebuild-pending`，不把未重建视图算作完成。详情、计划、validate 和 selection
+   已定义的 `_views/thread-activity.json` 会在临时目录重建；未定义视图转为人工
+   `preserve-both`，不猜测业务语义。详情、计划、validate 和 selection
    validate 都不 fetch、不 merge、不替换工作树、不 force push，也不改变现有
    `diverged-protected` 写入保护。selection validate 还会校验人工选择是否完整、是否
    基于当前双侧 revision，但不会执行选择或写回。
@@ -39,5 +41,5 @@
 验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、已定义
 thread activity 视图的确定性临时重建、快照绑定的临时准备、dirty/stale 保护、人工选择
 候选树、preserve-both 保留规则、显式确认的本地双父恢复提交、人工选择预检、五个 Web
-API 只读/预检契约、保护态 UI 接线、脱敏恢复审计和普通 push 尝试；更复杂的未知
-派生视图处理留待 P2-02 后续阶段。
+API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push 尝试，以及未知派生视图
+人工 `preserve-both` 回退与确定性 `.remote` 副本。

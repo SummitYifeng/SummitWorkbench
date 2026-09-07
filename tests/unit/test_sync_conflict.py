@@ -15,7 +15,8 @@ from summit_workbench.domain.sync_conflict import (
 
 def test_conflict_categories_have_safe_actions() -> None:
     event = classify_conflict_path("_events/device-a/2026/09/event.json")
-    view = classify_conflict_path("_views/thread-a.json")
+    view = classify_conflict_path("_views/thread-activity.json")
+    unknown_view = classify_conflict_path("_views/thread-a.json")
     markdown = classify_conflict_path("logs/2026-09-07-001.md")
     binary = classify_conflict_path("assets/archive.zip")
 
@@ -28,6 +29,11 @@ def test_conflict_categories_have_safe_actions() -> None:
         ConflictKind.GENERATED_VIEW,
         ConflictAction.REBUILD,
         True,
+    )
+    assert (unknown_view.kind, unknown_view.action, unknown_view.automatic) == (
+        ConflictKind.UNKNOWN_GENERATED_VIEW,
+        ConflictAction.PRESERVE_BOTH,
+        False,
     )
     assert markdown.kind is ConflictKind.MANUAL_MARKDOWN
     assert binary.action is ConflictAction.PRESERVE_BOTH
@@ -52,7 +58,7 @@ def test_explanation_is_sorted_and_requires_manual_for_mixed_paths() -> None:
 def test_recovery_plan_requires_temporary_validation_for_automatic_items() -> None:
     plan = plan_conflict_recovery(
         SyncState.DIVERGED_PROTECTED,
-        ["_events/device-a/2026/09/event.json", "_views/thread-a.json"],
+        ["_events/device-a/2026/09/event.json", "_views/thread-activity.json"],
     )
 
     assert plan.stage is RecoveryStage.TEMPORARY_WORKTREE_VALIDATION

@@ -364,8 +364,8 @@ def prepare_automatic_recovery(
 
     The returned object owns a temporary directory until ``close`` or context-manager
     exit. It contains no ``.git`` directory and never changes the source repository.
-    Only append-only events and the defined thread activity view are prepared; unknown
-    generated views remain pending.
+    Only append-only events and the defined thread activity view are prepared. Unknown
+    generated views are manual items and must be preserved as explicit ``.remote`` copies.
     """
     if details.manual_path_count:
         return RecoveryPreparation(
@@ -460,7 +460,7 @@ def prepare_automatic_recovery(
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(render_thread_activity_view(projection))
     return RecoveryPreparation(
-        status="view-rebuild-pending" if len(rebuildable_views) != generated_views else "validated",
+        status="validated",
         base_revision=details.base_revision,
         local_revision=details.local.revision,
         remote_revision=details.remote.revision,
@@ -514,8 +514,9 @@ def prepare_manual_recovery(
     The candidate starts from the clean local worktree. ``keep-remote`` replaces
     one selected path from the fetched remote revision; ``preserve-both`` keeps
     the local path and writes the remote bytes to a deterministic ``.remote``
-    sibling. Automatic event collection and the defined view rebuild use the same
-    rules as :func:`prepare_automatic_recovery`.
+    sibling. Unknown generated views are restricted to ``preserve-both`` because
+    they have no registered deterministic rebuild procedure. Automatic event collection
+    and the defined view rebuild use the same rules as :func:`prepare_automatic_recovery`.
     """
     selection = validate_manual_selections(
         details,
@@ -635,7 +636,7 @@ def prepare_manual_recovery(
             error_code="event_projection_failed",
         )
     return RecoveryPreparation(
-        status="view-rebuild-pending" if len(rebuildable_views) != generated_views else "validated",
+        status="validated",
         base_revision=details.base_revision,
         local_revision=details.local.revision,
         remote_revision=details.remote.revision,
@@ -830,7 +831,14 @@ def validate_manual_selections(
         except ValueError:
             invalid.append(path)
             continue
-        if item.kind is ConflictKind.OPAQUE_BINARY and choice is not SelectionChoice.PRESERVE_BOTH:
+        if (
+            item.kind
+            in {
+                ConflictKind.OPAQUE_BINARY,
+                ConflictKind.UNKNOWN_GENERATED_VIEW,
+            }
+            and choice is not SelectionChoice.PRESERVE_BOTH
+        ):
             invalid.append(path)
     if missing or unexpected or invalid:
         return SelectionValidation(

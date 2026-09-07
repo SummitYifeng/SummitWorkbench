@@ -1135,15 +1135,15 @@ P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：�
 `/api/sync/conflict/plan`、`/api/sync/conflict/details` 和 `/api/sync/conflict/validate`，
 对 event、派生视图、Markdown 和二进制/未知格式给出稳定分类、安全阶段、禁止动作、双侧
 结构化差异元数据，并在临时非 Git 目录校验 event schema/投影；已定义的
-`_views/thread-activity.json` 会在临时目录确定性重建，未知 `_views` 仍保持
-`view-rebuild-pending`，不猜测业务语义。同时提供人工选择预检并拒绝过期/不完整/非法
+`_views/thread-activity.json` 会在临时目录确定性重建，未知 `_views` 会降级为人工
+`preserve-both`，写入确定性的 `.remote` 副本，不猜测业务语义。同时提供人工选择预检并拒绝过期/不完整/非法
 选择；不执行 fetch、merge、工作树替换或 force push。自动项现在还可生成带
 base/local/remote revision 快照的临时准备结果，并拒绝快照过期或当前 worktree 脏；
 人工选择也可在同一快照保护下生成临时候选树：`keep-remote` 只替换候选路径，
 `preserve-both` 保留确定性的 `.remote` 副本；经过显式确认后，workflow 可将候选路径
 原子写回并创建普通双父 merge commit。当前已完成 UI/API 接线和显式确认的本地
 `/api/sync/conflict/recover` 入口；恢复成功后会记录脱敏审计事件并尝试普通 push，远端
-再次变化时保持保护态；未知派生视图处理仍待后续阶段。
+再次变化时保持保护态；未知派生视图已具备人工保留双方副本的安全回退。
 
 **目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
 
