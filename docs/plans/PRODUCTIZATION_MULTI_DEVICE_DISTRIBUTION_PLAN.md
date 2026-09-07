@@ -4,7 +4,7 @@
 >
 > 日期：2026-09-07
 >
-> 状态：可执行；P0-01 至 P0-13、P1-01 至 P1-06、**P1-07D** 已完成（Studio + Air 真机闭环，候选包 build 23）。下一步进入 P2-01B。
+> 状态：可执行；P0-01 至 P0-13、P1-01 至 P1-06、**P1-07D**、P2-01B 已完成（Studio + Air 真机闭环，build 24 增量冒烟）。下一步进入 P2-02。
 >
 > 适用基线：`v0.4.1` 之后、M3 之前
 >
@@ -1109,7 +1109,7 @@ _vault/_views/...                         # 可重建投影
 
 #### P2-01A · thread activity 纵向切片
 
-状态：进行中 `[~]`。本切片只新增 `_vault/_events/<device_id>/<yyyy>/<mm>/<ulid>.json`
+状态：已完成 `[x]`。本切片只新增 `_vault/_events/<device_id>/<yyyy>/<mm>/<ulid>.json`
 的 thread activity 事件模型、单调 ULID、不可变文件创建、幂等读取、确定性投影与
 Hypothesis 属性测试；不迁移 inbox、会议决策或项目正文，不接入 dual-write，也不改变现有
 Markdown 写路径。后续切片必须另行记录 shadow-read/dual-write 证据后才可扩大范围。
@@ -1117,6 +1117,8 @@ Markdown 写路径。后续切片必须另行记录 shadow-read/dual-write 证�
 **测试/验收**：属性测试覆盖乱序、重复、时钟相同、离线双设备、投影中途失败；两设备 event 文件 Git merge 无同路径冲突；投影视图与旧格式结果等价。
 
 #### P2-01B · thread activity shadow-read → dual-write
+
+状态：已完成 `[x]`。旧 Markdown 仍是用户可见事实源，事件报告已纳入脱敏诊断包。
 
 P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：旧 Markdown 写入与读取继续
 作为用户可见真源，先以 `shadow-read` 读取事件投影并与旧结果比较，再以 `dual-write` 在旧
@@ -1827,6 +1829,14 @@ P0-07C/P0-09C/P0-10C 不新建平行 ADR；分别修订 0029/0030/0031，加入�
   shadow-read/dual-write/event-primary，不改变既有 Markdown 写路径。
 - 质量门：新增 P2-01A 单测与属性测试，并纳入全库 ruff/mypy/pytest 门；跨设备真实 Git
   merge 与后续迁移验收仍待后续工作包。
+
+### 2026-09-07 · P2-01B 运营化收口
+
+- 状态：已完成 `[x]`；P1-07D 已通过后，主线从合并后的 `main` 独立推进。
+- 变更摘要：thread activity 一致性报告纳入脱敏诊断包；dual-write 事件文件与旧 Markdown
+  通过同一显式路径集合进入 Git 留痕；补充 Git 集成、报告安全和回退验证。
+- 边界：仍不迁移 inbox、会议决策、daily signal/completion events 或项目正文；下一步为
+  P2-02 冲突解释与恢复工作台。
 
 ## 16. 外部实现依据
 

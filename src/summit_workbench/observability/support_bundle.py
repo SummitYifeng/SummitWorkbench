@@ -15,6 +15,11 @@ from summit_workbench import __version__
 from summit_workbench.observability.structured_logging import StructuredLogger, short_id
 from summit_workbench.repositories.workspace_manifest import load_workspace_manifest
 from summit_workbench.webapp.build_info import BuildInfoError, WebBuildInfo
+from summit_workbench.workflows.thread_activity_migration import (
+    ThreadActivityConsistencyReport,
+    ThreadActivityMigration,
+    ThreadActivityMigrationMode,
+)
 
 
 def _config_keys(path: Path) -> list[str]:
@@ -78,6 +83,7 @@ def diagnostic_snapshot(
         },
         "status_summary": _status_summary(context),
         "sync_counters": _sync_counters(context),
+        "thread_activity_consistency": _thread_activity_consistency(context),
         "config_keys": _config_keys(context.provider_config_file()),
         "signature": {"mode": "internal-ad-hoc", "notarized": False},
         "recent_errors": [item for item in logger.recent() if item.get("level") == "error"],
@@ -131,6 +137,33 @@ def _sync_counters(context: Any) -> dict[str, object]:
         }
     except Exception:
         return {"state": "unavailable"}
+
+
+def _thread_activity_consistency(context: Any) -> dict[str, object]:
+    """Include only the safe P2-01B report in diagnostics exports."""
+    active = context.active_workspace
+    if active is None or not context.workspace_id or not active.device_id:
+        return ThreadActivityConsistencyReport(
+            mode=ThreadActivityMigrationMode.LEGACY,
+            status="disabled",
+        ).as_dict()
+    try:
+        return (
+            ThreadActivityMigration.from_environment(
+                context.vault_dir,
+                workspace_id=context.workspace_id,
+                device_id=active.device_id,
+            )
+            .inspect()
+            .as_dict()
+        )
+    except Exception:  # noqa: BLE001 - diagnostics must never block export
+        return ThreadActivityConsistencyReport(
+            mode=ThreadActivityMigrationMode.LEGACY,
+            status="projection-failed",
+            error_code="thread_activity_diagnostics_failed",
+            diagnostic="RuntimeError",
+        ).as_dict()
 
 
 __all__ = ["bundle_bytes", "diagnostic_snapshot"]

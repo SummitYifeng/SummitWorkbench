@@ -6,7 +6,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.3` 候选 / P1-07D 已完成：M0 / M1 / M2 与产品化 P0、P1-01 至 P1-06 已完成；候选包 build 23 已在 Mac Studio 与 MacBook Air 完成同包双机验收。下一步进入 P2-01B；M3 尚未开始。 |
+| 当前阶段 | `v0.4.3` 候选 / P1-07D、P2-01B 已完成：M0 / M1 / M2 与产品化 P0、P1-01 至 P1-06 已完成；build 24 已完成双机增量冒烟。下一步进入 P2-02；M3 尚未开始。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -105,4 +105,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-下一步实施 P2-01B：仅把已有 thread activity 事件切片接入 `shadow-read → dual-write`，生成确定性投影对比与差异诊断报告，并保留可回退开关。inbox、会议决策和项目正文仍沿用现有路径，不在本工作包迁移；M3（带上下文启动与收尾）仍保持未开始。变更记录见 `CHANGELOG.md`。
+P2-01B 已完成：仅把已有 thread activity 事件切片接入 `shadow-read → dual-write`，生成确定性投影对比与差异诊断报告，并保留可回退开关；报告已纳入脱敏诊断包，旧 Markdown 与 event 文件可在同一次 Git 留痕中提交。inbox、会议决策和项目正文仍沿用现有路径，不在本工作包迁移。下一步进入 P2-02；M3（带上下文启动与收尾）仍保持未开始。变更记录见 `CHANGELOG.md`。
