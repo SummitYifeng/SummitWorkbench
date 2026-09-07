@@ -195,6 +195,21 @@ class SyncConflictSelectionPayload(BaseModel):
     ] = Field(default_factory=dict, max_length=1000)
 
 
+class SyncConflictRecoveryPayload(BaseModel):
+    """Revision-bound recovery request; confirmation is explicit and local-only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_revision: str = Field(min_length=40, max_length=64)
+    local_revision: str = Field(min_length=40, max_length=64)
+    remote_revision: str = Field(min_length=40, max_length=64)
+    selections: dict[
+        str,
+        Literal["keep-local", "keep-remote", "preserve-both"],
+    ] = Field(default_factory=dict, max_length=1000)
+    confirmed: bool = False
+
+
 class AcceptancePreflightPayload(BaseModel):
     """Read-only release/dual-device acceptance gate request."""
 

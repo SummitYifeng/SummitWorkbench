@@ -129,6 +129,26 @@ def test_conflict_selection_validation_is_protected_outside_divergence(client) -
     assert response.json()["state"] == "unconfigured"
 
 
+def test_conflict_recovery_is_protected_outside_divergence(client) -> None:
+    response = client.post(
+        "/api/sync/conflict/recover",
+        json={
+            "base_revision": "0" * 40,
+            "local_revision": "1" * 40,
+            "remote_revision": "2" * 40,
+            "confirmed": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": False,
+        "available": False,
+        "state": "unconfigured",
+        "reason": "当前 workspace 不在 diverged-protected 状态",
+    }
+
+
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200

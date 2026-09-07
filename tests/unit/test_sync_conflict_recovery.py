@@ -9,6 +9,7 @@ from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.workflows.sync_conflict_recovery import (
     SelectionChoice,
+    apply_prepared_recovery,
     inspect_divergence,
     prepare_automatic_recovery,
     prepare_manual_recovery,
@@ -247,6 +248,22 @@ def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: 
     assert validation.event_count == 1
     assert validation.aggregate_count == 1
     assert other_repo.head_revision() == details.local.revision
+
+    with prepare_automatic_recovery(other, details, workspace_id="workspace-1") as prepared:
+        awaiting_confirmation = apply_prepared_recovery(
+            other, prepared, workspace_id="workspace-1", confirm=False
+        )
+        assert awaiting_confirmation.status == "confirmation-required"
+        applied = apply_prepared_recovery(other, prepared, workspace_id="workspace-1", confirm=True)
+        assert applied.status == "committed"
+        assert applied.revision is not None
+        assert other_repo.commit_parent_count(applied.revision) == 2
+        assert (other / "_views/thread-activity.json").read_text().find(
+            '"projection": "thread-activity"'
+        ) >= 0
+    other_repo.push()
+    assert other_repo.ahead_behind().ahead == 0
+    assert other_repo.ahead_behind().behind == 0
 
 
 def test_prepare_automatic_recovery_owns_ephemeral_staging_and_rejects_stale_snapshot(

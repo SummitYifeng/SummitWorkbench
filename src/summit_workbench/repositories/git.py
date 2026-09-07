@@ -148,6 +148,16 @@ class GitRepo:
         """提交暂存区。无暂存内容时应由调用方先判 :meth:`has_staged_changes`（幂等）。"""
         self._backend.commit(message, author=author)
 
+    def commit_merge(
+        self,
+        message: str,
+        merge_parent: str,
+        *,
+        author: CommitIdentity | None = None,
+    ) -> None:
+        """Create a normal two-parent merge commit from the already prepared index."""
+        self._backend.commit_merge(message, merge_parent, author=author)
+
     def resolve_commit(self, sha: str) -> str:
         return self._backend.resolve_commit(sha)
 

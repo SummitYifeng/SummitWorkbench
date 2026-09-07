@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from summit_workbench.repositories.git_backend import (
     GitNonFastForward,
     GitRemoteUnavailable,
     GitTlsError,
+    default_identity,
 )
 
 
@@ -197,6 +199,47 @@ class SystemGitBackend:
         )
         if cp.returncode != 0:
             raise _classify("commit", "git commit 失败", cp.stderr)
+
+    def commit_merge(
+        self,
+        message: str,
+        merge_parent: str,
+        *,
+        author: CommitIdentity | None = None,
+    ) -> None:
+        """Create a normal merge commit from the current index without force moves."""
+        current = self.head_revision()
+        parent = self.resolve_commit(merge_parent)
+        if current == parent:
+            raise GitError("merge parent 不能与当前 HEAD 相同")
+        tree = self._must("write-tree")
+        env = os.environ.copy()
+        env.update(self._env_for(author or default_identity()) or {})
+        cp = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self._path),
+                "commit-tree",
+                tree,
+                "-p",
+                current,
+                "-p",
+                parent,
+            ],
+            input=message + "\n",
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if cp.returncode != 0:
+            raise _classify("commit_merge", "git merge commit 失败", cp.stderr)
+        new_revision = cp.stdout.strip()
+        branch_ref = self._must("symbolic-ref", "HEAD")
+        update = self._run("update-ref", branch_ref, new_revision, current)
+        if update.returncode != 0:
+            raise _classify("commit_merge", "更新 merge commit 引用失败", update.stderr)
 
     def fetch(self, remote: str = "origin") -> None:
         cp = self._run("fetch", "--quiet", remote)

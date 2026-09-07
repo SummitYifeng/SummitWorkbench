@@ -104,6 +104,43 @@ def test_remote_push_clone_fetch_ff(kind: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("kind", KINDS)
+def test_normal_merge_commit_preserves_both_parents_and_pushes_fast_forward(
+    kind: str, tmp_path: Path
+) -> None:
+    bare = tmp_path / "remote.git"
+    _backend(kind, bare).init(bare=True)
+    seed = _backend(kind, tmp_path / "seed")
+    seed.init()
+    (tmp_path / "seed" / "base.txt").write_text("base", encoding="utf-8")
+    seed.add(["base.txt"])
+    seed.commit("wb: base", author=ID)
+    seed.add_remote("origin", str(bare))
+    seed.push()
+
+    local = _backend(kind, tmp_path / "local")
+    local.clone(str(bare), tmp_path / "local")
+    remote_writer = _backend(kind, tmp_path / "remote-writer")
+    remote_writer.clone(str(bare), tmp_path / "remote-writer")
+    (tmp_path / "remote-writer" / "remote.txt").write_text("remote", encoding="utf-8")
+    remote_writer.add(["remote.txt"])
+    remote_writer.commit("wb: remote", author=ID)
+    remote_writer.push()
+
+    (tmp_path / "local" / "local.txt").write_text("local", encoding="utf-8")
+    local.add(["local.txt"])
+    local.commit("wb: local", author=ID)
+    local.fetch()
+    remote_revision = local.upstream_revision()
+    local.commit_merge("wb: recovery merge", remote_revision, author=ID)
+
+    merge_revision = local.head_revision()
+    assert local.commit_parent_count(merge_revision) == 2
+    local.push()
+    assert local.ahead_behind().ahead == 0
+    assert local.ahead_behind().behind == 0
+
+
+@pytest.mark.parametrize("kind", KINDS)
 def test_remote_missing_and_non_fast_forward_typed(kind: str, tmp_path: Path) -> None:
     from summit_workbench.repositories.git_backend import GitRemoteUnavailable
 

@@ -467,6 +467,27 @@ class DulwichGitBackend:
         except KeyError as exc:
             raise GitError("git commit 失败：HEAD 无法解析") from exc
 
+    def commit_merge(
+        self,
+        message: str,
+        merge_parent: str,
+        *,
+        author: CommitIdentity | None = None,
+    ) -> None:
+        """Create a normal two-parent commit from the prepared index tree."""
+        repo = self._open()
+        head = self._head_sha(repo)
+        if head is None:
+            raise GitError("git merge commit 失败：HEAD 无法解析")
+        parent = self._resolve_sha(repo, merge_parent)
+        if head == parent:
+            raise GitError("merge parent 不能与当前 HEAD 相同")
+        tree = repo.open_index().commit(repo.object_store)
+        try:
+            self._write_commit(repo, message, author=author, tree=tree, parent=parent)
+        except KeyError as exc:
+            raise GitError("git merge commit 失败：HEAD 无法解析") from exc
+
     # ---- fetch / ahead-behind / ff / push ----
 
     def _remote_url(self, repo: Repo, remote: str) -> str:

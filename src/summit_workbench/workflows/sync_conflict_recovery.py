@@ -1,7 +1,7 @@
-"""只读的分叉详情提取（P2-02）。
+"""分叉详情提取与受保护的 P2-02 恢复准备/写回。
 
 此模块只读取已 fetch 的本地 refs，并对两个提交树做比较。它不 fetch、merge、checkout、
-替换工作树，也不创建提交；实际恢复仍必须由后续临时 worktree workflow 承担。
+替换工作树，也不在详情/预检阶段创建提交；实际写回必须经过显式确认和快照校验。
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
+from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.domain.sync import SyncState
 from summit_workbench.domain.sync_conflict import (
     ConflictAction,
@@ -26,7 +27,9 @@ from summit_workbench.domain.sync_conflict import (
     classify_conflict_path,
 )
 from summit_workbench.domain.thread_activity import ThreadActivityEvent, render_thread_activity_view
+from summit_workbench.repositories._atomic import atomic_write_bytes
 from summit_workbench.repositories.git import GitError, GitRepo
+from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 
 RecoverySide = Literal["local", "remote"]
@@ -143,6 +146,7 @@ class RecoveryPreparation:
     rebuilt_view_count: int = 0
     error_code: str | None = None
     staging_dir: Path | None = None
+    candidate_paths: tuple[str, ...] = ()
     _temporary: tempfile.TemporaryDirectory[str] | None = field(
         default=None, repr=False, compare=False
     )
@@ -163,6 +167,7 @@ class RecoveryPreparation:
             "aggregate_count": self.aggregate_count,
             "generated_view_count": self.generated_view_count,
             "rebuilt_view_count": self.rebuilt_view_count,
+            "candidate_path_count": len(self.candidate_paths),
             "staging_ready": self.staging_dir is not None,
             "error_code": self.error_code,
         }
@@ -198,6 +203,25 @@ class SelectionValidation:
             "missing_paths": list(self.missing_paths),
             "unexpected_paths": list(self.unexpected_paths),
             "invalid_paths": list(self.invalid_paths),
+            "error_code": self.error_code,
+        }
+
+
+@dataclass(frozen=True)
+class RecoveryApplyResult:
+    """Result of an explicitly confirmed local recovery commit."""
+
+    status: str
+    revision: str | None = None
+    applied_paths: tuple[str, ...] = ()
+    error_code: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "ok": self.status == "committed",
+            "revision": self.revision,
+            "applied_paths": list(self.applied_paths),
             "error_code": self.error_code,
         }
 
@@ -375,6 +399,12 @@ def prepare_automatic_recovery(
     rebuildable_views = tuple(
         path for path in generated_view_items if path.path == "_views/thread-activity.json"
     )
+    candidate_paths = {
+        path.path
+        for path in event_paths
+        if "remote" in path.changed_on and "local" not in path.changed_on
+    }
+    candidate_paths.update(path.path for path in rebuildable_views)
     temporary = tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-")
     staging = Path(temporary.name)
     try:
@@ -436,6 +466,7 @@ def prepare_automatic_recovery(
         generated_view_count=generated_views,
         rebuilt_view_count=len(rebuildable_views),
         staging_dir=staging,
+        candidate_paths=tuple(sorted(candidate_paths)),
         _temporary=temporary,
     )
 
@@ -526,6 +557,11 @@ def prepare_manual_recovery(
     rebuildable_views = tuple(
         path for path in generated_view_items if path.path == "_views/thread-activity.json"
     )
+    candidate_paths = {
+        path.path
+        for path in event_paths
+        if "remote" in path.changed_on and "local" not in path.changed_on
+    }
     temporary = tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-")
     staging = Path(temporary.name)
     try:
@@ -553,10 +589,12 @@ def prepare_manual_recovery(
                 raise ValueError("remote_content_missing")
             if choice is SelectionChoice.KEEP_REMOTE:
                 target = staging / item.path
+                candidate_paths.add(item.path)
             else:
                 target = staging / f"{item.path}.remote"
                 if target.exists():
                     raise ValueError("preserve_both_path_collision")
+                candidate_paths.add(f"{item.path}.remote")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(remote_data)
 
@@ -571,6 +609,7 @@ def prepare_manual_recovery(
             target = staging / "_views" / "thread-activity.json"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(render_thread_activity_view(projection))
+            candidate_paths.update(path.path for path in rebuildable_views)
     except ValueError as exc:
         temporary.cleanup()
         error_code = str(exc) or "manual_recovery_failed"
@@ -602,8 +641,110 @@ def prepare_manual_recovery(
         generated_view_count=generated_views,
         rebuilt_view_count=len(rebuildable_views),
         staging_dir=staging,
+        candidate_paths=tuple(sorted(candidate_paths)),
         _temporary=temporary,
     )
+
+
+def _refs_match_preparation(repo: GitRepo, prepared: RecoveryPreparation) -> bool:
+    if (
+        prepared.base_revision is None
+        or prepared.local_revision is None
+        or prepared.remote_revision is None
+    ):
+        return False
+    try:
+        local_revision = repo.head_revision()
+        remote_revision = repo.upstream_revision()
+        base_revision = repo.merge_base(local_revision, remote_revision)
+    except GitError:
+        return False
+    return (
+        local_revision == prepared.local_revision
+        and remote_revision == prepared.remote_revision
+        and base_revision == prepared.base_revision
+    )
+
+
+def _safe_target(root: Path, relative: str) -> Path | None:
+    item = classify_conflict_path(relative)
+    target = root / item.path
+    current = root
+    for part in Path(item.path).parts[:-1]:
+        current /= part
+        if current.is_symlink():
+            return None
+    return target
+
+
+def apply_prepared_recovery(
+    vault_dir: Path,
+    prepared: RecoveryPreparation,
+    *,
+    workspace_id: str,
+    confirm: bool = False,
+    backend_kind: str | None = None,
+    author: CommitIdentity | None = None,
+) -> RecoveryApplyResult:
+    """Apply a validated candidate as a normal two-parent merge commit.
+
+    This is the only workflow in this module that writes the vault. It requires
+    an explicit confirmation, a live revision match, a clean worktree, and a
+    live staging directory. It never fetches, force-pushes, resets, rebases, or
+    stashes. Push remains a separate caller action.
+    """
+    if not prepared.ready:
+        return RecoveryApplyResult(
+            status="preparation-not-ready",
+            error_code=prepared.error_code or "recovery_not_ready",
+        )
+    if not confirm:
+        return RecoveryApplyResult(
+            status="confirmation-required", error_code="explicit_confirmation"
+        )
+    if prepared.staging_dir is None:
+        return RecoveryApplyResult(status="preparation-not-ready", error_code="staging_missing")
+    repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
+    paths = tuple(sorted(set(prepared.candidate_paths)))
+    if not paths:
+        return RecoveryApplyResult(status="rejected", error_code="no_recovery_paths")
+    try:
+        with workspace_lock(vault_dir.parent):
+            if not _refs_match_preparation(repo, prepared):
+                return RecoveryApplyResult(status="stale", error_code="conflict_snapshot_stale")
+            if repo.is_dirty():
+                return RecoveryApplyResult(status="rejected", error_code="current_worktree_dirty")
+            sources: list[tuple[str, Path, Path]] = []
+            for relative in paths:
+                source = _safe_target(prepared.staging_dir, relative)
+                target = _safe_target(vault_dir, relative)
+                if source is None or target is None:
+                    return RecoveryApplyResult(status="rejected", error_code="recovery_path_unsafe")
+                if source.is_symlink() or not source.is_file():
+                    return RecoveryApplyResult(status="rejected", error_code="staged_file_missing")
+                sources.append((relative, source, target))
+            for _, source, target in sources:
+                atomic_write_bytes(target, source.read_bytes(), ensure_parents=True)
+            repo.add(list(paths))
+            if not _refs_match_preparation(repo, prepared):
+                return RecoveryApplyResult(
+                    status="stale-after-write", error_code="conflict_snapshot_changed"
+                )
+            repo.commit_merge(
+                f"wb: sync recovery events={prepared.event_count} "
+                f"views={prepared.generated_view_count} paths={len(paths)}",
+                prepared.remote_revision or "",
+                author=author,
+            )
+            return RecoveryApplyResult(
+                status="committed",
+                revision=repo.head_revision(),
+                applied_paths=paths,
+            )
+    except LockBusy:
+        return RecoveryApplyResult(status="busy", error_code="workspace_locked")
+    except GitError:
+        return RecoveryApplyResult(status="failed", error_code="recovery_commit_failed")
 
 
 def validate_manual_selections(
@@ -688,10 +829,12 @@ __all__ = [
     "ConflictSide",
     "DivergenceDetails",
     "RecoveryPreparation",
+    "RecoveryApplyResult",
     "SelectionChoice",
     "SelectionValidation",
     "TemporaryValidation",
     "inspect_divergence",
+    "apply_prepared_recovery",
     "prepare_automatic_recovery",
     "prepare_manual_recovery",
     "recovery_manifest_bytes",

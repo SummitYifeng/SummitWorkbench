@@ -556,6 +556,18 @@
     "method": [
       "POST"
     ],
+    "path": "/api/sync/conflict/recover",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "SyncConflictRecoveryPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/sync/conflict/selection/validate",
     "request_fields": [
       "payload"

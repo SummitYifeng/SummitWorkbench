@@ -126,6 +126,7 @@ from summit_workbench.webapp.api import (
     ProjectRenamePayload,
     ProjectStatePayload,
     ProviderSettingsPayload,
+    SyncConflictRecoveryPayload,
     SyncConflictSelectionPayload,
     TaskCompletePayload,
     TaskEditPayload,
@@ -3288,6 +3289,106 @@ def create_app(
             "available": True,
             "state": snapshot.state.value,
             "selection": result.as_dict(),
+        }
+
+    @app.post("/api/sync/conflict/recover", response_model=None)
+    def api_sync_conflict_recover(
+        payload: SyncConflictRecoveryPayload,
+    ) -> dict[str, object]:
+        """Prepare or explicitly apply a revision-bound local recovery merge."""
+        snapshot = _current_sync_snapshot()
+        if snapshot.state.value != "diverged-protected":
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "当前 workspace 不在 diverged-protected 状态",
+            }
+        if not ctx.workspace_id:
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "workspace 未配置",
+            }
+        from summit_workbench.workflows.sync_conflict_recovery import (
+            apply_prepared_recovery,
+            inspect_divergence,
+            prepare_automatic_recovery,
+            prepare_manual_recovery,
+        )
+
+        try:
+            details = inspect_divergence(
+                ctx.vault_dir,
+                backend_kind=ctx.git_backend_kind,
+                workspace_id=ctx.workspace_id,
+            )
+            if (
+                details.base_revision != payload.base_revision
+                or details.local.revision != payload.local_revision
+                or details.remote.revision != payload.remote_revision
+            ):
+                return {
+                    "ok": False,
+                    "available": True,
+                    "state": snapshot.state.value,
+                    "recovery": {
+                        "status": "stale",
+                        "error_code": "conflict_snapshot_stale",
+                    },
+                }
+            if details.manual_path_count or payload.selections:
+                prepared = prepare_manual_recovery(
+                    ctx.vault_dir,
+                    details,
+                    workspace_id=ctx.workspace_id,
+                    selections=payload.selections,
+                    backend_kind=ctx.git_backend_kind,
+                )
+            else:
+                prepared = prepare_automatic_recovery(
+                    ctx.vault_dir,
+                    details,
+                    workspace_id=ctx.workspace_id,
+                    backend_kind=ctx.git_backend_kind,
+                )
+            with prepared:
+                if not payload.confirmed:
+                    return {
+                        "ok": False,
+                        "available": True,
+                        "state": snapshot.state.value,
+                        "preparation": prepared.as_dict(),
+                        "recovery": {
+                            "status": "confirmation-required"
+                            if prepared.ready
+                            else "preparation-not-ready",
+                            "error_code": "explicit_confirmation"
+                            if prepared.ready
+                            else prepared.error_code,
+                        },
+                    }
+                result = apply_prepared_recovery(
+                    ctx.vault_dir,
+                    prepared,
+                    workspace_id=ctx.workspace_id,
+                    confirm=True,
+                    backend_kind=ctx.git_backend_kind,
+                )
+        except (ValueError, GitError):
+            return {
+                "ok": False,
+                "available": True,
+                "state": snapshot.state.value,
+                "reason": "恢复准备暂时无法执行，请保留当前保护态并重新读取分叉详情",
+            }
+        current = _current_sync_snapshot()
+        return {
+            "ok": result.status == "committed",
+            "available": True,
+            "state": current.state.value,
+            "recovery": result.as_dict(),
         }
 
     @app.get("/api/sync/export", response_model=None)
