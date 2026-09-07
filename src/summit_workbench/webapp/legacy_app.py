@@ -3164,6 +3164,52 @@ def create_app(
             "details": details.as_dict(),
         }
 
+    @app.get("/api/sync/conflict/validate", response_model=None)
+    def api_sync_conflict_validate(paths: str | None = None) -> dict[str, object]:
+        """Validate automatic event recovery in an ephemeral, non-git directory."""
+        snapshot = _current_sync_snapshot()
+        if snapshot.state.value != "diverged-protected":
+            return {
+                "ok": True,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "当前 workspace 不在 diverged-protected 状态",
+            }
+        raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
+        from summit_workbench.workflows.sync_conflict_recovery import (
+            inspect_divergence,
+            validate_automatic_recovery,
+        )
+
+        try:
+            details = inspect_divergence(
+                ctx.vault_dir,
+                backend_kind=ctx.git_backend_kind,
+                workspace_id=ctx.workspace_id,
+                paths=raw_paths or None,
+            )
+            if not ctx.workspace_id:
+                raise GitError("workspace 未配置")
+            validation = validate_automatic_recovery(
+                ctx.vault_dir,
+                details,
+                workspace_id=ctx.workspace_id,
+                backend_kind=ctx.git_backend_kind,
+            )
+        except (ValueError, GitError):
+            return {
+                "ok": False,
+                "available": False,
+                "state": snapshot.state.value,
+                "reason": "临时验证暂时无法执行，请保留当前保护态并导出诊断",
+            }
+        return {
+            "ok": validation.status == "validated",
+            "available": True,
+            "state": snapshot.state.value,
+            "validation": validation.as_dict(),
+        }
+
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:
         """导出脱敏的本机同步状态副本，不读 token、不修改共享 vault。"""
