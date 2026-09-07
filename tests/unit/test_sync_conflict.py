@@ -6,8 +6,10 @@ from summit_workbench.domain.sync import SyncState
 from summit_workbench.domain.sync_conflict import (
     ConflictAction,
     ConflictKind,
+    RecoveryStage,
     classify_conflict_path,
     explain_conflict,
+    plan_conflict_recovery,
 )
 
 
@@ -45,6 +47,37 @@ def test_explanation_is_sorted_and_requires_manual_for_mixed_paths() -> None:
     assert explanation.auto_mergeable is False
     assert explanation.manual_required is True
     assert explanation.as_dict()["state"] == "diverged-protected"
+
+
+def test_recovery_plan_requires_temporary_validation_for_automatic_items() -> None:
+    plan = plan_conflict_recovery(
+        SyncState.DIVERGED_PROTECTED,
+        ["_events/device-a/2026/09/event.json", "_views/thread-a.json"],
+    )
+
+    assert plan.stage is RecoveryStage.TEMPORARY_WORKTREE_VALIDATION
+    assert plan.can_prepare_in_temporary_worktree is True
+    assert plan.write_required is True
+    assert plan.manual_items == ()
+    assert plan.as_dict()["forbidden_actions"] == ["force-push", "reset", "rebase", "stash"]
+
+
+def test_recovery_plan_stops_at_manual_confirmation_for_mixed_items() -> None:
+    plan = plan_conflict_recovery(
+        SyncState.DIVERGED_PROTECTED,
+        ["_events/device-a/2026/09/event.json", "notes.md"],
+    )
+
+    assert plan.stage is RecoveryStage.MANUAL_CONFIRMATION
+    assert plan.can_prepare_in_temporary_worktree is False
+    assert len(plan.manual_items) == 1
+
+
+def test_recovery_plan_is_not_applicable_when_not_diverged() -> None:
+    plan = plan_conflict_recovery(SyncState.READY, ["notes.md"])
+
+    assert plan.stage is RecoveryStage.NOT_APPLICABLE
+    assert plan.write_required is False
 
 
 @pytest.mark.parametrize("path", ["/tmp/x.md", "../x.md", "_events/../x.json", "x\x00.md"])

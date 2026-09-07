@@ -73,6 +73,19 @@ def test_conflict_explanation_is_read_only_and_classifies_paths(client) -> None:
     ]
 
 
+def test_conflict_recovery_plan_is_read_only_and_exposes_safe_stage(client) -> None:
+    response = client.get(
+        "/api/sync/conflict/plan",
+        params={"paths": "_events/device-a/2026/09/e.json,_views/thread-a.json"},
+    )
+
+    assert response.status_code == 200
+    plan = response.json()["recovery_plan"]
+    assert plan["stage"] == "not-applicable"  # plain test vault is unconfigured
+    assert plan["write_required"] is False
+    assert "force-push" in plan["forbidden_actions"]
+
+
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200

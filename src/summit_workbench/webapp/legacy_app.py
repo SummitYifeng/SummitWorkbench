@@ -45,7 +45,7 @@ from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
-from summit_workbench.domain.sync_conflict import explain_conflict
+from summit_workbench.domain.sync_conflict import explain_conflict, plan_conflict_recovery
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.domain.workspace import Compatibility, DeviceRole
 from summit_workbench.observability.status import build_status
@@ -3120,6 +3120,13 @@ def create_app(
         raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
         explanation = explain_conflict(_current_sync_snapshot().state, raw_paths)
         return {"ok": True, "conflict": explanation.as_dict()}
+
+    @app.get("/api/sync/conflict/plan", response_model=None)
+    def api_sync_conflict_plan(paths: str | None = None) -> dict[str, object]:
+        """Return a safe recovery plan; preparation/apply are separate later steps."""
+        raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
+        plan = plan_conflict_recovery(_current_sync_snapshot().state, raw_paths)
+        return {"ok": True, "recovery_plan": plan.as_dict()}
 
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:
