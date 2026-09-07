@@ -1,6 +1,6 @@
 # ADR 0030 · 可打包 Git 后端（system ↔ dulwich）与凭据适配
 
-- 状态：✅ 已实现（P0-09C 离线 production/backend 与 remote clone 接线完成；P1-07D 已把打包运行的真实 HTTPS TLS 接到随 bundle 分发的 certifi CA，剩余真机门见「遗留 / 边界」）
+- 状态：✅ 已实现并完成 P1-07D 真机闭环（P0-09C production/backend 与 remote clone 接线；打包 HTTPS TLS 使用随 bundle 分发的 certifi CA；build 23 已在 Studio + Air 验收）
 - 日期：2026-09-05
 - 里程碑：v0.4.1 → P0-09（开发计划 PRODUCTIZATION_MULTI_DEVICE_DISTRIBUTION_PLAN；依赖 P0-01 撤销信任边界、P0-07 workspace/profile 与凭据作用域）
 - 依据：计划 P0-09（能力契约 / 实现要求 1–8 / 测试矩阵 / 决策门）；NFR-3（非破坏性）、NFR-4（凭据不入文件/仓库）
@@ -84,6 +84,9 @@
   （P0-13 前未验证）；本包用注入式 callback、脱敏错误与 CA bundle discovery 完成离线证据。
 - remote clone 已由 `workflows/remote_onboarding.py` 提供 staging/confirm/cancel 服务；同步
   状态与全部共享 vault 写边界的显式 backend/context 接线留 P0-10C。
+
+以上为 P0-09 当时的未验证边界；真实 GitHub HTTPS、系统代理、Keychain 凭据与双设备同步
+后来已在 P1-07D 使用同一 build 23 DMG 完成 Studio + Air 真机闭环。
 
 ## P0-09C 收口
 

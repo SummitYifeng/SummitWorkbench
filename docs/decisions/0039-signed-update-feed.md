@@ -1,7 +1,7 @@
 # ADR 0039 · 内部 arm64 签名更新 feed
 
-- 状态：进行中（签名发布闭环与 MacBook Air 安装/更新检查完成；最近候选为 `v0.4.3-rc.5`，
-  其后的 packaged TLS 修复与双设备同步验收转入 P1-07D，稳定 v0.4.3 尚未发布）
+- 状态：进行中（签名发布闭环与 MacBook Air 安装/更新检查完成；P1-07D 已由 build 23 完成
+  双机真机闭环、build 24 完成增量冒烟；稳定 v0.4.3 仍未发布）
 - 日期：2026-09-06
 - 依据：产品化计划 P1-07、ADR 0032/0038、用户平台约束（仅 M2+ Apple Silicon、内部/个人自用）
 
@@ -40,8 +40,9 @@ tag job 失败时只允许保留公开仓库 draft，不得发布 partial latest
 更新仓库中的 feed 与 DMG 已下载复核，feed 声明的大小和 SHA-256 与 DMG 一致。用户已在
 另一台 Apple Silicon MacBook Air 上完成 v0.4.2 安装、首次创建 workspace、手动更新检查
 和自动检查开关验收。之后候选已发布至 `v0.4.3-rc.5`；packaged Git TLS 修复位于该 tag
-之后，必须进入新 RC 才能继续真实 remote 与双设备验收。workspace 同步、跨设备合并与回滚
-仍属于未执行的外部验收。公开更新
+之后；这些真实 remote 与双设备同步验收随后已由同一 build 23 DMG 在 Studio + Air 完成，
+build 24 也完成双机增量冒烟。稳定 `v0.4.3` 仍未发布，P2-02 最新恢复能力仍需下一内部候选包
+完成双机退出验收。公开更新
 仓库只提供完整性（HTTPS、SHA-256、
 Ed25519），不提供保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer
 ID/notarization、Apple Store、Windows 和 Intel 分发。
