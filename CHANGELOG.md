@@ -3,6 +3,8 @@
 > P1-07D 已完成：Studio + Air 双设备真机验收闭环（同一候选包 build 23，SHA-256 见
 > `release-metadata.json`），进入 P2-01B 的前置门已解除。以下修复均已提交本地源码。
 
+- build 24 内部 arm64 DMG 已由干净提交 `ac97db4aebb53147a394d83a34d9ed978d42b91e` 生成并通过 App/DMG 离线验证；产物 `dist/releases-build24/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` 的 SHA-256 为 `ef02907d637be755fe825d60b58fea8e1f67fe47cebcf03e782d2caf6f0e6590`。Studio 增量检查已确认 build 24、HTTPS remote、fetch、同步 ready/待推送 0；Air 增量检查待在 Air 本机完成。
+
 - 修复 DulwichGitBackend `fetch()`/`push()` 传 URL 而非 remote 名，导致
   `refs/remotes/origin/*` 永不更新：push 成功后 `ahead/behind` 与 `pending_wb_commits`
   不再永久停留在 1（`local-ahead` 假象），状态机不再在 ready / local-ahead 之间回退。
