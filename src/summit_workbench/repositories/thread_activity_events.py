@@ -125,8 +125,37 @@ class ThreadActivityEventStore:
             events.append(event)
         return events
 
+    def read_workspace_events(self) -> list[ThreadActivityEvent]:
+        """Read the append-only event slice for every device in this workspace.
+
+        A secondary device may append while offline, so projection and
+        consistency checks must not be limited to the current device's
+        namespace.  The device directory is part of the on-disk integrity
+        check and must agree with the immutable event body.
+        """
+        root = self.vault_dir / EVENTS_DIRNAME
+        if not root.is_dir():
+            return []
+        events: list[ThreadActivityEvent] = []
+        for device_root in sorted(path for path in root.iterdir() if path.is_dir()):
+            for path in sorted(device_root.rglob("*.json")):
+                try:
+                    event = ThreadActivityEvent.model_validate_json(path.read_bytes())
+                except Exception as exc:  # noqa: BLE001 - corruption is surfaced with path context
+                    raise ThreadActivityStoreError(f"thread activity event 损坏：{path}") from exc
+                if event.workspace_id != self.workspace_id or event.device_id != device_root.name:
+                    raise ThreadActivityStoreError(f"thread activity event scope 错误：{path}")
+                if path.stem != event.event_id:
+                    raise ThreadActivityStoreError(f"thread activity event id/path 不一致：{path}")
+                events.append(event)
+        return events
+
     def project(self) -> dict[str, ThreadActivityView]:
         return project_thread_activity(self.read_events())
+
+    def project_workspace(self) -> dict[str, ThreadActivityView]:
+        """Project the merged event slice from all offline-capable devices."""
+        return project_thread_activity(self.read_workspace_events())
 
 
 __all__ = ["ThreadActivityEventStore", "ThreadActivityStoreError"]

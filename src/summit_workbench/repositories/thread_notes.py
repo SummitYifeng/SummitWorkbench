@@ -15,6 +15,8 @@ import re
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import yaml
 
@@ -22,6 +24,9 @@ from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
+
+if TYPE_CHECKING:
+    from summit_workbench.workflows.thread_activity_migration import ThreadActivityMigration
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9\u4e00-\u9fff_-]+")
 _LOGS_DIRNAME = "logs"
@@ -108,6 +113,8 @@ def append_work_log(
     next_step: str | None = None,
     decision: str | None = None,
     now: datetime | None = None,
+    causation_operation_id: str | None = None,
+    activity_migration: ThreadActivityMigration | None = None,
 ) -> Path:
     """落一条推进日志（可关联多线程）。``text`` 必填；``summary`` 空 = 模型未消化，原文照存。"""
     body_text = _clean_text(text)
@@ -115,7 +122,8 @@ def append_work_log(
         raise ValueError("日志正文不能为空")
     if not projects:
         raise ValueError("推进日志至少要关联一个项目/线程")
-    day = _day(now)
+    occurred_at = now or datetime.now(UTC)
+    day = _day(occurred_at)
     projects_list = list(dict.fromkeys(projects))
     meta: dict[str, object] = {
         "date": day,
@@ -154,6 +162,14 @@ def append_work_log(
         _write_note(path, meta, body)
         _check(path)
         _touch_projects_activity(vault_dir, projects_list, day)
+        if activity_migration is not None:
+            activity_migration.record_work_log(
+                path,
+                projects=projects_list,
+                activity_date=day,
+                causation_operation_id=causation_operation_id or str(uuid4()),
+                occurred_at=occurred_at,
+            )
     return path
 
 
@@ -166,12 +182,15 @@ def save_thread_artifact(
     summary: str = "",
     kind: ArtifactKind = ArtifactKind.OTHER,
     now: datetime | None = None,
+    causation_operation_id: str | None = None,
+    activity_migration: ThreadActivityMigration | None = None,
 ) -> Path:
     """把一段 AI 产物（阶段总结/PRD/背景包/timeline）存进线程档案目录。"""
     body_text = _clean_text(text)
     if not body_text:
         raise ValueError("产物正文不能为空")
-    day = _day(now)
+    occurred_at = now or datetime.now(UTC)
+    day = _day(occurred_at)
 
     meta: dict[str, object] = {
         "date": day,
@@ -200,4 +219,12 @@ def save_thread_artifact(
         _write_note(path, meta, body)
         _check(path)
         _touch_projects_activity(vault_dir, [project], day)
+        if activity_migration is not None:
+            activity_migration.record_thread_doc(
+                path,
+                project=project,
+                activity_date=day,
+                causation_operation_id=causation_operation_id or str(uuid4()),
+                occurred_at=occurred_at,
+            )
     return path

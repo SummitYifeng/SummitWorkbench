@@ -44,8 +44,9 @@
 | [0037](0037-diagnostics-privacy-supportability.md) | v0.4.1 加固 P1-05 | ✅ 诊断包、结构化日志、脱敏与本地可支持性 |
 | [0038](0038-ci-coverage-release-matrix.md) | v0.4.1 加固 P1-06 | ✅ CI、80% 覆盖率门与 M2+ arm64 发布矩阵 |
 | [0039](0039-signed-update-feed.md) | v0.4.1 加固 P1-07C | 🚧 v0.4.2 真机安装/创建 workspace/更新检查通过；Dulwich 修复与双设备同步验收转入 P1-07D |
-| [0040](0040-thread-activity-events.md) | P2-01A | 🚧 thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
+| [0040](0040-thread-activity-events.md) | P2-01A | ✅ thread activity 事件模型、不可变存储与确定性投影；未迁移其他热点 |
 | [0041](0041-remote-normalization-acceptance.md) | P1-07D | ✅ HTTPS remote 规范化、只读 preflight 与双设备验收；候选包 build 23 已在 Studio + Air 同包闭环 |
+| [0042](0042-thread-activity-shadow-read-dual-write.md) | P2-01B | ✅ 仅 thread activity 事件切片的 shadow-read → dual-write、一致性报告、诊断与回退开关；不迁移其他热点 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
