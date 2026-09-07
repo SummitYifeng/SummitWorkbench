@@ -534,6 +534,16 @@
     "method": [
       "GET"
     ],
+    "path": "/api/sync/conflict/export",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/sync/conflict/plan",
     "request_fields": [
       "paths"

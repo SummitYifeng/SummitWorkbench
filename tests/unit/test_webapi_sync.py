@@ -5,8 +5,11 @@
 
 from __future__ import annotations
 
+import json
 import uuid
+import zipfile
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -96,6 +99,18 @@ def test_conflict_details_is_not_applicable_outside_divergence(client) -> None:
         "state": "unconfigured",
         "reason": "当前 workspace 不在 diverged-protected 状态",
     }
+
+
+def test_conflict_export_contains_only_recovery_manifest(client) -> None:
+    response = client.get("/api/sync/conflict/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    with zipfile.ZipFile(BytesIO(response.content)) as archive:
+        assert archive.namelist() == ["sync-recovery-manifest.json"]
+        manifest = json.loads(archive.read(archive.namelist()[0]))
+    assert manifest["kind"] == "sync-recovery-manifest"
+    assert "vault body" in manifest["content_policy"]
 
 
 def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> None:

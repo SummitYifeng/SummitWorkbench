@@ -7,16 +7,20 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from summit_workbench.domain.sync import SyncState
 from summit_workbench.domain.sync_conflict import (
     ConflictAction,
     ConflictKind,
+    ConflictRecoveryPlan,
     classify_conflict_path,
 )
 from summit_workbench.domain.thread_activity import ThreadActivityEvent
@@ -284,11 +288,35 @@ def validate_automatic_recovery(
     )
 
 
+def recovery_manifest_bytes(
+    state: SyncState,
+    plan: ConflictRecoveryPlan,
+    details: DivergenceDetails | None = None,
+) -> bytes:
+    """Create a single-file, body-free recovery package for local handoff."""
+    manifest: dict[str, object] = {
+        "schema_version": 1,
+        "kind": "sync-recovery-manifest",
+        "state": state.value,
+        "recovery_plan": plan.as_dict(),
+        "details": details.as_dict() if details is not None else None,
+        "content_policy": "paths-and-digests-only; no vault body, logs, credentials, or remote URL",
+    }
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "sync-recovery-manifest.json",
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        )
+    return output.getvalue()
+
+
 __all__ = [
     "ConflictPathDetail",
     "ConflictSide",
     "DivergenceDetails",
     "TemporaryValidation",
     "inspect_divergence",
+    "recovery_manifest_bytes",
     "validate_automatic_recovery",
 ]

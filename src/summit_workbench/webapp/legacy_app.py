@@ -3210,6 +3210,40 @@ def create_app(
             "validation": validation.as_dict(),
         }
 
+    @app.get("/api/sync/conflict/export", response_model=None)
+    def api_sync_conflict_export() -> Response:
+        """Export a body-free recovery manifest; never export vault content or credentials."""
+        snapshot = _current_sync_snapshot()
+        raw_paths = ()
+        from summit_workbench.workflows.sync_conflict_recovery import (
+            inspect_divergence,
+            recovery_manifest_bytes,
+        )
+
+        plan = plan_conflict_recovery(snapshot.state, raw_paths)
+        details = None
+        if snapshot.state.value == "diverged-protected":
+            try:
+                details = inspect_divergence(
+                    ctx.vault_dir,
+                    backend_kind=ctx.git_backend_kind,
+                    workspace_id=ctx.workspace_id,
+                )
+            except (ValueError, GitError):
+                details = None
+            if details is not None:
+                plan = plan_conflict_recovery(
+                    snapshot.state, tuple(path.path for path in details.paths)
+                )
+        return Response(
+            content=recovery_manifest_bytes(snapshot.state, plan, details),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": 'attachment; filename="summitworkbench-sync-recovery.zip"',
+                "Cache-Control": "no-store, max-age=0",
+            },
+        )
+
     @app.get("/api/sync/export", response_model=None)
     def api_sync_export() -> dict[str, object]:
         """导出脱敏的本机同步状态副本，不读 token、不修改共享 vault。"""
