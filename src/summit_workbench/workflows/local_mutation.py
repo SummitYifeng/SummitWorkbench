@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -25,6 +25,7 @@ class LocalMutationOutcome[T]:
 
     business_return: T
     changed_paths: Sequence[Path | str]
+    activity_report: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class LocalMutationResult[T]:
     business_return: T
     changed_paths: tuple[Path, ...]
     commit_result: CommitResult
+    activity_report: Mapping[str, object] | None = None
 
 
 class MutationBlocked(RuntimeError):
@@ -82,6 +84,7 @@ def run_local_mutation[T](
         business_return=outcome.business_return,
         changed_paths=changed_paths,
         commit_result=commit_result,
+        activity_report=outcome.activity_report,
     )
     if push_after_commit is not None and commit_result.status.value == "committed":
         # 网络调用明确位于 workspace 文件锁外。

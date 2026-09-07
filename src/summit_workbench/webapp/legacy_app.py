@@ -183,6 +183,11 @@ from summit_workbench.workflows.review_apply import (
     TaskCreator,
     apply_meeting_review,
 )
+from summit_workbench.workflows.thread_activity_migration import (
+    ThreadActivityConsistencyReport,
+    ThreadActivityMigration,
+    ThreadActivityMigrationMode,
+)
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -387,10 +392,24 @@ def _commit_note(result: CommitResult) -> str:
 
 def _mutation_fields[T](result: LocalMutationResult[T]) -> dict[str, object]:
     """把本地事务的 operation id 与可见提交状态加入 API 响应。"""
-    return {
+    fields: dict[str, object] = {
         "operation_id": result.operation_id,
         "commit": result.commit_result.as_dict(),
     }
+    if result.activity_report is not None:
+        fields["thread_activity_consistency"] = dict(result.activity_report)
+    return fields
+
+
+def _thread_activity_migration(ctx: WebContext) -> ThreadActivityMigration | None:
+    """Create the P2-01B seam only for a frozen production workspace context."""
+    if ctx.active_workspace is None or not ctx.workspace_id or not ctx.active_workspace.device_id:
+        return None
+    return ThreadActivityMigration.from_environment(
+        ctx.vault_dir,
+        workspace_id=ctx.workspace_id,
+        device_id=ctx.active_workspace.device_id,
+    )
 
 
 def _undo_error_response(code: str, message: str, *, operation_id: str = "unknown") -> JSONResponse:
@@ -2142,6 +2161,19 @@ def create_app(
             return {"ok": False, "message": str(exc)}
         return {"ok": True, **view}
 
+    @app.get("/api/threads/activity-consistency")
+    def api_thread_activity_consistency() -> dict[str, object]:
+        """Return the deterministic old/new report for the P2-01B event slice."""
+        migration = _thread_activity_migration(ctx)
+        if migration is None:
+            report = ThreadActivityConsistencyReport(
+                mode=ThreadActivityMigrationMode.LEGACY,
+                status="disabled",
+            )
+        else:
+            report = migration.inspect()
+        return {"ok": report.ok, "thread_activity_consistency": report.as_dict()}
+
     @app.post("/api/threads/logs")
     def api_append_log(payload: LogAppendPayload) -> dict[str, object]:
         """追加推进日志（可关联多线程）；AI 消化是加分项，任何失败只存原文。"""
@@ -2178,6 +2210,7 @@ def create_app(
         tags = digest.tags if digest else []
 
         archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
+        activity_migration = _thread_activity_migration(ctx)
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = append_work_log(
@@ -2189,8 +2222,16 @@ def create_app(
                 tags=tags,
                 next_step=digest.next_step if digest else None,
                 decision=digest.decision if digest else None,
+                causation_operation_id=_operation_id,
+                activity_migration=activity_migration,
             )
-            return LocalMutationOutcome(path, (path, *archives))
+            report = activity_migration.last_report.as_dict() if activity_migration else None
+            changed_paths = (
+                path,
+                *archives,
+                *(activity_migration.last_write_paths if activity_migration else ()),
+            )
+            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
             result = _run_web_mutation("threads/logs", mutate)
@@ -2241,6 +2282,7 @@ def create_app(
         title = (index.title if index and index.title else title_hint) or ""
         summary = index.summary if index else ""
         kind = index.kind if index else ArtifactKind.OTHER
+        activity_migration = _thread_activity_migration(ctx)
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = save_thread_artifact(
@@ -2250,8 +2292,16 @@ def create_app(
                 title=title,
                 summary=summary,
                 kind=kind,
+                causation_operation_id=_operation_id,
+                activity_migration=activity_migration,
             )
-            return LocalMutationOutcome(path, (path, ctx.vault_dir / "projects" / f"{project}.md"))
+            report = activity_migration.last_report.as_dict() if activity_migration else None
+            changed_paths = (
+                path,
+                ctx.vault_dir / "projects" / f"{project}.md",
+                *(activity_migration.last_write_paths if activity_migration else ()),
+            )
+            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
             result = _run_web_mutation("threads/artifacts", mutate)

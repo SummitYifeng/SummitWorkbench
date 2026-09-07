@@ -1,6 +1,6 @@
 # ADR 0040 · P2-01A thread activity 事件切片
 
-- 状态：进行中（只完成第一个低风险 aggregate 的模型/存储/投影切片）
+- 状态：已完成（2026-09-07；作为 P2-01B 的事件基础）
 - 日期：2026-09-06
 - 依据：产品化计划 P2-01A、ADR 0027、P0-10 多设备同步边界
 
@@ -13,11 +13,11 @@ id、payload 和 causation operation id。事件文件使用独占创建、flush
 
 事件 id 是带设备命名空间的单调 ULID：同一生成器在时钟相同或倒退时仍严格递增，离线设备
 使用不同的稳定熵命名空间。投影按 `(occurred_at, event_id)` 稳定排序、按 event id 去重，
-只生成 thread activity view；投影可从事件文件重建。
+只生成 thread activity view；投影可从事件文件重建。P2-01B 还提供跨设备读取与合并投影，
+不改变事件的追加不可变约束。
 
 ## 边界
 
 本切片不迁移全局 inbox、meeting review decisions、daily signal/completion events 或项目
-正文，不接入 shadow-read、dual-write 或 event-primary，不把 Git commit 当业务事件。当前
-属性测试覆盖时钟倒退、同刻离线设备、乱序/重复事件、范围隔离、幂等写入和损坏拒绝；跨设备
-真实 Git 合并仍属于后续验收，不在本 ADR 中宣称已通过。
+正文，不把 Git commit 当业务事件。shadow-read、dual-write 与 event-primary 的边界由 ADR
+0042 决定；跨设备真实 Git 合并仍属于 P1-07D 的同步验收，不在本 ADR 中重复宣称。

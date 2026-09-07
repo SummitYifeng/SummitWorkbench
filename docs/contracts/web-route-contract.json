@@ -576,6 +576,16 @@
   },
   {
     "method": [
+      "GET"
+    ],
+    "path": "/api/threads/activity-consistency",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
       "POST"
     ],
     "path": "/api/threads/artifacts",
