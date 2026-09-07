@@ -11,6 +11,11 @@ assert.match(read('src/features/onboarding/index.ts'), /onboarding/, 'onboarding
 assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
 assert.match(source, /data-action="sync-conflict-details"/, 'protected sync opens conflict details');
 assert.match(source, /\/api\/sync\/conflict\/selection\/validate/, 'manual conflict choices are validated');
+assert.match(
+  source,
+  /\/api\/sync\/conflict\/selection\/validate[\s\S]{0,350}conflictSelectionRequest\(\)/,
+  'selection validation does not send the recovery confirmation field',
+);
 assert.match(source, /\/api\/sync\/conflict\/recover/, 'conflict recovery remains wired');
 assert.match(source, /\/api\/sync\/conflict\/export/, 'conflict package export remains wired');
 assert.match(source, /unknown-generated-view/, 'unknown generated views have a safe fallback label');

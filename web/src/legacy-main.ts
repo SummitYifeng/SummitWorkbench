@@ -2973,6 +2973,16 @@ function conflictRecoveryRequest(confirmed: boolean): Record<string, unknown> {
   };
 }
 
+function conflictSelectionRequest(): Record<string, unknown> {
+  if (!conflictDetails) throw new Error('缺少分叉快照');
+  return {
+    base_revision: conflictDetails.base_revision,
+    local_revision: conflictDetails.local.revision,
+    remote_revision: conflictDetails.remote.revision,
+    selections: conflictSelectionsPayload(),
+  };
+}
+
 async function previewSyncConflictRecovery(): Promise<void> {
   if (!conflictDetails || conflictBusy) return;
   const missing = missingConflictSelections();
@@ -2989,7 +2999,7 @@ async function previewSyncConflictRecovery(): Promise<void> {
     if (conflictDetails.manual_path_count > 0) {
       const selection = await api<{ ok: boolean; selection?: { error_code?: string | null }; reason?: string }>(
         '/api/sync/conflict/selection/validate',
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflictSelectionRequest()) },
       );
       if (!selection.ok) {
         conflictMessage = selection.reason ?? selection.selection?.error_code ?? '人工选择未通过校验。';
