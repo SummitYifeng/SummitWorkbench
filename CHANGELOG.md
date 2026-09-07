@@ -1,4 +1,4 @@
-## [Unreleased] - 2026-09-07
+## [0.4.3] - 2026-09-07
 
 > P1-07D 已完成：Studio + Air 双设备真机验收闭环（同一候选包 build 23，SHA-256 见
 > `release-metadata.json`），build 24 已在 Studio 与 Air 完成覆盖安装与增量冒烟，进入 P2-01B 的前置门已解除。
