@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import summit_workbench.workflows.sync_conflict_recovery as recovery_module
 from summit_workbench.domain.thread_activity import MonotonicULIDGenerator, ThreadActivityEvent
 from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
@@ -392,6 +393,54 @@ def test_prepare_automatic_recovery_owns_ephemeral_staging_and_rejects_stale_sna
     assert stale.status == "stale"
     assert stale.error_code == "conflict_snapshot_stale"
     assert stale.staging_dir is None
+
+
+def test_recovery_commit_remains_committed_when_audit_write_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "remote.md", "remote\n", "wb: remote")
+    repo.push()
+    _commit(other_repo, other, "local.md", "local\n", "wb: local")
+    other_repo.fetch()
+    details = inspect_divergence(other)
+
+    def fail_audit(*_args, **_kwargs) -> None:
+        raise OSError("simulated audit storage failure")
+
+    monkeypatch.setattr(recovery_module, "_append_recovery_audit", fail_audit)
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={
+            "local.md": SelectionChoice.KEEP_LOCAL,
+            "remote.md": SelectionChoice.KEEP_REMOTE,
+        },
+    ) as prepared:
+        applied = apply_prepared_recovery(
+            other,
+            prepared,
+            workspace_id="workspace-1",
+            confirm=True,
+            author=IDENTITY,
+        )
+
+    assert applied.status == "committed"
+    assert applied.audit_status == "failed"
+    assert applied.audit_error_code == "recovery_audit_failed"
+    assert applied.revision is not None
+    assert other_repo.commit_parent_count(applied.revision) == 2
 
 
 def test_prepare_manual_recovery_applies_remote_choice_only_in_staging(tmp_path: Path) -> None:

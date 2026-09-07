@@ -196,7 +196,12 @@ interface SyncConflictRecoveryPayload {
   available: boolean;
   state: string;
   preparation?: RecoveryPreparationSummary;
-  recovery?: { status: string; revision?: string | null; error_code?: string | null };
+  recovery?: {
+    status: string;
+    revision?: string | null;
+    error_code?: string | null;
+    audit?: { status: string; error_code?: string | null };
+  };
   push?: { ok: boolean; state: string; detail?: string | null } | null;
   reason?: string;
 }
@@ -3022,9 +3027,15 @@ async function applySyncConflictRecovery(): Promise<void> {
     if (data.recovery?.status === 'committed') {
       committed = true;
       closeModal();
-      toast(data.push?.ok
-        ? '恢复提交已创建并完成普通同步。'
-        : '恢复提交已创建，普通同步暂未完成，请稍后点击“立即重试”。', data.push?.ok ? 'ok' : 'info');
+      const auditFailed = data.recovery.audit?.status === 'failed';
+      const message = auditFailed
+        ? (data.push?.ok
+          ? '恢复提交已同步，但脱敏审计记录未完成。'
+          : '恢复提交已创建；普通同步与脱敏审计记录均未完成。')
+        : (data.push?.ok
+          ? '恢复提交已创建并完成普通同步。'
+          : '恢复提交已创建，普通同步暂未完成，请稍后点击“立即重试”。');
+      toast(message, data.push?.ok && !auditFailed ? 'ok' : 'info');
       await Promise.all([refreshSyncBanner(), refreshState()]);
       return;
     }

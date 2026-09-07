@@ -218,6 +218,8 @@ class RecoveryApplyResult:
     revision: str | None = None
     applied_paths: tuple[str, ...] = ()
     error_code: str | None = None
+    audit_status: str = "not-attempted"
+    audit_error_code: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -226,6 +228,10 @@ class RecoveryApplyResult:
             "revision": self.revision,
             "applied_paths": list(self.applied_paths),
             "error_code": self.error_code,
+            "audit": {
+                "status": self.audit_status,
+                "error_code": self.audit_error_code,
+            },
         }
 
 
@@ -776,13 +782,25 @@ def apply_prepared_recovery(
                 author=author,
             )
             merge_revision = repo.head_revision()
-            _append_recovery_audit(vault_dir, prepared, merge_revision=merge_revision)
-            repo.add([RECOVERY_AUDIT_PATH])
-            repo.commit("wb: sync recovery audit", author=author or default_identity())
+            try:
+                _append_recovery_audit(vault_dir, prepared, merge_revision=merge_revision)
+                repo.add([RECOVERY_AUDIT_PATH])
+                repo.commit("wb: sync recovery audit", author=author or default_identity())
+            except (GitError, OSError):
+                # The merge commit is already durable. Never report it as a failed
+                # recovery, which could make the UI retry a completed two-parent merge.
+                return RecoveryApplyResult(
+                    status="committed",
+                    revision=merge_revision,
+                    applied_paths=paths,
+                    audit_status="failed",
+                    audit_error_code="recovery_audit_failed",
+                )
             return RecoveryApplyResult(
                 status="committed",
                 revision=merge_revision,
                 applied_paths=paths,
+                audit_status="committed",
             )
     except LockBusy:
         return RecoveryApplyResult(status="busy", error_code="workspace_locked")
