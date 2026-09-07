@@ -130,3 +130,43 @@ def test_validate_automatic_recovery_stops_before_manual_content(tmp_path: Path)
 
     assert validation.status == "manual-confirmation-required"
     assert validation.error_code == "manual_items"
+
+
+def test_validate_automatic_recovery_does_not_claim_views_are_rebuilt(tmp_path: Path) -> None:
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "_views/thread.json", "{}\n", "wb: view")
+    repo.push()
+    event = ThreadActivityEvent(
+        event_id=MonotonicULIDGenerator("device").new(),
+        workspace_id="workspace-1",
+        device_id="device",
+        occurred_at=datetime(2026, 9, 7, tzinfo=UTC),
+        kind="thread.activity.work-log.created",
+        aggregate_id="project-1",
+        causation_operation_id="operation-1",
+    )
+    _commit(
+        other_repo,
+        other,
+        f"_events/device/2026/09/{event.event_id}.json",
+        event.model_dump_json(),
+        "wb: event",
+    )
+    other_repo.fetch()
+
+    details = inspect_divergence(other)
+    validation = validate_automatic_recovery(other, details, workspace_id="workspace-1")
+
+    assert validation.status == "view-rebuild-pending"
+    assert validation.as_dict()["ok"] is False
+    assert validation.generated_view_count == 1

@@ -281,7 +281,7 @@ def validate_automatic_recovery(
                 error_code="event_projection_failed",
             )
     return TemporaryValidation(
-        status="validated",
+        status="view-rebuild-pending" if generated_views else "validated",
         event_count=len(events),
         aggregate_count=len(projection),
         generated_view_count=generated_views,

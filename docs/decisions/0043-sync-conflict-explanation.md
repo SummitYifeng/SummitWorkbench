@@ -13,7 +13,8 @@
 3. 当前提供 `GET /api/sync/conflict/explain`、`GET /api/sync/conflict/plan`、
    `GET /api/sync/conflict/details` 和 `GET /api/sync/conflict/validate` 四个只读接口。
    恢复计划只描述阶段、计数和禁止动作，分叉详情只返回两侧 revision/时间、路径分类、
-   摘要和 event 标识，不返回正文；validate 只在临时非 Git 目录校验 event schema/投影。
+   摘要和 event 标识，不返回正文；validate 只在临时非 Git 目录校验 event schema/投影，
+   若包含 `_views` 则明确返回 `view-rebuild-pending`，不把未重建视图算作完成。
    它们都不 fetch、不 merge、不替换工作树、不 force push，也不改变现有
    `diverged-protected` 写入保护。
 4. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
