@@ -6,6 +6,8 @@
 - P2-02：未知 `_views/**` 不再误判为可自动重建；改为人工 `preserve-both`，保留确定性的
   `.remote` 副本，并在保护态 UI 只展示安全选项；已定义的 thread activity 视图继续在
   临时目录确定性重建。
+- P2-02：恢复双父提交成功后，脱敏审计写入失败会单独报告为审计失败，不再把已完成的
+  恢复误报为可重试失败；前端同时区分恢复提交、普通同步与审计状态。
 
 - build 24 内部 arm64 DMG 已由干净提交 `ac97db4aebb53147a394d83a34d9ed978d42b91e` 生成并通过 App/DMG 离线验证；产物 `dist/releases-build24/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` 的 SHA-256 为 `ef02907d637be755fe825d60b58fea8e1f67fe47cebcf03e782d2caf6f0e6590`。Studio 与 Air 增量检查均确认 build 24、HTTPS remote、preflight、基础同步、secondary profile、简报/周报友好跳过及零写入。
 
