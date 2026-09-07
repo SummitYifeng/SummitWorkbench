@@ -13,7 +13,7 @@ import shutil
 import tempfile
 import zipfile
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
@@ -127,6 +127,58 @@ class TemporaryValidation:
             "rebuilt_view_count": self.rebuilt_view_count,
             "error_code": self.error_code,
         }
+
+
+@dataclass
+class RecoveryPreparation:
+    """A snapshot-bound staging result owned by the caller's context manager."""
+
+    status: str
+    base_revision: str | None = None
+    local_revision: str | None = None
+    remote_revision: str | None = None
+    event_count: int = 0
+    aggregate_count: int = 0
+    generated_view_count: int = 0
+    rebuilt_view_count: int = 0
+    error_code: str | None = None
+    staging_dir: Path | None = None
+    _temporary: tempfile.TemporaryDirectory[str] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    @property
+    def ready(self) -> bool:
+        return self.status == "validated" and self.staging_dir is not None
+
+    def as_dict(self) -> dict[str, object]:
+        """Return a safe summary without exposing the temporary absolute path."""
+        return {
+            "status": self.status,
+            "ok": self.ready,
+            "base_revision": self.base_revision,
+            "local_revision": self.local_revision,
+            "remote_revision": self.remote_revision,
+            "event_count": self.event_count,
+            "aggregate_count": self.aggregate_count,
+            "generated_view_count": self.generated_view_count,
+            "rebuilt_view_count": self.rebuilt_view_count,
+            "staging_ready": self.staging_dir is not None,
+            "error_code": self.error_code,
+        }
+
+    def close(self) -> None:
+        """Delete the ephemeral staging directory and release its ownership."""
+        if self._temporary is not None:
+            self._temporary.cleanup()
+            self._temporary = None
+            self.staging_dir = None
+
+    def __enter__(self) -> RecoveryPreparation:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
 
 @dataclass(frozen=True)
@@ -256,22 +308,59 @@ def _copy_regular_files(source: Path, destination: Path) -> None:
         shutil.copyfile(path, target)
 
 
-def validate_automatic_recovery(
+def _snapshot_matches(repo: GitRepo, details: DivergenceDetails) -> bool:
+    try:
+        local_revision = repo.head_revision()
+        remote_revision = repo.upstream_revision()
+        base_revision = repo.merge_base(local_revision, remote_revision)
+    except GitError:
+        return False
+    return (
+        local_revision == details.local.revision
+        and remote_revision == details.remote.revision
+        and base_revision == details.base_revision
+    )
+
+
+def prepare_automatic_recovery(
     vault_dir: Path,
     details: DivergenceDetails,
     *,
     workspace_id: str,
     backend_kind: str | None = None,
-) -> TemporaryValidation:
-    """Validate event items in an ephemeral staging area without repository writes.
+) -> RecoveryPreparation:
+    """Prepare automatic items in a snapshot-bound ephemeral staging area.
 
-    The staging area contains no ``.git`` directory and is deleted before return. The
-    function intentionally validates only append-only events; generated views are a
-    later rebuild step and therefore cannot make this result look like an applied merge.
+    The returned object owns a temporary directory until ``close`` or context-manager
+    exit. It contains no ``.git`` directory and never changes the source repository.
+    Only append-only events and the defined thread activity view are prepared; unknown
+    generated views remain pending.
     """
     if details.manual_path_count:
-        return TemporaryValidation(status="manual-confirmation-required", error_code="manual_items")
+        return RecoveryPreparation(
+            status="manual-confirmation-required",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code="manual_items",
+        )
     repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
+    if not _snapshot_matches(repo, details):
+        return RecoveryPreparation(
+            status="stale",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code="conflict_snapshot_stale",
+        )
+    if repo.is_dirty():
+        return RecoveryPreparation(
+            status="rejected",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            error_code="current_worktree_dirty",
+        )
     event_paths = tuple(
         path for path in details.paths if path.kind is ConflictKind.APPEND_ONLY_EVENT
     )
@@ -282,52 +371,96 @@ def validate_automatic_recovery(
     rebuildable_views = tuple(
         path for path in generated_view_items if path.path == "_views/thread-activity.json"
     )
-    with tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-") as temporary:
-        staging = Path(temporary)
+    temporary = tempfile.TemporaryDirectory(prefix=".summit-workbench-recovery-")
+    staging = Path(temporary.name)
+    try:
         _copy_regular_files(vault_dir / "_events", staging / "_events")
         for path in event_paths:
             if len(path.changed_on) == 2 and path.local_sha256 != path.remote_sha256:
-                return TemporaryValidation(
+                temporary.cleanup()
+                return RecoveryPreparation(
                     status="rejected",
+                    base_revision=details.base_revision,
+                    local_revision=details.local.revision,
+                    remote_revision=details.remote.revision,
                     generated_view_count=generated_views,
                     error_code="event_path_collision",
                 )
             if "remote" in path.changed_on and "local" not in path.changed_on:
                 data = repo.read_file_at(details.remote.revision, path.path)
                 if data is None:
-                    return TemporaryValidation(
+                    temporary.cleanup()
+                    return RecoveryPreparation(
                         status="rejected",
+                        base_revision=details.base_revision,
+                        local_revision=details.local.revision,
+                        remote_revision=details.remote.revision,
                         generated_view_count=generated_views,
                         error_code="remote_event_missing",
                     )
                 target = staging / path.path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(data)
-        try:
-            store = ThreadActivityEventStore(
-                staging,
-                workspace_id=workspace_id,
-                device_id="recovery-validation",
-            )
-            events = store.read_workspace_events()
-            projection = store.project_workspace()
-        except Exception:  # noqa: BLE001 - safe visible validation result
-            return TemporaryValidation(
-                status="projection-failed",
-                generated_view_count=generated_views,
-                error_code="event_projection_failed",
-            )
-        if rebuildable_views:
-            target = staging / "_views" / "thread-activity.json"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(render_thread_activity_view(projection))
-    return TemporaryValidation(
+        store = ThreadActivityEventStore(
+            staging,
+            workspace_id=workspace_id,
+            device_id="recovery-validation",
+        )
+        events = store.read_workspace_events()
+        projection = store.project_workspace()
+    except Exception:  # noqa: BLE001 - safe visible validation result
+        temporary.cleanup()
+        return RecoveryPreparation(
+            status="projection-failed",
+            base_revision=details.base_revision,
+            local_revision=details.local.revision,
+            remote_revision=details.remote.revision,
+            generated_view_count=generated_views,
+            error_code="event_projection_failed",
+        )
+    if rebuildable_views:
+        target = staging / "_views" / "thread-activity.json"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(render_thread_activity_view(projection))
+    return RecoveryPreparation(
         status="view-rebuild-pending" if len(rebuildable_views) != generated_views else "validated",
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
         event_count=len(events),
         aggregate_count=len(projection),
         generated_view_count=generated_views,
         rebuilt_view_count=len(rebuildable_views),
+        staging_dir=staging,
+        _temporary=temporary,
     )
+
+
+def validate_automatic_recovery(
+    vault_dir: Path,
+    details: DivergenceDetails,
+    *,
+    workspace_id: str,
+    backend_kind: str | None = None,
+) -> TemporaryValidation:
+    """Validate automatic recovery and clean its staging area before returning."""
+    prepared = prepare_automatic_recovery(
+        vault_dir,
+        details,
+        workspace_id=workspace_id,
+        backend_kind=backend_kind,
+    )
+    try:
+        return TemporaryValidation(
+            status=prepared.status,
+            event_count=prepared.event_count,
+            aggregate_count=prepared.aggregate_count,
+            generated_view_count=prepared.generated_view_count,
+            rebuilt_view_count=prepared.rebuilt_view_count,
+            error_code=prepared.error_code,
+        )
+    finally:
+        prepared.close()
 
 
 def validate_manual_selections(
@@ -411,10 +544,12 @@ __all__ = [
     "ConflictPathDetail",
     "ConflictSide",
     "DivergenceDetails",
+    "RecoveryPreparation",
     "SelectionChoice",
     "SelectionValidation",
     "TemporaryValidation",
     "inspect_divergence",
+    "prepare_automatic_recovery",
     "recovery_manifest_bytes",
     "validate_manual_selections",
     "validate_automatic_recovery",

@@ -22,12 +22,16 @@
    基于当前双侧 revision，但不会执行选择或写回。已定义的
    `_views/thread-activity.json`，validate 会在临时目录按 event projection 重建并校验；
    未定义的 `_views` 仍返回 `view-rebuild-pending`，不会猜测其业务语义。
-4. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
-   验证后才可提出可审计的恢复动作；本 ADR 不提前承诺该能力已实现。
+4. `prepare_automatic_recovery` 提供快照绑定的临时准备结果：再次核对 base/local/remote
+   revision，拒绝 dirty worktree，并在调用方上下文结束时清理 staging；准备结果不暴露
+   绝对临时路径，也不写入当前 vault。
+5. 后续自动恢复必须在临时 clone/worktree 完成，经过 schema、event projection 和测试
+   验证后才可提出可审计的恢复动作；当前仍不执行工作树替换、人工选择写回或审计提交。
 
 ## 验收
 
 已覆盖分类稳定性、路径越界拒绝、混合冲突的人工确认提示、自动项必须先进入临时 worktree
 验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、已定义
-thread activity 视图的确定性临时重建、人工选择预检，以及五个 Web API 只读/预检契约；
-临时 worktree 实际恢复、生成视图写回和人工确认写回留待 P2-02 后续阶段。
+thread activity 视图的确定性临时重建、快照绑定的临时准备、dirty/stale 保护、人工选择
+预检，以及五个 Web API 只读/预检契约；临时 worktree 实际恢复、生成视图写回和人工确认
+写回留待 P2-02 后续阶段。

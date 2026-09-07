@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.workflows.sync_conflict_recovery import (
     SelectionChoice,
     inspect_divergence,
+    prepare_automatic_recovery,
     validate_automatic_recovery,
     validate_manual_selections,
 )
@@ -244,3 +246,58 @@ def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: 
     assert validation.event_count == 1
     assert validation.aggregate_count == 1
     assert other_repo.head_revision() == details.local.revision
+
+
+def test_prepare_automatic_recovery_owns_ephemeral_staging_and_rejects_stale_snapshot(
+    tmp_path: Path,
+) -> None:
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "_views/thread-activity.json", "stale\n", "wb: stale view")
+    repo.push()
+    event = ThreadActivityEvent(
+        event_id=MonotonicULIDGenerator("device").new(),
+        workspace_id="workspace-1",
+        device_id="device",
+        occurred_at=datetime(2026, 9, 7, tzinfo=UTC),
+        kind="thread.activity.work-log.created",
+        aggregate_id="project-1",
+        payload={"source_type": "work-log"},
+        causation_operation_id="operation-1",
+    )
+    _commit(
+        other_repo,
+        other,
+        f"_events/device/2026/09/{event.event_id}.json",
+        event.model_dump_json(),
+        "wb: event",
+    )
+    other_repo.fetch()
+    details = inspect_divergence(other)
+
+    with prepare_automatic_recovery(other, details, workspace_id="workspace-1") as prepared:
+        assert prepared.ready is True
+        assert prepared.as_dict()["staging_ready"] is True
+        assert prepared.staging_dir is not None
+        staging = prepared.staging_dir
+        assert not (staging / ".git").exists()
+        assert (staging / f"_events/device/2026/09/{event.event_id}.json").is_file()
+        rendered = json.loads((staging / "_views/thread-activity.json").read_text())
+        assert rendered["projection"] == "thread-activity"
+        assert rendered["aggregates"][0]["aggregate_id"] == "project-1"
+    assert not staging.exists()
+
+    _commit(other_repo, other, "after.md", "after\n", "wb: after snapshot")
+    stale = prepare_automatic_recovery(other, details, workspace_id="workspace-1")
+    assert stale.status == "stale"
+    assert stale.error_code == "conflict_snapshot_stale"
+    assert stale.staging_dir is None

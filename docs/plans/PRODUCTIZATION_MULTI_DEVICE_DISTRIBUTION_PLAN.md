@@ -1137,8 +1137,9 @@ P2-01B 只针对已有 P2-01A thread activity 事件切片接入迁移阶段：�
 结构化差异元数据，并在临时非 Git 目录校验 event schema/投影；已定义的
 `_views/thread-activity.json` 会在临时目录确定性重建，未知 `_views` 仍保持
 `view-rebuild-pending`，不猜测业务语义。同时提供人工选择预检并拒绝过期/不完整/非法
-选择；不执行 fetch、merge、工作树替换或 force push。临时 worktree 实际恢复、自动收集、
-生成视图写回和人工确认后的审计提交仍待后续阶段。
+选择；不执行 fetch、merge、工作树替换或 force push。自动项现在还可生成带
+base/local/remote revision 快照的临时准备结果，并拒绝快照过期或当前 worktree 脏；
+临时 worktree 实际恢复、生成视图写回和人工确认后的审计提交仍待后续阶段。
 
 **目的**：当 Git 真的分叉时，给非技术用户一个安全、可解释、可导出的恢复流程。
 
