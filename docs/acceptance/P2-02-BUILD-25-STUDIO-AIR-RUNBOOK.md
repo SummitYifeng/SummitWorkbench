@@ -1,6 +1,6 @@
 # P2-02 build 28 · Studio + Air 一次性真实验收流程
 
-状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 候选包与自动化质量门已完成，真实双机退出门待执行。  
+状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 因远端单边副本重复路径边界退出；build 28 已完成双机恢复主路径，但退出门仍需补齐事件/已登记视图和现场保护分支证据。
 范围：仅 P2-02。P2-03 不在本流程内，也不因本流程获得授权。
 
 ## 1. 候选包与证据
@@ -21,7 +21,7 @@
 | DMG 大小 | `50,063,558` bytes |
 | DMG SHA-256 | `3e6c7ef3ffcf9c5c7df5fe4662734fcf068d8ac680a1ed27deffbdcb31ba30a0` |
 
-接收设备必须安装这一个 build 27 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
+接收设备必须安装这一个 build 28 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
 安装前在两台设备上各自核对 DMG 大小和 SHA-256。凭据只在系统 Keychain/PAT 提示处输入，
 不得粘贴进终端参数、截图、诊断包、Git 或聊天。
 
@@ -29,7 +29,8 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 已自动通过的门：
 
-- `825 passed, 1 skipped`；ruff、format、mypy、前端 build/verify-build、脚本语法和 secret scan；
+- build 28 生成时 `825 passed, 1 skipped`；2026-09-07 独立复核为 `826 passed, 1 skipped`；
+  ruff、format、mypy、前端契约/build、脚本语法、依赖锁和 secret scan 均通过；
 - packaged App/worker 集成 smoke（1 passed），含 `--tls-diagnostic`；
 - bundle CA 存在、`CERT_REQUIRED`、hostname 校验开启、Dulwich transport 正常；
 - App/DMG strict codesign、动态端口 server smoke、build manifest、DMG checksum。
@@ -53,15 +54,25 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 ### B. 构造三类分叉
 
-1. 在 Studio 断开同步写入（可暂时关闭网络或只不点击同步），通过工作台追加一条**合成的
-   thread activity 事件**，再让工作台生成已登记的 `_views/thread-activity.json`。确认事件
-   计数增加，但不要把事件 payload 或 Markdown 正文复制到报告。
-2. 在 Air 保持离线，在同一个合成的 `P2-02-manual.md` 上写入与 Studio 不同的人工 Markdown；
+1. 本轮已选择“复用 build 28、仅验收时显式启用”（选择 1A），不新增产品设置。完全退出 App
+   后，用 macOS 一次性进程环境启动：
+
+   ```sh
+   open -n --env WB_THREAD_ACTIVITY_MODE=dual-write /Applications/SummitWorkbench.app
+   ```
+
+   该变量只属于这次 App 进程；验收结束后退出并从 Finder 正常打开，即恢复默认 `legacy`。
+   不使用 `launchctl setenv` 等持久化方式。追加日志后必须先确认 `_events/**` 已产生，否则停止。
+2. 在 Studio 断开同步写入（可暂时关闭网络或只不点击同步），通过工作台追加一条**合成的
+   thread activity 事件**。随后在受控 fixture 提交中加入一个过期的
+   `_views/thread-activity.json`；日常工作台不会主动写这个派生文件，恢复候选必须根据合并后的
+   event 投影确定性重建它。确认 event 计数增加，但不要把 payload 或正文复制到报告。
+3. 在 Air 保持离线，在同一个合成的 `P2-02-manual.md` 上写入与 Studio 不同的人工 Markdown；
    再创建一个合成的未知派生视图 `_views/p2-02-unknown.json`，以及一个合成的未知/二进制
    文件（例如 `p2-02-binary.bin`）。这些文件只使用固定测试标记，不使用真实正文。
-3. 两边都用普通、显式路径的本地提交保存 fixture；不要 force-push、reset、rebase、stash，
+4. 两边都用普通、显式路径的本地提交保存 fixture；不要 force-push、reset、rebase、stash，
    不要改任何 `feature/uiux-experience-refine` 分支。先不要让 Air push。
-4. 恢复 Studio 网络，先在 Studio 点击一次普通同步/推送。然后在 Air 点击普通同步；预期
+5. 恢复 Studio 网络，先在 Studio 点击一次普通同步/推送。然后在 Air 点击普通同步；预期
    Air 进入 `diverged-protected`，不会覆盖 Air 的人工 Markdown、未知视图或二进制文件。
 
 ### C. 解释、人工选择、临时预检
@@ -108,11 +119,32 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
    ahead/behind `0/0`；逐项确认 event、Markdown、本地未知视图、远端 `.remote` 副本、binary
    和审计 JSONL 均存在且内容未丢失。报告只记录存在性、SHA-256/计数和短 revision，不贴正文。
 
-## 3. 退出判定与暂停点
+## 3. 2026-09-07 独立复核结果
+
+已从 `main` / `origin/main` 的共同 HEAD `2cb63cc` 复核源码与 build 28 产物。DMG 大小和
+SHA-256 与上表一致，bundle identity 为 `0.4.3 (28)`，packaged App smoke、TLS diagnostic、
+strict codesign、动态端口启动和 release 验证均通过。受控验收 vault 当前工作树 clean，
+本机 HEAD 与 upstream 同为 `ac5df49`；历史中存在两个普通双父恢复提交 `d5f204a`、`babe7ae`，
+对应脱敏审计提交均已保留，未知视图和 binary 的本地/`.remote` 副本均存在。
+
+本次证据尚不足以关闭退出门：两条恢复审计的 `event_count`、`generated_view_count` 和
+`rebuilt_view_count` 均为 `0`，现场树中也没有 `_events/**`，因此没有真实覆盖追加事件自动
+收集与已登记 `_views/thread-activity.json` 重建。快照过期、脏工作树和审计写入失败有自动化
+回归测试，但当前保留的现场记录不足以独立确认三条真机保护分支。P2-02 因此继续保持 `[~]`，
+不得仅凭双父提交和最终同 HEAD 改为 `[x]`。
+
+代码复核确认 build 28 的 migration mode 默认安全回退到 `legacy`，现有真机配置也没有持久化
+`dual-write` 开关；这解释了追加日志提交中没有 event。产品所有者已选择 1A：仅验收时为 App
+进程显式启用 `dual-write`，验收结束恢复默认 `legacy`，不新增图形化设置或新 build。
+
+补验无需重新构建：继续使用哈希不变的 build 28，在合成验收 vault 中补做 event + 已登记视图
+分叉，并保存三条保护分支的脱敏状态码/短 revision 证据；随后再次确认双方 clean、HEAD/远端一致。
+
+## 4. 退出判定与暂停点
 
 只有以下条件全部满足，才把 P2-02 和 ADR 0043 改为 `[x]`：
 
-- 同一个 build 25 DMG 在 Studio + Air 完成上述流程；
+- 同一个 build 28 DMG 在 Studio + Air 完成上述流程；
 - 解释、人工选择、`preserve-both`、临时预检、显式确认、普通双父提交、脱敏审计和普通 push
   均有现场证据；
 - 远端变化、脏工作树、审计失败保护分支均按预期拒绝或保持可见；

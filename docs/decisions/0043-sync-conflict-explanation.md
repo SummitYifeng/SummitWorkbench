@@ -1,6 +1,6 @@
 # ADR 0043 · P2-02 同步冲突解释与恢复计划
 
-- 状态：实现完成、真实 Studio + Air 退出验收待执行（2026-09-07）
+- 状态：实现完成、build 28 双机主路径已通过；退出验收待补齐（2026-09-07）
 - 范围：`diverged-protected` 等同步保护态的冲突分类与安全建议
 - 前置：P1-07D（ADR 0041）、P2-01B（ADR 0042）
 
@@ -45,10 +45,12 @@ thread activity 视图的确定性临时重建、快照绑定的临时准备、d
 API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push 尝试，以及未知派生视图
 人工 `preserve-both` 回退与确定性 `.remote` 副本；合并成功但审计写入失败时的状态可见性。
 
-自动化质量门已通过。ADR 保持“待验收”状态，直到下一内部候选包在真实 Studio + Air 上构造
-event、Markdown 与未知/二进制分叉，恢复后确认两端可 fast-forward 到同一 HEAD；不得以临时
-目录或单机模拟替代该退出门。
+自动化质量门已通过。build 28 已在真实 Studio + Air 上完成 Markdown、未知视图和 binary 的
+普通双父恢复、脱敏审计、普通 push 与最终同 HEAD；保留的两个恢复审计和双方副本证明主路径
+成立。但审计中的 `event_count/generated_view_count/rebuilt_view_count` 均为 `0`，没有现场覆盖
+追加事件自动收集与已登记 thread activity 视图重建；快照过期、脏工作树和审计失败也仍缺少
+可独立复核的真机状态证据。因此 ADR 继续保持“待验收”，不得以自动测试替代这些退出门。
 
-build 25 的候选包证据与一次性现场步骤见
+build 25–28 的候选包证据、已完成项和补验步骤见
 `docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。在真实双机退出门通过前，P2-02
 仍保持 `[~]`，P2-03 不启动。

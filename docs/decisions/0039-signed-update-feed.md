@@ -41,8 +41,8 @@ tag job 失败时只允许保留公开仓库 draft，不得发布 partial latest
 另一台 Apple Silicon MacBook Air 上完成 v0.4.2 安装、首次创建 workspace、手动更新检查
 和自动检查开关验收。之后候选已发布至 `v0.4.3-rc.5`；packaged Git TLS 修复位于该 tag
 之后；这些真实 remote 与双设备同步验收随后已由同一 build 23 DMG 在 Studio + Air 完成，
-build 24 也完成双机增量冒烟。稳定 `v0.4.3` 仍未发布，P2-02 最新恢复能力仍需下一内部候选包
-完成双机退出验收。公开更新
+build 24 也完成双机增量冒烟。稳定 `v0.4.3` 仍未发布；P2-02 build 28 已完成双机恢复主路径，
+仍需补齐事件/已登记视图与现场保护分支证据后关闭退出门。公开更新
 仓库只提供完整性（HTTPS、SHA-256、
 Ed25519），不提供保密性；不得放入私有工作区内容或秘密。不纳入本项目的仍包括 Developer
 ID/notarization、Apple Store、Windows 和 Intel 分发。

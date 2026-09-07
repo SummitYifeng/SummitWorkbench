@@ -5,12 +5,11 @@
 
 - P2-01B 已完成：仅对既有 thread activity 接入 `shadow-read → dual-write`、确定性投影对比、
   差异诊断、一致性报告与回退开关；不迁移 inbox、会议决策或项目正文。
-- P2-02 实现已收口：提供冲突分类、只读详情/计划/校验、脱敏导出、临时 staging、事件自动
-  收集、已登记视图重建、人工文件选择、快照/脏树保护、显式确认后的普通双父恢复提交、
-  脱敏审计与普通 push；当前仍需下一内部候选包完成真实 Studio + Air 恢复退出验收，才把
-  P2-02 标记为完成。
-- 当前主线质量门复核：`824 passed, 1 skipped`，覆盖率 `82.11%`；ruff、格式检查、mypy、
-  前端契约测试与生产构建均通过。
+- P2-02 实现已收口；build 28 已在 Studio + Air 完成 Markdown、未知视图与 binary 的普通双父
+  恢复、脱敏审计、普通 push 和最终同 HEAD。独立复核发现现场审计的事件/已登记视图计数均为
+  `0`，且三条保护分支缺少可复核现场记录，因此 P2-02 继续保持 `[~]`，待同一 build 28 补验。
+- 当前主线质量门独立复核：`826 passed, 1 skipped`，覆盖率 `82.15%`，另有 packaged App smoke
+  `1 passed`；ruff、格式检查、mypy、前端契约与生产构建、依赖锁、release 验证和 secret scan 均通过。
 
 - P2-02：未知 `_views/**` 不再误判为可自动重建；改为人工 `preserve-both`，保留确定性的
   `.remote` 副本，并在保护态 UI 只展示安全选项；已定义的 thread activity 视图继续在
