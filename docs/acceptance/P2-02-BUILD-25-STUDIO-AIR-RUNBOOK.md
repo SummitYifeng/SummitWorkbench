@@ -1,6 +1,6 @@
-# P2-02 build 26 · Studio + Air 一次性真实验收流程
+# P2-02 build 27 · Studio + Air 一次性真实验收流程
 
-状态：build 25 因 Dulwich 分叉详情读取缺陷退出；build 26 候选包与自动化质量门已完成，真实双机退出门待执行。  
+状态：build 25/26 分别因分叉详情读取和选择校验缺陷退出；build 27 候选包与自动化质量门已完成，真实双机退出门待执行。  
 范围：仅 P2-02。P2-03 不在本流程内，也不因本流程获得授权。
 
 ## 1. 候选包与证据
@@ -13,19 +13,19 @@
 | 项目 | 值 |
 |---|---|
 | 产品 | `com.summitworkbench.panel` |
-| 版本 / build | `0.4.3` / `26` |
+| 版本 / build | `0.4.3` / `27` |
 | 架构 / 分发 | `arm64` / `INTERNAL-DEV` |
-| 源码 revision | `58837495015e067c997c38e82482b28e11960933` |
-| 前端 build identity | `v2026.09.07-5883749-d8336e88` |
-| DMG | `dist/p202-build26/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` |
-| DMG 大小 | `50,064,419` bytes |
-| DMG SHA-256 | `3af3284696efdfc7c4752a424871128facd3d1bc8e3e9e2f5239b8af9f12bccb` |
+| 源码 revision | `35ab5b7c8914f6a0b4d0531a3e44bc5eef6b7cd5` |
+| 前端 build identity | `v2026.09.07-35ab5b7-6b225c82` |
+| DMG | `dist/p202-build27/0.4.3/arm64/SummitWorkbench-0.4.3-arm64-INTERNAL-DEV.dmg` |
+| DMG 大小 | `50,065,553` bytes |
+| DMG SHA-256 | `3831f546a104b309b81e2e0b6189d15488cbffb03e566f18ca8c32e01db0a27c` |
 
-接收设备必须安装这一个 build 26 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
+接收设备必须安装这一个 build 27 DMG；不得重新构建、替换公开 release、创建 tag 或发布稳定版。
 安装前在两台设备上各自核对 DMG 大小和 SHA-256。凭据只在系统 Keychain/PAT 提示处输入，
 不得粘贴进终端参数、截图、诊断包、Git 或聊天。
 
-build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store，导致进入真实分叉详情时抛出内部错误；build 26 已修复并增加回归测试。
+build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store，导致进入真实分叉详情时抛出内部错误；build 26 已修复并增加回归测试。build 26 的现场失败原因：选择校验请求误带接口禁止的 `confirmed` 字段；build 27 已分离选择校验与恢复确认请求，并增加浏览器契约测试。
 
 已自动通过的门：
 
@@ -42,7 +42,7 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
 
 ### A. 安装与共同基线
 
-1. 在 Studio 和 Air 都安装同一个 build 26 DMG，打开 App，连接同一个专用验收 vault 和
+1. 在 Studio 和 Air 都安装同一个 build 27 DMG，打开 App，连接同一个专用验收 vault 和
    同一个 HTTPS Git remote；两台设备使用同一个 `workspace_id`，设备 ID 必须不同。不要
    使用日常 vault 或真实会议正文。
 2. 在两台设备的同步状态中确认：分支为 `main`、远端方案为 HTTPS、工作树 clean、ahead/behind
