@@ -439,6 +439,10 @@ def test_recovery_commit_remains_committed_when_audit_write_fails(
     assert applied.status == "committed"
     assert applied.audit_status == "failed"
     assert applied.audit_error_code == "recovery_audit_failed"
+    assert applied.as_dict()["audit"] == {
+        "status": "failed",
+        "error_code": "recovery_audit_failed",
+    }
     assert applied.revision is not None
     assert other_repo.commit_parent_count(applied.revision) == 2
 
