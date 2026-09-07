@@ -8,6 +8,7 @@ from summit_workbench.domain.thread_activity import MonotonicULIDGenerator, Thre
 from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.workflows.sync_conflict_recovery import (
+    RECOVERY_AUDIT_PATH,
     SelectionChoice,
     apply_prepared_recovery,
     inspect_divergence,
@@ -261,6 +262,11 @@ def test_validate_automatic_recovery_rebuilds_defined_view_in_staging(tmp_path: 
         assert (other / "_views/thread-activity.json").read_text().find(
             '"projection": "thread-activity"'
         ) >= 0
+        audit = json.loads((other / RECOVERY_AUDIT_PATH).read_text().splitlines()[-1])
+        assert audit["status"] == "committed"
+        assert audit["merge_revision"] == applied.revision
+        assert audit["local_revision"] == details.local.revision
+        assert "vault" not in json.dumps(audit)
     other_repo.push()
     assert other_repo.ahead_behind().ahead == 0
     assert other_repo.ahead_behind().behind == 0

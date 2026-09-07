@@ -1,6 +1,6 @@
 # ADR 0043 · P2-02 同步冲突解释与恢复计划
 
-- 状态：已实现解释、临时准备与显式确认的本地恢复提交切片（2026-09-07；push 仍由调用方单独执行）
+- 状态：已实现解释、临时准备、显式确认的本地恢复提交、脱敏审计与普通 push 尝试（2026-09-07）
 - 范围：`diverged-protected` 等同步保护态的冲突分类与安全建议
 - 前置：P1-07D（ADR 0041）、P2-01B（ADR 0042）
 
@@ -29,8 +29,9 @@
    文件保留远端副本。
 6. `apply_prepared_recovery` 是唯一写回入口：必须经过 schema、event projection 和测试
    验证、显式确认、再次通过 revision 快照校验且当前 worktree 干净，只把候选树的显式
-   路径以原子写入落回，并创建普通双父 merge commit；它不 fetch、不 push、不使用 force、
-   reset、rebase 或 stash。
+   路径以原子写入落回，并创建普通双父 merge commit；随后 Web 调用方仅尝试普通 push。
+   它不 fetch、不使用 force、reset、rebase 或 stash；远端变化、离线或凭据问题只返回
+   可见状态，不覆盖本地恢复提交。
 
 ## 验收
 
@@ -38,5 +39,5 @@
 验证阶段、双侧分叉元数据与 event 标识脱敏、临时目录 event schema/投影验证、已定义
 thread activity 视图的确定性临时重建、快照绑定的临时准备、dirty/stale 保护、人工选择
 候选树、preserve-both 保留规则、显式确认的本地双父恢复提交、人工选择预检、五个 Web
-API 只读/预检契约，以及保护态 UI 接线；普通 push 编排、恢复审计事件和更复杂的未知
+API 只读/预检契约、保护态 UI 接线、脱敏恢复审计和普通 push 尝试；更复杂的未知
 派生视图处理留待 P2-02 后续阶段。

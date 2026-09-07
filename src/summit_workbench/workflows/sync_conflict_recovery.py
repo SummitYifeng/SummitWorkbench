@@ -14,6 +14,7 @@ import tempfile
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal
@@ -29,10 +30,11 @@ from summit_workbench.domain.sync_conflict import (
 from summit_workbench.domain.thread_activity import ThreadActivityEvent, render_thread_activity_view
 from summit_workbench.repositories._atomic import atomic_write_bytes
 from summit_workbench.repositories.git import GitError, GitRepo
-from summit_workbench.repositories.git_backend import CommitIdentity
+from summit_workbench.repositories.git_backend import CommitIdentity, default_identity
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 
 RecoverySide = Literal["local", "remote"]
+RECOVERY_AUDIT_PATH = "_signals/sync-conflict-recovery/log.jsonl"
 
 
 class SelectionChoice(StrEnum):
@@ -147,6 +149,7 @@ class RecoveryPreparation:
     error_code: str | None = None
     staging_dir: Path | None = None
     candidate_paths: tuple[str, ...] = ()
+    selection_summary: tuple[tuple[str, str], ...] = ()
     _temporary: tempfile.TemporaryDirectory[str] | None = field(
         default=None, repr=False, compare=False
     )
@@ -642,6 +645,12 @@ def prepare_manual_recovery(
         rebuilt_view_count=len(rebuildable_views),
         staging_dir=staging,
         candidate_paths=tuple(sorted(candidate_paths)),
+        selection_summary=tuple(
+            sorted(
+                (classify_conflict_path(path).path, SelectionChoice(choice).value)
+                for path, choice in selections.items()
+            )
+        ),
         _temporary=temporary,
     )
 
@@ -677,6 +686,37 @@ def _safe_target(root: Path, relative: str) -> Path | None:
     return target
 
 
+def _append_recovery_audit(
+    vault_dir: Path,
+    prepared: RecoveryPreparation,
+    *,
+    merge_revision: str,
+) -> None:
+    """Persist a body-free recovery audit after the merge commit succeeds."""
+    target = _safe_target(vault_dir, RECOVERY_AUDIT_PATH)
+    if target is None or target.is_symlink() or target.is_dir():
+        raise GitError("恢复审计路径不安全")
+    previous = target.read_bytes() if target.is_file() else b""
+    record = {
+        "schema_version": 1,
+        "kind": "sync-conflict-recovery",
+        "status": "committed",
+        "recorded_at": datetime.now(UTC).isoformat(),
+        "base_revision": prepared.base_revision,
+        "local_revision": prepared.local_revision,
+        "remote_revision": prepared.remote_revision,
+        "merge_revision": merge_revision,
+        "event_count": prepared.event_count,
+        "aggregate_count": prepared.aggregate_count,
+        "generated_view_count": prepared.generated_view_count,
+        "rebuilt_view_count": prepared.rebuilt_view_count,
+        "applied_paths": list(prepared.candidate_paths),
+        "selections": dict(prepared.selection_summary),
+    }
+    audit = (json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+    atomic_write_bytes(target, previous + audit, ensure_parents=True)
+
+
 def apply_prepared_recovery(
     vault_dir: Path,
     prepared: RecoveryPreparation,
@@ -691,7 +731,7 @@ def apply_prepared_recovery(
     This is the only workflow in this module that writes the vault. It requires
     an explicit confirmation, a live revision match, a clean worktree, and a
     live staging directory. It never fetches, force-pushes, resets, rebases, or
-    stashes. Push remains a separate caller action.
+    stashes. The web caller may attempt an ordinary push after this local commit.
     """
     if not prepared.ready:
         return RecoveryApplyResult(
@@ -706,8 +746,6 @@ def apply_prepared_recovery(
         return RecoveryApplyResult(status="preparation-not-ready", error_code="staging_missing")
     repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
     paths = tuple(sorted(set(prepared.candidate_paths)))
-    if not paths:
-        return RecoveryApplyResult(status="rejected", error_code="no_recovery_paths")
     try:
         with workspace_lock(vault_dir.parent):
             if not _refs_match_preparation(repo, prepared):
@@ -736,9 +774,13 @@ def apply_prepared_recovery(
                 prepared.remote_revision or "",
                 author=author,
             )
+            merge_revision = repo.head_revision()
+            _append_recovery_audit(vault_dir, prepared, merge_revision=merge_revision)
+            repo.add([RECOVERY_AUDIT_PATH])
+            repo.commit("wb: sync recovery audit", author=author or default_identity())
             return RecoveryApplyResult(
                 status="committed",
-                revision=repo.head_revision(),
+                revision=merge_revision,
                 applied_paths=paths,
             )
     except LockBusy:

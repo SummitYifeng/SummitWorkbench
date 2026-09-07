@@ -197,6 +197,7 @@ interface SyncConflictRecoveryPayload {
   state: string;
   preparation?: RecoveryPreparationSummary;
   recovery?: { status: string; revision?: string | null; error_code?: string | null };
+  push?: { ok: boolean; state: string; detail?: string | null } | null;
   reason?: string;
 }
 
@@ -2887,7 +2888,7 @@ function renderSyncConflictModal(): void {
     '<span>远端 <code>' + esc(conflictRevision(details.remote.revision)) + '</code></span></div>' +
     '<div class="conflict-summary">自动处理 ' + details.automatic_path_count + ' 项 · 需要选择 ' + details.manual_path_count + ' 项</div>' +
     '<div class="conflict-paths">' + (pathRows || '<p class="hint">没有可处理的分叉文件。</p>') + '</div>' + message + status +
-    '<p class="hint conflict-safety">恢复只会创建普通的本地双父提交；不会 force-push、reset、rebase 或 stash。恢复提交完成后，再单独执行“立即重试”进行普通同步。</p>' +
+    '<p class="hint conflict-safety">恢复只会创建普通的本地双父提交，并尝试普通同步；不会 force-push、reset、rebase 或 stash。若远端已再次变化，仍会回到保护态。</p>' +
     '<div class="row"><button class="primary" data-action="sync-conflict-preview"' +
     (conflictBusy || missing.length > 0 ? ' disabled' : '') + '>临时预检（不写入）</button>' +
     (preparation?.ok ? '<button class="ok" data-action="sync-conflict-apply"' + (conflictBusy ? ' disabled' : '') + '>确认恢复并创建提交</button>' : '') +
@@ -2982,7 +2983,7 @@ async function previewSyncConflictRecovery(): Promise<void> {
 
 async function applySyncConflictRecovery(): Promise<void> {
   if (!conflictDetails || !conflictPreparation?.ok || conflictBusy) return;
-  if (!window.confirm('确认将预检结果写回当前 vault，并创建普通的本地双父合并提交？此操作不会自动推送。')) return;
+  if (!window.confirm('确认将预检结果写回当前 vault，创建普通的本地双父合并提交，并尝试普通同步？')) return;
   conflictBusy = true;
   let committed = false;
   conflictMessage = '正在写回并创建本地恢复提交…';
@@ -2994,7 +2995,9 @@ async function applySyncConflictRecovery(): Promise<void> {
     if (data.recovery?.status === 'committed') {
       committed = true;
       closeModal();
-      toast('恢复提交已创建，请点击“立即重试”完成普通同步。', 'ok');
+      toast(data.push?.ok
+        ? '恢复提交已创建并完成普通同步。'
+        : '恢复提交已创建，普通同步暂未完成，请稍后点击“立即重试”。', data.push?.ok ? 'ok' : 'info');
       await Promise.all([refreshSyncBanner(), refreshState()]);
       return;
     }

@@ -3383,12 +3383,36 @@ def create_app(
                 "state": snapshot.state.value,
                 "reason": "恢复准备暂时无法执行，请保留当前保护态并重新读取分叉详情",
             }
+        push: dict[str, object] | None = None
+        if result.status == "committed":
+            from summit_workbench.workflows.sync_coordinator import push_after_commit
+
+            try:
+                push_state, push_snapshot = push_after_commit(
+                    ctx.vault_dir,
+                    home=ctx.active_workspace.home if ctx.active_workspace else None,
+                    workspace_id=ctx.workspace_id,
+                    backend_kind=ctx.git_backend_kind,
+                    context=ctx.active_workspace,
+                )
+                push = {
+                    "ok": push_state.value == "ready",
+                    "state": push_state.value,
+                    "detail": push_snapshot.detail if push_snapshot is not None else None,
+                }
+            except (ValueError, GitError):
+                push = {
+                    "ok": False,
+                    "state": "error",
+                    "detail": "恢复提交已保留，但普通同步暂未完成",
+                }
         current = _current_sync_snapshot()
         return {
             "ok": result.status == "committed",
             "available": True,
             "state": current.state.value,
             "recovery": result.as_dict(),
+            "push": push,
         }
 
     @app.get("/api/sync/export", response_model=None)
