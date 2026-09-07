@@ -21,7 +21,7 @@
 | L5 | 飞书租户 | 团队专业版，本人管理员 | 沿用 |
 | **L6′** | **数据外传边界** | **由「尽量本地」改为列举式白名单（见 NFR-5）** | **⚠️ 已修订** |
 | L7 | 工作 vault | 全新独立 vault，但**继承 MyKnowledge 已有 conventions**，不从零设计 | 修正 |
-| L8 | 工具分工 | **MVP 只用 Claude Code**，Codex 推迟（见 3.2.2） | 修正 |
+| L8 | 工具分工 | **M3 默认使用 Codex**，Claude Code 保留为可选适配器（见 3.2.2） | 已确认修订 |
 | **L9** | **工作项目根目录** | **`~/Documents/Work`，与个人项目 `~/Documents/GitHub` 分离** | 新增 |
 | **L10** | **两端一致机制** | **git remote 是唯一真源。禁止用 iCloud/Dropbox 同步含 `.git` 的目录** | 新增 |
 | **L11** | **产品定位** | **外置执行管理层 + 第二大脑**：既调度下一步，也持续沉淀并理解工作记忆 | 二次对齐新增 |
@@ -451,7 +451,7 @@ prompt_version: <meeting-processor prompt 版本>
 
 | 场景 | 模型 | 说明 |
 |---|---|---|
-| 环 B 交互式会话 | **Claude（经 Claude Code）** | MVP 唯一执行器 |
+| 环 B 交互式会话 | **Codex** | M3 默认执行器；Claude Code 保留为可选适配器 |
 | 环 A 简报排序 | `ranking_model` | 仅做排序；首版默认候选 DeepSeek V4 Flash |
 | 会议转写结构化处理 | `meeting_model` | 首版默认候选 DeepSeek V4 Flash |
 | `wb ask` 即时问答 | `qa_model` | 首版默认候选 DeepSeek V4 Flash |
@@ -460,11 +460,9 @@ prompt_version: <meeting-processor prompt 版本>
 
 `meeting_model` / `qa_model` / `review_model` / `ranking_model` 分别配置模型 ID、API base URL、鉴权引用、超时和最大输出长度。首版允许四者指向同一模型，但业务代码、prompt 与输出 schema 禁止写死供应商或模型名称；单项换模不得影响其他能力。
 
-此处的 Claude Code 仅是环 B 中由用户主动启动的交互式工作执行器，不承担会议逐字稿处理、`wb ask`、每日/每周综合或简报排序。上述四类自动与半自动 AI 能力全部通过产品直接接入的云端模型 API 完成，不把材料转交给 Claude Code 会话。
+此处的 Codex 是环 B 中由用户主动启动的交互式工作执行器，不承担会议逐字稿处理、`wb ask`、每日/每周综合或简报排序。上述四类自动与半自动 AI 能力全部通过产品直接接入的云端模型 API 完成，不把材料转交给会话执行器。Claude Code 可通过同一上下文包和收尾契约作为可选适配器接入。
 
-**为何 MVP 只用 Claude Code 而不用 Codex**：环 B 的**收尾自动写回**需要会话结束钩子（Stop hook），这是最短实现路径；维护两套钩子与约定是双倍工作量。
-
-**不锁死退路**：项目档案正文写在 `AGENTS.md`，`CLAUDE.md` 仅放一行引用指向它。一份内容两边可读，将来接入 Codex 零迁移。
+**M3 收尾边界**：会话结束钩子先生成脱敏的待确认草稿；用户明确确认后才更新项目主笔记、追加工作记录并提交 vault。未确认的草稿不得写回或自动 push。
 
 #### 3.2.3 上下文拼接逻辑
 
@@ -596,14 +594,15 @@ prompt_version: <meeting-processor prompt 版本>
 [简报条目上的可点击命令]
         │
         ▼
-[启动] 按 3.2.3 顺序拼接上下文 ──▶ 在 ~/Documents/Work/<project>/ 启动 Claude Code
+[启动] 按 3.2.3 顺序拼接上下文 ──▶ 启动 Codex 会话
         │
         ▼
 [人机协作干活]（读代码 / 排版 / 校对 / 写需求）
         │
         ▼
-[收尾 · Stop hook 自动触发，无需人工]
+[收尾 · Stop hook 生成待确认草稿]
         │
+        ├──▶ 用户确认草稿
         ├──▶ 更新 _vault/projects/<project>.md 的「当前状态 / 下一步 / 阻塞」
         ├──▶ 追加 _vault/logs/YYYY-MM-DD-<project>.md（本次做了什么）
         └──▶ git commit（vault）
@@ -796,7 +795,7 @@ prompt_version: <meeting-processor prompt 版本>
 | M3-2 | 上下文拼接（按 3.2.3 顺序，含截断策略） |
 | M3-3 | **Stop hook 自动收尾**：更新主笔记 + 追加工作记录 + commit |
 
-**M3 验收**：环 B 会话结束后主笔记与工作记录**自动**更新，人工补写占比 < 20%。
+**M3 验收**：环 B 会话结束后生成待确认草稿；用户确认后主笔记与工作记录自动更新，人工补写占比 < 20%。
 
 ### M4 · 分流录入
 
@@ -819,7 +818,6 @@ prompt_version: <meeting-processor prompt 版本>
 | 改造 SummitKnowledge 支持多库 | 3.1.6。等工作 vault 积累 2–3 个月 |
 | 编排 WorkBuddy（自动派活） | 4.3。松耦合不可靠，现有手动流程正常 |
 | n8n / 常驻服务 / MCP 用于环 A | 3.2.4。launchd + 脚本足够 |
-| Codex 接入 | 3.2.2。收尾钩子只维护一套 |
 | 飞书消息 / 与会议产物无关的云文档 / 多维表格 | NFR-4。权限不申请；会议纪要及逐字稿是唯一文档读取例外 |
 | 每天全量扫描 33 个仓库 | 只扫 `~/Documents/Work/` 下有 `AGENTS.md` 的项目 |
 | 任务标题脱敏 | NFR-5。会导致简报不可读，风险已记录 |
@@ -832,7 +830,7 @@ prompt_version: <meeting-processor prompt 版本>
 - 独立指挥台面板（复用 `MacDevEnvMonitor`）
 - 会后自动追问补录承诺（②的自动化）
 - 剧本库：把「拉分支写需求」「读代码做体验测试」「排版校对流程」固化成 Skills
-- Codex 接入与双执行器分工
+- Claude Code 可选适配器与双执行器分工
 
 ---
 
