@@ -9,10 +9,12 @@ import secrets
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import uvicorn
 
 from summit_workbench.config.profiles import resolve_active_workspace
+from summit_workbench.config.settings import default_config_file
 from summit_workbench.config.tls_trust import configure_default_tls_trust, tls_runtime_diagnostic
 from summit_workbench.webapp.app import WebContext, create_app
 from summit_workbench.webapp.build_info import (
@@ -27,6 +29,53 @@ from summit_workbench.webapp.runtime import (
     write_runtime_record,
 )
 from summit_workbench.webapp.security import validate_bind_host
+
+
+def _feishu_callback_target(context: WebContext | None) -> tuple[int, str] | None:
+    """Return a configured local OAuth callback target, if one is usable by the App."""
+    try:
+        if context is not None and context.workspace_id is not None:
+            from summit_workbench.workflows.settings_connections import feishu_config
+
+            cfg = feishu_config(
+                config_file=context.provider_config_file(), workspace_id=context.workspace_id
+            )
+        else:
+            from summit_workbench.providers.feishu.config import load_feishu_config
+
+            # Restricted onboarding has no workspace context yet, but it still
+            # needs the configured redirect target to receive the first callback.
+            cfg = load_feishu_config(default_config_file())
+    except Exception:
+        return None
+    parsed = urlsplit(cfg.redirect_uri)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in {"localhost", "127.0.0.1"}
+        or parsed.port is None
+        or parsed.path not in {"/callback", "/callback/feishu"}
+    ):
+        return None
+    return parsed.port, parsed.path
+
+
+def _bind_feishu_callback_socket(
+    target: tuple[int, str] | None, *, bound_port: int
+) -> socket.socket | None:
+    """Bind the legacy fixed localhost callback while the panel keeps a random port."""
+    if target is None or target[0] == bound_port:
+        return None
+    callback = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    callback.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        callback.bind(("127.0.0.1", target[0]))
+        callback.listen(128)
+    except OSError as exc:
+        callback.close()
+        raise SystemExit(
+            f"飞书 OAuth 回调端口 {target[0]} 无法监听；请关闭占用该端口的程序后重试"
+        ) from exc
+    return callback
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -94,6 +143,8 @@ def main(argv: list[str] | None = None) -> None:
     sock.bind((args.host, args.port))
     sock.listen(2048)
     bound_port = int(sock.getsockname()[1])
+    callback_target = _feishu_callback_target(ctx)
+    callback_sock = _bind_feishu_callback_socket(callback_target, bound_port=bound_port)
     if args.runtime_record:
         record_path = Path(args.runtime_record).expanduser()
     else:
@@ -124,12 +175,21 @@ def main(argv: list[str] | None = None) -> None:
         path=record_path,
     )
     application.state.bound_port = bound_port
+    application.state.feishu_callback_required = callback_target is not None
+    application.state.feishu_callback_ready = (
+        callback_target is None
+        or callback_sock is not None
+        or (callback_target[0] == bound_port if callback_target else False)
+    )
     config = uvicorn.Config(application, host=args.host, port=bound_port, log_level="warning")
     server = uvicorn.Server(config)
     try:
-        server.run(sockets=[sock])
+        sockets = [sock, callback_sock] if callback_sock is not None else [sock]
+        server.run(sockets=sockets)
     finally:
         sock.close()
+        if callback_sock is not None:
+            callback_sock.close()
         record_path.unlink(missing_ok=True)
 
 

@@ -89,6 +89,13 @@ def _failure(
     )
 
 
+def _panel_redirect(request: Request, suffix: str) -> RedirectResponse:
+    """回到随机主面板端口，而不是停留在固定 OAuth 回调端口。"""
+    port = getattr(request.app.state, "bound_port", None)
+    base = f"http://127.0.0.1:{port}" if isinstance(port, int) and port > 0 else ""
+    return RedirectResponse(url=f"{base}/?{suffix}", status_code=303)
+
+
 def _verify_route(
     dependencies: RouteDependencies,
     request: Request,
@@ -232,6 +239,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 message=f"飞书授权失败：{_plain_provider_error(exc)}",
             )
 
+    @app.get("/callback", response_model=None)
     @app.get("/callback/feishu", response_model=None)
     def feishu_callback(
         request: Request,
@@ -240,10 +248,10 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
         error: str | None = None,
     ) -> HTMLResponse | RedirectResponse:
         if error or not code or not state:
-            return RedirectResponse(url="/?feishu=failed#settings", status_code=303)
+            return _panel_redirect(request, "feishu=failed#settings")
         workspace_id = states.consume(state)
         if workspace_id is None or context.workspace_id != workspace_id:
-            return RedirectResponse(url="/?feishu=failed#settings", status_code=303)
+            return _panel_redirect(request, "feishu=failed#settings")
         try:
             complete_feishu_authorization(
                 config_file=context.provider_config_file(),
@@ -252,8 +260,8 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 code=code,
             )
         except Exception:
-            return RedirectResponse(url="/?feishu=failed#settings", status_code=303)
-        return RedirectResponse(url="/?feishu=connected#settings", status_code=303)
+            return _panel_redirect(request, "feishu=failed#settings")
+        return _panel_redirect(request, "feishu=connected#settings")
 
 
 def register_restricted_connection_routes(
@@ -423,6 +431,7 @@ def register_restricted_connection_routes(
                 ),
             )
 
+    @application.get("/callback", response_model=None)
     @application.get("/callback/feishu", response_model=None)
     def restricted_feishu_callback(
         request: Request,
@@ -431,21 +440,21 @@ def register_restricted_connection_routes(
         error: str | None = None,
     ) -> RedirectResponse:
         if error or not code or not state:
-            return RedirectResponse(url="/?feishu=failed", status_code=303)
+            return _panel_redirect(request, "feishu=failed")
         workspace_id = states.consume(state)
         if workspace_id is None:
-            return RedirectResponse(url="/?feishu=failed", status_code=303)
+            return _panel_redirect(request, "feishu=failed")
         inputs = _workspace_connection_inputs(active_workspace, workspace_id)
         if inputs is None:
-            return RedirectResponse(url="/?feishu=failed", status_code=303)
+            return _panel_redirect(request, "feishu=failed")
         config_file, lock_root = inputs
         try:
             complete_feishu_authorization(
                 config_file=config_file, workspace_id=workspace_id, lock_root=lock_root, code=code
             )
         except Exception:
-            return RedirectResponse(url="/?feishu=failed", status_code=303)
-        return RedirectResponse(url="/?feishu=connected", status_code=303)
+            return _panel_redirect(request, "feishu=failed")
+        return _panel_redirect(request, "feishu=connected")
 
 
 __all__ = ["register_restricted_connection_routes", "register_settings_connection_routes"]

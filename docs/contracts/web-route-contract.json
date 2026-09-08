@@ -819,6 +819,20 @@
     "method": [
       "GET"
     ],
+    "path": "/callback",
+    "request_fields": [
+      "code",
+      "error",
+      "state"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/callback/feishu",
     "request_fields": [
       "code",

@@ -32,7 +32,8 @@ def test_p012_server_entry_uses_dynamic_port_and_runtime_identity() -> None:
     assert "default=0" in source
     assert "socket.socket" in source
     assert "write_runtime_record" in source
-    assert "server.run(sockets=[sock])" in source
+    assert "server.run(sockets=sockets)" in source
+    assert "_bind_feishu_callback_socket" in source
 
 
 def test_p012_native_manifest_does_not_own_a_fixed_port() -> None:
