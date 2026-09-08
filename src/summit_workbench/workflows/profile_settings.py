@@ -185,6 +185,7 @@ def update_provider_settings(
             "model_id",
             "base_url",
             "credential_account",
+            "credential_capability",
             "timeout_seconds",
             "max_output_tokens",
             "context_window_tokens",

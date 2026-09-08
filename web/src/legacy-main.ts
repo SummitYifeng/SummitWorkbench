@@ -25,6 +25,8 @@ import { projectDisplayName, projectsHtml, projectsListHtml } from './features/p
 import type { ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
 import type { ExternalAction, ReviewEntry, ReviewGroup, ReviewPayload } from './features/review';
+import { renderSettings as renderSettingsFeature } from './features/settings';
+import { mountToday } from './features/today';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
@@ -154,6 +156,7 @@ let review: ReviewPayload | null = null;
 let externalActions: ExternalAction[] = [];
 let tab: Tab = 'today';
 let importing = false;
+let importOpen = false;
 let versionStatus: VersionStatus = 'checking';
 let remoteVersion: VersionPayload | null = null;
 let lastServerInstance: string | null = null;
@@ -555,153 +558,50 @@ function renderShell(): void {
 }
 
 function renderToday(view: HTMLElement): void {
-  if (!state) {
-    view.innerHTML = '<div class="loading">正在连接工作台…</div>';
-    return;
-  }
-  const s = state.status;
-  const h = healthTone();
-  const captureValue = (view.querySelector<HTMLInputElement>('#capture-input'))?.value ?? '';
-
-  // 待确认卡片
-  const pending = s.pending_review;
-  const oldest = s.backlog.oldest_age_days;
-  const reviewCard = pending > 0
-    ? '<div class="card warn"><div class="card-head">' +
-      '<span class="dot warn"></span><strong>待确认审批</strong>' +
-      '<span class="count-badge">' + pending + ' 条待确认</span></div>' +
-      '<p class="card-sub">' + (oldest != null ? '最老已等待 ' + oldest + ' 天 · ' : '') + '处理完才会写回执行系统</p>' +
-      '<button class="primary" data-action="go-review">去处理 →</button></div>'
-    : '<div class="card ok"><div class="card-head"><span class="dot ok"></span><strong>审批已清空</strong></div>' +
-      '<p class="card-sub">无待确认候选，执行系统状态干净。</p></div>';
-
-  // 导入区
-  const importZone = importing
-    ? '<div class="dropzone busy"><div class="spinner"></div><p>正在归档并结构化…（模型处理中，稍候）</p></div>'
-    : '<div class="dropzone" id="dropzone">' +
-      '<div class="dz-icon">⤓</div><p><strong>拖入会议逐字稿</strong>（.md / .txt，带说话人+时间戳）</p>' +
-      '<p class="hint">或 <button class="link" id="btn-pick">点击选择文件</button> · 文件名建议 YYYY-MM-DD-会议标题.txt</p>' +
-      '<input type="file" id="file-input" accept=".md,.txt" hidden></div>' +
-      '<div class="import-result" id="import-result"></div>';
-
-  // 简报：结构化快照优先（组件化渲染）；旧快照回退 Markdown 视图
-  const briefHtml = state.brief
-    ? '<div class="brief brief2">' + briefCardHtml(state.brief, state.day) + '</div>'
-    : state.brief_generated
-      ? '<div class="brief">' + mdToHtml(state.brief_md ?? '') + '</div>'
-      : '<div class="empty"><p>今日简报还没生成。</p>' +
-        '<button class="primary" data-action="run-brief">⚡ 现在生成（约 30 秒）</button></div>';
-
-  view.innerHTML =
-    '<section class="hero">' +
-    '<div class="hero-main"><p class="kicker">今天</p>' +
-    '<h2>' + esc(state.day) + '</h2></div>' +
-    '<div class="hero-side"><span class="health ' + h.tone + '"></span><span>' + esc(h.label) + '</span></div>' +
-    '</section>' +
-    '<section class="block capture-block">' +
-    '<form id="capture-form" autocomplete="off">' +
-    '<input id="capture-input" type="text" placeholder="记点什么…（想法 / 承诺，可用 #项目 标注）" value="' + esc(captureValue) + '">' +
-    '<button class="primary" type="submit">记入</button>' +
-    '</form>' +
-    '<p class="hint">回车即记入全局 inbox；说清「要做什么 + 截止 + #项目」的，AI 会帮你分类。</p>' +
-    '</section>' +
-    '<section class="block">' + reviewCard + '</section>' +
-    '<section class="block">' +
-    '<h3 class="section-title">导入会议纪要</h3>' + importZone +
-    '</section>' +
-    projectsHtml(state.projects, state.day) +
-    '<section class="block">' +
-    '<div class="section-head"><h3 class="section-title">今日简报</h3>' +
-    '<button class="ghost" data-action="run-brief" title="重新生成今日简报（约 30 秒）">↻ 重新生成</button></div>' + briefHtml +
-    '</section>';
-
-  const captureForm = document.getElementById('capture-form') as HTMLFormElement;
-  captureForm.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const input = document.getElementById('capture-input') as HTMLInputElement;
-    const text = input.value.trim();
-    if (!text) return;
-    void mutation(() => api<{ ok: boolean; message: string }>('/api/capture', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    })).then((r) => {
-      if (r.ok) {
-        input.value = '';
-        toast(r.message, 'ok');
-      } else {
-        toast(r.message, 'err');
-      }
-    }).catch((err: unknown) => toast(String(err), 'err'));
+  mountToday(view, state, {
+    importing,
+    importOpen,
+    health: healthTone(),
+    actions: {
+      capture: async (text) => {
+        try {
+          const result = await mutation(() => api<{ ok: boolean; message: string }>('/api/capture', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          }));
+          toast(result.message, result.ok ? 'ok' : 'err');
+        } catch (err) {
+          toast(String(err), 'err');
+        }
+      },
+      importFile: async (file) => {
+        if (importing) return;
+        if (!file.name.toLowerCase().endsWith('.md') && !file.name.toLowerCase().endsWith('.txt')) {
+          toast('仅支持 .md / .txt 逐字稿文件', 'err');
+          return;
+        }
+        importing = true;
+        renderToday(view);
+        const form = new FormData();
+        form.append('file', file);
+        try {
+          const result = await mutation(() => api<{ ok: boolean; message: string }>('/api/meetings/import', {
+            method: 'POST', body: form,
+          }));
+          toast(result.message, result.ok ? 'ok' : 'err');
+        } catch (err) {
+          toast(String(err), 'err');
+        } finally {
+          importing = false;
+          renderToday(view);
+          void refreshState();
+        }
+      },
+      toggleImport: (open) => { importOpen = open; },
+      refresh: () => { void refreshState(); },
+    },
   });
-
-  bindDropzone();
-}
-
-function bindDropzone(): void {
-  const zone = document.getElementById('dropzone') as HTMLElement;
-  const fileInput = document.getElementById('file-input') as HTMLInputElement;
-  if (!zone || !fileInput) return;
-  const pick = document.getElementById('btn-pick') as HTMLButtonElement;
-  pick.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (file) void doImport(file);
-    fileInput.value = '';
-  });
-  zone.addEventListener('dragover', (ev) => {
-    ev.preventDefault();
-    zone.classList.add('dragover');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-  zone.addEventListener('drop', (ev) => {
-    ev.preventDefault();
-    zone.classList.remove('dragover');
-    const file = ev.dataTransfer?.files?.[0];
-    if (file) void doImport(file);
-  });
-}
-
-async function doImport(file: File): Promise<void> {
-  if (importing) return;
-  if (!file.name.toLowerCase().endsWith('.md') && !file.name.toLowerCase().endsWith('.txt')) {
-    toast('仅支持 .md / .txt 逐字稿文件', 'err');
-    return;
-  }
-  importing = true;
-  renderToday(document.getElementById('view-today') as HTMLElement);
-  const form = new FormData();
-  form.append('file', file);
-  const resultBox = document.getElementById('import-result') as HTMLElement;
-  try {
-    const r = await mutation(() => api<{
-      ok: boolean;
-      message: string;
-      details?: string[];
-      estimate?: { est_cost: number; currency: string; crosses_soft_budget: boolean };
-    }>('/api/meetings/import', { method: 'POST', body: form }));
-    if (r.ok && resultBox) {
-      const est = r.estimate;
-      const costLine = est
-        ? '<p class="hint">预估费用约 ' + fmtCost(est.est_cost, est.currency) +
-          (est.crosses_soft_budget ? '（⚠ 已越过本月软预算，仅为提醒）' : '') + '</p>'
-        : '';
-      const details = (r.details ?? []).map((d) => '<p>' + esc(d) + '</p>').join('');
-      resultBox.innerHTML = '<div class="msg ok">✓ ' + esc(r.message) + '</div>' + costLine + details;
-      toast('导入完成：' + r.message, 'ok');
-    } else {
-      if (resultBox) resultBox.innerHTML = '<div class="msg err">✗ ' + esc(r.message) + '</div>';
-      toast(r.message, 'err');
-    }
-  } catch (err) {
-    const msg = String(err);
-    if (resultBox) resultBox.innerHTML = '<div class="msg err">✗ ' + esc(msg) + '</div>';
-    toast(msg, 'err');
-  } finally {
-    importing = false;
-    renderToday(document.getElementById('view-today') as HTMLElement);
-    void refreshState();
-  }
 }
 
 // ---------- 第二大脑：会话存储（localStorage，上限 10） ----------
@@ -1242,7 +1142,7 @@ async function runAcceptancePreflight(): Promise<void> {
   }
 }
 
-async function renderSettings(view: HTMLElement): Promise<void> {
+async function legacyRenderSettings(view: HTMLElement): Promise<void> {
   view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
   try {
     const [response, automation] = await Promise.all([
@@ -1333,6 +1233,15 @@ async function renderSettings(view: HTMLElement): Promise<void> {
   } catch (err) {
     view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(err)) + '</div>';
   }
+}
+
+async function renderSettings(view: HTMLElement): Promise<void> {
+  await renderSettingsFeature(view, {
+    api,
+    mutation,
+    toast,
+    refresh: () => { void renderSettings(view); },
+  });
 }
 
 async function saveAutomationForm(form: HTMLFormElement): Promise<void> {
@@ -1569,6 +1478,16 @@ document.addEventListener('click', (ev) => {
   if (action === 'settings-doctor-online') {
     if (!window.confirm('在线检查会访问 provider，并可能轮换飞书 token。确定继续？')) return;
     void runSettingsDoctor(true).catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
+  if (action === 'reopen-onboarding') {
+    window.location.href = '/onboarding';
+    return;
+  }
+  if (action === 'feishu-reauth') {
+    void api<{ authorize_url: string }>('/api/settings/feishu/authorize-url', { method: 'POST' })
+      .then((result) => { window.location.href = result.authorize_url; })
+      .catch((err: unknown) => toast(String(err), 'err'));
     return;
   }
   if (action === 'project-activate') {
