@@ -231,7 +231,7 @@ def test_migration_creates_checksum_backup_commits_and_pushes(tmp_path: Path) ->
     assert result.to_version == 2
     assert upgraded["schema_version"] == 2
     assert "workspace-v1-to-v2" in upgraded["migration_history"]
-    assert upgraded["min_writer_version"] == "0.4.3"
+    assert upgraded["min_writer_version"] == "0.4.4"
     assert backend.commits == ["wb: migrate workspace v1 -> v2"]
     assert backend.push_count == 1
 
