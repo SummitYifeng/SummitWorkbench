@@ -42,6 +42,19 @@ def test_capability_overrides_shared(tmp_path):
     assert cfg.base_url == "https://api.example.com/v1"  # 回退 shared
 
 
+def test_explicit_shared_credential_scope_is_workspace_safe(tmp_path):
+    f = tmp_path / "config.toml"
+    f.write_text(
+        SHARED.replace(
+            'credential_account = "shared"',
+            'credential_account = "shared"\ncredential_capability = "shared"',
+        ),
+        encoding="utf-8",
+    )
+    cfg = load_model_config("ranking", f, workspace_id="workspace-a")
+    assert cfg.api_key_ref.account == "llm:shared:shared"
+
+
 def test_cost_estimate():
     from summit_workbench.providers.llm.config import ModelPricing
 

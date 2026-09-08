@@ -107,7 +107,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<div class="row"><button class="primary" type="button" data-action="git-remote-preview">预览 HTTPS 转换</button><button class="ghost" type="button" data-action="git-remote-rollback">回滚最近一次转换</button></div></form><div id="remote-normalization-result"></div></section>' +
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
-    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p></div><section class="settings-grid">' +
+    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid">' +
       '<div class="card settings-card"><div class="card-head"><strong>工作区</strong><span class="conn-badge ok">✓ 已就绪</span></div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + '</div>' + model + feishu + automationCard + '</section><section class="block">' + advanced + '</section>';
 
     view.querySelector<HTMLFormElement>('#model-settings-form')?.addEventListener('submit', (event) => {
@@ -144,7 +144,7 @@ async function saveModel(view: HTMLElement, actions: SettingsActions): Promise<v
   if (result) result.innerHTML = '<p class="meta">正在连接 DeepSeek 验证…</p>';
   try {
     await actions.api('/api/settings/provider', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      provider: 'model', settings: { capability: 'shared', model_id: modelId, base_url: baseUrl, credential_account: 'shared' }, secret,
+      provider: 'model', settings: { capability: 'shared', credential_capability: 'shared', model_id: modelId, base_url: baseUrl, credential_account: 'shared' }, secret,
     }) });
     const verified = await actions.api<{ ok: boolean; message: string }>('/api/settings/provider/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: 'model' }) });
     if (result) result.innerHTML = '<div class="msg ok">✓ 已连接 DeepSeek：' + esc(verified.message) + '</div>';

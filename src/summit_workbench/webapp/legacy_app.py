@@ -706,7 +706,9 @@ def _create_restricted_app(
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def restricted_home() -> HTMLResponse:
-        return HTMLResponse(_onboarding_wizard_html())
+        from summit_workbench.webapp.onboarding_view import render_onboarding_wizard
+
+        return HTMLResponse(render_onboarding_wizard())
 
     @app.get("/api/version")
     def restricted_version(request: Request) -> JSONResponse:
@@ -1010,6 +1012,14 @@ def _create_restricted_app(
 
         clear_onboarding_draft(home=active_workspace.home)
         return {"ok": True, **result.model_dump(mode="json")}
+
+    from summit_workbench.webapp.routers.settings import register_restricted_connection_routes
+
+    register_restricted_connection_routes(
+        app,
+        active_workspace=active_workspace,
+        operation_id=lambda request: request.headers.get("x-wb-operation-id", "unknown"),
+    )
 
     return app
 

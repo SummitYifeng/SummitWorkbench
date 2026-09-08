@@ -43,6 +43,7 @@ def create_app(
         from summit_workbench.observability.structured_logging import StructuredLogger
         from summit_workbench.webapp.dependencies import RouteDependencies
         from summit_workbench.webapp.routers.diagnostics import register_diagnostics_routes
+        from summit_workbench.webapp.routers.settings import register_settings_connection_routes
 
         log_path = Path.home() / "Library" / "Logs" / "summitworkbench-panel.log"
         application.state.structured_logger = StructuredLogger(log_path, component="webapp")
@@ -54,6 +55,13 @@ def create_app(
             ),
             static_dir=static_dir or Path(__file__).resolve().parent / "static",
             log_path=log_path,
+        )
+        register_settings_connection_routes(
+            RouteDependencies(
+                app=application,
+                context=context,
+                operation_id=lambda request: str(getattr(request.state, "operation_id", "unknown")),
+            )
         )
     return application
 

@@ -52,13 +52,20 @@ class ModelConfig:
     context_safety_ratio: float = 0.85
     pricing: ModelPricing = ModelPricing()
     workspace_id: str | None = None
+    # ``shared`` is a capability-level fallback.  Older configs without this
+    # field retain their runtime-capability keychain lookup for compatibility.
+    credential_capability: str | None = None
 
     @property
     def api_key_ref(self) -> CredentialRef:
         if self.workspace_id:
             return workspace_credential_ref(
                 self.workspace_id,
-                workspace_account("llm", self.capability, self.credential_account),
+                workspace_account(
+                    "llm",
+                    self.credential_capability or self.capability,
+                    self.credential_account,
+                ),
             )
         return CredentialRef(service=API_KEY_SERVICE, account=self.credential_account)
 
@@ -68,6 +75,7 @@ def _model_from_table(
     table: dict[str, Any],
     shared: dict[str, Any],
     workspace_id: str | None = None,
+    credential_capability: str | None = None,
 ) -> ModelConfig:
     def pick(key: str, default: Any = None) -> Any:
         return table.get(key, shared.get(key, default))
@@ -92,6 +100,7 @@ def _model_from_table(
     if not 0.5 <= context_safety_ratio < 1.0:
         raise LLMConfigError("context_safety_ratio 必须在 [0.5, 1.0) 内")
 
+    configured_credential_capability = pick("credential_capability", credential_capability)
     return ModelConfig(
         capability=capability,
         model_id=str(model_id),
@@ -103,6 +112,11 @@ def _model_from_table(
         context_safety_ratio=context_safety_ratio,
         pricing=pricing,
         workspace_id=workspace_id,
+        credential_capability=(
+            str(configured_credential_capability)
+            if configured_credential_capability is not None
+            else None
+        ),
     )
 
 
@@ -138,4 +152,10 @@ def load_model_config(
     if not table and not shared:
         raise LLMConfigError(f"缺少 [models.{capability}] 且无 [models.shared] 兜底")
 
-    return _model_from_table(capability, table, shared, workspace_id)
+    return _model_from_table(
+        capability,
+        table,
+        shared,
+        workspace_id,
+        credential_capability=capability if table else None,
+    )

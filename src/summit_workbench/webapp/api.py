@@ -225,6 +225,35 @@ class ProviderSettingsPayload(BaseModel):
     secret: str | None = Field(default=None, max_length=100_000)
 
 
+class ProviderVerifyPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["model"] = "model"
+    secret: str | None = Field(default=None, max_length=100_000)
+
+
+class FeishuCompletePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=4_096)
+    state: str | None = Field(default=None, min_length=8, max_length=256)
+
+
+class OnboardingConnectionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_id: str = Field(min_length=8, max_length=64)
+
+
+class OnboardingModelVerifyPayload(OnboardingConnectionPayload):
+    secret: str | None = Field(default=None, max_length=100_000)
+
+
+class OnboardingModelSavePayload(OnboardingModelVerifyPayload):
+    model_id: str = Field(default="deepseek-v4-flash", min_length=1, max_length=200)
+    base_url: str = Field(default="https://api.deepseek.com/v1", min_length=1, max_length=2_048)
+
+
 class DoctorPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -387,6 +387,35 @@
     "method": [
       "POST"
     ],
+    "path": "/api/settings/feishu/authorize-url",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": [
+      "feishu_authorization_unavailable",
+      "workspace_not_found"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/feishu/complete",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "FeishuCompletePayload",
+    "response_status": 200,
+    "error_codes": [
+      "feishu_authorization_failed",
+      "feishu_state_invalid",
+      "workspace_not_found"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/settings/git/remote/apply",
     "request_fields": [
       "payload"
@@ -481,6 +510,18 @@
       "payload"
     ],
     "request_model": "ProviderSettingsPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/settings/provider/verify",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ProviderVerifyPayload",
     "response_status": 200,
     "error_codes": []
   },
@@ -771,6 +812,30 @@
       "question"
     ],
     "request_model": "str",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/callback/feishu",
+    "request_fields": [
+      "code",
+      "error",
+      "state"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/onboarding",
+    "request_fields": [],
+    "request_model": null,
     "response_status": 200,
     "error_codes": []
   },

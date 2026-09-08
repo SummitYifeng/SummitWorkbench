@@ -1480,6 +1480,16 @@ document.addEventListener('click', (ev) => {
     void runSettingsDoctor(true).catch((err: unknown) => toast(String(err), 'err'));
     return;
   }
+  if (action === 'reopen-onboarding') {
+    window.location.href = '/onboarding';
+    return;
+  }
+  if (action === 'feishu-reauth') {
+    void api<{ authorize_url: string }>('/api/settings/feishu/authorize-url', { method: 'POST' })
+      .then((result) => { window.location.href = result.authorize_url; })
+      .catch((err: unknown) => toast(String(err), 'err'));
+    return;
+  }
   if (action === 'project-activate') {
     void setProjectState('activate', btn.dataset.name ?? '');
     return;
