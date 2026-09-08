@@ -242,10 +242,12 @@ export function briefCardHtml(b: BriefData, todayIso: string): string {
       ' 条会议提取结果待确认（未确认内容不计入事实）</span>' +
       '<button class="link" data-action="go-review">去审批</button></div>');
   }
-  parts.push(briefMeetingBlock(b.meetings));
-  parts.push(briefTaskBlock(b, todayIso));
+  const schedule = briefMeetingBlock(b.meetings);
+  const taskColumn: string[] = [briefTaskBlock(b, todayIso)];
   const orphans = briefOrphanActions(b);
-  if (orphans.length) parts.push(briefOrphanBlock(orphans, todayIso));
+  if (orphans.length) taskColumn.push(briefOrphanBlock(orphans, todayIso));
+  parts.push('<div class="bf-grid"><div class="bf-col bf-col-schedule">' + schedule + '</div>' +
+    '<div class="bf-col bf-col-tasks">' + taskColumn.join('') + '</div></div>');
   if (b.proposals.length) parts.push(briefProposalBlock(b.proposals));
   if (b.completions.length) parts.push(briefCompletionBlock(b.completions));
   return parts.join('');
