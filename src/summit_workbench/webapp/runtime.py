@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -53,7 +55,13 @@ def load_runtime_record(path: Path) -> RuntimeRecord | None:
 def cleanup_stale_runtime_record(
     path: Path, *, now: datetime | None = None, max_age: timedelta = timedelta(days=7)
 ) -> bool:
-    """Remove only a record whose process is gone; never kill by port or age alone."""
+    """Remove only a record whose recorded process is gone or is not this server.
+
+    PID values are reusable on macOS.  A record left by a force-closed App can
+    therefore point at an unrelated, newly-created process and otherwise block
+    every subsequent launch forever.  We only remove the record after checking
+    the exact executable identity; we never kill the process on this path.
+    """
     record = load_runtime_record(path)
     if record is None:
         if path.exists():
@@ -74,5 +82,27 @@ def _pid_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
+        return _same_server_executable(pid)
+    return _same_server_executable(pid)
+
+
+def _same_server_executable(pid: int) -> bool:
+    """Return whether a live PID is still the current Python/server executable."""
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # If identity cannot be established, preserve the record for safety.
         return True
-    return True
+    actual = result.stdout.strip()
+    if result.returncode != 0 or not actual:
+        return False
+    try:
+        return Path(actual).resolve() == Path(sys.executable).resolve()
+    except OSError:
+        return actual == sys.executable

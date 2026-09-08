@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -59,6 +60,18 @@ def test_expired_record_with_live_pid_is_not_removed(tmp_path: Path) -> None:
 
     assert cleanup_stale_runtime_record(path, max_age=timedelta(seconds=1)) is False
     assert path.exists()
+
+
+def test_record_with_reused_pid_for_unrelated_process_is_removed(tmp_path: Path) -> None:
+    path = runtime_record_path(tmp_path, "workspace-a")
+    process = subprocess.Popen(["sleep", "30"])
+    try:
+        write_runtime_record(_record(pid=process.pid), path=path)
+        assert cleanup_stale_runtime_record(path) is True
+        assert not path.exists()
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
 
 
 def _record_from_json(path: Path) -> RuntimeRecord:
