@@ -11,6 +11,7 @@ brief 等带 vault/workspace 上下文的调用方传入实际锁根，保证与
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import httpx
@@ -36,6 +37,8 @@ class FeishuSession:
         """
         self.cfg = cfg
         self._lock_root = lock_root
+        self._cached_access_token: SecretStr | None = None
+        self._access_token_expires_at = 0.0
 
     def _app_secret(self) -> SecretStr:
         try:
@@ -61,6 +64,8 @@ class FeishuSession:
         # 与 access_token() 的轮换共用工作区锁：授权写回与并发刷新互斥，避免覆盖竞态。
         with workspace_lock(self._lock_root):
             store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
+        self._cached_access_token = None
+        self._access_token_expires_at = 0.0
         return tokens
 
     def tenant_access_token(self, *, client: httpx.Client | None = None) -> SecretStr:
@@ -78,7 +83,13 @@ class FeishuSession:
         token（LHF #1）。这里用工作区锁把整段 read-modify-write 圈成临界区；锁根
         取构造时传入的 lock root（P0-06），不再默认落到 env work root。
         """
+        now = time.monotonic()
+        if self._cached_access_token is not None and now < self._access_token_expires_at:
+            return self._cached_access_token
         with workspace_lock(self._lock_root):
+            now = time.monotonic()
+            if self._cached_access_token is not None and now < self._access_token_expires_at:
+                return self._cached_access_token
             try:
                 current_rt = resolve_credential(self.cfg.refresh_token_ref)
             except CredentialError as exc:
@@ -91,4 +102,13 @@ class FeishuSession:
             tokens = auth.refresh_token(self.cfg, self._app_secret(), current_rt, client=client)
             if tokens.refresh_token is not None:
                 store_credential(self.cfg.refresh_token_ref, tokens.refresh_token)
+            self._cached_access_token = tokens.access_token
+            # Refresh before expiry; a short floor also avoids keeping a token
+            # that is already near expiry while a request is in flight.
+            self._access_token_expires_at = now + max(1.0, float(tokens.expires_in) - 30.0)
             return tokens.access_token
+
+    def invalidate_access_token(self) -> None:
+        """Drop the in-process access-token cache after reauthorization or 401."""
+        self._cached_access_token = None
+        self._access_token_expires_at = 0.0

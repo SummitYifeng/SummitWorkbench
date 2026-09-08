@@ -17,6 +17,8 @@ from summit_workbench.providers.feishu.config import FeishuConfig, load_feishu_c
 from summit_workbench.providers.feishu.session import FeishuSession
 from summit_workbench.providers.llm import load_model_config
 from summit_workbench.providers.llm.client import ModelClient
+from summit_workbench.providers.llm.config import ModelConfig
+from summit_workbench.providers.llm.errors import LLMConfigError
 
 
 def verify_model(
@@ -26,7 +28,7 @@ def verify_model(
     secret: str | None = None,
 ) -> dict[str, object]:
     """Send one minimal non-mutating chat request using a workspace-scoped key."""
-    config = load_model_config("ranking", config_file, workspace_id=workspace_id)
+    config = model_config(capability="ranking", config_file=config_file, workspace_id=workspace_id)
     api_key = SecretStr(secret) if secret else resolve_credential(config.api_key_ref)
     result = ModelClient(config, api_key).complete(
         "You are a connection check. Return only the word OK.",
@@ -51,6 +53,14 @@ def feishu_config(*, config_file: Path, workspace_id: str) -> FeishuConfig:
         return load_feishu_config(default_config_file(), workspace_id=workspace_id)
 
 
+def model_config(*, capability: str, config_file: Path, workspace_id: str) -> ModelConfig:
+    """Resolve one model config using the profile first and app config as fallback."""
+    try:
+        return load_model_config(capability, config_file, workspace_id=workspace_id)
+    except LLMConfigError:
+        return load_model_config(capability, default_config_file(), workspace_id=workspace_id)
+
+
 def complete_feishu_authorization(
     *,
     config_file: Path,
@@ -62,4 +72,4 @@ def complete_feishu_authorization(
     FeishuSession(cfg, lock_root=lock_root).complete_authorization(code)
 
 
-__all__ = ["complete_feishu_authorization", "feishu_config", "verify_model"]
+__all__ = ["complete_feishu_authorization", "feishu_config", "model_config", "verify_model"]

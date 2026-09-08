@@ -22,7 +22,7 @@ from summit_workbench.providers.feishu.client import FeishuClient
 from summit_workbench.providers.feishu.config import load_feishu_config
 from summit_workbench.providers.feishu.errors import FeishuAuthError
 from summit_workbench.providers.feishu.session import FeishuSession
-from summit_workbench.providers.llm import LLMError, load_model_config
+from summit_workbench.providers.llm import LLMError
 from summit_workbench.repositories.feishu_auth_state import write_auth_state
 from summit_workbench.repositories.usage_ledger import append_usage
 from summit_workbench.workflows.brief.brief import BriefResult, RankFn, generate_brief
@@ -82,7 +82,18 @@ def build_ranker(
         return RankingResult(order=fallback_ranking(candidates), degraded=True)
 
     try:
-        cfg = load_model_config("ranking", config_file, workspace_id=workspace_id)
+        if workspace_id is not None:
+            from summit_workbench.workflows.settings_connections import model_config
+
+            cfg = model_config(
+                capability="ranking",
+                config_file=config_file or default_config_file(),
+                workspace_id=workspace_id,
+            )
+        else:
+            from summit_workbench.providers.llm import load_model_config
+
+            cfg = load_model_config("ranking", config_file)
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("brief-ranker")
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:

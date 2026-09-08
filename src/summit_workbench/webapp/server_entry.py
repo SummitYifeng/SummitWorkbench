@@ -70,11 +70,12 @@ def _bind_feishu_callback_socket(
     try:
         callback.bind(("127.0.0.1", target[0]))
         callback.listen(128)
-    except OSError as exc:
+    except OSError:
         callback.close()
-        raise SystemExit(
-            f"飞书 OAuth 回调端口 {target[0]} 无法监听；请关闭占用该端口的程序后重试"
-        ) from exc
+        # A stale CLI, another profile, or another local program may own the
+        # legacy port. Keep the main panel available and let the authorize
+        # route report a recoverable Feishu-only error instead.
+        return None
     return callback
 
 
@@ -176,6 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     application.state.bound_port = bound_port
     application.state.feishu_callback_required = callback_target is not None
+    application.state.feishu_callback_port = callback_target[0] if callback_target else None
     application.state.feishu_callback_ready = (
         callback_target is None
         or callback_sock is not None

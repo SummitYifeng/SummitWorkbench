@@ -49,6 +49,7 @@ def run_local_mutation[T](
     mutation: Callable[[str], LocalMutationOutcome[T]],
     *,
     sync_snapshot: SyncSnapshot | None = None,
+    sync_snapshot_provider: Callable[[], SyncSnapshot | None] | None = None,
     compatibility: Compatibility | None = None,
     backend_kind: str | None = None,
     author: CommitIdentity | None = None,
@@ -70,6 +71,17 @@ def run_local_mutation[T](
         )
     operation_id = str(uuid4())
     with workspace_lock(vault_dir.parent):
+        # The snapshot supplied by a web request can become stale while this
+        # mutation waits for the workspace lock. Re-read it inside the same
+        # critical section immediately before touching the vault.
+        locked_snapshot = sync_snapshot_provider() if sync_snapshot_provider else sync_snapshot
+        if locked_snapshot is not None and locked_snapshot.state in {
+            SyncState.DIVERGED_PROTECTED,
+            SyncState.DIRTY_PROTECTED,
+        }:
+            raise MutationBlocked(
+                f"workspace 处于 {locked_snapshot.state.value}，修改共享 vault 的操作已被阻止"
+            )
         outcome = mutation(operation_id)
         # The primary business result is often the newly-created legacy file.  Keep it
         # in the explicit commit set even if a caller only reports auxiliary paths

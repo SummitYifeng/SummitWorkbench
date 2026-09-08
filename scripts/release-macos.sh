@@ -49,6 +49,24 @@ print(tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["project"]["v
 PY
 )"
 
+# A release artifact must be backed by the same local gates that are reported
+# in its manifest. CI may be unavailable (for example, account billing), but
+# a release command must never silently replace those checks with a label.
+RUFF="$REPO_ROOT/.venv/bin/ruff"
+MYPY="$REPO_ROOT/.venv/bin/mypy"
+PYTEST="$REPO_ROOT/.venv/bin/pytest"
+[[ -x "$RUFF" && -x "$MYPY" && -x "$PYTEST" ]] || {
+  echo "✗ 缺少本地质量门工具，请先安装项目 dev 依赖" >&2
+  exit 1
+}
+"$RUFF" format --check src tests scripts
+"$RUFF" check src tests scripts
+"$MYPY" src
+"$PYTEST" tests/unit -q
+"$PYTHON" "$REPO_ROOT/scripts/update-web-route-contract.py"
+"$PYTEST" tests/contract/test_web_route_contract.py -q
+npm --prefix "$REPO_ROOT/web" run test:frontend
+
 # 内部/个人自用不需要 Developer ID 或 notarization；使用 ad-hoc 签名并明确标识用途。
 DISTRIBUTION="INTERNAL-DEV"
 SIGN_IDENTITY="-"
@@ -68,6 +86,7 @@ ARCH="$ARCH" BUILD_NUMBER="$BUILD_NUMBER" RELEASE_BUILD=true \
   "$REPO_ROOT/scripts/build-macos-app.sh"
 # 内部 ad-hoc 包只执行本地 bundle/离线验证，不访问 Apple 在线发布服务。
 SKIP_APPLE_ONLINE=true "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP"
+WB_PACKAGED_APP="$APP" "$PYTEST" "$REPO_ROOT/tests/integration/test_packaged_app.py" -m integration -q
 
 DMG_STAGE="$RELEASE_TMP/dmg-stage"
 mkdir -p "$DMG_STAGE"
@@ -159,14 +178,19 @@ Path(path).write_text(json.dumps({
     "architecture": arch,
     "status": "passed",
     "checks": [
+        "Ruff format check",
+        "Ruff lint",
+        "mypy src",
+        "pytest tests/unit",
+        "web route contract",
+        "frontend feature/render/browser contracts",
         "frontend build and verify-build",
         "Python packaged server build",
         "Swift arm64 app and automation helper compile",
         "bundle strict codesign verification",
         "offline dynamic-port server smoke",
+        "packaged server integration smoke",
         "DMG checksum generation",
-        "P1-07D dual-device schema/sync/divergence acceptance",
-        "P1-07D read-only acceptance preflight contract",
     ],
 }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 PY

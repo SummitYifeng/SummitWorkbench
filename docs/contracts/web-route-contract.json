@@ -393,6 +393,7 @@
     "response_status": 200,
     "error_codes": [
       "feishu_authorization_unavailable",
+      "feishu_callback_unavailable",
       "workspace_not_found"
     ]
   },
@@ -410,6 +411,20 @@
       "feishu_authorization_failed",
       "feishu_state_invalid",
       "workspace_not_found"
+    ]
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/settings/feishu/status",
+    "request_fields": [
+      "state"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": [
+      "feishu_state_expired"
     ]
   },
   {

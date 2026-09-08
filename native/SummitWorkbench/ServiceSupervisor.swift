@@ -14,6 +14,7 @@ final class ServiceSupervisor {
     private var waiters: [(ServiceIdentity?) -> Void] = []
     private var failures: [Date] = []
     private var restartWork: DispatchWorkItem?
+    private var launchGeneration = UUID()
     var onStateChange: ((SupervisorState) -> Void)?
     /// 服务在**无进行中 ensureReady 周期**的后台恢复中到达 ready 时回调（如崩溃重启、
     /// 服务实例变化），供生命周期层重新装载面板。初始启动由 ensureReady 的 completion
@@ -57,17 +58,25 @@ final class ServiceSupervisor {
     func stop(completion: (() -> Void)? = nil) {
         desiredStop = true
         restartWork?.cancel()
+        launchGeneration = UUID()
         setState(.stopping)
         logger.log("user_quit_requested")
-        guard let process, process.isRunning else {
-            RuntimeRecord.remove()
+        guard let process else {
+            RuntimeRecord.remove(forPID: -1)
             setState(.stopped)
             completion?()
             return
         }
+        guard process.isRunning else {
+            RuntimeRecord.remove(forPID: process.processIdentifier)
+            setState(.stopped)
+            completion?()
+            return
+        }
+        let processPID = process.processIdentifier
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
-                RuntimeRecord.remove()
+                RuntimeRecord.remove(forPID: processPID)
                 self?.setState(.stopped)
                 completion?()
             }
@@ -75,9 +84,22 @@ final class ServiceSupervisor {
         process.terminate()
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak process] in
             guard let process, process.isRunning else { return }
-            guard let record = RuntimeRecord.load(), record.pid == process.processIdentifier,
+            guard let record = RuntimeRecord.load(forPID: process.processIdentifier),
                   record.owns(process) else { return }
             kill(process.processIdentifier, SIGTERM)
+        }
+    }
+
+    /// Onboarding changes the active workspace while this server is still the
+    /// restricted control plane. Restart the owned child so the next process
+    /// resolves the new active profile and exposes the full workbench routes.
+    func restartForWorkspaceChange(completion: @escaping (ServiceIdentity?) -> Void) {
+        desiredStop = true
+        restartWork?.cancel()
+        stop { [weak self] in
+            guard let self else { completion(nil); return }
+            self.desiredStop = false
+            self.ensureReady(completion: completion)
         }
     }
 
@@ -91,15 +113,15 @@ final class ServiceSupervisor {
             process.terminationHandler = nil
             process.terminate()
         }
-        RuntimeRecord.remove()
+        if let process { RuntimeRecord.remove(forPID: process.processIdentifier) }
     }
 
     private func accept(_ identity: ServiceIdentity) {
         self.identity = identity
         logger.log("service_identity_verified", fields: ["server_instance": identity.serverInstance])
         if configuration.mode == .production && identity.frontendBuild != configuration.manifest.frontendBuild {
-            if let record = RuntimeRecord.load(), record.serverInstance == identity.serverInstance,
-               let process, record.owns(process) {
+            if let process, let record = RuntimeRecord.load(forPID: process.processIdentifier),
+               record.serverInstance == identity.serverInstance, record.owns(process) {
                 logger.log("service_restart_scheduled", fields: ["reason": "frontend_build_mismatch"])
                 stop { [weak self] in self?.desiredStop = false; self?.startOwnedService() }
             } else {
@@ -114,7 +136,8 @@ final class ServiceSupervisor {
 
     private func startOwnedService() {
         guard !desiredStop else { finish(nil); return }
-        if let record = RuntimeRecord.load(), record.terminateOwnedServer(at: configuration.wbBinary) {
+        if let record = RuntimeRecord.loadOwned(serverExecutable: configuration.wbBinary),
+           record.terminateOwnedServer(at: configuration.wbBinary) {
             logger.log("orphan_service_termination", fields: ["pid": String(record.pid)])
             let work = DispatchWorkItem { [weak self] in self?.startOwnedService() }
             restartWork = work
@@ -148,24 +171,30 @@ final class ServiceSupervisor {
         do {
             try child.run()
             process = child
+            let generation = UUID()
+            launchGeneration = generation
             logger.log("service_spawned", fields: ["pid": String(child.processIdentifier)])
             child.terminationHandler = { [weak self] child in
-                DispatchQueue.main.async { self?.serviceExited(child.terminationStatus) }
+                DispatchQueue.main.async {
+                    self?.serviceExited(child.processIdentifier, status: child.terminationStatus)
+                }
             }
-            waitForReadiness(attempt: 0)
+            waitForReadiness(attempt: 0, generation: generation)
         } catch {
             logger.log("service_exited", level: "error", fields: ["reason": error.localizedDescription])
             registerFailureAndMaybeRetry()
         }
     }
 
-    private func waitForReadiness(attempt: Int) {
-        if let record = RuntimeRecord.load(), record.productID == panelProductID,
-           record.apiProtocol >= panelAPIProtocol, record.pid == process?.processIdentifier {
+    private func waitForReadiness(attempt: Int, generation: UUID) {
+        guard launchGeneration == generation else { return }
+        if let record = RuntimeRecord.load(forPID: process?.processIdentifier ?? -1),
+           record.productID == panelProductID, record.apiProtocol >= panelAPIProtocol {
             client.update(port: record.port)
         }
         client.probe { [weak self] result in
             guard let self else { return }
+            guard self.launchGeneration == generation else { return }
             if case .valid(let identity) = result {
                 self.identity = identity
                 self.logger.log("service_ready", fields: ["server_instance": identity.serverInstance])
@@ -182,14 +211,16 @@ final class ServiceSupervisor {
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + delays[attempt]) {
-                self.waitForReadiness(attempt: attempt + 1)
+                self.waitForReadiness(attempt: attempt + 1, generation: generation)
             }
         }
     }
 
-    private func serviceExited(_ status: Int32) {
+    private func serviceExited(_ pid: Int32, status: Int32) {
+        guard process?.processIdentifier == pid else { return }
+        let exitedPID = process?.processIdentifier ?? -1
         process = nil
-        RuntimeRecord.remove()
+        RuntimeRecord.remove(forPID: exitedPID)
         logger.log("service_exited", fields: ["status": String(status)])
         guard !desiredStop else { setState(.stopped); return }
         registerFailureAndMaybeRetry()
@@ -204,6 +235,7 @@ final class ServiceSupervisor {
             process = nil
             return
         }
+        RuntimeRecord.remove(forPID: child.processIdentifier)
         child.terminationHandler = nil
         child.terminate()
         process = nil

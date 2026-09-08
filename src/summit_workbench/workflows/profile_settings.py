@@ -12,7 +12,13 @@ from summit_workbench import __version__
 from summit_workbench.config.app_support import runtime_dir
 from summit_workbench.config.git_credentials import strip_credentials
 from summit_workbench.config.paths import resolve_work_paths
-from summit_workbench.config.secrets import store_workspace_credential, workspace_account
+from summit_workbench.config.secrets import (
+    CredentialError,
+    delete_workspace_credential,
+    resolve_workspace_credential,
+    store_workspace_credential,
+    workspace_account,
+)
 from summit_workbench.domain.workspace import (
     Compatibility,
     LocalProfile,
@@ -218,14 +224,17 @@ def update_provider_settings(
     update: dict[str, object] = {section_name: section}
     if provider == "git" and "git_username" in settings:
         update["git_username"] = settings["git_username"]
-    save_profile(profile.model_copy(update=update), home=home)
 
     account: str | None = None
+    previous_secret: SecretStr | None = None
     if secret:
         if provider == "model":
+            credential_capability = str(
+                settings.get("credential_capability", settings.get("capability", "shared"))
+            )
             account = workspace_account(
                 "llm",
-                str(settings.get("capability", "shared")),
+                credential_capability,
                 str(settings.get("credential_account", "shared")),
             )
         elif provider == "feishu":
@@ -242,7 +251,26 @@ def update_provider_settings(
             raise ProfileSettingsError(
                 "invalid_provider_settings", "secret 需要完整的 provider 标识"
             )
-        store_workspace_credential(workspace_id, account, SecretStr(secret))
+        try:
+            previous_secret = resolve_workspace_credential(workspace_id, account)
+        except CredentialError:
+            previous_secret = None
+        try:
+            store_workspace_credential(workspace_id, account, SecretStr(secret))
+        except Exception as exc:
+            raise ProfileSettingsError("credential_store_failed", "凭据暂时无法保存") from exc
+    try:
+        save_profile(profile.model_copy(update=update), home=home)
+    except Exception as exc:
+        if secret and account:
+            try:
+                if previous_secret is None:
+                    delete_workspace_credential(workspace_id, account)
+                else:
+                    store_workspace_credential(workspace_id, account, previous_secret)
+            except Exception:
+                pass
+        raise ProfileSettingsError("provider_settings_failed", "设置暂时无法保存") from exc
     return {
         "ok": True,
         "provider": provider,

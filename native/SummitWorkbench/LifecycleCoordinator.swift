@@ -139,6 +139,17 @@ final class LifecycleCoordinator {
                 self?.panel?.close()
                 NSApp.terminate(nil)
             }
+        case .restartService:
+            guard let supervisor else { return }
+            startInFlight = true
+            panel?.showStatus("正在切换到完整工作台…")
+            logger?.log("service_restart_requested", fields: ["reason": "workspace_changed"])
+            supervisor.restartForWorkspaceChange { [weak self] identity in
+                guard let self else { return }
+                self.startInFlight = false
+                guard let identity else { self.presentFailure(); return }
+                self.loadReadyService(identity)
+            }
         case .copyDiagnostics:
             copyDiagnostics()
         case .openLogDirectory:

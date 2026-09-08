@@ -36,12 +36,16 @@ class FeishuClient:
         cfg: FeishuConfig,
         access_token: SecretStr,
         *,
+        token_provider: Callable[[], SecretStr] | None = None,
+        token_invalidator: Callable[[], None] | None = None,
         client: httpx.Client | None = None,
         sleep: Callable[[float], None] = time.sleep,
         max_retries: int = MAX_RETRIES,
     ) -> None:
         self.cfg = cfg
         self._token = access_token
+        self._token_provider = token_provider
+        self._token_invalidator = token_invalidator
         self._client = client or build_client(_DEFAULT_TIMEOUT)
         self._owns_client = client is None
         self._closed = False
@@ -49,7 +53,8 @@ class FeishuClient:
         self._max_retries = max_retries
 
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._token.get_secret_value()}"}
+        token = self._token_provider() if self._token_provider is not None else self._token
+        return {"Authorization": f"Bearer {token.get_secret_value()}"}
 
     def get(
         self,
@@ -150,6 +155,15 @@ class FeishuClient:
                 retryable=retry_mode is not RetryMode.NEVER,
                 result_unknown=retry_mode is RetryMode.NEVER,
             ) from exc
+
+        if resp.status_code == 401:
+            if self._token_invalidator is not None:
+                self._token_invalidator()
+            raise FeishuAPIError(
+                f"{method} {path} 授权已失效",
+                status=resp.status_code,
+                retryable=retry_mode is RetryMode.SAFE,
+            )
 
         # 先判 HTTP 层的瞬时故障：网关 5xx / 限流 429 未必返回 JSON 信封，按可重试处理。
         if resp.status_code == 429 or resp.status_code >= 500:

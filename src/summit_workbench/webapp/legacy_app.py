@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 from summit_workbench import __version__
 from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.profiles import ActiveWorkspaceContext
+from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.domain.sync_conflict import explain_conflict, plan_conflict_recovery
@@ -207,13 +208,15 @@ _SCHEMA_UPGRADE_WRITE_EXEMPTIONS = frozenset(
 
 def _load_model_config_for_context(ctx: WebContext, capability: str) -> ModelConfig:
     """Load legacy test/development config without changing its monkeypatch contract."""
-    from summit_workbench.providers.llm import load_model_config
+    from summit_workbench.workflows.settings_connections import model_config
 
-    if ctx.workspace_id is None and ctx.config_file is None:
+    if ctx.workspace_id is None:
+        from summit_workbench.providers.llm import load_model_config
+
         return load_model_config(capability)
-    return load_model_config(
-        capability,
-        ctx.provider_config_file(),
+    return model_config(
+        capability=capability,
+        config_file=ctx.provider_config_file(),
         workspace_id=ctx.workspace_id,
     )
 
@@ -249,16 +252,32 @@ class _FeishuClientPool:
                 load_feishu_config,
             )
 
-            if self._config_file is None and self._workspace_id is None:
-                cfg = load_feishu_config()
-            else:
-                cfg = load_feishu_config(
-                    self._config_file,
+            if self._workspace_id is not None:
+                from summit_workbench.workflows.settings_connections import feishu_config
+
+                cfg = feishu_config(
+                    config_file=self._config_file or default_config_file(),
                     workspace_id=self._workspace_id,
                 )
+            elif self._config_file is None:
+                cfg = load_feishu_config()
+            else:
+                cfg = load_feishu_config(self._config_file)
             session = FeishuSession(cfg, lock_root=self._lock_root)
-            token = session.access_token() if identity == "user" else session.tenant_access_token()
-            client = FeishuClient(cfg, token)
+            if identity == "user":
+                token = session.access_token()
+                if "token_provider" in inspect.signature(FeishuClient).parameters:
+                    client = FeishuClient(
+                        cfg,
+                        token,
+                        token_provider=session.access_token,
+                        token_invalidator=session.invalidate_access_token,
+                    )
+                else:  # compatibility with injected legacy/test clients
+                    client = FeishuClient(cfg, token)
+            else:
+                token = session.tenant_access_token()
+                client = FeishuClient(cfg, token)
             self._clients[identity] = client
             return client
 
@@ -273,6 +292,14 @@ class _FeishuClientPool:
             clients = tuple(self._clients.values())
             self._clients.clear()
         for client in clients:
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+
+    def invalidate(self, identity: str = "user") -> None:
+        with self._lock:
+            client = self._clients.pop(identity, None)
+        if client is not None:
             close = getattr(client, "close", None)
             if callable(close):
                 close()
@@ -2818,6 +2845,7 @@ def create_app(
             action,
             mutation,
             sync_snapshot=_current_sync_snapshot() if ctx.active_workspace else None,
+            sync_snapshot_provider=_current_sync_snapshot if ctx.active_workspace else None,
             compatibility=ctx.compatibility,
             backend_kind=ctx.git_backend_kind,
             author=profile_identity(profile) if profile is not None else None,

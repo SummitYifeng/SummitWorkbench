@@ -50,6 +50,7 @@ from summit_workbench.domain.workspace import (
 from summit_workbench.repositories.profile_registry import (
     drop_profile,
     ensure_device_identity,
+    load_profile,
     save_profile,
     set_active_profile,
 )
@@ -354,17 +355,30 @@ def _ensure_profile(
     home: Path | None,
     device_role: DeviceRole = DeviceRole.SECONDARY,
 ) -> LocalProfile:
-    profile = LocalProfile.model_validate(
-        {
-            "schema_version": 1,
-            "workspace_id": workspace_id,
-            "display_name": display_name,
-            "work_root": str(work_root),
-            "vault_dir": str(vault_dir),
-            "device_role": device_role.value,
-            "created_at": datetime.now(UTC).isoformat(),
-        }
-    )
+    existing = load_profile(workspace_id, home=home)
+    if existing is not None:
+        # Reconnect/upgrade must retain provider settings and credential
+        # references already saved for this workspace.
+        profile = existing.model_copy(
+            update={
+                "display_name": display_name,
+                "work_root": work_root,
+                "vault_dir": vault_dir,
+                "device_role": device_role,
+            }
+        )
+    else:
+        profile = LocalProfile.model_validate(
+            {
+                "schema_version": 1,
+                "workspace_id": workspace_id,
+                "display_name": display_name,
+                "work_root": str(work_root),
+                "vault_dir": str(vault_dir),
+                "device_role": device_role.value,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        )
     save_profile(profile, home=home)
     return profile
 

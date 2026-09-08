@@ -79,18 +79,24 @@ struct AppConfiguration {
 
     /// 只读读取当前 workspace marker，供升级前兼容性门使用；读取失败时宁可不提供更新候选。
     var updateWorkspaceCompatibility: () -> UpdateWorkspaceCompatibility? {
-        let markerURL = URL(fileURLWithPath: workRoot)
-            .appendingPathComponent(".summit-workbench/workspace.json")
+        let roots = [
+            URL(fileURLWithPath: workRoot),
+            URL(fileURLWithPath: workRoot).appendingPathComponent("_vault", isDirectory: true),
+        ]
         return {
-            guard let data = try? Data(contentsOf: markerURL),
-                  let marker = try? JSONDecoder().decode(UpdateWorkspaceMarker.self, from: data) else {
-                return nil
+            for root in roots {
+                let markerURL = root.appendingPathComponent(".summit-workbench/workspace.json")
+                guard let data = try? Data(contentsOf: markerURL),
+                      let marker = try? JSONDecoder().decode(UpdateWorkspaceMarker.self, from: data) else {
+                    continue
+                }
+                return UpdateWorkspaceCompatibility(
+                    schemaVersion: marker.schemaVersion,
+                    minimumReaderVersion: marker.minimumReaderVersion,
+                    minimumWriterVersion: marker.minimumWriterVersion
+                )
             }
-            return UpdateWorkspaceCompatibility(
-                schemaVersion: marker.schemaVersion,
-                minimumReaderVersion: marker.minimumReaderVersion,
-                minimumWriterVersion: marker.minimumWriterVersion
-            )
+            return nil
         }
     }
 
@@ -183,6 +189,7 @@ struct ServiceIdentity: Decodable {
 enum NativeMessage {
     case clientReady(build: String, serverInstance: String)
     case quit
+    case restartService
     case copyDiagnostics
     case openLogDirectory
     case openExternal(URL)
@@ -201,6 +208,7 @@ enum NativeMessage {
                   !build.isEmpty, build.count <= 200, !server.isEmpty, server.count <= 200 else { return nil }
             self = .clientReady(build: build, serverInstance: server)
         case "quit": self = .quit
+        case "restartService": self = .restartService
         case "copyDiagnostics": self = .copyDiagnostics
         case "openLogDirectory": self = .openLogDirectory
         case "openExternal":

@@ -33,6 +33,16 @@ struct RuntimeRecord: Codable {
         return [url] + profileRecords
     }
 
+    private static func locatedRecords() -> [(record: RuntimeRecord, url: URL)] {
+        candidateURLs.compactMap { candidate in
+            guard let data = try? Data(contentsOf: candidate) else { return nil }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let record = try? decoder.decode(RuntimeRecord.self, from: data) else { return nil }
+            return (record, candidate)
+        }
+    }
+
     func writeAtomically() {
         let fm = FileManager.default
         let directory = Self.url.deletingLastPathComponent()
@@ -52,18 +62,29 @@ struct RuntimeRecord: Codable {
     }
 
     static func load() -> RuntimeRecord? {
-        candidateURLs
-            .compactMap { try? Data(contentsOf: $0) }
-            .compactMap { data in
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                return try? decoder.decode(RuntimeRecord.self, from: data)
-            }
+        locatedRecords()
+            .map(\.record)
             .sorted { $0.startedAt > $1.startedAt }
             .first
     }
 
-    static func remove() { try? FileManager.default.removeItem(at: url) }
+    static func load(forPID pid: Int32) -> RuntimeRecord? {
+        locatedRecords().first { $0.record.pid == pid }?.record
+    }
+
+    static func loadOwned(serverExecutable: String) -> RuntimeRecord? {
+        locatedRecords()
+            .map(\.record)
+            .filter { $0.productID == panelProductID && $0.ownsServer(at: serverExecutable) }
+            .sorted { $0.startedAt > $1.startedAt }
+            .first
+    }
+
+    static func remove(forPID pid: Int32) {
+        for item in locatedRecords() where item.record.pid == pid {
+            try? FileManager.default.removeItem(at: item.url)
+        }
+    }
 
     func owns(_ process: Process) -> Bool {
         guard process.processIdentifier == pid,

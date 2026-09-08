@@ -287,10 +287,13 @@ final class UpdateCoordinator {
                          operatingSystemVersion.patchVersion]
         return artifacts.filter { artifact in
             guard artifact.architecture == architecture,
-                  let build = Int(artifact.build), build > currentBuild,
+                  let build = Int(artifact.build),
                   isVersion(artifact.version), isVersion(artifact.minimumMacOS),
-                  isAtLeast(currentOS, versionParts(artifact.minimumMacOS)),
-                  isAtLeast(versionParts(artifact.version), currentVersionParts),
+                  isAtLeast(currentOS, versionParts(artifact.minimumMacOS)) else { return false }
+            let artifactVersion = versionParts(artifact.version)
+            let isNewerVersion = isAtLeast(artifactVersion, currentVersionParts) &&
+                artifactVersion != currentVersionParts
+            guard isNewerVersion || build > currentBuild,
                   artifact.size > 0, isSHA256(artifact.sha256),
                   !artifact.signature.isEmpty,
                   workspaceIsCompatible(artifact.workspaceSchema, targetVersion: artifact.version) else { return false }
@@ -304,7 +307,9 @@ final class UpdateCoordinator {
     }
 
     private func workspaceIsCompatible(_ target: UpdateWorkspaceSchema?, targetVersion: String) -> Bool {
-        guard let current = workspaceCompatibility() else { return true }
+        // A missing/corrupt marker must fail closed. An update that cannot
+        // prove workspace compatibility is not safe to present to the user.
+        guard let current = workspaceCompatibility() else { return false }
         guard let target else { return false }
         guard target.schemaVersion >= current.schemaVersion,
               isVersion(target.minimumReaderVersion), isVersion(target.minimumWriterVersion) else {

@@ -13,6 +13,7 @@ from summit_workbench.repositories.feishu_auth_state import (
     read_auth_state,
     write_auth_state,
 )
+from summit_workbench.webapp.routers.settings import _AuthorizationStates
 
 runner = CliRunner()
 
@@ -61,3 +62,17 @@ def test_status_surfaces_reauthorize(monkeypatch, tmp_path):
     human = runner.invoke(app, ["status"])
     assert "飞书授权已失效" in human.stdout
     assert "wb feishu login" in human.stdout
+
+
+def test_web_authorization_state_survives_server_restart(tmp_path):
+    state_file = tmp_path / "feishu-auth-state.json"
+    first = _AuthorizationStates(state_file)
+    state = first.issue("workspace-a")
+    assert first.finish(state, workspace_id="workspace-a", status="connected") is True
+
+    second = _AuthorizationStates(state_file)
+    item = second.lookup(state)
+    assert item is not None
+    assert item.workspace_id == "workspace-a"
+    assert item.status == "connected"
+    assert second.finish(state, workspace_id="workspace-a", status="failed") is False
