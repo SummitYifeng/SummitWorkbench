@@ -86,3 +86,34 @@ def test_complete_authorization_stores_refresh_token(tmp_path, monkeypatch):
     client = _mock_client({"access_token": "a", "expires_in": 7200, "refresh_token": "first-rt"})
     FeishuSession(CFG).complete_authorization("code", client=client)
     assert stored["summit-workbench-feishu-refresh-token"] == "first-rt"
+
+
+def test_workspace_session_migrates_legacy_app_secret_before_authorization(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    cfg = FeishuConfig(
+        app_id="app1",
+        redirect_uri="http://localhost/cb",
+        workspace_id="workspace-1",
+    )
+    stored: dict[tuple[str, str], str] = {}
+
+    def resolve(ref: CredentialRef) -> SecretStr:
+        if ref == cfg.app_secret_ref:
+            raise CredentialError("scoped app secret missing")
+        if ref == cfg.legacy_app_secret_ref:
+            return SecretStr("legacy-app-secret")
+        raise CredentialError("unexpected credential")
+
+    monkeypatch.setattr(session_mod, "resolve_credential", resolve)
+    monkeypatch.setattr(session_mod, "resolve_legacy_credential_for_migration", resolve)
+    monkeypatch.setattr(
+        session_mod,
+        "store_credential",
+        lambda ref, value: stored.__setitem__((ref.service, ref.account), value.get_secret_value()),
+    )
+
+    client = _mock_client({"access_token": "a", "expires_in": 7200, "refresh_token": "first-rt"})
+    FeishuSession(cfg).complete_authorization("code", client=client)
+
+    assert stored[(cfg.app_secret_ref.service, cfg.app_secret_ref.account)] == "legacy-app-secret"
+    assert stored[(cfg.refresh_token_ref.service, cfg.refresh_token_ref.account)] == "first-rt"

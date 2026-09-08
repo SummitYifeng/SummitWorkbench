@@ -20,7 +20,9 @@ from pydantic import SecretStr
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.config.secrets import (
     CredentialError,
+    CredentialRef,
     resolve_credential,
+    resolve_legacy_credential_for_migration,
     store_credential,
 )
 from summit_workbench.providers.feishu import auth
@@ -42,12 +44,41 @@ class FeishuSession:
 
     def _app_secret(self) -> SecretStr:
         try:
-            return resolve_credential(self.cfg.app_secret_ref)
+            return self._resolve_credential(
+                self.cfg.app_secret_ref,
+                self.cfg.legacy_app_secret_ref,
+            )
         except CredentialError as exc:
             raise FeishuConfigError(
                 f"未在 Keychain 找到 app_secret（{self.cfg.app_secret_ref}）；"
                 "请先用 security add-generic-password 存入"
             ) from exc
+
+    def _resolve_credential(
+        self,
+        ref: CredentialRef,
+        legacy_ref: CredentialRef,
+    ) -> SecretStr:
+        """Read the scoped credential, migrating an older Feishu reference once.
+
+        Existing installations created before workspace-scoped credentials still have
+        valid Feishu secrets under the legacy service name.  The migration is explicit
+        and one-way: it reads the old reference only when the scoped reference is
+        missing, writes the same secret to the scoped reference, and leaves the old
+        entry untouched for rollback compatibility.  New reads never fall back to the
+        legacy name after this migration succeeds.
+        """
+        try:
+            return resolve_credential(ref)
+        except CredentialError as scoped_error:
+            if ref == legacy_ref:
+                raise scoped_error
+            try:
+                value = resolve_legacy_credential_for_migration(legacy_ref)
+                store_credential(ref, value)
+            except CredentialError:
+                raise scoped_error from None
+            return value
 
     def complete_authorization(
         self, code: str, *, client: httpx.Client | None = None
@@ -91,7 +122,10 @@ class FeishuSession:
             if self._cached_access_token is not None and now < self._access_token_expires_at:
                 return self._cached_access_token
             try:
-                current_rt = resolve_credential(self.cfg.refresh_token_ref)
+                current_rt = self._resolve_credential(
+                    self.cfg.refresh_token_ref,
+                    self.cfg.legacy_refresh_token_ref,
+                )
             except CredentialError as exc:
                 raise FeishuAuthError(
                     f"未在 Keychain 找到 refresh_token（{self.cfg.refresh_token_ref}）；"

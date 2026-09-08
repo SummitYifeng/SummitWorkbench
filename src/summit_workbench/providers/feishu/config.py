@@ -76,6 +76,16 @@ class FeishuConfig:
         return CredentialRef(service=REFRESH_TOKEN_SERVICE, account=self.app_id)
 
     @property
+    def legacy_app_secret_ref(self) -> CredentialRef:
+        """The pre-workspace Keychain reference used by older installations."""
+        return CredentialRef(service=APP_SECRET_SERVICE, account=self.app_id)
+
+    @property
+    def legacy_refresh_token_ref(self) -> CredentialRef:
+        """The pre-workspace refresh-token reference used by older installations."""
+        return CredentialRef(service=REFRESH_TOKEN_SERVICE, account=self.app_id)
+
+    @property
     def scope_param(self) -> str:
         """authorize / token 端点使用的空格分隔 scope 串。"""
         return " ".join(self.scopes)
