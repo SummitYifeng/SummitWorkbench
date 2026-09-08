@@ -67,9 +67,27 @@ def complete_feishu_authorization(
     workspace_id: str,
     lock_root: Path | None,
     code: str,
+    home: Path | None = None,
 ) -> None:
     cfg = feishu_config(config_file=config_file, workspace_id=workspace_id)
     FeishuSession(cfg, lock_root=lock_root).complete_authorization(code)
+    if home is not None:
+        # Persist only the non-secret provider settings after token exchange succeeds.
+        # The shared profile workflow owns the transaction and workspace Keychain
+        # boundary; this keeps the settings card in sync with the authorization result.
+        from summit_workbench.workflows.profile_settings import update_provider_settings
+
+        update_provider_settings(
+            home=home,
+            workspace_id=workspace_id,
+            provider="feishu",
+            settings={
+                "app_id": cfg.app_id,
+                "redirect_uri": cfg.redirect_uri,
+                "scopes": list(cfg.scopes),
+            },
+            secret=None,
+        )
 
 
 __all__ = ["complete_feishu_authorization", "feishu_config", "model_config", "verify_model"]

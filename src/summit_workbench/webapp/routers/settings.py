@@ -359,6 +359,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 workspace_id=workspace_id,
                 lock_root=context.lock_root,
                 code=payload.code,
+                home=context.active_workspace.home if context.active_workspace else None,
             )
             _invalidate_feishu_client(app)
             return {"ok": True, "message": "飞书已连接 ✓"}
@@ -398,6 +399,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 workspace_id=workspace_id,
                 lock_root=context.lock_root,
                 code=code,
+                home=context.active_workspace.home if context.active_workspace else None,
             )
         except Exception:
             states.finish(state, workspace_id=workspace_id, status="failed")
@@ -586,6 +588,7 @@ def register_restricted_connection_routes(
                 workspace_id=workspace_id,
                 lock_root=lock_root,
                 code=payload.code,
+                home=active_workspace.home,
             )
             return {"ok": True, "message": "飞书已连接 ✓"}
         except Exception as exc:
@@ -626,7 +629,11 @@ def register_restricted_connection_routes(
         config_file, lock_root = inputs
         try:
             complete_feishu_authorization(
-                config_file=config_file, workspace_id=workspace_id, lock_root=lock_root, code=code
+                config_file=config_file,
+                workspace_id=workspace_id,
+                lock_root=lock_root,
+                code=code,
+                home=active_workspace.home,
             )
         except Exception:
             states.finish(state, workspace_id=workspace_id, status="failed")
