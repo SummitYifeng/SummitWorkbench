@@ -48,7 +48,6 @@ from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDi
 from summit_workbench.domain.workspace import Compatibility, DeviceRole
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
-    CommitResult,
     CommitStatus,
     commit_diff_text,
     commit_paths,
@@ -63,17 +62,12 @@ from summit_workbench.repositories.external_action_outbox import (
 )
 from summit_workbench.repositories.git import GitError
 from summit_workbench.repositories.project_registry import (
-    archive_project,
-    create_project_note,
-    ensure_project_active,
     load_project_registry,
 )
 from summit_workbench.repositories.project_scan import (
     count_inbox_pending,
-    is_internal_dirname,
     scan_all_projects,
 )
-from summit_workbench.repositories.project_view import build_project_view
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -119,9 +113,6 @@ from summit_workbench.webapp.api import (
     ProfileRemovePayload,
     ProfileSwitchCommitPayload,
     ProfileSwitchPayload,
-    ProjectCreatePayload,
-    ProjectPayload,
-    ProjectRenamePayload,
     ProjectStatePayload,
     ProviderSettingsPayload,
     SyncConflictRecoveryPayload,
@@ -141,6 +132,10 @@ from summit_workbench.webapp.build_info import (
     new_server_instance,
 )
 from summit_workbench.webapp.context import WebContext as WebContext
+from summit_workbench.webapp.mutation_response import (
+    _commit_note,
+    _mutation_fields,
+)
 from summit_workbench.webapp.security import (
     SESSION_COOKIE,
     SESSION_HEADER,
@@ -335,27 +330,6 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
             context=ctx.active_workspace,
         )
     return _commit_note(result)
-
-
-def _commit_note(result: CommitResult) -> str:
-    if result.status in {
-        CommitStatus.FAILED,
-        CommitStatus.BUSY,
-        CommitStatus.INDEX_NOT_CLEAN,
-    }:
-        return f"（git 留痕失败：{result.detail or result.status.value}）"
-    return ""
-
-
-def _mutation_fields[T](result: LocalMutationResult[T]) -> dict[str, object]:
-    """把本地事务的 operation id 与可见提交状态加入 API 响应。"""
-    fields: dict[str, object] = {
-        "operation_id": result.operation_id,
-        "commit": result.commit_result.as_dict(),
-    }
-    if result.activity_report is not None:
-        fields["thread_activity_consistency"] = dict(result.activity_report)
-    return fields
 
 
 def _thread_activity_migration(ctx: WebContext) -> ThreadActivityMigration | None:
@@ -1748,146 +1722,12 @@ def create_app(
             }
         return payload
 
-    def _project_target(name: str) -> tuple[bool, str]:
-        """校验「加入/归档工作台」的目标：Work 仓库文件夹 或 已建档的知识线程。
+    from summit_workbench.webapp.routers.projects import register_project_write_routes
 
-        返回 (ok, 错误消息)。下划线前缀目录是系统内部目录，一律不允许操作。
-        """
-        if not name or name in (".", "..") or "/" in name or "\\" in name:
-            return False, f"非法项目名：{name}"
-        if is_internal_dirname(name):
-            return False, f"{name} 是系统内部目录，不能作为项目操作"
-        folder = ctx.work_root / name
-        if folder.is_dir():
-            return True, ""
-        registry = load_project_registry(ctx.vault_dir)
-        if name in registry.canonical:
-            return True, ""
-        return False, f"work_root 下没有该项目文件夹，vault 中也没有 {name} 的档案"
-
-    @app.post("/api/projects/rename")
-    def api_project_rename(payload: ProjectRenamePayload) -> dict[str, object]:
-        """设置项目/线程的显示名（写档案 frontmatter ``title``；不影响 ID/别名/文件夹）。"""
-        name = payload.name.strip()
-        title = payload.title.strip()
-        if not title:
-            return {"ok": False, "message": "显示名不能为空"}
-        registry = load_project_registry(ctx.vault_dir)
-        project = registry.resolve(name)
-        if project is None:
-            return {"ok": False, "message": f"项目未建档：{name}"}
-        path = ctx.vault_dir / "projects" / f"{project}.md"
-
-        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            from summit_workbench.repositories.note_status import update_note_status
-            from summit_workbench.repositories.vault import load_note as _load_note
-
-            note = _load_note(path)
-            status = note.meta.get("status")
-            if not isinstance(status, str):
-                raise ValueError(f"项目档案无效：{project}")
-            update_note_status(
-                ctx.vault_dir, path, status, extra={"title": title, "updated": ctx.today()}
-            )
-            return LocalMutationOutcome(path, (path,))
-
-        try:
-            result = _run_web_mutation("projects/rename", mutate)
-        except ValueError as exc:
-            return {"ok": False, "message": f"改名失败：{exc}"}
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"{project} 显示名已设为「{title}」{git_note}",
-            **_mutation_fields(result),
-        }
-
-    @app.post("/api/projects/activate")
-    def api_project_activate(payload: ProjectPayload) -> dict[str, object]:
-        """把项目加入工作台（幂等）：无档案则建档；archived 则恢复为 active。"""
-        name = payload.name.strip()
-        ok, message = _project_target(name)
-        if not ok:
-            return {"ok": False, "message": message}
-        try:
-            result = _run_web_mutation(
-                "projects/activate",
-                lambda _operation_id: LocalMutationOutcome(
-                    (path := ensure_project_active(ctx.vault_dir, name)), (path,)
-                ),
-            )
-        except (ValueError, FileExistsError) as exc:
-            return {"ok": False, "message": f"加入工作台失败：{exc}"}
-        path = result.business_return
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已加入工作台：{name}{git_note}",
-            "path": str(path),
-            **_mutation_fields(result),
-        }
-
-    @app.post("/api/projects/archive")
-    def api_project_archive(payload: ProjectPayload) -> dict[str, object]:
-        """把项目归档（幂等）：置 status: archived，不在首页显示；可随时恢复。"""
-        name = payload.name.strip()
-        ok, message = _project_target(name)
-        if not ok:
-            return {"ok": False, "message": message}
-        try:
-            result = _run_web_mutation(
-                "projects/archive",
-                lambda _operation_id: LocalMutationOutcome(
-                    (path := archive_project(ctx.vault_dir, name)), (path,)
-                ),
-            )
-        except (ValueError, FileExistsError) as exc:
-            return {"ok": False, "message": f"归档失败：{exc}"}
-        path = result.business_return
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已归档：{name}{git_note}",
-            "path": str(path),
-            **_mutation_fields(result),
-        }
-
-    @app.post("/api/projects/create")
-    def api_project_create(payload: ProjectCreatePayload) -> dict[str, object]:
-        """新建知识线程项目：在 vault 建档（不创建任何 Work 文件夹 / git 仓库）。"""
-        project_id = payload.project_id.strip()
-        if not project_id:
-            return {"ok": False, "message": "请输入项目 ID"}
-        if is_internal_dirname(project_id):
-            return {"ok": False, "message": "项目 ID 不能以下划线开头（保留给系统内部目录）"}
-        if (ctx.work_root / project_id).is_dir():
-            return {
-                "ok": False,
-                "message": f"Work 下已有同名文件夹 {project_id}，请用「加入工作台」建档",
-            }
-        aliases = [alias.strip() for alias in payload.aliases if alias.strip()]
-        try:
-            result = _run_web_mutation(
-                "projects/create",
-                lambda _operation_id: LocalMutationOutcome(
-                    (
-                        path := create_project_note(
-                            ctx.vault_dir, project_id, aliases=aliases or None
-                        )
-                    ),
-                    (path,),
-                ),
-            )
-        except (ValueError, FileExistsError) as exc:
-            return {"ok": False, "message": f"新建失败：{exc}"}
-        path = result.business_return
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已建档知识线程：{project_id}{git_note}",
-            "path": str(path),
-            **_mutation_fields(result),
-        }
+    register_project_write_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        run_mutation=lambda action, mutation: _run_web_mutation(action, mutation),
+    )
 
     @app.get("/api/review")
     def api_review() -> dict[str, object]:
@@ -2105,18 +1945,11 @@ def create_app(
             **_mutation_fields(result),
         }
 
-    @app.get("/api/projects/view")
-    def api_project_view(name: str) -> dict[str, object]:
-        """线视图：某项目/线程的档案区块 + 时间线（logs/artifacts/meetings 聚合）。"""
-        registry = load_project_registry(ctx.vault_dir)
-        project = registry.resolve(name)
-        if project is None:
-            return {"ok": False, "message": f"项目未建档：{name}"}
-        try:
-            view = build_project_view(ctx.vault_dir, project)
-        except ValueError as exc:
-            return {"ok": False, "message": str(exc)}
-        return {"ok": True, **view}
+    from summit_workbench.webapp.routers.projects import register_project_read_routes
+
+    register_project_read_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id)
+    )
 
     @app.get("/api/threads/activity-consistency")
     def api_thread_activity_consistency() -> dict[str, object]:
