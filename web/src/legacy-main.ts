@@ -2062,7 +2062,7 @@ function openArtifactModal(defaultProject: string): void {
     '<span class="hint" id="artifact-file-name"></span></div>' +
     '<textarea id="artifact-text" rows="10" required placeholder="把整份文档粘贴在这里，或点上方按钮读入本地文件…"></textarea>' +
     '<label class="hint artifact-to-state"><input type="checkbox" id="artifact-to-state"> ' +
-    '保存后同步更新主档案「当前状态」为本文档摘要（覆盖原内容，旧版可在 vault git 找回）</label>' +
+    '保存后先预览并确认把本文档摘要同步为主档案「当前状态」（会覆盖原内容，旧版可在 vault git 找回）</label>' +
     '<div class="row"><button class="primary" type="submit">存入档案</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>'
@@ -2161,12 +2161,20 @@ async function submitArtifact(): Promise<void> {
     let extra = '';
     if (syncState) {
       const stateText = r.summary || title || text.slice(0, 80).replace(/\s+/g, ' ');
-      const s = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project, text: stateText }),
-      }));
-      extra = s.ok ? ' · 已同步当前状态' : '（当前状态同步失败：' + s.message + '）';
+      const preview = stateText.length > 1200 ? stateText.slice(0, 1200) + '\n…（预览已截断）' : stateText;
+      const confirmed = window.confirm(
+        '产物已保存。\n\n即将把以下内容写入主档案「当前状态」：\n\n' + preview + '\n\n确认继续？',
+      );
+      if (confirmed) {
+        const s = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/state', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project, text: stateText }),
+        }));
+        extra = s.ok ? ' · 已同步当前状态' : '（当前状态同步失败：' + s.message + '）';
+      } else {
+        extra = ' · 已保存产物，未修改当前状态';
+      }
     }
     const modal = document.getElementById('modal') as HTMLElement | null;
     const draftEntity = modal?.dataset.draftEntity;

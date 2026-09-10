@@ -52,6 +52,7 @@ assert.match(source, /requestModalClose/, 'modal close is routed through the uns
 assert.match(source, /function activateModal/, 'specialized modals use the shared focus setup');
 assert.match(source, /if \(backdrop\.hidden\)[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
 assert.match(source, /const modal = activateModal\(projectViewHtml\(view\)\)/, 'project view receives modal focus semantics');
+assert.match(source, /window\.confirm[\s\S]{0,350}产物已保存[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 console.log('Browser interaction contract tests passed');

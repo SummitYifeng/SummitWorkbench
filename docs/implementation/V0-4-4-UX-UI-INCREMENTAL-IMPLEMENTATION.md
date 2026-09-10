@@ -28,13 +28,14 @@
 - [x] 设置页“立即运行”使用强制执行语义，不会被当天已执行过的调度记录误判为“当前不在任务执行时间”。
 - [x] 顶部“刷新”同时刷新工作区数据与同步横幅，避免实际已恢复后继续显示旧的 `dirty-protected` 状态。
 - [x] 项目线视图等专用弹层复用统一焦点初始化；打开后焦点进入弹层，嵌套日志/产物弹层不覆盖原始返回焦点，Escape 关闭后归还到触发按钮。
+- [x] 产物保存与“同步当前状态”拆成两步：保存产物后先展示最终摘要预览，确认才覆盖主档案，取消只保留产物。
 
 ## 阶段 2：导航、弹层与视觉
 
 - [x] 完成 tablist 关联、方向键/Home/End、跳转主内容和统一焦点环。
 - [x] 收敛主色、字号、按钮热区、窄屏布局、消息类名与 reduced-motion。
-- [x] 弹层支持初始焦点、Tab 约束、Escape/背景关闭保护提示和关闭后焦点归还（已有同步冲突等专用弹层仍需统一接入）。
-- [ ] 同步冲突、项目查看等专用弹层仍需逐一接入同一套草稿关闭保护；本轮不虚报为全部完成。
+- [x] 普通弹层与项目线视图支持初始焦点、Tab 约束、Escape/背景关闭保护提示和关闭后焦点归还。
+- [ ] 同步冲突专用弹层仍需接入同一套草稿关闭保护；项目线视图本身无可编辑草稿，本轮已完成焦点语义，不虚报为全部完成。
 - [x] 本轮涉及的主色、字号、按钮热区、窄屏布局与消息类名已收敛；尚未做真实 WKWebView 视觉回归。
 
 ## 阶段 3–7
@@ -47,14 +48,15 @@
 | 阶段 | 测试 | 结果 | 未验证/限制 |
 |---|---|---|---|
 | 基线 | `npm --prefix web run test:frontend` | 通过；含新增浏览器交互契约 | 仅源码契约/纯渲染，不等同真实浏览器点击布局验证 |
-| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-b2751ff-70edad54` | 未执行 App 重启/WKWebView 真机验证 |
+| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-9bdee5f-3def1d9d` | 未执行 App 重启/WKWebView 真机验证 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/contract/test_web_route_contract.py` | 1 passed | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/unit` | 763 passed, 5 warnings | 警告来自第三方依赖弃用提示与非 loopback 开发配置 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync ruff check .` / `ruff format --check .` | 通过 | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync mypy` | 通过；312 个源码文件 | — |
-| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-b2751ff-70edad54` | — |
+| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-9bdee5f-3def1d9d` | — |
 | 阶段 0–2 | `git diff --check` | 通过 | — |
 | 阶段 1 | 本机 `127.0.0.1:8797` 真实界面验收 | 通过；设置页立即运行成功，显式信号已提交，刷新后顶部同步横幅恢复隐藏/`ready` | 未执行真实飞书写回 |
 | 阶段 2 | 本机 `127.0.0.1:8797` 专用弹层焦点验收 | 通过；项目线视图焦点进入“✎ 日志”，Escape 关闭后归还 `demo-project` 触发按钮 | 未执行 App/WKWebView 独立回归 |
+| 阶段 4 | 产物状态同步保护 | 通过源码契约、前端构建和真实界面只读验收；同步主档案前增加最终摘要确认 | 未提交真实产物，不执行真实 vault 写入 |
 
 每个阶段完成后更新本表，并记录下一阶段起点。未执行的真机、WKWebView、真实飞书操作不宣称通过。
