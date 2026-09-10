@@ -1777,10 +1777,16 @@ document.addEventListener('click', (ev) => {
     const gi = Number(btn.dataset.group ?? '-1');
     const group = review?.groups[gi];
     if (!group) return;
-    const ids = group.entries
-      .filter((e) => e.decision === 'pending')
+    const decision = btn.dataset.decision ?? 'pending';
+    const pendingEntries = group.entries.filter((e) => e.decision === 'pending');
+    const entries = decision === 'approved'
+      ? pendingEntries.filter((e) => e.actionable && !!e.route)
+      : pendingEntries;
+    const blocked = decision === 'approved' ? pendingEntries.length - entries.length : 0;
+    const note = blocked > 0 ? blocked + ' 条因依据或落点不完整未纳入批准' : '';
+    const ids = entries
       .map((e) => e.candidate_id);
-    void batchDecide(ids, btn.dataset.decision ?? 'pending');
+    void batchDecide(ids, decision, note);
     return;
   }
   if (action === 'reject-expired') {
@@ -1914,9 +1920,14 @@ async function decide(candidateId: string, decision: string): Promise<void> {
   void refreshState();
 }
 
-async function batchDecide(candidateIds: string[], decision: string): Promise<void> {
+async function batchDecide(candidateIds: string[], decision: string, note = ''): Promise<void> {
   if (candidateIds.length === 0) {
     toast('没有可操作的条目', 'info');
+    return;
+  }
+  const REVIEW_BATCH_LIMIT = 100;
+  if (candidateIds.length > REVIEW_BATCH_LIMIT) {
+    toast('本次批量操作包含 ' + candidateIds.length + ' 条，超过单批上限 100 条，未执行；请缩小范围后重试', 'err');
     return;
   }
   try {
@@ -1928,7 +1939,7 @@ async function batchDecide(candidateIds: string[], decision: string): Promise<vo
     if (r.ok) {
       const verb = decision === 'approved' ? '批准' : decision === 'rejected' ? '拒绝' : '改回待确认';
       const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
-      toast('✓ 已批量' + verb + ' ' + (r.updated ?? '') + ' 条' + tip, 'ok');
+      toast('✓ 已批量' + verb + ' ' + (r.updated ?? '') + ' 条' + (note ? ' · ' + note : '') + tip, 'ok');
     } else {
       toast(r.message, 'err');
     }

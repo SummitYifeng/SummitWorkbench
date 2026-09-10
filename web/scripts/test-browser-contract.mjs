@@ -4,6 +4,7 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const source = fs.readFileSync(path.join(root, 'src/legacy-main.ts'), 'utf8');
+const reviewSource = fs.readFileSync(path.join(root, 'src/features/review/render.ts'), 'utf8');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 
 // Browser-level interaction contract: these user actions must remain wired after feature moves.
@@ -24,6 +25,10 @@ assert.match(source, /脱敏审计记录未完成/, 'audit failure remains visib
 assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is explicit and write-free');
 assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
+assert.match(reviewSource, /\/api\/review\/source\?path=/, 'review evidence links open a local read-only source route');
+assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
+assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
+assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');
 assert.match(source, /data-action="profile-switch"/, 'profile switch remains wired');
 assert.match(source, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');

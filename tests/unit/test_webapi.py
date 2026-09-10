@@ -301,6 +301,19 @@ def test_api_review_empty_when_no_page(tmp_path: Path) -> None:
     assert data["errors"] == []
 
 
+def test_api_review_source_is_read_only_and_vault_scoped(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path, seed_review=False)
+    source = vault / "meetings" / "notes" / "source.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("# 来源\n\n原文证据。", encoding="utf-8")
+
+    response = client.get("/api/review/source", params={"path": "meetings/notes/source.md"})
+    assert response.status_code == 200
+    assert response.text == "# 来源\n\n原文证据。"
+    assert client.get("/api/review/source", params={"path": "../outside.md"}).status_code == 400
+    assert not (vault / "outside.md").exists()
+
+
 # ---------- decide / edit ----------
 
 

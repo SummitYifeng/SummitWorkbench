@@ -31,6 +31,18 @@ function routeOptions(current: string | null): string {
   }).join('');
 }
 
+function sourceLink(raw: string, label: string): string {
+  const value = raw.trim();
+  const match = value.match(/^\[\[([^\]]+)\]\]$/);
+  const path = (match?.[1] ?? value).split('|', 1)[0].trim();
+  if (!path || path.startsWith('/') || path.includes('://')) {
+    return '<span class="wikilink">' + esc(value) + '</span>';
+  }
+  return '<a class="wikilink source-link" href="/api/review/source?path=' + encodeURIComponent(path) +
+    '" target="_blank" rel="noreferrer" title="在新标签页打开' + esc(label) + '">' +
+    esc(label) + ' · ' + esc(value) + '</a>';
+}
+
 function entryCard(e: ReviewEntry, today: string): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
@@ -47,10 +59,17 @@ function entryCard(e: ReviewEntry, today: string): string {
   ].filter(Boolean).join(' · ');
   const warn = e.actionable ? '' : '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>';
   const err = e.apply_error ? '<div class="not-actionable">应用出错：' + esc(e.apply_error) + '</div>' : '';
-  const note = e.note_link ? '<span class="wikilink">' + esc(e.note_link) + '</span>' : '';
+  const sources = [
+    e.note_link ? sourceLink(e.note_link, '会议笔记') : '',
+    e.transcript_link ? sourceLink(e.transcript_link, '逐字稿') : '',
+  ].filter(Boolean).join(' · ') || '未提供来源';
   const routeLabel = e.route ? (ROUTE_LABELS[e.route] ?? e.route) : '';
   const approveLabel = routeLabel ? '✓ 批准 → ' + esc(routeLabel) : '✓ 批准（先在「修改」里选落点）';
-  const approveDisabled = e.route ? '' : ' disabled title="落点未定，请点「修改」设置后再批准"';
+  const approveDisabled = e.route && e.actionable
+    ? ''
+    : e.route
+      ? ' disabled title="依据或目标项目缺失，请点「修改」补齐后再批准"'
+      : ' disabled title="落点未定，请点「修改」设置后再批准"';
   return (
     '<div class="card entry ' + e.decision + '" data-id="' + esc(e.candidate_id) + '">' +
     '<div class="entry-top"><span class="kind">' + esc(kind) + '</span>' +
@@ -58,7 +77,7 @@ function entryCard(e: ReviewEntry, today: string): string {
     '<p class="desc">' + esc(e.description) + '</p>' +
     warn + err +
     '<div class="meta">' + meta + '</div>' +
-    '<div class="meta">来源：' + note + '</div>' +
+    '<div class="meta">来源：' + sources + '</div>' +
     '<div class="row">' +
     '<button class="ok" data-action="decide" data-decision="approved"' + approveDisabled + '>' + approveLabel + '</button>' +
     '<button class="bad" data-action="decide" data-decision="rejected">✗ 拒绝</button>' +
@@ -124,14 +143,19 @@ export function reviewHtml(
     ? review.groups.map((g, gi) => {
         const cards = g.entries.map((entry) => entryCard(entry, today)).join('');
         const groupPending = g.entries.filter((e) => e.decision === 'pending').length;
+        const groupApprovable = g.entries.filter((e) => e.decision === 'pending' && e.actionable && !!e.route).length;
+        const groupBlocked = groupPending - groupApprovable;
+        const approvalTitle = groupBlocked > 0
+          ? ' title="仅纳入具备依据和落点的候选；' + groupBlocked + ' 条未纳入批准"'
+          : '';
         return '<div class="meeting-head">' +
           '<span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
           '<span class="meeting-title">' + esc(g.meeting_title) + '</span>' +
           '<span class="group-actions">' +
           '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + gi + '"' +
-          (groupPending === 0 ? ' disabled' : '') + '>✓ 全批(' + groupPending + ')</button>' +
+          (groupApprovable === 0 ? ' disabled' : '') + approvalTitle + '>✓ 全批(' + groupApprovable + ')</button>' +
           '<button class="ghost" data-action="group-decide" data-decision="rejected" data-group="' + gi + '"' +
-          (groupPending === 0 ? ' disabled' : '') + '>✗ 全拒</button>' +
+          (groupPending === 0 ? ' disabled' : '') + '>✗ 全拒(' + groupPending + ')</button>' +
           '</span></div>' + cards;
       }).join('')
     : '<div class="empty"><p>暂无待确认候选。</p>' +

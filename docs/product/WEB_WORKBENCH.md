@@ -67,6 +67,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - 拖拽或点选 `.md/.txt` → 复用 `wb meeting import` 链路（scan → 预估 → archive + process → 生成候选，幂等不变）全自动执行。
 - 响应回显：处理/跳过/失败/候选数 + 预估费用；软预算只提示不阻断（PRD L42 提醒线语义）。
 - 写回边界不变：全自动只到「生成候选进审批页」，批准只做决定标记；检查并确认「应用（写回）」后才写回（L13）。
+- 分组批量批准只纳入具备依据与落点的待确认候选，并在按钮上显示实际范围；批量拒绝显示全部待确认范围。前端单批上限为 100 条，超过时不发送请求。
+- 审批卡片的会议笔记与逐字稿来源通过 `/api/review/source` 只读打开，并校验路径必须位于当前 vault 内；来源缺失、越界或过大时返回可解释错误。
 - 文件名建议 `YYYY-MM-DD-会议标题.txt`（日期与标题的稳定来源）。
 
 ### 4.4 项目推进卡
@@ -107,7 +109,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 |---|---|
 | `GET /api/state` | 日期、状态速览（StatusReport.as_dict）、今日简报（`brief_md` + 结构化 `brief`，ADR 0024）、inbox 积压、项目推进 |
 | `GET /api/review` | 审批页分组 JSON（meetings.md 事实源） |
-| `POST /api/review/decide` / `POST /api/review/edit` | 即时批准/拒绝/修改（review_edit） |
+| `POST /api/review/decide` / `POST /api/review/edit` | 即时批准/拒绝/修改（review_edit）；批准要求候选具备依据与落点 |
 | `POST /api/review/plan` / `POST /api/review/apply` | 预演 / 显式应用（apply_meeting_review） |
 | `POST /api/capture` | 快速捕捉 + AI 分类 + 标记写回 |
 | `POST /api/projects/activate` / `POST /api/projects/archive` | 加入/恢复工作台 / 归档（ADR 0023：写 `_vault` 档案 status，幂等） |

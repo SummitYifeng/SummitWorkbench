@@ -50,6 +50,17 @@ export const cases = {
     groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [baseEntry] }],
     errors: [],
   }, 1, '2026-09-01', [{ name: 'Alpha', title: '项目甲' }], [external]),
+  scopedBatch: reviewHtml({
+    groups: [{
+      meeting_date: '2026-08-27',
+      meeting_title: '排版会',
+      entries: [
+        baseEntry,
+        { ...baseEntry, candidate_id: 'm1#decision-1', route: null, actionable: false },
+      ],
+    }],
+    errors: [],
+  }, 2, '2026-09-01', [], []),
   approvedError: reviewHtml({
     groups: [{
       meeting_date: '2026-08-27',
@@ -89,7 +100,14 @@ try {
   assert.match(mod.cases.pending, /重新核对/);
   assert.match(mod.cases.pending, /确认已创建/);
   assert.match(mod.cases.pending, /确认未创建/);
+  assert.match(mod.cases.pending, /会议笔记/);
+  assert.match(mod.cases.pending, /逐字稿/);
+  assert.match(mod.cases.pending, /\/api\/review\/source\?path=/);
   assert.match(mod.cases.pending, /全批\(1\)/);
+  assert.match(mod.cases.scopedBatch, /全批\(1\)/);
+  assert.match(mod.cases.scopedBatch, /全拒\(2\)/);
+  assert.match(mod.cases.scopedBatch, /仅纳入具备依据和落点的候选；1 条未纳入批准/);
+  assert.match(mod.cases.scopedBatch, /disabled title="落点未定，请点「修改」设置后再批准"/);
   assert.match(mod.cases.pending, /保存并批准/);
   assert.match(mod.cases.approvedError, /审批页解析错误：<br>解析失败/);
   assert.match(mod.cases.approvedError, /应用出错：写回失败/);

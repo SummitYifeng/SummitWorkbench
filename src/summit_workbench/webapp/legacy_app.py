@@ -30,7 +30,13 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 
@@ -1772,6 +1778,26 @@ def create_app(
     def api_review() -> dict[str, object]:
         entries, errors = _load(ctx.vault_dir)
         return review_payload(entries, errors)
+
+    @app.get("/api/review/source", response_class=PlainTextResponse)
+    def api_review_source(path: str = "") -> PlainTextResponse:
+        """在回环服务内只读展示审批候选引用的 Markdown/文本来源。"""
+        relative = Path(path.strip())
+        if not path.strip() or relative.is_absolute() or ".." in relative.parts:
+            return PlainTextResponse("来源路径无效", status_code=400)
+        root = ctx.vault_dir.resolve()
+        source = (root / relative).resolve()
+        try:
+            source.relative_to(root)
+        except ValueError:
+            return PlainTextResponse("来源路径无效", status_code=400)
+        if source.suffix.lower() not in {".md", ".txt"}:
+            return PlainTextResponse("只允许打开 Markdown 或文本来源", status_code=415)
+        if not source.is_file():
+            return PlainTextResponse("来源不存在", status_code=404)
+        if source.stat().st_size > 2_000_000:
+            return PlainTextResponse("来源过大，请在本地编辑器中打开", status_code=413)
+        return PlainTextResponse(source.read_text(encoding="utf-8"))
 
     @app.post("/api/review/decide", response_model=None)
     def api_decide(payload: DecidePayload) -> dict[str, object]:
