@@ -69,6 +69,8 @@
 
 本节记录 build 9 之后源码继续演进后的本地浏览器复核，不改变上方已发布 DMG 的历史身份。
 
+完整的原始计划、U01–U19 状态和后续执行顺序见 [`V0-4-4-UX-UI-HANDOFF.md`](../implementation/V0-4-4-UX-UI-HANDOFF.md)。
+
 - 当前源码提交：`ce0b27e`；设置页布局修复已提交并推送到 `main`。
 - 质量门复核：`pytest tests/unit` 766 passed、5 warnings；Web route contract 1 passed；ruff、format、mypy 全部通过。
 - CUA 真实浏览器复核覆盖今日、审批、项目、指南、第二大脑和设置：导入抽屉、项目线视图、指南搜索、问答范围切换、设置高级区均可正常打开/关闭；审批预演显示 `DRY-RUN（零写入）`，未执行写回。
