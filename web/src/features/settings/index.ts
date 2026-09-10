@@ -33,11 +33,15 @@ const AUTOMATION_LABELS: Record<string, string> = {
 };
 const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
 
-function badge(kind: 'model' | 'feishu', configured: boolean, reauth = false): string {
-  if (kind === 'feishu' && configured && reauth) return '<span class="conn-badge reauth">⚠ 需重新授权</span>';
-  return configured
-    ? '<span class="conn-badge ok">✓ 已' + (kind === 'feishu' ? '授权' : '配置') + '</span>'
-    : '<span class="conn-badge off">未连接</span>';
+function badge(kind: 'model' | 'feishu', status: string | undefined, reauth = false): string {
+  if (kind === 'feishu' && reauth) return '<span class="conn-badge reauth">⚠ 需重新授权</span>';
+  if (status === 'configured') {
+    return '<span class="conn-badge ok">✓ 已' + (kind === 'feishu' ? '授权' : '配置') + '</span>';
+  }
+  if (status === 'error' || status === 'failed' || status === 'verification-failed') {
+    return '<span class="conn-badge failed">✗ 验证失败</span>';
+  }
+  return '<span class="conn-badge off">' + (kind === 'model' ? '未配置' : '未连接') + '</span>';
 }
 
 function automationHtml(job: string, schedule: AutomationJob): string {
@@ -74,21 +78,21 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       actions.api<{ status: { feishu_auth?: { needs_reauthorize?: boolean } } }>('/api/state'),
     ]);
     const active = response.profiles.find((p) => p.active) ?? response.profiles[0];
-    const modelOk = active?.provider_status.model === 'configured';
-    const feishuOk = active?.provider_status.feishu === 'configured';
+    const modelStatus = active?.provider_status.model;
+    const feishuStatus = active?.provider_status.feishu;
     const feishuReauth = Boolean(state.status.feishu_auth?.needs_reauthorize);
     const workspace = active
       ? '<div class="settings-path">' + esc(active.display_name) + '<span class="meta">' + esc(active.path) + '</span></div>'
       : '<div class="settings-path">（尚无工作区）</div>';
-    const model = '<div class="card settings-card" id="model-card"><div class="card-head"><strong>AI 模型（DeepSeek）</strong>' + badge('model', modelOk) + '</div>' +
+    const model = '<div class="card settings-card" id="model-card"><div class="card-head"><strong>AI 模型（DeepSeek）</strong>' + badge('model', modelStatus) + '</div>' +
       '<p class="settings-card-desc">简报、任务分类和智能问答都靠它。第一次使用只需粘贴 API Key，点「连接并验证」。</p>' +
       '<form id="model-settings-form" autocomplete="off"><label>DeepSeek API Key<input id="model-secret" type="password" autocomplete="new-password" placeholder="sk-…"></label>' +
       '<div class="row"><button class="primary" type="submit">连接并验证</button><button class="ghost" id="model-show-advanced" type="button">自定义模型（一般不用）</button></div>' +
       '<div class="settings-advanced" id="model-advanced" hidden><div class="grid2"><label>模型 ID<input id="model-id" value="deepseek-v4-flash"></label>' +
       '<label>服务地址<input id="model-base-url" value="https://api.deepseek.com/v1"></label></div><p class="hint">默认使用 DeepSeek 官方地址；只有特殊网关才需要改。</p></div></form><div id="model-result"></div></div>';
-    const feishu = '<div class="card settings-card"><div class="card-head"><strong>飞书</strong>' + badge('feishu', feishuOk, feishuReauth) + '</div>' +
+    const feishu = '<div class="card settings-card"><div class="card-head"><strong>飞书</strong>' + badge('feishu', feishuStatus, feishuReauth) + '</div>' +
       '<p class="settings-card-desc">授权后，工作台才能读日历和任务，也能把完成动作写回飞书。</p><div class="row"><button class="primary" data-action="feishu-reauth">' +
-      (feishuReauth || !feishuOk ? '授权飞书' : '重新授权飞书') + '</button><button class="ghost" data-action="settings-doctor-online">检查飞书连接</button></div><div id="feishu-result"></div></div>';
+      (feishuReauth || feishuStatus !== 'configured' ? '授权飞书' : '重新授权飞书') + '</button><button class="ghost" data-action="settings-doctor-online">检查飞书连接</button></div><div id="feishu-result"></div></div>';
     const automationCard = '<div class="card settings-card"><div class="card-head"><strong>自动化与更新</strong><span class="conn-badge off">按需开启</span></div>' +
       '<p class="settings-card-desc">像闹钟一样自动生成简报、复盘和同步会议；开着才会自动跑。</p>' +
       Object.entries(automation.jobs).map(([job, schedule]) => automationHtml(job, schedule)).join('') +
@@ -96,8 +100,8 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       (localStorage.getItem('wb.update.auto-check') !== 'false' ? ' checked' : '') + '>每天自动检查新版本（只提示，不自动安装）</label></div></div>';
     const profiles = response.profiles.map((profile) => '<article class="card entry ' + (profile.active ? 'ok' : '') + '"><div class="entry-top"><strong>' +
       esc(profile.display_name) + '</strong><span class="badge">' + esc(profile.active ? '当前' : profile.workspace_short_code) + '</span></div><p class="meta">' +
-      esc(profile.path) + '</p><p class="meta">同步：' + esc(profile.sync_summary.state) + ' · 连接：' + badge('model', profile.provider_status.model === 'configured') + ' ' +
-      badge('feishu', profile.provider_status.feishu === 'configured', feishuReauth) + '</p>' +
+      esc(profile.path) + '</p><p class="meta">同步：' + esc(profile.sync_summary.state) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
+      badge('feishu', profile.provider_status.feishu, feishuReauth) + '</p>' +
       (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到它</button>') + '</article>').join('');
     const advanced = '<details class="settings-advanced-block"><summary><span class="bf-chev">›</span>高级与维护（多工作台 · Git 同步 · 诊断）</summary>' +
       '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + '</section>' +

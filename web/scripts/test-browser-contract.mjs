@@ -5,6 +5,7 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const source = fs.readFileSync(path.join(root, 'src/legacy-main.ts'), 'utf8');
 const reviewSource = fs.readFileSync(path.join(root, 'src/features/review/render.ts'), 'utf8');
+const settingsSource = fs.readFileSync(path.join(root, 'src/features/settings/index.ts'), 'utf8');
 const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 
 // Browser-level interaction contract: these user actions must remain wired after feature moves.
@@ -41,6 +42,9 @@ assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to 
 assert.match(source, /data-action="profile-switch"/, 'profile switch remains wired');
 assert.match(source, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
+assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
+assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');
+assert.match(settingsSource, /needs_reauthorize/, 'settings exposes Feishu reauthorization state');
 assert.match(
   source,
   /\/api\/settings\/git\/remote\/preview[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
