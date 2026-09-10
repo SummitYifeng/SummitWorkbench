@@ -47,12 +47,12 @@
 | 阶段 | 测试 | 结果 | 未验证/限制 |
 |---|---|---|---|
 | 基线 | `npm --prefix web run test:frontend` | 通过；含新增浏览器交互契约 | 仅源码契约/纯渲染，不等同真实浏览器点击布局验证 |
-| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-f594f1e-70edad54` | 未执行 App 重启/WKWebView 真机验证 |
+| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-b2751ff-70edad54` | 未执行 App 重启/WKWebView 真机验证 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/contract/test_web_route_contract.py` | 1 passed | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/unit` | 763 passed, 5 warnings | 警告来自第三方依赖弃用提示与非 loopback 开发配置 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync ruff check .` / `ruff format --check .` | 通过 | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync mypy` | 通过；312 个源码文件 | — |
-| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-f594f1e-70edad54` | — |
+| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-b2751ff-70edad54` | — |
 | 阶段 0–2 | `git diff --check` | 通过 | — |
 | 阶段 1 | 本机 `127.0.0.1:8797` 真实界面验收 | 通过；设置页立即运行成功，显式信号已提交，刷新后顶部同步横幅恢复隐藏/`ready` | 未执行真实飞书写回 |
 | 阶段 2 | 本机 `127.0.0.1:8797` 专用弹层焦点验收 | 通过；项目线视图焦点进入“✎ 日志”，Escape 关闭后归还 `demo-project` 触发按钮 | 未执行 App/WKWebView 独立回归 |
