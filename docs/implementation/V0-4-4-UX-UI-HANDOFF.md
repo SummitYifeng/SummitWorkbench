@@ -180,7 +180,7 @@
 
 ### 当前续测记录（2026-09-10，最新事实）
 
-- 当前仍为 `main`，最新已推送提交为 `a07f1bc`（`origin/main`）；最新静态 frontend build 为 `v2026.09.10-a07f1bc-350853f1`。
+- 当前仍为 `main`，最新已推送提交为 `bb5f00f`（`origin/main`）；最近运行时代码提交为 `a07f1bc`，最新静态 frontend build 为 `v2026.09.10-a07f1bc-350853f1`。`1a773c8` 与 `bb5f00f` 仅更新交接记录/验证记录，没有改变运行时代码。
 - 在隔离 `HOME`、隔离 workspace/vault 和 `127.0.0.1:8798` 上，CUA 已真实完成：onboarding 新建工作台并跳过模型/飞书后重启进入工作台；设置高级维护默认折叠和展开；六页签 Home/End/方向键巡航；审批状态筛选、复选框、切换筛选清空选择和单选批量批准；中文显示名与 `·` 特殊字符搜索；项目详情页内打开、返回查询与入口焦点、归档/恢复；导入抽屉关闭重开以及两个合成 `.md/.txt` 文件的原生多文件选择。
 - 本轮 CUA 发现两个实际问题并已小步修复：320px 设置页自动更新标签造成 4px 页面溢出（`web/src/style.css`）；项目详情返回时命中隐藏祖先中的重复入口，焦点落到 `body`（`web/src/legacy-main.ts`）。两处均先补 `web/scripts/test-browser-contract.mjs` 断言，旧代码先失败，修改后契约通过。
 - 响应式结果：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 页面级 `body/document scrollWidth` 均等于 client width；320px tablist 内部横向滚动仍是预期行为。页签键盘循环实际结果为 `End→设置`、`ArrowRight→今日`、`ArrowLeft→设置`、`Home→今日`。
