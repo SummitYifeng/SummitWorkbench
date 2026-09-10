@@ -3,8 +3,8 @@
 ## 基线
 
 - 历史审计起点：源码 `b2faecb`（2026-09-10）；本轮继续工作的交接基线是 `6c910cc`（`main`）。
-- 本轮最新静态 frontend build：`v2026.09.10-cb1bd34-60122c81`；已验收 App build 9 的身份不在本轮改写。
-- 本轮范围止于源码、前端构建产物与本地验证；不安装/替换 App、不操作真实飞书数据。此前实现已推送到 `origin/main`；本轮后续复核产生的测试夹具、文档和静态产物变更尚未提交或推送。
+- 本轮最新静态 frontend build：`v2026.09.10-a07f1bc-350853f1`；已验收 App build 9 的身份不在本轮改写。
+- 本轮范围止于源码、前端构建产物与本地验证；不安装/替换 App、不操作真实飞书数据。导入抽屉关闭焦点修复及交接文档已提交并推送到 `origin/main`；隔离审计稿仍未纳入版本控制。
 - 保留六页签、今日简报置顶、相对 API 地址、现有 feature 边界、审批与外部写回安全边界。
 
 ## 当前复盘（2026-09-10）
@@ -145,7 +145,7 @@
 
 - U09/U10：先在 `web/scripts/test-browser-contract.mjs` 增加“关闭导入抽屉后焦点回到触发按钮”的契约断言；确认旧实现缺少该行为后，在 `web/src/features/today/index.ts` 的统一 `setOpen(false)` 路径补充 `#btn-import-meeting` 焦点恢复。没有改变导入队列、回执、幂等或 API 契约。
 - 隔离 CUA IAB 真实操作：打开抽屉后关闭按钮，抽屉隐藏且焦点回到“＋ 导入会议纪要”；再次用触发按钮打开/关闭，结果相同。导入回执仍保留在工作区状态中。
-- 本阶段构建身份：`v2026.09.10-ee83f57-350853f1`；`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、生产构建与 `verify-build.mjs` 已通过。
+- 本阶段构建身份：`v2026.09.10-a07f1bc-350853f1`；`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、生产构建与 `verify-build.mjs` 已通过。
 
 | 导入抽屉返回焦点 | 通过；关闭按钮和触发按钮切换关闭都返回 `#btn-import-meeting` | 成功/部分失败/软预算/完成导入幂等仍因未配置隔离 mock 模型而未验证 |
 

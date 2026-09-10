@@ -6,7 +6,7 @@
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`
 - 当前分支：`main`
-- 交接基线提交：`6c910cc`；此前 UX/UI 改造已作为增量提交到 `origin/main`，当前主线 HEAD 为冗余清理提交 `cb1bd34`。
+- 交接基线提交：`6c910cc`；此前 UX/UI 改造已作为增量提交到 `origin/main`，当前主线 HEAD 为 `a07f1bc`（导入抽屉关闭焦点修复）。
 - `d11ec56` 与 `ce0b27e` 是本档案之前的历史提交，不是本轮验证身份。
 - 产品：SummitWorkbench v0.4.4，个人执行管理层 + 第二大脑，本地 Web 工作台由原生 macOS App 或 `wb web` 提供。
 - 前端：Vite + 原生 TypeScript + CSS；入口是 `web/src/main.ts`，大量现有交互仍在 `web/src/legacy-main.ts`。不得迁移 React/Next.js，不引入新第三方依赖。
@@ -180,7 +180,7 @@
 
 ### 当前续测记录（2026-09-10，最新事实）
 
-- 当前仍为 `main`，代码基线 `ee83f57`；导入抽屉焦点修复已在本阶段待提交，最新静态 frontend build 为 `v2026.09.10-ee83f57-350853f1`。
+- 当前仍为 `main`，最新已推送提交为 `a07f1bc`（`origin/main`）；最新静态 frontend build 为 `v2026.09.10-a07f1bc-350853f1`。
 - 在隔离 `HOME`、隔离 workspace/vault 和 `127.0.0.1:8798` 上，CUA 已真实完成：onboarding 新建工作台并跳过模型/飞书后重启进入工作台；设置高级维护默认折叠和展开；六页签 Home/End/方向键巡航；审批状态筛选、复选框、切换筛选清空选择和单选批量批准；中文显示名与 `·` 特殊字符搜索；项目详情页内打开、返回查询与入口焦点、归档/恢复；导入抽屉关闭重开以及两个合成 `.md/.txt` 文件的原生多文件选择。
 - 本轮 CUA 发现两个实际问题并已小步修复：320px 设置页自动更新标签造成 4px 页面溢出（`web/src/style.css`）；项目详情返回时命中隐藏祖先中的重复入口，焦点落到 `body`（`web/src/legacy-main.ts`）。两处均先补 `web/scripts/test-browser-contract.mjs` 断言，旧代码先失败，修改后契约通过。
 - 响应式结果：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 页面级 `body/document scrollWidth` 均等于 client width；320px tablist 内部横向滚动仍是预期行为。页签键盘循环实际结果为 `End→设置`、`ArrowRight→今日`、`ArrowLeft→设置`、`Home→今日`。
@@ -188,7 +188,7 @@
 - 项目结果：修复后项目页返回稳定聚焦到中文项目入口并保留查询值；本次 fixture 高度等于视口，滚动位置恢复没有形成可观察位移，继续记为未验证。审批按钮结果已通过 CUA 观察，但通道没有可靠的 POST 计数证据，不能将“一次点击一次请求”记为通过。
 - 导入抽屉焦点续测：在同一隔离 IAB 中打开抽屉并点击关闭，焦点稳定回到 `#btn-import-meeting`；再次通过触发按钮切换关闭也保持该结果。该修复只涉及关闭后的可用性与键盘连续性，不旁路导入 API 或改变回执语义。
 - 自动门禁（本阶段代码/产物）：`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、`npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`、`git diff --check` 均通过；构建身份 `v2026.09.10-cb1bd34-60122c81`。文档修改完成后已复跑全量 Python/route/security/coverage、ruff、format、mypy、native tests：`840 passed, 1 skipped, 5 warnings`，coverage `81.12%`；packaged App 条件仍为 skip。
-- 本阶段代码/产物门禁：前端契约、TypeScript、生产构建与产物校验均通过；构建身份 `v2026.09.10-ee83f57-350853f1`。全量 Python/原生门禁将在本阶段文档更新后再次执行并记录最终结果。
+- 本阶段代码/产物门禁：前端契约、TypeScript、生产构建与产物校验均通过；构建身份 `v2026.09.10-a07f1bc-350853f1`。全量 Python/原生门禁已通过，覆盖率为 `81.12%`；packaged App smoke 明确为 skip。
 
 ### 本阶段明确仍未验证
 
