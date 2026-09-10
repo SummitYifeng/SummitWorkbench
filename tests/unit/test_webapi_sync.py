@@ -11,6 +11,7 @@ import zipfile
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -189,3 +190,34 @@ def test_run_brief_allowed_on_primary_even_if_model_offline(tmp_path, monkeypatc
     # 绝不是 403/not_automation_primary
     assert resp.status_code == 200
     assert "not_automation_primary" not in resp.text
+
+
+def test_run_brief_publishes_explicit_generated_paths(tmp_path, monkeypatch, client) -> None:
+    _profile(tmp_path / "fake-home", DeviceRole.AUTOMATION_PRIMARY)
+    note = tmp_path / "vault" / "daily" / "2026-09-01.md"
+    snapshot = tmp_path / "vault" / "_signals" / "2026-09-01.json"
+    persisted = (snapshot, note)
+    run = SimpleNamespace(
+        result=SimpleNamespace(brief=SimpleNamespace(health=SimpleNamespace(level="ok"))),
+        persisted_paths=persisted,
+    )
+    calls: list[tuple[Path, tuple[Path, ...], str]] = []
+    monkeypatch.setattr(
+        "summit_workbench.workflows.brief.runner.run_brief",
+        lambda **_kwargs: run,
+    )
+    monkeypatch.setattr(
+        "summit_workbench.webapp.legacy_app._commit_suffix",
+        lambda context, paths, summary: (
+            calls.append((context.vault_dir, tuple(paths), summary)) or ""
+        ),
+    )
+
+    response = client.post("/api/run/brief")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message": "已生成今日简报（健康度 ok）"}
+    assert len(calls) == 1
+    assert calls[0][0] == tmp_path / "vault"
+    assert calls[0][1] == persisted
+    assert calls[0][2].startswith("brief ")

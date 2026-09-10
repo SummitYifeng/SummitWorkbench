@@ -195,3 +195,32 @@ def test_generate_brief_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not daily_note_path(vault, "2026-09-01").exists()
     # 降级健康度仍渲染出来
     assert "健康度" in result.markdown
+
+
+def test_run_brief_reports_written_note_and_snapshot_paths(tmp_path: Path, monkeypatch) -> None:
+    from summit_workbench.workflows.brief.runner import run_brief
+
+    work_root = tmp_path / "Work"
+    vault = work_root / "_vault"
+    vault.mkdir(parents=True)
+    monkeypatch.setattr(
+        "summit_workbench.workflows.brief.runner.build_facts_source",
+        lambda *args, **kwargs: (
+            None,
+            type("Outcome", (), {"reason": None, "needs_reauthorize": False})(),
+        ),
+    )
+    monkeypatch.setattr(
+        "summit_workbench.workflows.brief.runner.build_ranker",
+        lambda **kwargs: (_fallback_rank, None),
+    )
+
+    run = run_brief(
+        work_root=work_root,
+        vault_dir=vault,
+        timezone=TZ,
+        day="2026-09-01",
+        write=True,
+        notify=False,
+    )
+    assert run.persisted_paths == (run.result.snapshot_path, run.result.note_path)

@@ -2381,9 +2381,16 @@ def create_app(
                 config_file=ctx.provider_config_file(),
                 workspace_id=ctx.workspace_id,
             )
+            commit_note = _commit_suffix(
+                ctx,
+                run.persisted_paths,
+                f"brief {ctx.today()}",
+            )
             return {
                 "ok": True,
-                "message": f"已生成今日简报（健康度 {run.result.brief.health.level}）",
+                "message": (
+                    f"已生成今日简报（健康度 {run.result.brief.health.level}）{commit_note}"
+                ),
             }
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
             return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}

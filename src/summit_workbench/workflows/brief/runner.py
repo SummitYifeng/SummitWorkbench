@@ -119,6 +119,7 @@ class BriefRun:
     result: BriefResult
     feishu_unavailable: str | None
     feishu_needs_reauthorize: bool = False
+    persisted_paths: tuple[Path, ...] = ()
 
 
 def run_brief(
@@ -154,19 +155,27 @@ def run_brief(
         write=write,
         notify=notify,
     )
+    persisted_paths: list[Path] = []
+    if result.snapshot_path is not None:
+        persisted_paths.append(result.snapshot_path)
+    if result.note_path is not None:
+        persisted_paths.append(result.note_path)
     if result.ranking.usage is not None:
-        append_usage(vault_dir, result.ranking.usage)
+        usage_path = append_usage(vault_dir, result.ranking.usage)
+        persisted_paths.append(usage_path)
     # 持久化飞书授权健康度（仅真实运行）：token 失效时 wb status 会据此提示重新授权。
     # 只有明确「拿到过飞书结论」时才更新——配置缺失等模糊情形不误标为需重新授权。
     if write and (facts is not None or feishu.needs_reauthorize):
-        write_auth_state(
+        auth_state_path = write_auth_state(
             vault_dir,
             needs_reauthorize=feishu.needs_reauthorize,
             day=day,
             detail=feishu.reason,
         )
+        persisted_paths.append(auth_state_path)
     return BriefRun(
         result=result,
         feishu_unavailable=feishu.reason,
         feishu_needs_reauthorize=feishu.needs_reauthorize,
+        persisted_paths=tuple(dict.fromkeys(persisted_paths)),
     )
