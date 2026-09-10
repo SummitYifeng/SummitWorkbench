@@ -18,8 +18,6 @@ from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome, LocalMutationResult
 
-ROUTE_PREFIXES = ("/api/projects",)
-
 ProjectMutationRunner = Callable[
     [str, Callable[[str], LocalMutationOutcome[Path]]],
     LocalMutationResult[Path],
@@ -197,7 +195,6 @@ def register_project_write_routes(
 
 __all__ = [
     "ProjectMutationRunner",
-    "ROUTE_PREFIXES",
     "register_project_read_routes",
     "register_project_write_routes",
 ]

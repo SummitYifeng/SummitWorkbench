@@ -42,7 +42,4 @@ final class ServiceClient {
         }.resume()
     }
 
-    func isReady(completion: @escaping (ServiceIdentity?) -> Void) { probe { result in
-        if case .valid(let identity) = result { completion(identity) } else { completion(nil) }
-    }}
 }

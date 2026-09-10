@@ -38,3 +38,8 @@ workspace service 复用既有 migration workflow、Git backend 和 lock/rollbac
 
 P1-04 未在本包开始。后续前端 feature 拆分必须先保持本 ADR 的 route contract 快照不变，
 不得借机扩大后端路由行为或改变会话/错误 envelope。
+
+## 2026-09-10 冗余审计收敛
+
+本次仅删除未被 app factory、router 注册表、测试或构建引用的空路由边界文件；实际路由仍由
+`legacy_app.py` compatibility bundle 或现有实现 router 注册，route contract 与错误 envelope 不变。

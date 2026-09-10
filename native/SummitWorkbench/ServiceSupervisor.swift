@@ -295,16 +295,4 @@ final class ServiceSupervisor {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private func processStartDate(_ pid: Int32) -> Date? {
-        let ps = Process()
-        let pipe = Pipe()
-        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
-        ps.arguments = ["-p", String(pid), "-o", "lstart="]
-        ps.standardOutput = pipe
-        ps.standardError = FileHandle.nullDevice
-        try? ps.run(); ps.waitUntilExit()
-        guard let value = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return formatter.date(from: value)
-    }
 }

@@ -66,6 +66,12 @@ jobs:
       - name: Install Node dependencies from lock
         run: npm ci --prefix web
 
+      - name: TypeScript unused declaration check
+        run: cd web && ./node_modules/.bin/tsc --noEmit
+
+      - name: Frontend tests
+        run: npm --prefix web run test:frontend
+
       - name: Frontend build
         run: npm --prefix web run build
 

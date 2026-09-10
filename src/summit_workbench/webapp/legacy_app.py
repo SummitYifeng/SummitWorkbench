@@ -643,63 +643,6 @@ def _run_web_import(
     }
 
 
-def _onboarding_wizard_html() -> str:
-    """空安装的轻量向导；所有持久化和业务动作都经 onboarding API。"""
-    return r"""<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>开始使用 SummitWorkbench</title>
-<style>
-:root{font:15px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;color:#1f2937;background:#f7f7f5}
-main{max-width:680px;margin:7vh auto;padding:32px;background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 12px 36px #0000000d}
-h1{margin:0 0 8px;font-size:28px}h2{font-size:20px;margin:0 0 18px}p{line-height:1.65;color:#596273}.muted{font-size:13px;color:#778091}
-.progress{color:#687386;font-size:13px;margin-bottom:22px}.choices{display:grid;gap:12px;margin-top:24px}
-button{border:0;border-radius:10px;padding:12px 16px;font-size:15px;cursor:pointer;background:#2563eb;color:white}
-button.secondary{background:#eef2ff;color:#1e40af}button.text{background:transparent;color:#4b5563;padding:8px}
-label{display:block;font-weight:600;margin:14px 0 6px}input,select{box-sizing:border-box;width:100%;padding:11px;border:1px solid #d1d5db;border-radius:9px;font:inherit}
-.row{display:flex;gap:10px;justify-content:space-between;margin-top:26px}.row>div{display:flex;gap:10px}.notice{background:#f3f6fb;padding:12px 14px;border-radius:10px;margin:16px 0}.error{color:#b42318;background:#fff1f0;padding:12px;border-radius:10px;margin-top:14px}
-ul{line-height:1.9;padding-left:22px}.success{color:#166534;background:#f0fdf4;padding:14px;border-radius:10px}
-</style></head><body><main id="wizard"><div class="progress" id="progress"></div><section id="content"></section><div id="error"></div></main>
-<script>
-(() => {
-  const state={flow:null,step:0,work_root:'',vault_dir:'',display_name:'',device_name:'',git_mode:'skipped',remote_url:'',expected_workspace_id:'',git_username:'',pat:'',automation_role:'primary',stage_id:null};
-  const steps=['location','git','model','feishu','role','check'];
-  const content=document.getElementById('content'), progress=document.getElementById('progress'), error=document.getElementById('error');
-  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  async function api(path,options={}){const r=await fetch(path,{headers:{'Content-Type':'application/json'},...options});const d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.message||d.detail?.message||'操作未完成');return d}
-  function draft(){return {flow:state.flow,step:steps[state.step],work_root:state.work_root||null,vault_dir:state.vault_dir||null,display_name:state.display_name||null,device_name:state.device_name||null,git_mode:state.git_mode,remote_url:state.remote_url||null,expected_workspace_id:state.expected_workspace_id||null,git_username:state.git_username||null,automation_role:state.automation_role,provider_status:'skipped'}}
-  async function save(){await api('/api/onboarding/draft',{method:'PUT',body:JSON.stringify(draft())})}
-  function setError(e){error.innerHTML='<div class="error">'+esc(e.message||e)+'</div>'}
-  function field(id,label,value,type='text',placeholder=''){return '<label for="'+id+'">'+label+'</label><input id="'+id+'" type="'+type+'" value="'+esc(value)+'" placeholder="'+esc(placeholder)+'">'}
-  function render(){
-    error.innerHTML=''; progress.textContent=state.flow?'第 '+(state.step+1)+' / '+steps.length+' 步':'开始设置';
-    if(!state.flow){content.innerHTML='<h1>开始使用 SummitWorkbench</h1><p>用几分钟选好工作区。向导会记住非秘密进度，关闭后可以继续。</p><div class="choices"><button data-flow="create-new">新建我的工作台</button><button class="secondary" data-flow="connect-existing">连接已有工作台</button><button class="secondary" data-flow="upgrade-existing">升级这台 Mac 上的旧工作台</button></div>';return}
-    const title={location:'选择工作区位置',git:'同步方式',model:'模型（可跳过）',feishu:'飞书（可跳过）',role:'设备角色',check:'最终检查'}[steps[state.step]];
-    let html='<h2>'+title+'</h2>';
-    if(steps[state.step]==='location'){
-      const create=state.flow==='create-new';html+='<p>'+(create?'选择一个新的 Work 根目录，系统会在其中创建工作区。':'填写现有工作区的 vault 目录。')+'</p>';
-      html+=field(create?'work_root':'vault_dir',create?'Work 根目录':'vault 目录',create?state.work_root:state.vault_dir,'text',create?'/Users/你/Work':'/Users/你/Work/_vault');
-      html+=field('display_name','显示名称',state.display_name,'text','我的工作台');
-    } else if(steps[state.step]==='git'){
-      html+='<p>可以先只在本机使用，之后再连接私有远端。连接远端时，向导只调用后端服务，不在页面执行 Git。</p><div class="choices"><button class="secondary" data-git="local">仅本机使用</button><button class="secondary" data-git="remote">连接私有 HTTPS 远端</button><button class="secondary" data-git="skipped">稍后设置</button></div>';
-      if(state.git_mode==='remote')html+=field('remote_url','HTTPS 远端地址',state.remote_url,'url','https://git.example.com/team/workspace.git')+field('git_username','远端用户名',state.git_username,'text','你的用户名')+field('expected_workspace_id','预期 workspace id（连接已有远端时填写）',state.expected_workspace_id,'text','从原设备的工作区信息复制')+field('pat','GitHub PAT（仅本次 clone 与保存到本机 Keychain，不落盘）',state.pat,'password','ghp_…');
-    } else if(steps[state.step]==='model'){
-      html+='<p>模型配置可稍后在设置中心完成。跳过不会影响本地捕捉和知识库使用。</p><div class="notice">当前选择：稍后设置。此步骤不收集或保存任何密钥。</div>';
-    } else if(steps[state.step]==='feishu'){
-      html+='<p>飞书登录可稍后完成。跳过后仍可使用本地工作台与捕捉。</p><div class="notice">当前选择：稍后登录。授权会在你明确开始时进行。</div>';
-    } else if(steps[state.step]==='role'){
-      html+='<p>新建工作台默认由本机负责自动化；连接已有工作台默认是辅助设备。</p><label for="automation_role">设备角色</label><select id="automation_role"><option value="primary"'+(state.automation_role==='primary'?' selected':'')+'>主设备</option><option value="secondary"'+(state.automation_role==='secondary'?' selected':'')+'>辅助设备</option></select><div class="notice">更换已有工作区的主设备需要在后续同步设置中明确接管并确认影响。</div>';
-    } else {html+='<p>请确认后完成设置。最终结果以服务端返回的 workspace/device 信息为准。</p><ul><li>流程：'+esc(state.flow)+'</li><li>位置：'+esc(state.work_root||state.vault_dir)+'</li><li>同步：'+esc(state.git_mode)+'</li><li>设备角色：'+esc(state.automation_role)+'</li></ul>'}
-    html+='<div class="row"><button class="text" data-back="1">返回</button><div><button data-next="1">'+(steps[state.step]==='check'?'完成设置':'继续')+'</button></div></div>';content.innerHTML=html;
-  }
-  function read(){for(const id of ['work_root','vault_dir','display_name','remote_url','git_username','expected_workspace_id','pat']){const el=document.getElementById(id);if(el)state[id]=el.value.trim()}const role=document.getElementById('automation_role');if(role)state.automation_role=role.value}
-  async function next(){read();const current=steps[state.step];if(current==='location'){const path=state.flow==='create-new'?state.work_root:state.vault_dir;await api('/api/onboarding/preflight',{method:'POST',body:JSON.stringify({flow:state.flow==='connect-existing'?'connect-remote':state.flow,path})})}if(current==='git'&&state.git_mode==='remote'&&!state.remote_url)throw new Error('请填写 HTTPS 远端地址');if(current==='check')return complete();state.step++;await save();render()}
-  async function complete(){await save();let d;if(state.flow==='create-new')d=await api('/api/onboarding/create',{method:'POST',body:JSON.stringify({work_root:state.work_root,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.flow==='upgrade-existing')d=await api('/api/onboarding/upgrade',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:state.automation_role==='primary'?'automation-primary':'secondary'})});else if(state.git_mode==='remote'){const staged=await api('/api/onboarding/remote/stage',{method:'POST',body:JSON.stringify({remote_url:state.remote_url,target_vault:state.vault_dir,expected_workspace_id:state.expected_workspace_id||null,git_username:state.git_username,pat:state.pat||null})});d=await api('/api/onboarding/remote/confirm',{method:'POST',body:JSON.stringify({stage_id:staged.stage_id,display_name:state.display_name||null,device_name:state.device_name||null,pat:state.pat||null})})}else d=await api('/api/onboarding/connect',{method:'POST',body:JSON.stringify({vault_dir:state.vault_dir,display_name:state.display_name||null,device_name:state.device_name||null,device_role:'secondary'})});await api('/api/onboarding/draft',{method:'DELETE'});content.innerHTML='<h2>设置完成</h2><div class="success">工作区已准备好。workspace id：'+esc(d.workspace_id)+'<br>本机 device id：'+esc(d.device_id)+'<br><br>请重新打开 SummitWorkbench 进入工作台。</div>';progress.textContent='完成';}
-  document.addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;try{if(b.dataset.flow){state.flow=b.dataset.flow;state.step=0;state.automation_role=state.flow==='connect-existing'?'secondary':'primary';await save();render()}else if(b.dataset.git){state.git_mode=b.dataset.git;render()}else if(b.dataset.back){if(state.step===0){state.flow=null;render()}else{state.step--;await save();render()}}else if(b.dataset.next){await next()}}catch(err){setError(err)}});
-  (async()=>{try{const d=(await api('/api/onboarding/draft')).draft;if(d){Object.assign(state,d);state.flow=d.flow;state.step=Math.max(0,steps.indexOf(d.step));render()}else render()}catch(e){setError(e)}})();
-})();
-</script></body></html>"""
-
-
 def _create_restricted_app(
     active_workspace: ActiveWorkspaceContext,
     *,

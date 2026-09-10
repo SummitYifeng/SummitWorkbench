@@ -41,3 +41,9 @@ draft 键仅在清理时删除，不会被读取恢复。
 
 P1-05 未在本包开始。P1-05 的诊断包不得读取或导出 workspace 正文、问答内容、prompt、cookie
 或凭据；其日志字段必须与本包的 operation id 和 workspace scope 对齐。
+
+## 2026-09-10 冗余审计收敛
+
+审计确认 onboarding、sync、threads、workspace 的空入口文件及 workspace store 的无调用订阅
+接口没有消费者，已删除；实际 onboarding 路由、legacy-main、已实现的 projects/review/settings/today
+渲染入口，以及 workspace id/generation/dispose 生命周期均保留。现有 DOM、焦点恢复和 API 契约不变。

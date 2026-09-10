@@ -43,24 +43,6 @@ struct RuntimeRecord: Codable {
         }
     }
 
-    func writeAtomically() {
-        let fm = FileManager.default
-        let directory = Self.url.deletingLastPathComponent()
-        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(self) else { return }
-        let temp = directory.appendingPathComponent(".runtime-\(UUID().uuidString).tmp")
-        do {
-            try data.write(to: temp, options: .atomic)
-            _ = try fm.replaceItemAt(Self.url, withItemAt: temp, backupItemName: nil, options: .usingNewMetadataOnly)
-            try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.url.path)
-        } catch {
-            try? data.write(to: Self.url, options: .atomic)
-            try? fm.removeItem(at: temp)
-        }
-    }
-
     static func load() -> RuntimeRecord? {
         locatedRecords()
             .map(\.record)
@@ -115,14 +97,6 @@ struct RuntimeRecord: Codable {
 
     private func executablePath(for pid: Int32) -> String? {
         commandOutput(arguments: ["-p", String(pid), "-o", "comm="])?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private func processStartedAt(_ pid: Int32) -> Date? {
-        guard let value = commandOutput(arguments: ["-p", String(pid), "-o", "lstart="])?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return formatter.date(from: value)
     }
 
     private func commandOutput(arguments: [String]) -> String? {

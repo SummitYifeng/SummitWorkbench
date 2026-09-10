@@ -172,5 +172,3 @@ async function saveAutomation(form: HTMLFormElement, actions: SettingsActions): 
     actions.toast('自动化设置已保存', 'ok');
   } catch (error) { actions.toast(String(error), 'err'); }
 }
-
-export const settingsFeature = 'profile';

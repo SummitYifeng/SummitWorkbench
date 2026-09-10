@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from ctypes import CDLL, c_int, c_uint32, c_void_p, create_string_buffer
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,9 +53,7 @@ def load_runtime_record(path: Path) -> RuntimeRecord | None:
         return None
 
 
-def cleanup_stale_runtime_record(
-    path: Path, *, now: datetime | None = None, max_age: timedelta = timedelta(days=7)
-) -> bool:
+def cleanup_stale_runtime_record(path: Path) -> bool:
     """Remove only a record whose recorded process is gone or is not this server.
 
     PID values are reusable on macOS.  A record left by a force-closed App can

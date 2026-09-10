@@ -34,10 +34,11 @@ assert.ok(read('src/main.ts').split('\n').length <= 40, 'main.ts must remain a c
 assert.match(read('src/api/client.ts'), /normalizeApiError/);
 assert.match(read('src/api/client.ts'), /AbortController/);
 assert.match(read('src/core/workspace-store.ts'), /workspaceScopedKey/);
-for (const feature of ['onboarding', 'workspace', 'projects', 'threads', 'review', 'sync', 'settings']) {
+for (const feature of ['projects', 'review', 'settings', 'today']) {
   assert.ok(fs.existsSync(path.join(root, 'src/features', feature, 'index.ts')), `${feature} feature exists`);
 }
-assert.match(read('src/features/sync/index.ts'), /refreshSyncBanner/);
-assert.match(read('src/features/review/index.ts'), /review apply/i);
+assert.match(read('src/features/projects/index.ts'), /projectDetailHtml/);
+assert.match(read('src/features/review/index.ts'), /reviewHtml/);
 assert.match(read('src/features/settings/index.ts'), /profile/);
+assert.match(read('src/features/today/index.ts'), /mountToday/);
 console.log('Frontend feature contract tests passed');

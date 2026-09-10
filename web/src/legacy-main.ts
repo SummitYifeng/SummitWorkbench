@@ -23,11 +23,11 @@ import {
 } from './lifecycle/version';
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
-import { briefCardHtml, type BriefData } from './brief-card';
-import { projectDetailHtml, projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
+import { type BriefData } from './brief-card';
+import { projectDetailHtml, projectDisplayName, projectsListHtml } from './features/projects';
 import type { ProjectListFilter, ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
-import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewGroup, ReviewPayload } from './features/review';
+import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewPayload } from './features/review';
 import { renderSettings as renderSettingsFeature } from './features/settings';
 import { mountToday, type ImportReceipt } from './features/today';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
@@ -182,7 +182,6 @@ interface ProjectReturnContext {
   scrollY: number;
 }
 let projectReturnContext: ProjectReturnContext | null = null;
-let projectReturnFocus: HTMLElement | null = null;
 let projectFocusAfterRenderName: string | null = null;
 let modalReturnFocus: HTMLElement | null = null;
 let lastStateReadAt: string | null = null;
@@ -202,7 +201,6 @@ class StaleWorkspaceResponseError extends Error {
 function isStaleWorkspaceResponse(error: unknown): boolean {
   return error instanceof StaleWorkspaceResponseError;
 }
-let versionStatus: VersionStatus = 'checking';
 let remoteVersion: VersionPayload | null = null;
 let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
@@ -349,11 +347,6 @@ function healthTone(): { tone: string; label: string } {
   return { tone: 'ok', label: '一切正常' };
 }
 
-function fmtCost(v: number, cur: string): string {
-  if (cur === 'CNY') return '¥' + v.toFixed(2);
-  return v.toFixed(4) + ' ' + cur;
-}
-
 function versionStatusLabel(status: VersionStatus): string {
   if (status === 'checking') return '正在检查版本';
   if (status === 'synced') {
@@ -367,7 +360,6 @@ function versionStatusLabel(status: VersionStatus): string {
 }
 
 function setVersionStatus(status: VersionStatus): void {
-  versionStatus = status;
   const el = document.getElementById('version-status');
   if (el) {
     el.className = 'version-status ' + status;
@@ -538,7 +530,6 @@ async function doCheckVersion(reason: string): Promise<void> {
     projectListQuery = '';
     projectListFilter = 'all';
     projectReturnContext = null;
-    projectReturnFocus = null;
     loadedAskWorkspace = workspaceId;
     loadAskStore();
   }
@@ -1455,40 +1446,6 @@ function renderGuide(view: HTMLElement): void {
   });
 }
 
-interface ProfileSummaryPayload {
-  workspace_id: string;
-  workspace_short_code: string;
-  display_name: string;
-  path: string;
-  compatibility: string;
-  device_role: string;
-  active: boolean;
-  provider_status: Record<string, string>;
-  sync_summary: { state: string; pending_commits: number | null; last_sync_at?: string | null };
-  remote_url?: string | null;
-}
-
-interface ProfileListPayload {
-  profiles: ProfileSummaryPayload[];
-  current_device_id?: string | null;
-}
-
-interface AutomationJobPayload {
-  enabled: boolean;
-  hour: number;
-  minute: number;
-  weekdays: number[];
-  last_run_at?: string | null;
-  last_status: string;
-  last_detail?: string | null;
-  next_run_at?: string | null;
-}
-
-interface AutomationSettingsPayload {
-  workspace_id: string;
-  jobs: Record<string, AutomationJobPayload>;
-}
-
 interface RemoteNormalizationPreviewPayload {
   plan_id: string;
   old_url: string;
@@ -1503,43 +1460,6 @@ interface AcceptancePreflightPayload {
   ok: boolean;
   report: string;
   checks: Array<{ name: string; status: string; detail: string }>;
-}
-
-const AUTOMATION_LABELS: Record<string, string> = {
-  brief: '晨间简报',
-  weekly: '每周复盘',
-  'meeting-sync': '会议同步',
-};
-const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日'];
-
-function automationJobHtml(job: string, schedule: AutomationJobPayload): string {
-  const time = String(schedule.hour).padStart(2, '0') + ':' + String(schedule.minute).padStart(2, '0');
-  const statusLabels: Record<string, string> = {
-    never: '尚未运行', success: '运行成功', degraded: '降级完成', failed: '运行失败',
-    'not-primary': '本机不是主设备', skipped: '本次跳过',
-  };
-  const detail = schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '';
-  const copy = schedule.last_detail
-    ? '<button class="ghost" type="button" data-action="automation-copy" data-summary="' + esc(schedule.last_detail) + '">复制错误摘要</button>'
-    : '';
-  return '<form class="card automation-form" data-job="' + esc(job) + '">' +
-    '<div class="automation-row"><div><strong>' + esc(AUTOMATION_LABELS[job] ?? job) + '</strong>' +
-    '<div class="meta">最近：' + esc(statusLabels[schedule.last_status] ?? schedule.last_status) +
-    (schedule.last_run_at ? ' · ' + esc(schedule.last_run_at) : '') + '</div>' + detail + '</div>' +
-    '<label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
-    '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label>' +
-    '<span class="meta">星期</span>' + WEEKDAY_LABELS.map((label, index) =>
-      '<label class="weekday"><input name="weekday" type="checkbox" value="' + index + '"' +
-      (schedule.weekdays.includes(index) ? ' checked' : '') + '>' + label + '</label>').join('') + '</div>' +
-    '<div class="row"><button class="primary" type="submit">保存</button>' +
-    '<button class="ghost" type="button" data-action="automation-run" data-job="' + esc(job) + '">立即运行</button>' + copy + '</div></form>';
-}
-
-function httpsCandidate(url: string | null | undefined): string {
-  if (!url) return '';
-  if (url.startsWith('https://')) return url;
-  const scp = url.match(/^git@github\.com:(.+)$/);
-  return scp ? 'https://github.com/' + scp[1] : '';
 }
 
 async function previewGitRemoteNormalization(): Promise<void> {
@@ -1624,99 +1544,6 @@ async function runAcceptancePreflight(): Promise<void> {
   }
 }
 
-async function legacyRenderSettings(view: HTMLElement): Promise<void> {
-  view.innerHTML = '<div class="loading">正在读取工作台设置…</div>';
-  try {
-    const [response, automation] = await Promise.all([
-      api<ProfileListPayload>('/api/settings/profiles'),
-      api<AutomationSettingsPayload>('/api/settings/automation'),
-    ]);
-    const activeProfile = response.profiles.find((profile) => profile.active);
-    const candidateUrl = httpsCandidate(activeProfile?.remote_url);
-    view.innerHTML = '<section class="block"><div class="section-head"><h2 class="section-title">工作台设置</h2>' +
-      '<button class="ghost" data-action="settings-doctor">离线检查</button>' +
-      '<button class="ghost" data-action="settings-doctor-online">在线检查（会访问网络）</button></div>' +
-      '<p class="hint">一次只打开一个工作台。切换会先完成安全检查，再由本机服务重启到目标工作台。</p>' +
-      response.profiles.map((profile) =>
-        '<article class="card entry ' + (profile.active ? 'ok' : '') + '"><div class="entry-top"><strong>' + esc(profile.display_name) +
-        '</strong><span class="badge">' + esc(profile.active ? '当前' : profile.workspace_short_code) + '</span></div>' +
-        '<p class="meta">兼容性：' + esc(profile.compatibility) + ' · 设备：' + esc(profile.device_role) + '</p>' +
-        '<p class="meta">路径：' + esc(profile.path) + '</p><p class="meta">同步：' +
-        esc(profile.sync_summary.state + ' · 待推送 ' + String(profile.sync_summary.pending_commits ?? '—')) +
-        '</p><p class="meta">Provider：' +
-        esc(Object.entries(profile.provider_status).map(([key, value]) => key + ' ' + value).join(' · ')) + '</p>' +
-        (profile.active && profile.compatibility === 'read-only-upgrade-required' && response.current_device_id
-          ? '<button class="primary" data-action="workspace-migrate" data-device="' + esc(response.current_device_id) + '">升级工作区 schema</button>'
-          : '') +
-        (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到此工作台</button><button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>') +
-        '</article>',
-      ).join('') + '</section>' +
-      '<section class="block"><h3 class="section-title">生产 Git remote 规范化</h3>' +
-      '<p class="hint">生产模式只接受 HTTPS。这里会先在临时 clone 中验证认证、仓库身份、workspace marker、分支/upstream 和 fetch；确认后才更新 origin、profile 和 workspace-scoped Keychain。不会记录 PAT，不会提交、推送或改动 vault。</p>' +
-      '<form id="remote-normalization-form" autocomplete="off"><div class="grid2">' +
-      '<label>候选 HTTPS remote<input id="remote-candidate-url" type="url" value="' + esc(candidateUrl) + '" placeholder="https://github.com/owner/repo.git"></label>' +
-      '<label>GitHub username<input id="remote-github-username" autocomplete="username" placeholder="你的 GitHub 用户名"></label>' +
-      '<label>workspace-scoped PAT<input id="remote-github-pat" type="password" autocomplete="new-password" placeholder="只在本次验证/转换中使用"></label></div>' +
-      '<div class="row"><button class="primary" type="button" data-action="git-remote-preview">预览 HTTPS 转换</button>' +
-      '<button class="ghost" type="button" data-action="git-remote-rollback">回滚最近一次转换</button></div></form>' +
-      '<div id="remote-normalization-result"></div></section>' +
-      '<section class="block"><h3 class="section-title">只读 acceptance preflight</h3>' +
-      '<p class="hint">统一检查 App/build、production backend、HTTPS remote、凭据、双后端 dirty 一致性、fetch、ahead/behind、schema 路径、备份和 automation role。报告已脱敏，可复制给支持人员。</p>' +
-      '<button class="ghost" type="button" data-action="acceptance-preflight">运行只读预检</button><div id="acceptance-preflight-result"></div></section>' +
-      '<section class="block"><h3 class="section-title">App 内自动化</h3><p class="hint">只在这台 Mac 本地运行。只有 workspace 的 automation-primary 会执行写入；辅助设备会安全跳过。</p>' +
-      Object.entries(automation.jobs).map(([job, schedule]) => automationJobHtml(job, schedule)).join('') + '</section>' +
-      '<section class="block"><h3 class="section-title">更新</h3><label class="automation-enabled"><input id="auto-update-check" type="checkbox"' +
-      (localStorage.getItem('wb.update.auto-check') !== 'false' ? ' checked' : '') +
-      '>每天自动检查更新（只提示，不会自动安装）</label><p class="hint">更新前会检查 workspace schema；公开更新仓库只提供完整性，不提供保密性。</p></section>' +
-      '<section class="block"><h3 class="section-title">Provider 设置</h3><p class="hint">非秘密配置写入当前 workspace profile；秘密只在提交时进入该 workspace 的 Keychain，不会回显。</p>' +
-      '<form id="provider-settings-form" autocomplete="off"><div class="grid2">' +
-      '<label>类型<select id="provider-kind"><option value="model">模型</option><option value="feishu">飞书</option><option value="git">Git</option></select></label>' +
-      '<label>能力/账号<input id="provider-capability" placeholder="qa 或 shared"></label>' +
-      '<label>模型 ID / App ID / 用户名<input id="provider-primary" placeholder="按类型填写"></label>' +
-      '<label>服务地址 / Redirect URI / Host<input id="provider-secondary" placeholder="按类型填写"></label>' +
-      '<label>秘密（可选）<input id="provider-secret" type="password" autocomplete="new-password"></label></div>' +
-      '<button class="primary" type="submit">保存 Provider 设置</button></form></section>' +
-      '<section class="block"><h3 class="section-title">诊断与支持</h3>' +
-      '<p class="hint">诊断包只包含版本、架构、状态摘要、同步计数和脱敏错误，不包含会议正文、提示词、模型响应或凭据。</p>' +
-      '<div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button>' +
-      '<button class="ghost" data-action="diagnostics-export">导出诊断包</button>' +
-      '<button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div>' +
-      '<div id="diagnostics-preview"></div></section>';
-    const form = document.getElementById('provider-settings-form') as HTMLFormElement | null;
-    form?.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const kind = (document.getElementById('provider-kind') as HTMLSelectElement).value;
-      const capability = (document.getElementById('provider-capability') as HTMLInputElement).value.trim();
-      const primary = (document.getElementById('provider-primary') as HTMLInputElement).value.trim();
-      const secondary = (document.getElementById('provider-secondary') as HTMLInputElement).value.trim();
-      const secret = (document.getElementById('provider-secret') as HTMLInputElement).value;
-      const settings: Record<string, unknown> = kind === 'model'
-        ? { capability, model_id: primary, base_url: secondary }
-        : kind === 'feishu'
-          ? { app_id: primary, redirect_uri: secondary }
-          : { git_username: primary, host: secondary };
-      void api<{ secret_saved: boolean }>('/api/settings/provider', {
-        method: 'POST', body: JSON.stringify({ provider: kind, settings, secret: secret || null }),
-      }).then(() => { (document.getElementById('provider-secret') as HTMLInputElement).value = ''; toast('Provider 设置已保存', 'ok'); })
-        .catch((err: unknown) => toast(String(err), 'err'));
-    });
-    view.querySelectorAll<HTMLFormElement>('.automation-form').forEach((automationForm) => {
-      automationForm.addEventListener('submit', (event) => {
-        event.preventDefault();
-        void saveAutomationForm(automationForm);
-      });
-    });
-    document.getElementById('auto-update-check')?.addEventListener('change', (event) => {
-      const enabled = (event.target as HTMLInputElement).checked;
-      localStorage.setItem('wb.update.auto-check', enabled ? 'true' : 'false');
-      sendNativeMessage({ type: 'updateAutoCheckChanged', enabled });
-      toast(enabled ? '已开启每天自动检查更新' : '已关闭自动检查更新', 'ok');
-    });
-  } catch (err) {
-    view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(err)) + '</div>';
-  }
-}
-
 async function renderSettings(view: HTMLElement): Promise<void> {
   await renderSettingsFeature(view, {
     api,
@@ -1724,29 +1551,6 @@ async function renderSettings(view: HTMLElement): Promise<void> {
     toast,
     refresh: () => { void renderSettings(view); },
   });
-}
-
-async function saveAutomationForm(form: HTMLFormElement): Promise<void> {
-  const time = (form.elements.namedItem('time') as HTMLInputElement).value || '08:00';
-  const [hour, minute] = time.split(':').map(Number);
-  const weekdays = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="weekday"]:checked'))
-    .map((input) => Number(input.value));
-  try {
-    await api('/api/settings/automation', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        job: form.dataset.job,
-        enabled: (form.elements.namedItem('enabled') as HTMLInputElement).checked,
-        hour, minute, weekdays,
-      }),
-    });
-    const anyEnabled = Boolean(document.querySelector('.automation-form input[name="enabled"]:checked'));
-    sendNativeMessage({ type: 'automationSettingsChanged', enabled: anyEnabled });
-    toast('自动化设置已保存', 'ok');
-  } catch (err) {
-    toast(String(err), 'err');
-  }
 }
 
 async function runAutomationJob(job: string): Promise<void> {
@@ -2613,9 +2417,6 @@ async function showProjectView(name: string): Promise<void> {
       filter: projectListFilter,
       scrollY: window.scrollY,
     };
-    projectReturnFocus = document.activeElement instanceof HTMLElement &&
-      document.activeElement !== document.body && document.activeElement !== document.documentElement
-      ? document.activeElement : null;
   }
   projectDetailName = name;
   projectDetail = null;
@@ -2661,7 +2462,6 @@ function backFromProjectDetail(): void {
       projectFocusAfterRenderName = null;
     }
   }, 0);
-  projectReturnFocus = null;
 }
 
 // ---------- 撤销系统改动（P0'） ----------
@@ -3166,9 +2966,6 @@ function renderSyncConflictModal(): void {
       '<span>事件 ' + preparation.event_count + ' · 聚合 ' + preparation.aggregate_count +
       ' · 重建视图 ' + preparation.rebuilt_view_count + ' · 候选文件 ' + preparation.candidate_path_count + '</span>' +
       (preparation.error_code ? '<span class="hint">原因：' + esc(preparation.error_code) + '</span>' : '') + '</div>' : '';
-  const activePath = document.activeElement instanceof HTMLElement
-    ? document.activeElement.dataset.conflictPath ?? ''
-    : '';
   activateConflictModal('<h3>同步冲突详情</h3>' +
     '<p class="hint">当前处于保护态。这里只读取已存在的分叉快照，不展示正文；确认前不会修改 vault。</p>' +
     '<div class="conflict-revisions"><span>共同基线 <code>' + esc(conflictRevision(details.base_revision)) + '</code></span>' +

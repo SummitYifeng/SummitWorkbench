@@ -1,11 +1,8 @@
-/** Active workspace scope and subscription lifecycle. */
-
-export type WorkspaceListener = (workspaceId: string | null) => void;
+/** Active workspace scope and generation lifecycle. */
 
 export class WorkspaceStore {
   private currentId: string | null = null;
   private currentGeneration = 0;
-  private readonly listeners = new Set<WorkspaceListener>();
 
   get workspaceId(): string | null {
     return this.currentId;
@@ -19,16 +16,9 @@ export class WorkspaceStore {
     if (this.currentId === workspaceId) return;
     this.currentId = workspaceId;
     this.currentGeneration += 1;
-    for (const listener of this.listeners) listener(workspaceId);
-  }
-
-  subscribe(listener: WorkspaceListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
   }
 
   dispose(): void {
-    this.listeners.clear();
     this.currentId = null;
     this.currentGeneration += 1;
   }

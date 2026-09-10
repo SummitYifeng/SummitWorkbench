@@ -218,23 +218,3 @@ def discover_build_number() -> str | None:
     if build is None or build == "":
         return None
     return str(build)
-
-
-def build_identity(static_dir: Path) -> dict[str, str]:
-    """Compose a redacted build-identity payload (version/build/frontend/git)."""
-    try:
-        info = WebBuildInfo.from_static_dir(static_dir)
-        frontend_build = info.frontend_build
-        git_revision = info.git_revision
-    except BuildInfoError:
-        frontend_build = "unknown"
-        git_revision = "unknown"
-    identity: dict[str, str] = {
-        "version": __version__,
-        "frontend_build": frontend_build,
-        "git_revision": git_revision,
-    }
-    build_number = discover_build_number()
-    if build_number is not None:
-        identity["build"] = build_number
-    return identity

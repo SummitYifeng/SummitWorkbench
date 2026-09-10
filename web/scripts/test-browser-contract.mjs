@@ -10,7 +10,7 @@ const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 const styleSource = read('src/style.css');
 
 // Browser-level interaction contract: these user actions must remain wired after feature moves.
-assert.match(read('src/features/onboarding/index.ts'), /onboarding/, 'onboarding feature exists');
+assert.match(source, /window\.location\.href = '\/onboarding'/, 'onboarding remains reachable from the workbench');
 assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
 assert.match(source, /data-action="sync-conflict-details"/, 'protected sync opens conflict details');
 assert.match(source, /\/api\/sync\/conflict\/selection\/validate/, 'manual conflict choices are validated');
@@ -51,8 +51,8 @@ assert.match(source, /reviewFilter/, 'review filter state is explicit');
 assert.match(source, /reviewSelectedIds\.clear\(\)/, 'changing review filter clears selection');
 assert.match(source, /batchDecide\(selected/, 'selected review actions reuse the batch decision path');
 assert.doesNotMatch(source, /selected[^\n]*\/api\/review\/apply/, 'selected actions do not bypass review apply');
-assert.match(source, /data-action="profile-switch"/, 'profile switch remains wired');
-assert.match(source, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
+assert.match(settingsSource, /data-action="profile-switch"/, 'profile switch remains wired');
+assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
 assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');
@@ -74,7 +74,7 @@ assert.match(
 );
 assert.match(read('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
 assert.match(read('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
-assert.match(read('src/core/workspace-store.ts'), /subscribe\(/, 'workspace changes are observable');
+assert.match(read('src/core/workspace-store.ts'), /currentGeneration/, 'workspace generation invalidates stale requests');
 assert.match(source, /X-WB-Workspace-Generation/, 'API requests carry workspace generation');
 assert.match(source, /latestStateRequest|latestReviewRequest/, 'stale refresh responses are ignored');
 assert.match(source, /saveEntityDraft|loadEntityDraft|clearEntityDraft/, 'entity drafts have an explicit storage contract');
@@ -83,11 +83,11 @@ assert.match(source, /const action = btn\.dataset\.action \?\? '';[\s\S]{0,120}b
 assert.match(source, /function activateModal/, 'specialized modals use the shared focus setup');
 assert.match(source, /if \(backdrop\.hidden\)[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
 assert.match(source, /projectDetailHtml/, 'project details render inside the project page');
-assert.match(source, /projectReturnFocus/, 'project detail keeps a return-focus target across page navigation');
+assert.match(source, /projectReturnContext/, 'project detail keeps list context across page navigation');
 assert.match(source, /projectFocusAfterRenderName/, 'project detail queues a visible return-focus target for the rebuilt page');
 assert.match(source, /function focusVisibleProjectLink/, 'project detail has one visibility-aware return-focus helper');
 assert.match(source, /getComputedStyle\(el\)\.display !== 'none'/, 'project detail fallback focus ignores display-hidden duplicate project links');
-assert.match(source, /document\.activeElement !== document\.body && document\.activeElement !== document\.documentElement/, 'project detail does not treat the document root as a return-focus control');
+assert.match(source, /window\.scrollTo\(\{ top: context\?\.scrollY/, 'project detail restores the previous list scroll position');
 assert.doesNotMatch(source, /activateModal\(projectViewHtml\(view\)\)/, 'project details do not use the generic modal container');
 assert.match(source, /function activateConflictModal/, 'sync conflict uses the shared modal activation path');
 assert.match(source, /activateConflictModal\(/, 'sync conflict modal content gets initial focus and return-focus handling');

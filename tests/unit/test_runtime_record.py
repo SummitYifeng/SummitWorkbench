@@ -58,7 +58,7 @@ def test_expired_record_with_live_pid_is_not_removed(tmp_path: Path) -> None:
     old = datetime.now(UTC) - timedelta(days=2)
     write_runtime_record(_record(pid=os.getpid(), started_at=old), path=path)
 
-    assert cleanup_stale_runtime_record(path, max_age=timedelta(seconds=1)) is False
+    assert cleanup_stale_runtime_record(path) is False
     assert path.exists()
 
 
