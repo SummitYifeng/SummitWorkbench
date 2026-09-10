@@ -187,8 +187,10 @@
 - 导入结果：IAB 的原生 file chooser 可用，`multiple=true`，两个合成文件均得到“模型未配置”失败回执；关闭重开保留两条回执。这证明文件选择和失败回执闭环，但不证明模型成功、部分失败、软预算或完成导入幂等。
 - 项目结果：修复后项目页返回稳定聚焦到中文项目入口并保留查询值；本次 fixture 高度等于视口，滚动位置恢复没有形成可观察位移，继续记为未验证。审批按钮结果已通过 CUA 观察，但通道没有可靠的 POST 计数证据，不能将“一次点击一次请求”记为通过。
 - 导入抽屉焦点续测：在同一隔离 IAB 中打开抽屉并点击关闭，焦点稳定回到 `#btn-import-meeting`；再次通过触发按钮切换关闭也保持该结果。该修复只涉及关闭后的可用性与键盘连续性，不旁路导入 API 或改变回执语义。
+- 提交后隔离 CUA 复核：在 `127.0.0.1:8798` 重新加载已推送代码，设置页高级与维护保持默认折叠，展开后四个高级分区可见；项目页内详情返回后焦点回到中文项目入口；导入抽屉关闭后焦点回到触发按钮。未执行在线健康检查、令牌提交、模型调用或外部写回。
 - 自动门禁（本阶段代码/产物）：`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、`npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`、`git diff --check` 均通过；构建身份 `v2026.09.10-cb1bd34-60122c81`。文档修改完成后已复跑全量 Python/route/security/coverage、ruff、format、mypy、native tests：`840 passed, 1 skipped, 5 warnings`，coverage `81.12%`；packaged App 条件仍为 skip。
 - 本阶段代码/产物门禁：前端契约、TypeScript、生产构建与产物校验均通过；构建身份 `v2026.09.10-a07f1bc-350853f1`。全量 Python/原生门禁已通过，覆盖率为 `81.12%`；packaged App smoke 明确为 skip。
+- 提交后合成定向门禁：冲突/导入/API/安全 `80 passed, 2 warnings`；审批/项目/工作区 `58 passed, 1 warning`；会议/onboarding `26 passed, 1 warning`；前端契约、纯渲染和浏览器交互契约全部通过。新的 CUA 会话未提供 viewport 能力，未新增宽度矩阵数字；既有五档页面级无溢出证据仍有效。
 
 ### 本阶段明确仍未验证
 
