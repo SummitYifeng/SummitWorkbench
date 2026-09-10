@@ -45,7 +45,7 @@
 /* hidden 属性必须永远生效：UA 的 [hidden]{display:none} 会被任意显式 display 覆盖
    （例：.modal-backdrop 的 display:grid 会让未打开的弹窗遮罩常驻屏幕）。 */
 [hidden] { display: none !important; }
-html, body { margin: 0; padding: 0; }
+html, body { margin: 0; padding: 0; overflow-x: hidden; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background: var(--bg);
@@ -253,13 +253,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 /* ---- 设置页：常用四卡 + 默认折叠高级区 ---- */
 .settings-head { margin-bottom: 4px; }
 .page-title { font-size: 20px; margin: 4px 0 2px; }
-.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
-.settings-card { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.settings-card { min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
 .settings-card-desc { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.6; }
 .settings-path { font-size: 14px; font-weight: 600; word-break: break-all; background: var(--bg); border-radius: 8px; padding: 8px 12px; }
 .settings-path .meta { display: block; font-weight: 400; margin-top: 2px; }
 .settings-advanced { margin-top: 8px; padding-top: 10px; border-top: 1px dashed var(--border); }
 .settings-card input, .settings-card select, .settings-card textarea { width: 100%; margin-top: 4px; }
+.settings-card input[type="checkbox"], .settings-card input[type="radio"] { width: auto; margin-top: 0; }
 .settings-advanced-block { border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); padding: 4px 16px; margin-top: 6px; box-shadow: var(--shadow); }
 .settings-advanced-block > summary { list-style: none; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; padding: 12px 0; color: var(--muted); }
 .settings-advanced-block > summary::-webkit-details-marker { display: none; }
@@ -505,10 +506,10 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 .grid2 > div:first-child { grid-column: 1 / -1; }
-.automation-form { margin: 10px 0; }
-.automation-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.automation-form { min-width: 0; margin: 10px 0; }
+.automation-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
 .automation-enabled { white-space: nowrap; font-size: 13px; }
-.automation-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 12px; }
+.automation-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; min-width: 0; margin-top: 12px; }
 .automation-controls input[type="time"] { margin-left: 4px; }
 .weekday { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--muted); }
 .automation-detail { overflow-wrap: anywhere; color: var(--bad); }
