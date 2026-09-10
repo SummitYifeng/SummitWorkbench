@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from ctypes import CDLL, c_int, c_uint32, c_void_p, create_string_buffer
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -88,6 +89,12 @@ def _pid_alive(pid: int) -> bool:
 
 def _same_server_executable(pid: int) -> bool:
     """Return whether a live PID is still the current Python/server executable."""
+    actual = _macos_process_path(pid)
+    if actual:
+        try:
+            return Path(actual).resolve() == Path(sys.executable).resolve()
+        except OSError:
+            return actual == sys.executable
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "comm="],
@@ -106,3 +113,19 @@ def _same_server_executable(pid: int) -> bool:
         return Path(actual).resolve() == Path(sys.executable).resolve()
     except OSError:
         return actual == sys.executable
+
+
+def _macos_process_path(pid: int) -> str | None:
+    """Read a live process path without invoking a shell utility on macOS."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        libproc = CDLL("/usr/lib/libproc.dylib")
+        proc_pidpath = libproc.proc_pidpath
+        proc_pidpath.argtypes = [c_int, c_void_p, c_uint32]
+        proc_pidpath.restype = c_int
+        buffer = create_string_buffer(4096)
+        length = proc_pidpath(pid, buffer, c_uint32(len(buffer)))
+        return buffer.value.decode("utf-8") if length > 0 else None
+    except (OSError, AttributeError, TypeError, UnicodeDecodeError):
+        return None

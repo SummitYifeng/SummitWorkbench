@@ -20,9 +20,9 @@ def record_run_safely(
     status: RunStatus,
     day: str,
     detail: str | None = None,
-) -> None:
-    """尽力记录一条运行心跳；任何落盘异常被吞（不反向搞垮任务）。"""
+) -> Path | None:
+    """尽力记录一条运行心跳并返回路径；异常不反向搞垮任务。"""
     try:
-        record_run(vault_dir, job=job, status=status, day=day, detail=detail)
+        return record_run(vault_dir, job=job, status=status, day=day, detail=detail)
     except Exception:  # 记录心跳失败绝不能令任务失败——刻意吞掉
-        pass
+        return None

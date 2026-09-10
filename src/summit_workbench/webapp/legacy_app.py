@@ -1672,7 +1672,9 @@ def create_app(
                 status_code=409,
                 detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
             )
-        result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job))
+        # 「立即运行」是人工触发，不应被当天已执行过的调度记录拦截；
+        # 定时 worker 仍使用默认的 schedule due 门控。
+        result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job), force=True)
         # secondary/未启用的「跳过」是预期结果，不是错误：返回 ok=true 让前端以提示而非
         # 报错呈现（P1-07D 要求 Air 自动化安全跳过，绝不运行定时 writer）。
         return {
@@ -1943,6 +1945,9 @@ def create_app(
             "ok": True,
             "plan_text": _plan_text(report),
             "executed": True,
+            "applied": report.applied,
+            "rejected": report.rejected,
+            "failed": report.failed,
             "git_note": git_note,
             "external_actions": [external_action_payload(action) for action in external_actions],
         }

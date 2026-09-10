@@ -165,7 +165,7 @@ def run_automation_job(
             brief_result = run.result
             degraded = bool(run.feishu_unavailable) or brief_result.ranking.degraded
             status = AutomationRunStatus.DEGRADED if degraded else AutomationRunStatus.SUCCESS
-            record_run_safely(
+            heartbeat_path = record_run_safely(
                 context.paths.vault_dir,
                 job="brief",
                 status=RunStatus.DEGRADED if degraded else RunStatus.SUCCESS,
@@ -173,10 +173,13 @@ def run_automation_job(
                 detail=run.feishu_unavailable,
             )
             published = None
-            if brief_result.note_path and brief_result.snapshot_path:
+            commit_paths = list(run.persisted_paths)
+            if heartbeat_path is not None:
+                commit_paths.append(heartbeat_path)
+            if commit_paths:
                 published = publish_brief(
                     context.paths.vault_dir,
-                    [brief_result.note_path, brief_result.snapshot_path],
+                    commit_paths,
                     message=f"chore(brief): 晨间简报 {day}",
                     push=True,
                     backend_kind="dulwich",
@@ -193,13 +196,16 @@ def run_automation_job(
                 pending_review_count=0,
                 write=True,
             )
-            record_run_safely(
+            heartbeat_path = record_run_safely(
                 context.paths.vault_dir, job="weekly", status=RunStatus.SUCCESS, day=day
             )
+            weekly_paths = [weekly_result.note_path] if weekly_result.note_path else []
+            if heartbeat_path is not None:
+                weekly_paths.append(heartbeat_path)
             published = (
                 publish_brief(
                     context.paths.vault_dir,
-                    [weekly_result.note_path] if weekly_result.note_path else [],
+                    weekly_paths,
                     message=f"chore(weekly): 周复盘 {weekly_result.review.week}",
                     push=True,
                     backend_kind="dulwich",

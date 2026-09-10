@@ -4,15 +4,21 @@ export type WorkspaceListener = (workspaceId: string | null) => void;
 
 export class WorkspaceStore {
   private currentId: string | null = null;
+  private currentGeneration = 0;
   private readonly listeners = new Set<WorkspaceListener>();
 
   get workspaceId(): string | null {
     return this.currentId;
   }
 
+  get generation(): number {
+    return this.currentGeneration;
+  }
+
   setWorkspace(workspaceId: string | null): void {
     if (this.currentId === workspaceId) return;
     this.currentId = workspaceId;
+    this.currentGeneration += 1;
     for (const listener of this.listeners) listener(workspaceId);
   }
 
@@ -24,6 +30,7 @@ export class WorkspaceStore {
   dispose(): void {
     this.listeners.clear();
     this.currentId = null;
+    this.currentGeneration += 1;
   }
 }
 

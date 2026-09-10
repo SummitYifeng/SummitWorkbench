@@ -5,8 +5,11 @@ import { workspaceScopedKey, workspaceStore } from './core/workspace-store';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
   clearDraftSnapshot,
+  clearEntityDraft,
   loadDraftSnapshot,
+  loadEntityDraft,
   saveDraftSnapshot as persistDraftSnapshot,
+  saveEntityDraft,
   type DraftSnapshot,
   type ReviewDraftFields,
 } from './lifecycle/drafts';
@@ -157,6 +160,38 @@ let externalActions: ExternalAction[] = [];
 let tab: Tab = 'today';
 let importing = false;
 let importOpen = false;
+let capturing = false;
+let draftStorageWarningShown = false;
+let importResult: {
+  fileName: string;
+  bytes: number;
+  status: 'processing' | 'success' | 'error';
+  message: string;
+  details?: string[];
+  estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
+} | null = null;
+let stateLoadError: string | null = null;
+let reviewLoadError: string | null = null;
+let externalActionsError: string | null = null;
+let reviewPlanReady = false;
+let modalReturnFocus: HTMLElement | null = null;
+let lastStateReadAt: string | null = null;
+let lastReviewReadAt: string | null = null;
+let reviewDrafts: Record<string, ReviewDraftFields> = {};
+let apiRequestSequence = 0;
+let latestStateRequest = 0;
+let latestReviewRequest = 0;
+
+class StaleWorkspaceResponseError extends Error {
+  constructor() {
+    super('工作区已切换，忽略旧请求结果');
+    this.name = 'StaleWorkspaceResponseError';
+  }
+}
+
+function isStaleWorkspaceResponse(error: unknown): boolean {
+  return error instanceof StaleWorkspaceResponseError;
+}
 let versionStatus: VersionStatus = 'checking';
 let remoteVersion: VersionPayload | null = null;
 let lastServerInstance: string | null = null;
@@ -207,11 +242,16 @@ let askBusy = false;
 let askBusyThreadId: string | null = null;
 /** 输入框草稿：renderAskChat 会整体重建输入区，等待期间打的新问题不能丢 */
 let askDraft = '';
+let askErrors: Record<string, string> = {};
 /** 问答检索范围：''=全部；否则为项目/线程名（后端按 registry 解析） */
 let askScope = '';
 
 function askStorageKey(): string {
   return workspaceScopedKey('wb.ask.threads.v1', workspaceStore.workspaceId);
+}
+
+function askDraftEntity(threadId: string): string {
+  return 'ask:' + threadId;
 }
 
 const app = document.getElementById('app') as HTMLElement;
@@ -228,7 +268,22 @@ const apiClient = createApiClient({
 });
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  return apiClient.request<T>(url, init);
+  const generation = workspaceStore.generation;
+  const requestSequence = ++apiRequestSequence;
+  const headers = new Headers(init?.headers);
+  headers.set('X-WB-Workspace-Generation', String(generation));
+  headers.set('X-WB-Request-Sequence', String(requestSequence));
+  const result = await apiClient.request<T>(url, { ...init, headers });
+  if (generation !== workspaceStore.generation) throw new StaleWorkspaceResponseError();
+  return result;
+}
+
+function persistEntityDraft<T>(entity: string, value: T): void {
+  if (saveEntityDraft(entity, value, remoteVersion?.workspace_id)) return;
+  if (!draftStorageWarningShown) {
+    draftStorageWarningShown = true;
+    toast('浏览器暂时无法保存草稿；请先完成当前编辑再切页', 'err');
+  }
 }
 
 function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info'): void {
@@ -281,7 +336,8 @@ function setVersionStatus(status: VersionStatus): void {
 
 function saveCurrentDraftSnapshot(): void {
   const reviewForms: Record<string, ReviewDraftFields> = {};
-  document.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
+  const editForms = document.querySelectorAll<HTMLFormElement>('.edit-form');
+  editForms.forEach((form) => {
     const data = new FormData(form);
     const candidateId = String(data.get('candidate_id') ?? '');
     if (!candidateId) return;
@@ -294,10 +350,12 @@ function saveCurrentDraftSnapshot(): void {
       end_at: String(data.get('end_at') ?? ''),
     };
   });
+  if (editForms.length > 0) reviewDrafts = reviewForms;
+  const persistedReviewForms = editForms.length > 0 ? reviewForms : reviewDrafts;
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
   const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (ask) askDraft = ask.value;
-  persistDraftSnapshot({
+  const saved = persistDraftSnapshot({
     schema: 1,
     saved_at: new Date().toISOString(),
     source_build: CLIENT_BUILD,
@@ -305,8 +363,12 @@ function saveCurrentDraftSnapshot(): void {
     scroll_y: window.scrollY,
     capture_text: capture?.value ?? '',
     ask_draft: askDraft,
-    review_forms: reviewForms,
+    review_forms: persistedReviewForms,
   }, remoteVersion?.workspace_id);
+  if (!saved && !draftStorageWarningShown) {
+    draftStorageWarningShown = true;
+    toast('浏览器暂时无法保存草稿；版本更新仍会继续，但请先完成当前编辑', 'err');
+  }
 }
 
 function applyRestoredDraft(): void {
@@ -315,6 +377,7 @@ function applyRestoredDraft(): void {
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
   if (capture) capture.value = draft.capture_text;
   askDraft = draft.ask_draft;
+  reviewDrafts = draft.review_forms;
   const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (ask) ask.value = draft.ask_draft;
   document.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
@@ -409,9 +472,18 @@ async function doCheckVersion(reason: string): Promise<void> {
   const workspaceId = remote.workspace_id ?? 'unknown';
   workspaceStore.setWorkspace(workspaceId);
   if (loadedAskWorkspace !== workspaceId) {
+    state = null;
+    review = null;
+    stateLoadError = null;
+    reviewLoadError = null;
+    lastStateReadAt = null;
+    lastReviewReadAt = null;
     askThreads = [];
     askActiveId = null;
     askDraft = '';
+    askErrors = {};
+    askBusy = false;
+    askBusyThreadId = null;
     loadedAskWorkspace = workspaceId;
     loadAskStore();
   }
@@ -450,6 +522,7 @@ function render(): void {
     const active = b.dataset.tab === tab;
     b.classList.toggle('active', active);
     b.setAttribute('aria-selected', active ? 'true' : 'false');
+    b.setAttribute('tabindex', active ? '0' : '-1');
   });
   const todayView = document.getElementById('view-today') as HTMLElement;
   const reviewView = document.getElementById('view-review') as HTMLElement;
@@ -463,6 +536,9 @@ function render(): void {
   projectsView.style.display = tab === 'projects' ? '' : 'none';
   guideView.style.display = tab === 'guide' ? '' : 'none';
   settingsView.style.display = tab === 'settings' ? '' : 'none';
+  [todayView, reviewView, askView, projectsView, guideView, settingsView].forEach((view) => {
+    view.setAttribute('aria-hidden', view.style.display === 'none' ? 'true' : 'false');
+  });
   if (tab === 'today') {
     renderToday(todayView);
   } else if (tab === 'review') {
@@ -481,7 +557,8 @@ function render(): void {
 
 function renderShell(): void {
   app.innerHTML =
-    '<header class="topbar">' +
+    '<a class="skip-link" href="#main-content">跳到主内容</a>' +
+    '<div class="nav-shell"><header class="topbar">' +
     '<div class="brand"><span class="logo">SW</span><div><h1>SummitWorkbench</h1>' +
     '<p class="tagline">外置执行管理层 · 第二大脑</p></div></div>' +
     '<div class="header-right">' +
@@ -498,21 +575,21 @@ function renderShell(): void {
     '<button class="ghost" data-action="retry-update">重试更新</button>' +
     '<button class="ghost" data-action="copy-diagnostics">复制诊断信息</button>' +
     '</div>' +
-    '<nav class="tabs" role="tablist">' +
-    '<button class="tab" data-tab="today" role="tab">今日</button>' +
-    '<button class="tab" data-tab="review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
-    '<button class="tab" data-tab="ask" role="tab">第二大脑</button>' +
-    '<button class="tab" data-tab="projects" role="tab">项目</button>' +
-    '<button class="tab" data-tab="guide" role="tab">指南</button>' +
-    '<button class="tab" data-tab="settings" role="tab">设置</button>' +
-    '</nav>' +
-    '<main>' +
-    '<section id="view-today" class="view"></section>' +
-    '<section id="view-review" class="view"></section>' +
-    '<section id="view-ask" class="view"></section>' +
-    '<section id="view-projects" class="view"></section>' +
-    '<section id="view-guide" class="view"></section>' +
-    '<section id="view-settings" class="view"></section>' +
+    '<nav class="tabs" role="tablist" aria-label="工作台页面">' +
+    '<button class="tab" id="tab-today" data-tab="today" aria-controls="view-today" role="tab">今日</button>' +
+    '<button class="tab" id="tab-review" data-tab="review" aria-controls="view-review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
+    '<button class="tab" id="tab-ask" data-tab="ask" aria-controls="view-ask" role="tab">第二大脑</button>' +
+    '<button class="tab" id="tab-projects" data-tab="projects" aria-controls="view-projects" role="tab">项目</button>' +
+    '<button class="tab" id="tab-guide" data-tab="guide" aria-controls="view-guide" role="tab">指南</button>' +
+    '<button class="tab" id="tab-settings" data-tab="settings" aria-controls="view-settings" role="tab">设置</button>' +
+    '</nav></div>' +
+    '<main id="main-content" tabindex="-1">' +
+    '<section id="view-today" class="view" role="tabpanel" tabindex="0"></section>' +
+    '<section id="view-review" class="view" role="tabpanel" tabindex="0"></section>' +
+    '<section id="view-ask" class="view" role="tabpanel" tabindex="0"></section>' +
+    '<section id="view-projects" class="view" role="tabpanel" tabindex="0"></section>' +
+    '<section id="view-guide" class="view" role="tabpanel" tabindex="0"></section>' +
+    '<section id="view-settings" class="view" role="tabpanel" tabindex="0"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
 
@@ -521,10 +598,26 @@ function renderShell(): void {
       const next = b.dataset.tab;
       tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' || next === 'settings' ? next : 'today';
       render();
+      b.focus();
+    });
+    b.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'));
+      const index = tabs.indexOf(b);
+      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
+        (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      const nextButton = tabs[nextIndex];
+      const next = nextButton?.dataset.tab;
+      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' || next === 'settings' ? next : 'today';
+      render();
+      nextButton?.focus();
     });
   });
   (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
-    void refreshAll().then(() => toast('已刷新', 'ok'));
+    void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
+      toast(result.state && result.review ? '已刷新' : '刷新未完成：保留了可用的旧数据', result.state && result.review ? 'ok' : 'err');
+    });
   });
   (document.getElementById('btn-check-updates') as HTMLButtonElement).addEventListener('click', () => {
     if (sendNativeMessage({ type: 'checkForUpdates' })) {
@@ -553,7 +646,29 @@ function renderShell(): void {
   });
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
   backdrop.addEventListener('click', (ev) => {
-    if (ev.target === backdrop) closeModal();
+    if (ev.target === backdrop) requestModalClose();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (backdrop.hidden) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      requestModalClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(backdrop.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex="0"]',
+    ));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   });
 }
 
@@ -561,9 +676,16 @@ function renderToday(view: HTMLElement): void {
   mountToday(view, state, {
     importing,
     importOpen,
+    capturing,
+    loadError: stateLoadError,
+    importResult,
+    readStatus: { lastSuccessfulAt: lastStateReadAt, error: stateLoadError },
     health: healthTone(),
     actions: {
       capture: async (text) => {
+        if (capturing) return { ok: false };
+        capturing = true;
+        renderToday(view);
         try {
           const result = await mutation(() => api<{ ok: boolean; message: string }>('/api/capture', {
             method: 'POST',
@@ -571,8 +693,13 @@ function renderToday(view: HTMLElement): void {
             body: JSON.stringify({ text }),
           }));
           toast(result.message, result.ok ? 'ok' : 'err');
+          return { ok: result.ok };
         } catch (err) {
           toast(String(err), 'err');
+          return { ok: false };
+        } finally {
+          capturing = false;
+          renderToday(view);
         }
       },
       importFile: async (file) => {
@@ -582,15 +709,30 @@ function renderToday(view: HTMLElement): void {
           return;
         }
         importing = true;
+        importResult = { fileName: file.name, bytes: file.size, status: 'processing', message: '正在处理…' };
         renderToday(view);
         const form = new FormData();
         form.append('file', file);
         try {
-          const result = await mutation(() => api<{ ok: boolean; message: string }>('/api/meetings/import', {
+          const result = await mutation(() => api<{
+            ok: boolean;
+            message: string;
+            details?: string[];
+            estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
+          }>('/api/meetings/import', {
             method: 'POST', body: form,
           }));
+          importResult = {
+            fileName: file.name,
+            bytes: file.size,
+            status: result.ok ? 'success' : 'error',
+            message: result.message,
+            details: result.details,
+            estimate: result.estimate,
+          };
           toast(result.message, result.ok ? 'ok' : 'err');
         } catch (err) {
+          importResult = { fileName: file.name, bytes: file.size, status: 'error', message: String(err) };
           toast(String(err), 'err');
         } finally {
           importing = false;
@@ -724,7 +866,10 @@ function renderAskChat(): void {
   const main = document.getElementById('ask-main');
   if (!main) return;
   const existing = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (existing) askDraft = existing.value;
+  if (existing && askActiveId) {
+    askDraft = existing.value;
+    persistEntityDraft(askDraftEntity(askActiveId), askDraft);
+  }
   const scopeEl = document.getElementById('ask-scope') as HTMLSelectElement | null;
   if (scopeEl) askScope = scopeEl.value;
   const full = askThreads.length >= ASK_MAX_THREADS;
@@ -738,13 +883,17 @@ function renderAskChat(): void {
       '</div>';
     return;
   }
+  askDraft = loadEntityDraft<string>(askDraftEntity(thread.id), Date.now(), remoteVersion?.workspace_id) ?? '';
   const bubbles = thread.messages.map((m) =>
     m.role === 'user'
-      ? '<div class="msg user"><div class="bubble">' + esc(m.text).replace(/\n/g, '<br>') + '</div></div>'
-      : '<div class="msg ai"><div class="bubble">' + m.text + '</div></div>'
+      ? '<div class="chat-msg user"><div class="bubble">' + esc(m.text).replace(/\n/g, '<br>') + '</div></div>'
+      : '<div class="chat-msg ai"><div class="bubble">' + m.text + '</div></div>'
   ).join('');
   const showTyping = askBusy && thread.id === askBusyThreadId;
-  const typing = showTyping ? '<div class="msg ai"><div class="bubble typing">思考中…</div></div>' : '';
+  const typing = showTyping ? '<div class="chat-msg ai"><div class="bubble typing">思考中…</div></div>' : '';
+  const errorBubble = askErrors[thread.id]
+    ? '<div class="chat-msg ai"><div class="bubble"><p class="err-text">' + esc(askErrors[thread.id]) + '</p><p class="hint">问题未加入下一轮上下文，可以直接重试。</p></div></div>'
+    : '';
   const scopeOptions = (state?.projects ?? [])
     .filter((p) => p.registered)
     .map((p) =>
@@ -754,7 +903,7 @@ function renderAskChat(): void {
     )
     .join('');
   main.innerHTML =
-    '<div class="ask-chat" id="ask-chat">' + bubbles + typing + '</div>' +
+    '<div class="ask-chat" id="ask-chat">' + bubbles + errorBubble + typing + '</div>' +
     '<div class="ask-inputbar">' +
     '<form class="ask" id="ask-form" autocomplete="off">' +
     '<div class="ask-scope-row"><label class="hint">检索范围</label>' +
@@ -780,6 +929,10 @@ function bindAskInput(): void {
   });
   const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (!input) return;
+  input.addEventListener('input', () => {
+    askDraft = input.value;
+    if (askActiveId) persistEntityDraft(askDraftEntity(askActiveId), askDraft);
+  });
   // Enter 提问（中文输入法组词时的回车不触发）；Shift+Enter 换行。
   input.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Enter' || ev.shiftKey) return;
@@ -803,23 +956,36 @@ async function askSubmit(): Promise<void> {
   const history = askHistoryOf(thread);
   const scopeInput = document.getElementById('ask-scope') as HTMLSelectElement | null;
   if (scopeInput) askScope = scopeInput.value;
-  thread.messages.push({ role: 'user', text: q, ts: new Date().toISOString(), sources: [] });
+  const pendingMessage: AskMsg = { role: 'user', text: q, ts: new Date().toISOString(), sources: [] };
+  thread.messages.push(pendingMessage);
   input.value = '';
   askDraft = '';
+  clearEntityDraft(askDraftEntity(thread.id), remoteVersion?.workspace_id);
+  delete askErrors[thread.id];
   askBusy = true;
   askBusyThreadId = thread.id;
   saveAskStore();
   renderAskSide();
   renderAskChat();
+  let staleCompletion = false;
+  const restoreFailedQuestion = (message: string): void => {
+    const pendingIndex = thread.messages.lastIndexOf(pendingMessage);
+    if (pendingIndex >= 0) thread.messages.splice(pendingIndex, 1);
+    askDraft = q;
+    persistEntityDraft(askDraftEntity(thread.id), askDraft);
+    askErrors[thread.id] = message;
+  };
   try {
     const r = await mutation(() => api<AskResponse>('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question: q, history, project: askScope || null }),
     }));
-    const html = r.ok && r.answer_html
-      ? r.answer_html
-      : '<p class="err-text">' + esc(r.message ?? '提问失败') + '</p>';
+    if (!r.ok || !r.answer_html) {
+      restoreFailedQuestion(r.message ?? '提问失败');
+      return;
+    }
+    const html = r.answer_html;
     thread.messages.push({
       role: 'ai',
       text: html,
@@ -827,18 +993,19 @@ async function askSubmit(): Promise<void> {
       sources: r.source_ids ?? [],
     });
   } catch (err) {
-    thread.messages.push({
-      role: 'ai',
-      text: '<p class="err-text">' + esc(String(err)) + '</p>',
-      ts: new Date().toISOString(),
-      sources: [],
-    });
+    if (isStaleWorkspaceResponse(err)) {
+      staleCompletion = true;
+    } else {
+      restoreFailedQuestion(String(err));
+    }
   } finally {
     askBusy = false;
     askBusyThreadId = null;
-    saveAskStore();
-    renderAskSide();
-    renderAskChat();
+    if (!staleCompletion) {
+      saveAskStore();
+      renderAskSide();
+      renderAskChat();
+    }
   }
 }
 
@@ -874,16 +1041,36 @@ function beginAskRename(threadId: string): void {
 
 function renderReview(view: HTMLElement): void {
   if (!review) {
-    view.innerHTML = '<div class="loading">加载审批页…</div>';
+    view.innerHTML = reviewLoadError
+      ? '<div class="empty load-error"><p>审批数据读取失败：' + esc(reviewLoadError) + '</p><button class="primary" data-action="retry-review">重试读取</button></div>'
+      : '<div class="loading">加载审批页…</div>';
     return;
   }
-  view.innerHTML = reviewHtml(
+  const readNotice = reviewLoadError
+    ? '<div class="msg err">本次审批读取失败，保留上次成功数据' +
+      (lastReviewReadAt ? ' · 最近成功读取于 ' + esc(lastReviewReadAt) : '') + '。可稍后重试。</div>'
+    : '';
+  view.innerHTML = readNotice + reviewHtml(
     review,
     state?.status.pending_review ?? 0,
     state?.day ?? '',
     state?.projects ?? [],
     externalActions,
+    externalActionsError,
   );
+  view.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
+    const candidateId = String(new FormData(form).get('candidate_id') ?? '');
+    const fields = reviewDrafts[candidateId];
+    if (!fields) return;
+    for (const [name, value] of Object.entries(fields)) {
+      const input = form.elements.namedItem(name);
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+        input.value = value;
+      }
+    }
+  });
+  view.oninput = () => saveCurrentDraftSnapshot();
+  view.onchange = () => saveCurrentDraftSnapshot();
 }
 
 
@@ -1540,7 +1727,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'close-modal') {
-    closeModal();
+    requestModalClose();
     return;
   }
   if (action === 'plan') {
@@ -1549,6 +1736,14 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'apply') {
     void planApply(true);
+    return;
+  }
+  if (action === 'retry-state') {
+    void refreshState();
+    return;
+  }
+  if (action === 'retry-review') {
+    void refreshReview();
     return;
   }
   if (action === 'external-recheck') {
@@ -1760,12 +1955,19 @@ async function setProjectState(action: 'activate' | 'archive', name: string): Pr
 }
 
 /** 追加推进日志弹窗：多选关联线程/项目 + 粘贴文本 → AI 消化入各线程。 */
+interface LogDraft {
+  projects: string[];
+  text: string;
+}
+
 function openLogModal(defaultProject: string): void {
   const registered = (state?.projects ?? []).filter((p) => p.registered);
+  const saved = loadEntityDraft<LogDraft>('log:' + defaultProject, Date.now(), remoteVersion?.workspace_id);
+  const selectedProjects = saved?.projects ?? (defaultProject ? [defaultProject] : []);
   const boxes = registered
     .map((p) =>
       '<label class="log-proj"><input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
-      (p.name === defaultProject ? ' checked' : '') + '>' + esc(projectDisplayName(p)) +
+      (selectedProjects.includes(p.name) ? ' checked' : '') + '>' + esc(projectDisplayName(p)) +
       (projectDisplayName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
       (p.is_thread ? ' <span class="hint">(线程)</span>' : '') + '</label>'
     )
@@ -1776,11 +1978,24 @@ function openLogModal(defaultProject: string): void {
     'AI 会整理摘要并归入各线程。模型不可用时只存原文，绝不丢。</p>' +
     '<form id="log-form">' +
     '<div class="log-projs">' + (boxes || '<span class="hint">还没有已建档的项目，先在「项目」页建档。</span>') + '</div>' +
-    '<textarea id="log-text" rows="8" required placeholder="今天和木子/冯老师沟通了什么、定了什么、下一步做什么…"></textarea>' +
+    '<textarea id="log-text" rows="8" required placeholder="今天和木子/冯老师沟通了什么、定了什么、下一步做什么…">' +
+    esc(saved?.text ?? '') + '</textarea>' +
     '<div class="row"><button class="primary" type="submit">保存日志</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>'
   );
+  const modal = document.getElementById('modal') as HTMLElement | null;
+  if (modal) {
+    modal.dataset.draftEntity = 'log:' + defaultProject;
+    modal.dataset.draftDirty = saved ? '1' : '0';
+  }
+  const persistLogDraft = (): void => {
+    const text = (document.getElementById('log-text') as HTMLTextAreaElement | null)?.value ?? '';
+    const projects = Array.from(document.querySelectorAll<HTMLInputElement>('#log-form input[name="log-proj"]:checked')).map((i) => i.value);
+    persistEntityDraft('log:' + defaultProject, { projects, text });
+  };
+  document.getElementById('log-form')?.addEventListener('input', persistLogDraft);
+  document.getElementById('log-form')?.addEventListener('change', persistLogDraft);
   document.getElementById('log-form')?.addEventListener('submit', (ev) => {
     ev.preventDefault();
     void submitLog();
@@ -1806,7 +2021,11 @@ async function submitLog(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ projects, text }),
     }));
-    closeModal();
+    if (r.ok) {
+      const entity = document.getElementById('modal')?.dataset.draftEntity;
+      if (entity) clearEntityDraft(entity, remoteVersion?.workspace_id);
+      closeModal();
+    }
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(String(err), 'err');
@@ -1814,8 +2033,16 @@ async function submitLog(): Promise<void> {
 }
 
 /** AI 产物入库弹窗：选线程 + 粘贴阶段总结/PRD/背景包全文 → 自动命名与摘要索引。 */
+interface ArtifactDraft {
+  project: string;
+  title: string;
+  text: string;
+  syncState: boolean;
+}
+
 function openArtifactModal(defaultProject: string): void {
   const registered = (state?.projects ?? []).filter((p) => p.registered);
+  const saved = loadEntityDraft<ArtifactDraft>('artifact:' + defaultProject, Date.now(), remoteVersion?.workspace_id);
   const options = registered
     .map((p) =>
       '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') + '>' +
@@ -1844,6 +2071,30 @@ function openArtifactModal(defaultProject: string): void {
     ev.preventDefault();
     void submitArtifact();
   });
+  const savedProject = saved?.project || defaultProject;
+  const projectInput = document.getElementById('artifact-project') as HTMLSelectElement | null;
+  const titleInput = document.getElementById('artifact-title') as HTMLInputElement | null;
+  const textArea = document.getElementById('artifact-text') as HTMLTextAreaElement | null;
+  const stateInput = document.getElementById('artifact-to-state') as HTMLInputElement | null;
+  if (projectInput && savedProject) projectInput.value = savedProject;
+  if (titleInput) titleInput.value = saved?.title ?? '';
+  if (textArea) textArea.value = saved?.text ?? '';
+  if (stateInput) stateInput.checked = saved?.syncState ?? false;
+  const modal = document.getElementById('modal') as HTMLElement | null;
+  if (modal) {
+    modal.dataset.draftEntity = 'artifact:' + defaultProject;
+    modal.dataset.draftDirty = saved ? '1' : '0';
+  }
+  const persistArtifactDraft = (): void => {
+    persistEntityDraft('artifact:' + defaultProject, {
+      project: (document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '',
+      title: (document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '',
+      text: (document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '',
+      syncState: !!(document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked,
+    });
+  };
+  document.getElementById('artifact-form')?.addEventListener('input', persistArtifactDraft);
+  document.getElementById('artifact-form')?.addEventListener('change', persistArtifactDraft);
   const readArtifactFile = (file: File): void => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1856,6 +2107,7 @@ function openArtifactModal(defaultProject: string): void {
       if (textArea) textArea.value = content;
       const nameEl = document.getElementById('artifact-file-name');
       if (nameEl) nameEl.textContent = '已读入：' + file.name + '（' + content.length + ' 字符）';
+      persistArtifactDraft();
     };
     reader.onerror = () => toast('读取文件失败', 'err');
     reader.readAsText(file, 'utf-8');
@@ -1915,6 +2167,12 @@ async function submitArtifact(): Promise<void> {
         body: JSON.stringify({ project, text: stateText }),
       }));
       extra = s.ok ? ' · 已同步当前状态' : '（当前状态同步失败：' + s.message + '）';
+    }
+    const modal = document.getElementById('modal') as HTMLElement | null;
+    const draftEntity = modal?.dataset.draftEntity;
+    if (draftEntity) clearEntityDraft(draftEntity, remoteVersion?.workspace_id);
+    if (draftEntity !== 'artifact:' + project) {
+      clearEntityDraft('artifact:' + project, remoteVersion?.workspace_id);
     }
     closeModal();
     toast(r.message + extra, r.ok ? 'ok' : 'err');
@@ -2293,25 +2551,46 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
 }
 
 async function planApply(exec: boolean): Promise<void> {
+  if (exec && !reviewPlanReady) {
+    toast('请先查看最新预演，再确认写回', 'info');
+    return;
+  }
   const planResult = document.getElementById('plan-result');
   try {
-    const r = await mutation(() => api<{ ok: boolean; message?: string; plan_text?: string; executed?: boolean; external_actions?: ExternalAction[] }>(
+    const r = await mutation(() => api<{
+      ok: boolean;
+      message?: string;
+      plan_text?: string;
+      executed?: boolean;
+      applied?: number;
+      rejected?: number;
+      failed?: number;
+      external_actions?: ExternalAction[];
+    }>(
       exec ? '/api/review/apply' : '/api/review/plan',
       { method: 'POST' },
     ));
     if (!r.ok) {
+      reviewPlanReady = false;
       toast(r.message ?? '操作失败', 'err');
       return;
     }
     const text = r.plan_text ?? '';
-    const title = exec ? '已应用' : '预演计划（未写入）';
+    const title = exec
+      ? (typeof r.failed === 'number' && r.failed > 0 ? '部分完成：仍有条目需处理' : '完成：已应用')
+      : '预演计划（未写入）';
     openModal(
       '<h3>' + title + '</h3><pre>' + esc(text) + '</pre>' +
-      (exec ? '' : '<div class="row"><button class="primary" data-action="apply">确认应用（写回项目/建任务/归档）</button></div>')
+      (exec
+        ? '<p class="hint">已应用 ' + String(r.applied ?? 0) + ' 条 · 已拒绝 ' + String(r.rejected ?? 0) +
+          ' 条 · 失败 ' + String(r.failed ?? 0) + ' 条。失败项和未知外部结果请在审批页继续处理。</p>'
+        : '<div class="row"><button class="primary" data-action="apply">确认应用（写回项目/建任务/归档）</button></div>')
     );
+    reviewPlanReady = !exec;
     if (exec) {
+      reviewPlanReady = false;
       if (r.external_actions) externalActions = r.external_actions;
-      toast('已应用', 'ok');
+      toast(typeof r.failed === 'number' && r.failed > 0 ? '应用部分完成，请查看失败项' : '应用完成', r.failed ? 'info' : 'ok');
       void refreshReview();
       void refreshState();
     }
@@ -2324,32 +2603,58 @@ async function planApply(exec: boolean): Promise<void> {
 function openModal(html: string): void {
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
   const modal = document.getElementById('modal') as HTMLElement;
+  modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   modal.innerHTML = html;
+  modal.dataset.draftDirty = '0';
+  delete modal.dataset.draftEntity;
+  modal.oninput = () => {
+    if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
+  };
+  modal.onchange = () => {
+    if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
+  };
   backdrop.hidden = false;
-  modal.querySelector('[data-action="apply"]')?.addEventListener('click', () => {
-    closeModal();
-    void planApply(true);
-  });
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('tabindex', '-1');
   const close = document.createElement('button');
   close.className = 'ghost close-modal';
   close.textContent = '关闭';
   close.style.marginTop = '12px';
   modal.appendChild(close);
-  close.addEventListener('click', closeModal);
+  close.addEventListener('click', requestModalClose);
+  const first = modal.querySelector<HTMLElement>('button, input, select, textarea, [tabindex="0"]');
+  (first ?? modal).focus();
 }
 
 function closeModal(): void {
   (document.getElementById('modal-backdrop') as HTMLElement).hidden = true;
+  modalReturnFocus?.focus();
+  modalReturnFocus = null;
+}
+
+function requestModalClose(): void {
+  const modal = document.getElementById('modal') as HTMLElement | null;
+  const hasDraft = modal?.dataset.draftDirty === '1';
+  if (hasDraft && !window.confirm('当前弹层里有未保存内容。继续关闭并放弃草稿吗？')) return;
+  closeModal();
 }
 
 // ---------- 数据 ----------
 
-async function refreshState(): Promise<void> {
+async function refreshState(): Promise<boolean> {
+  const requestId = ++latestStateRequest;
   try {
-    state = await api<StatePayload>('/api/state');
+    const nextState = await api<StatePayload>('/api/state');
+    if (requestId !== latestStateRequest) return false;
+    state = nextState;
+    stateLoadError = null;
+    lastStateReadAt = new Date().toLocaleString('zh-CN', { hour12: false });
   } catch (err) {
-    toast(String(err), 'err');
-    return;
+    if (isStaleWorkspaceResponse(err)) return false;
+    stateLoadError = String(err);
+    if (tab === 'today') renderToday(document.getElementById('view-today') as HTMLElement);
+    return false;
   }
   const dayPill = document.getElementById('day-pill');
   if (dayPill) dayPill.textContent = state.day;
@@ -2359,32 +2664,50 @@ async function refreshState(): Promise<void> {
   else if (tab === 'projects') {
     renderProjects(document.getElementById('view-projects') as HTMLElement);
   }
+  return true;
 }
 
-async function refreshReview(): Promise<void> {
+async function refreshReview(): Promise<boolean> {
+  const requestId = ++latestReviewRequest;
+  saveCurrentDraftSnapshot();
   try {
-    review = await api<ReviewPayload>('/api/review');
+    const nextReview = await api<ReviewPayload>('/api/review');
+    if (requestId !== latestReviewRequest) return false;
+    review = nextReview;
+    reviewLoadError = null;
+    lastReviewReadAt = new Date().toLocaleString('zh-CN', { hour12: false });
   } catch (err) {
-    toast(String(err), 'err');
-    return;
+    if (isStaleWorkspaceResponse(err)) return false;
+    reviewLoadError = String(err);
+    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+    return false;
   }
   await refreshExternalActions();
   if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+  return true;
 }
 
 async function refreshExternalActions(): Promise<void> {
   try {
     const data = await api<{ ok: boolean; actions?: ExternalAction[] }>('/api/external-actions');
-    if (data.ok) externalActions = data.actions ?? [];
+    if (data.ok) {
+      externalActions = data.actions ?? [];
+      externalActionsError = null;
+    } else {
+      externalActionsError = '服务端没有返回可用状态';
+    }
     if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
   } catch (err) {
-    // 外部状态查询失败不阻断审批页本身；下次刷新继续尝试。
-    console.warn('外部写回状态加载失败', err);
+    // 外部状态查询失败不阻断审批页本身，但必须在页面上可见。
+    if (isStaleWorkspaceResponse(err)) return;
+    externalActionsError = String(err);
+    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
   }
 }
 
-async function refreshAll(): Promise<void> {
-  await Promise.all([refreshState(), refreshReview()]);
+async function refreshAll(): Promise<{ state: boolean; review: boolean }> {
+  const [stateOk, reviewOk] = await Promise.all([refreshState(), refreshReview()]);
+  return { state: stateOk, review: reviewOk };
 }
 
 function conflictKindLabel(kind: string): string {

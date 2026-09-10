@@ -64,9 +64,10 @@ def brief_command(
         raise
     result = run.result
 
+    heartbeat_path = None
     if not dry_run:
         degraded = bool(run.feishu_unavailable) or result.ranking.degraded
-        record_run_safely(
+        heartbeat_path = record_run_safely(
             paths.vault_dir,
             job="brief",
             status=RunStatus.DEGRADED if degraded else RunStatus.SUCCESS,
@@ -76,9 +77,12 @@ def brief_command(
 
     published: PublishResult | None = None
     if commit and not dry_run and result.note_path and result.snapshot_path:
+        commit_paths = list(run.persisted_paths)
+        if heartbeat_path is not None:
+            commit_paths.append(heartbeat_path)
         published = publish_brief(
             paths.vault_dir,
-            [result.note_path, result.snapshot_path],
+            commit_paths,
             message=f"chore(brief): 晨间简报 {day}",
             push=push,
         )

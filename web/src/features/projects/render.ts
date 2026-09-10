@@ -53,7 +53,7 @@ function projectCard(p: ProjectState, today: string): string {
   const chips = projectChips(p, today);
   const chipsHtml = chips.length
     ? projectChipsHtml(chips)
-    : '<span class="chip ok-chip">正常</span>';
+    : '<span class="project-clear-state">未发现同步提醒</span>';
   const step = projectNextStepHtml(p.next_step) ||
     '<div class="project-step muted-step"><span class="step-label">下一步</span><span class="step-text">主笔记还没写下一步</span></div>';
   const quick = p.registered
@@ -147,7 +147,7 @@ export function projectsListHtml(
 ): string {
   if (!loaded) return '<div class="loading">加载中…</div>';
   const q = query.trim().toLowerCase();
-  const matched = projects.filter((p) => !q || p.name.toLowerCase().includes(q));
+  const matched = projects.filter((p) => !q || p.name.toLowerCase().includes(q) || projectDisplayName(p).toLowerCase().includes(q));
   if (matched.length === 0) {
     return '<div class="empty"><p>' + (q ? '没有匹配「' + esc(q) + '」的项目' : '暂无项目文件夹') + '</p></div>';
   }

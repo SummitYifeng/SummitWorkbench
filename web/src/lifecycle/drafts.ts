@@ -1,10 +1,15 @@
 import { workspaceScopedKey } from '../core/workspace-store';
 
 export const DRAFT_STORAGE_KEY = 'wb.draft.snapshot.v1';
+export const ENTITY_DRAFT_STORAGE_KEY = 'wb.draft.entity.v1';
 const MAX_DRAFT_AGE_MS = 30 * 60 * 1000;
 
 function draftStorageKey(workspaceId?: string): string {
   return workspaceScopedKey(DRAFT_STORAGE_KEY, workspaceId ?? null);
+}
+
+function entityDraftStorageKey(entity: string, workspaceId?: string): string {
+  return workspaceScopedKey(ENTITY_DRAFT_STORAGE_KEY, workspaceId ?? null) + '.' + encodeURIComponent(entity);
 }
 
 export interface ReviewDraftFields {
@@ -27,11 +32,63 @@ export interface DraftSnapshot {
   review_forms: Record<string, ReviewDraftFields>;
 }
 
-export function saveDraftSnapshot(snapshot: DraftSnapshot, workspaceId?: string): void {
+export function saveDraftSnapshot(snapshot: DraftSnapshot, workspaceId?: string): boolean {
   try {
     window.sessionStorage.setItem(draftStorageKey(workspaceId), JSON.stringify(snapshot));
+    return true;
   } catch {
-    // 隐私模式或配额不足时不阻断版本更新。
+    return false;
+  }
+}
+
+interface EntityDraftEnvelope<T> {
+  schema: 1;
+  saved_at: string;
+  value: T;
+}
+
+/** 保存非敏感、可恢复的实体草稿；调用方可据 false 显示存储不可用。 */
+export function saveEntityDraft<T>(
+  entity: string,
+  value: T,
+  workspaceId?: string,
+): boolean {
+  try {
+    const envelope: EntityDraftEnvelope<T> = {
+      schema: 1,
+      saved_at: new Date().toISOString(),
+      value,
+    };
+    window.sessionStorage.setItem(entityDraftStorageKey(entity, workspaceId), JSON.stringify(envelope));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadEntityDraft<T>(
+  entity: string,
+  nowMs = Date.now(),
+  workspaceId?: string,
+): T | null {
+  try {
+    const raw = window.sessionStorage.getItem(entityDraftStorageKey(entity, workspaceId));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<EntityDraftEnvelope<T>>;
+    const savedAt = typeof value.saved_at === 'string' ? Date.parse(value.saved_at) : NaN;
+    if (value.schema !== 1 || !Number.isFinite(savedAt) || nowMs - savedAt > MAX_DRAFT_AGE_MS) return null;
+    return value.value === undefined ? null : value.value;
+  } catch {
+    return null;
+  }
+}
+
+export function clearEntityDraft(entity: string, workspaceId?: string): boolean {
+  try {
+    window.sessionStorage.removeItem(entityDraftStorageKey(entity, workspaceId));
+    return true;
+  } catch {
+    return false;
   }
 }
 

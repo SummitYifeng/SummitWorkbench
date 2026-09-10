@@ -113,8 +113,11 @@ def test_record_run_safely_swallows_errors(monkeypatch, tmp_path):
 
     monkeypatch.setattr(heartbeat, "record_run", boom)
     # 不应抛出。
-    heartbeat.record_run_safely(
-        tmp_path / "_vault", job="brief", status=RunStatus.FAILED, day="2026-09-02"
+    assert (
+        heartbeat.record_run_safely(
+            tmp_path / "_vault", job="brief", status=RunStatus.FAILED, day="2026-09-02"
+        )
+        is None
     )
 
 

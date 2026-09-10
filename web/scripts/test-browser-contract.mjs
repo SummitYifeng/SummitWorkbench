@@ -45,4 +45,10 @@ assert.match(
 assert.match(read('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
 assert.match(read('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
 assert.match(read('src/core/workspace-store.ts'), /subscribe\(/, 'workspace changes are observable');
+assert.match(source, /X-WB-Workspace-Generation/, 'API requests carry workspace generation');
+assert.match(source, /latestStateRequest|latestReviewRequest/, 'stale refresh responses are ignored');
+assert.match(source, /saveEntityDraft|loadEntityDraft|clearEntityDraft/, 'entity drafts have an explicit storage contract');
+assert.match(source, /requestModalClose/, 'modal close is routed through the unsaved-draft guard');
+assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
+assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 console.log('Browser interaction contract tests passed');

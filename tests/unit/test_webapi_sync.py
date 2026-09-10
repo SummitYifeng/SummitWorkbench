@@ -202,15 +202,18 @@ def test_run_brief_publishes_explicit_generated_paths(tmp_path, monkeypatch, cli
         persisted_paths=persisted,
     )
     calls: list[tuple[Path, tuple[Path, ...], str]] = []
+
+    def record_commit(context, paths, summary):
+        calls.append((context.vault_dir, tuple(paths), summary))
+        return ""
+
     monkeypatch.setattr(
         "summit_workbench.workflows.brief.runner.run_brief",
         lambda **_kwargs: run,
     )
     monkeypatch.setattr(
         "summit_workbench.webapp.legacy_app._commit_suffix",
-        lambda context, paths, summary: (
-            calls.append((context.vault_dir, tuple(paths), summary)) or ""
-        ),
+        record_commit,
     )
 
     response = client.post("/api/run/brief")

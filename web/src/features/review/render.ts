@@ -115,6 +115,7 @@ export function reviewHtml(
   today: string,
   projects: ProjectState[],
   externalActions: ExternalAction[],
+  externalActionsError: string | null = null,
 ): string {
   const errorsHtml = review.errors.length
     ? '<div class="msg err">审批页解析错误：<br>' + review.errors.map(esc).join('<br>') + '</div>'
@@ -147,15 +148,17 @@ export function reviewHtml(
       projects.map((p) => '<option value="' + esc(p.name) + '">' + esc(projectDisplayName(p)) + '</option>').join('') +
       '</datalist>'
     : '';
-  const externalHtml = renderExternalActions(externalActions);
+  const externalHtml = (externalActionsError
+    ? '<section class="external-actions error-state"><h4>外部写回状态暂时无法读取</h4><p class="hint">' + esc(externalActionsError) +
+      '。审批决定仍保留；请稍后重试读取，不要据此重复应用。</p></section>'
+    : '') + renderExternalActions(externalActions);
   return (
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
     '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
     '<div class="form-row">' +
     '<button class="ghost" data-action="reject-expired" title="把截止日期早于今天的待确认条目批量置为拒绝">一键拒绝过期项</button>' +
-    '<button class="ghost" data-action="plan">预演应用</button>' +
-    '<button class="primary" data-action="apply">应用（写回）</button>' +
+    '<button class="primary" data-action="plan">检查并写回</button>' +
     '</div></div>' +
     errorsHtml +
     externalHtml +

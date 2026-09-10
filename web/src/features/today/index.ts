@@ -1,6 +1,6 @@
 /** 今日页 feature：简报、捕捉快捷行与会议导入抽屉。 */
 import { todayHtml } from './render';
-import type { TodayActions, TodayState } from './types';
+import type { TodayActions, TodayRenderOptions, TodayState } from './types';
 
 export function mountToday(
   view: HTMLElement,
@@ -8,6 +8,10 @@ export function mountToday(
   options: {
     importing: boolean;
     importOpen: boolean;
+    capturing?: boolean;
+    loadError?: string | null;
+    importResult?: TodayRenderOptions['importResult'];
+    readStatus?: TodayRenderOptions['readStatus'];
     health: { tone: string; label: string };
     actions: TodayActions;
   },
@@ -21,8 +25,11 @@ export function mountToday(
     const input = view.querySelector<HTMLInputElement>('#capture-input');
     const text = input?.value.trim() ?? '';
     if (!text) return;
-    void options.actions.capture(text).then(() => {
-      if (input) input.value = '';
+    const submittedText = text;
+    void options.actions.capture(submittedText).then((result) => {
+      // 只有同一份文本仍在输入框中时才清空；请求期间新写入的内容必须保留。
+      const currentInput = view.querySelector<HTMLInputElement>('#capture-input');
+      if (result.ok && currentInput && currentInput.value.trim() === submittedText) currentInput.value = '';
     });
   });
 
@@ -56,7 +63,12 @@ export function mountToday(
   zone.addEventListener('drop', (event) => {
     event.preventDefault();
     zone.classList.remove('dragover');
-    const file = event.dataTransfer?.files?.[0];
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 1) {
+      options.actions.toggleImport(true);
+      return;
+    }
+    const file = files?.[0];
     if (file) void options.actions.importFile(file);
   });
 }

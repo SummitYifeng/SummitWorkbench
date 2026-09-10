@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from summit_workbench.config.profiles import resolve_active_workspace
+from summit_workbench.domain.automation import AutomationRunStatus
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile, WorkspaceManifest
 from summit_workbench.repositories.profile_registry import (
     active_profile_id,
@@ -17,6 +18,7 @@ from summit_workbench.repositories.profile_registry import (
 )
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.webapp.app import WebContext, create_app
+from summit_workbench.workflows.automation_worker import WorkerResult
 from summit_workbench.workflows.profile_settings import (
     commit_profile_switch,
     list_profile_summaries,
@@ -190,6 +192,28 @@ def test_automation_manual_run_is_skipped_on_secondary(tmp_path: Path, monkeypat
     body = response.json()
     assert body["ok"] is True
     assert body["status"] == "not-primary"
+
+
+def test_automation_manual_run_forces_execution_after_same_day_run(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profile = _profile(tmp_path, "manual-automation")
+    set_active_profile(profile.workspace_id, home=tmp_path)
+    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
+    client = TestClient(create_app(WebContext.from_active_workspace(context)))
+    calls: list[bool] = []
+
+    def fake_run(context, job, *, force=False, **_kwargs):
+        calls.append(force)
+        return WorkerResult(job, AutomationRunStatus.SUCCESS, published="committed")
+
+    monkeypatch.setattr("summit_workbench.workflows.automation_worker.run_automation_job", fake_run)
+    response = client.post("/api/settings/automation/run", json={"job": "brief"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    assert calls == [True]
 
 
 def test_provider_secret_is_scoped_and_never_written_to_profile(
