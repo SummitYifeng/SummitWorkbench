@@ -180,13 +180,15 @@
 
 ### 当前续测记录（2026-09-10，最新事实）
 
-- 当前仍为 `main`，代码基线 `cb1bd34`；本轮续测没有提交或推送。最新静态 frontend build 为 `v2026.09.10-cb1bd34-60122c81`。
+- 当前仍为 `main`，代码基线 `ee83f57`；导入抽屉焦点修复已在本阶段待提交，最新静态 frontend build 为 `v2026.09.10-ee83f57-350853f1`。
 - 在隔离 `HOME`、隔离 workspace/vault 和 `127.0.0.1:8798` 上，CUA 已真实完成：onboarding 新建工作台并跳过模型/飞书后重启进入工作台；设置高级维护默认折叠和展开；六页签 Home/End/方向键巡航；审批状态筛选、复选框、切换筛选清空选择和单选批量批准；中文显示名与 `·` 特殊字符搜索；项目详情页内打开、返回查询与入口焦点、归档/恢复；导入抽屉关闭重开以及两个合成 `.md/.txt` 文件的原生多文件选择。
 - 本轮 CUA 发现两个实际问题并已小步修复：320px 设置页自动更新标签造成 4px 页面溢出（`web/src/style.css`）；项目详情返回时命中隐藏祖先中的重复入口，焦点落到 `body`（`web/src/legacy-main.ts`）。两处均先补 `web/scripts/test-browser-contract.mjs` 断言，旧代码先失败，修改后契约通过。
 - 响应式结果：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 页面级 `body/document scrollWidth` 均等于 client width；320px tablist 内部横向滚动仍是预期行为。页签键盘循环实际结果为 `End→设置`、`ArrowRight→今日`、`ArrowLeft→设置`、`Home→今日`。
 - 导入结果：IAB 的原生 file chooser 可用，`multiple=true`，两个合成文件均得到“模型未配置”失败回执；关闭重开保留两条回执。这证明文件选择和失败回执闭环，但不证明模型成功、部分失败、软预算或完成导入幂等。
 - 项目结果：修复后项目页返回稳定聚焦到中文项目入口并保留查询值；本次 fixture 高度等于视口，滚动位置恢复没有形成可观察位移，继续记为未验证。审批按钮结果已通过 CUA 观察，但通道没有可靠的 POST 计数证据，不能将“一次点击一次请求”记为通过。
+- 导入抽屉焦点续测：在同一隔离 IAB 中打开抽屉并点击关闭，焦点稳定回到 `#btn-import-meeting`；再次通过触发按钮切换关闭也保持该结果。该修复只涉及关闭后的可用性与键盘连续性，不旁路导入 API 或改变回执语义。
 - 自动门禁（本阶段代码/产物）：`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、`npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`、`git diff --check` 均通过；构建身份 `v2026.09.10-cb1bd34-60122c81`。文档修改完成后已复跑全量 Python/route/security/coverage、ruff、format、mypy、native tests：`840 passed, 1 skipped, 5 warnings`，coverage `81.12%`；packaged App 条件仍为 skip。
+- 本阶段代码/产物门禁：前端契约、TypeScript、生产构建与产物校验均通过；构建身份 `v2026.09.10-ee83f57-350853f1`。全量 Python/原生门禁将在本阶段文档更新后再次执行并记录最终结果。
 
 ### 本阶段明确仍未验证
 

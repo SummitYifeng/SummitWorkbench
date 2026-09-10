@@ -105,6 +105,7 @@ assert.match(read('src/features/today/render.ts'), /esc\(result\.message\)/, 'im
 assert.match(read('src/features/today/render.ts'), /multiple hidden/, 'the transcript picker allows multiple files');
 assert.match(read('src/features/today/index.ts'), /let currentOpen = options\.importOpen/, 'import drawer open state is local and reversible');
 assert.match(read('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 'import drawer can close and reopen without a stale closure');
+assert.match(read('src/features/today/index.ts'), /if \(!open\) importButton\?\.focus\(\)/, 'closing the import drawer restores focus to its trigger');
 assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
 assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
 assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-refresh, \.header-right #btn-quit\s*\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');

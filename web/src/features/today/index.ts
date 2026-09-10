@@ -42,6 +42,7 @@ export function mountToday(
     options.actions.toggleImport(open);
     if (drawer) drawer.hidden = !open;
     if (importButton) importButton.textContent = open ? '－ 收起导入' : '＋ 导入会议纪要';
+    if (!open) importButton?.focus();
   };
   importButton?.addEventListener('click', () => setOpen(!currentOpen));
   closeButton?.addEventListener('click', () => setOpen(false));
