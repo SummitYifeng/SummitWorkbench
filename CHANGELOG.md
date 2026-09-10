@@ -1,11 +1,16 @@
-## [0.4.4] - 2026-09-08
+## [0.4.4] - 2026-09-10
 
-> UI/UX 优化版：本地质量门通过；GitHub Actions 因账户付款或额度问题未启动。
+> UI/UX 优化与交付稳定性维护版：初始界面方案于 2026-09-08 落地，build 9 于 2026-09-10 完成本地打包和真实工作区 Computer Use 验收；GitHub Actions 因账户付款或额度问题未启动。
 
 - 今日简报置顶，快速捕捉并入简报快捷行，会议导入收进抽屉；宽屏简报采用两栏布局，窄屏自动单列。
 - 设置页改为工作区、AI 模型、飞书、自动化四张白话卡；高级功能默认折叠，连接成功显示绿色 ✓。
 - 新增可跳过、可恢复的“工作区 → AI 模型 → 飞书”三步向导、模型现场验证、飞书一键授权回调及设置页重新进入口。
 - 保留 workspace-scoped 凭据、审批/同步保护、旧入口与数据格式兼容；刷新 Web route contract 并提交生产静态产物。
+- 兼容旧版飞书凭据：首次读取时安全迁移到当前 workspace scope；设置页读取同一作用域的授权状态，成功统一显示绿色 ✓。
+- 原生 App 生命周期加固：仅接管自身且身份匹配的服务；PID 被系统复用或运行记录过期时忽略旧记录，避免误判 crash loop。
+- 修复网页端“现在生成/重新生成”：生成成功后显式提交并推送本次产生的简报、快照、用量和授权状态文件，绝不使用 `add -A` 带入其他用户改动。
+- build 9 arm64 `INTERNAL-DEV` DMG 已通过离线发布验证和实际 vault 交互验收：`v2026.09.10-df4ba1f-1cb9c2eb`；DMG 位于 `dist/releases-local-v0.4.4-brief-fix-df4ba1f/0.4.4/arm64/`，SHA-256 为 `d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`。
+- 本地门禁：Ruff、格式检查、mypy、`pytest tests/unit`（762 passed，5 warnings）、route contract（51 passed，1 warning）、`npm run test:frontend`、生产构建和 packaged smoke 均通过；远端 CI 未启动，不宣称 CI 全绿。
 
 ## [0.4.3] - 2026-09-07
 

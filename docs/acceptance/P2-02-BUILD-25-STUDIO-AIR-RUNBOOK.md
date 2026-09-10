@@ -71,7 +71,7 @@ build 25 的现场失败原因：Dulwich 共同祖先计算误传 object store�
    再创建一个合成的未知派生视图 `_views/p2-02-unknown.json`，以及一个合成的未知/二进制
    文件（例如 `p2-02-binary.bin`）。这些文件只使用固定测试标记，不使用真实正文。
 4. 两边都用普通、显式路径的本地提交保存 fixture；不要 force-push、reset、rebase、stash，
-   不要改任何 `feature/uiux-experience-refine` 分支。先不要让 Air push。
+   不要创建或切换到已经归档的 UI/UX feature 分支。先不要让 Air push。
 5. 恢复 Studio 网络，先在 Studio 点击一次普通同步/推送。然后在 Air 点击普通同步；预期
    Air 进入 `diverged-protected`，不会覆盖 Air 的人工 Markdown、未知视图或二进制文件。
 
@@ -178,5 +178,4 @@ build 29 的 dual-write 进程验收结束后已恢复默认 `legacy` 模式；�
 - 两台设备最终 fast-forward/汇合到同一个 HEAD，双方内容均可核对且未丢失；
 - 现场记录和导出物通过 secret scan，且不含凭据、完整远端路径、真实正文或本机敏感路径。
 
-本工作包已完成。P2-03 仍未启动；按产品选择 2B，下一步进入 M3 上下文闭环，先做最小
-端到端纵向切片。
+本工作包已完成。P2-03 仍未启动；M3 后续已由 ADR 0044 归档，不进入当前交付计划。

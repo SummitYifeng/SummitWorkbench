@@ -1,6 +1,6 @@
 # Web 工作台（wb web）设计说明
 
-> 状态：v0.4.1 已交付（v0.4 知识线程 + v0.4.1 写路径加固/撤销/停滞语义修复，ADR 0026/0027）· 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
+> 状态：v0.4.4 build 9 已交付（UI/UX 优化、workspace-scoped 连接状态、原生生命周期与网页简报提交闭环，ADR 0024/0027/0045）· 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
 >
 > 本文回答「为什么这样设计」：形态、信息架构、边界与技术取舍。
 
@@ -93,6 +93,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - **数据通路（ADR 0024）**：`/api/state.brief` 是结构化载荷（来自当日信号快照 `_signals/YYYY-MM-DD.json` 的 `*_list` 明细），前端 `web/src/brief-card.ts` 组件化渲染；快照是**附加演进**（计数键保留），旧快照缺明细时 `brief=null`，前端自动回退 Markdown 视图（重跑一次 `wb brief` 即写入新快照）。vault 当日笔记的简报 Markdown 版式不变——Obsidian 侧与 G1 回归的唯一真源。
 - **呈现语义（L49）**：日程优先——会议（时间列，过去淡化）与待办任务（截止紧迫度排序 + 语义色倒计时徽章）是主区；AI 选中的任务按 `task_id`↔`feishu-task:{guid}` 精确合并到对应行上叠加「分类 · 排名」注解（消除事实区/行动区重复）；清单之外的行动单列「需要行动 · 任务清单之外」；AI 提议与最近完成默认折叠带计数。
 - 未生成给空状态引导，可一键触发 `wb brief`。
+- 网页端触发简报后，`/api/run/brief` 使用 workflow 返回的显式持久化路径完成提交/推送；
+  只包含当次简报、快照、用量和授权状态文件，不会把其他未提交文件带入提交。
 - 问答走 `wb ask` 全链路，回答带来源；模型不可用时显示可见错误而非空页。
 
 ## 5. JSON API（FastAPI，复用既有领域逻辑）
@@ -128,7 +130,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 
 - **用户的日常入口是 Web 面板，不是 CLI。** 真人用户只打开 `/Applications` 里的桌面 App
   （自包含 bundle：PyInstaller server + 原生 Swift/AppKit + 受管 WKWebView，加载同一套面板）
-  或浏览器访问 `http://127.0.0.1:8787` 完成全部日常工作；CLI 只用于自动化（launchd/脚本）
+  或在直接运行 `wb web` 时访问默认的 `http://127.0.0.1:8787` 完成全部日常工作；桌面 App
+  使用动态 loopback 端口，CLI 只用于自动化（launchd/脚本）
   与深度操作。因此**任何「用户可见」的功能改动，默认交付到 Web 面板**，并同时保证 CLI
   语义不倒退（两者共用 repositories/workflows）。
 - **两种运行形态，更新路径不同**：
@@ -150,4 +153,6 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 
 - 纯本地 `127.0.0.1`、按需启动；不引入服务端、常驻守护进程、向量库或 RAG。
 - 会议内容上云边界（L33）、写回需确认（L13）、软预算提醒线（L42）全部不变。
-- 质量门：ruff + format + mypy strict + pytest（433 项）；前端 tsc --noEmit 纳入构建。
+- 质量门：ruff + format + mypy strict + `pytest tests/unit`、route contract、前端契约测试和生产构建。
+  v0.4.4 build 9 本地验证为 unit 762 passed、route contract 51 passed、frontend test 全部通过；
+  GitHub Actions 因账户付款/额度问题未启动。

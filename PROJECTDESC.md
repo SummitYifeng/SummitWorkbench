@@ -6,13 +6,13 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.3` 候选 / P1-07D、P2-01B、P2-02 已完成；P2-02 build 29 已通过 Studio + Air 双机退出验收。当前交付边界止于 P2-02；M3 与 P2-03 均不实施。 |
+| 当前阶段 | `v0.4.4` 内部实际使用维护版 build 9 / P1-07D、P2-01B、P2-02 与 UI/UX 交付稳定性维护均已完成；M3 与 P2-03 均不实施。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/第二大脑/项目/指南）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
-| 权威规格 | `docs/product/PRD.md` v1.2 |
+| 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/第二大脑/项目/指南/设置）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
+| 权威规格 | `docs/product/PRD.md` v1.3 |
 
 ## Mission
 
@@ -83,15 +83,17 @@
 
 不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.3 候选）
+## 当前交付边界（v0.4.4 build 9）
 
-已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2 全部完成并经真实数据/真机验证；当前在 M3 前收口多设备与分发产品化：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02 和 v0.4.4 UI/UX 维护均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
 
-- **v0.4.3 候选 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。候选包 build 23 已在 Mac Studio 与 MacBook Air 安装同一 DMG 并完成完整双机闭环，build 24 已完成双机增量冒烟，P1-07D 正式通过。稳定 `v0.4.3` 仍未发布。
+- **v0.4.3 产品化基线 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。候选包 build 23 已在 Mac Studio 与 MacBook Air 安装同一 DMG 并完成完整双机闭环，build 24 已完成双机增量冒烟，P1-07D 正式通过。
 
 - **P2-01B（ADR 0042）**：仅针对已有 thread activity 事件切片接入 `shadow-read → dual-write`。保留旧 Markdown 结果为当前用户可见真源，新增事件投影对比、确定性差异诊断、一致性报告和可回退开关；覆盖乱序、重复事件、双设备离线写入、投影失败及新旧结果等价测试。全局 inbox、会议决策和项目正文暂不迁移。
 
 - **P2-02（ADR 0043）**：冲突分类、只读详情/计划/校验、脱敏导出、临时 staging、事件自动收集、已登记 thread activity 视图重建、人工 Markdown/未知格式选择、未知派生视图 `preserve-both`、快照过期与脏工作树保护、显式确认后的普通双父恢复提交、脱敏审计和普通 push 均已实现。build 29 已在 Studio + Air 完成事件收集、已登记视图重建、Markdown/未知视图/binary 的双父恢复、脏工作树拒绝、审计失败可见性、普通 push 与最终同 HEAD，P2-02 已完成。
+
+- **v0.4.4（ADR 0045）**：今日简报置顶、捕捉快捷行、会议导入抽屉、宽窄屏响应式两栏/单列、四张设置卡、高级功能折叠和绿色连接 ✓ 已落地；旧版飞书凭据迁移到 workspace scope，设置页与 OAuth 回调状态一致；过期 runtime record 不再因 PID 复用误报；网页简报生成显式提交本次生成路径，保持 dirty/sync 保护和旧入口兼容。build 9 arm64 `INTERNAL-DEV` DMG 已完成本地门禁与真实工作区交互验收。
 
 - **v0.4.1 · 写路径并发加固 + 撤销 + 停滞语义（ADR 0027，P0/P0'/P1）**：全库「读 → 变换 → 整文件原子重写」RMW 原语（审批页/inbox/档案追加/当日笔记与快照/线程日志产物/项目建档激活归档/清扫）整体放入工作区锁（与 publish_brief / sync 同一把 .wb.lock；锁只包文件临界区，绝不跨 LLM/网络调用）；裸写全量改原子写；审批 apply 收尾乐观合并（并发勾选/编辑不被整页重写吞掉）；幂等账本容错读（坏行隔离 .quarantine）；线程日志/产物序号分配同锁防静默覆盖。系统侧写回成功后自动 git 留痕（显式路径 + `wb:` 前缀，非 git 优雅降级），面板顶栏新增 **「↩ 撤销」**（最近 `wb:` 提交差异预览 → git revert 一键还原；只作用于 vault 文件，飞书侧副作用不可撤销，界面文案明示）。档案 frontmatter `updated` 收窄为实质更新，日志/产物只刷新 **`activity_at`**：首页「最近活跃」读 activity_at，「>14 天未更新」与周复盘停滞点名读 updated，不再被机器高频活动刷失明。质量门 **514 项全绿**（ruff + format + mypy strict + pytest），前端重新构建并重新装机。
 
@@ -107,4 +109,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，当前版本即为本期交付边界。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。变更记录见 `CHANGELOG.md`。
+P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.4 build 9 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。

@@ -49,6 +49,7 @@
 | [0042](0042-thread-activity-shadow-read-dual-write.md) | P2-01B | ✅ 仅 thread activity 事件切片的 shadow-read → dual-write、一致性报告、诊断与回退开关；不迁移其他热点 |
 | [0043](0043-sync-conflict-explanation.md) | P2-02 | ✅ build 29 双机退出验收通过；主路径、脏工作树与审计失败保护分支均有证据 |
 | [0044](0044-m3-codex-session-wrapup.md) | M3 | 🚫 已归档；产品所有者明确不实施 M3 |
+| [0045](0045-v044-uiux-delivery-hardening.md) | v0.4.4 | ✅ UI/UX 方案与交付稳定性收口：workspace-scoped 凭据/授权可见性、原生生命周期、网页简报显式提交；build 9 本地与真实工作区验收通过 |
 
 M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR 0008–0014）。
 底层韧性评审产出 3 条低垂果实，LHF #1（ADR 0016）、#2（ADR 0017）、#3（ADR 0018）已全部落地；
@@ -63,6 +64,8 @@ M0/M1/M2 全部完成；PRD L44 严格验收 6/6 真机通过（M1 验收见 ADR
 thread activity 事件切片接入 `shadow-read → dual-write`，提供确定性投影对比、差异诊断、
 一致性报告和可回退开关；暂不迁移全局 inbox、会议决策或项目正文。P2-02 的实现、自动化
 质量门与 build 29 双机退出验收均已收口：事件收集、已登记视图重建、脏工作树保护、审计失败
-可见性、普通 push 与最终汇合均有脱敏证据。下一步进入 M3；P2-03 属于未授权的可选云服务，
+可见性、普通 push 与最终汇合均有脱敏证据。M3 已由 ADR 0044 归档；P2-03 属于未授权的可选云服务，
 不默认实施。build 25–29 证据及现场 runbook 见
 `docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。
+
+v0.4.4 的 UI/UX 与交付稳定性维护收口见 ADR 0045；当前仓库和远端仅保留 `main` 主线。

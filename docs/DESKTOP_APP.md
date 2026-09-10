@@ -2,6 +2,9 @@
 
 当前生产路径是自包含的 Swift/AppKit + WebKit 壳：App 先验证 `/api/version`，服务 ready 后才创建页面导航，随后由唯一的 WKWebView 加载带 build identity 的 canonical URL。Chrome 已不再是运行或构建依赖。
 
+v0.4.4 build 9 的验证身份为 `v2026.09.10-df4ba1f-1cb9c2eb`。App 使用动态 loopback 端口，
+不要假设桌面 App 一定使用 CLI 的默认 `8787` 端口；以 App 自己打开的窗口为准。
+
 原生壳使用 `LSUIElement`，不显示 Dock 图标。窗口关闭只隐藏窗口，不停止服务；网页顶栏「退出」通过 native bridge 请求监督器停止自己管理的服务。重复打开 App 会复用同一个窗口：服务和 build 一致时只把窗口带到前台，不重建 WebView。
 
 ## 构建
@@ -38,6 +41,9 @@ scripts/install-macos-app.sh dist/SummitWorkbench.app
 
 服务从 `Contents/Resources/server/SummitWorkbenchServer` 启动，静态资源从
 `Contents/Resources/web/static` 读取；生产 App 不依赖仓库 `.venv`、仓库路径或终端。
+
+运行记录只在 PID、启动时间和精确可执行路径均匹配时才被视为当前 App 的服务。过期记录或
+PID 被系统复用时会被忽略，不会终止不属于本 App 的进程，也不会据此误报 crash loop。
 
 自有服务异常退出时按 0/1/2/4/8 秒退避重启，连续失败进入 crash-loop 状态并保留 App 窗口供用户重试；开发外部服务模式只等待服务恢复，不自行拉起服务。
 
