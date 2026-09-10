@@ -36,6 +36,9 @@ assert.match(source, /answer\.conflicts/, 'ask answer renders structured conflic
 assert.match(source, /ask-thread-select/, 'narrow ask view has a keyboard-friendly session selector');
 assert.match(source, /guide-search/, 'guide has local search');
 assert.match(source, /guide-index-links/, 'guide has a local directory');
+assert.match(source, /node\.tagName === 'H2' \|\| node\.tagName === 'H3'/, 'guide search groups rendered major headings');
+assert.match(source, /data-guide-section/, 'guide directory records section ownership');
+assert.match(source, /link\.hidden = Boolean\(sectionId && document\.getElementById\(sectionId\)\?\.hidden\)/, 'guide directory follows filtered sections');
 assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
 assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
 assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');
