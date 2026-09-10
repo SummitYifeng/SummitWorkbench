@@ -3,7 +3,7 @@
 ## 基线
 
 - 历史审计起点：源码 `b2faecb`（2026-09-10）；本轮继续工作的交接基线是 `6c910cc`（`main`）。
-- 本轮最新静态 frontend build：`v2026.09.10-a07f1bc-350853f1`；已验收 App build 9 的身份不在本轮改写。
+- 本轮最新静态 frontend build：`v2026.09.10-4abe7fb-350853f1`；已验收 App build 9 的身份不在本轮改写。
 - 本轮范围止于源码、前端构建产物与本地验证；不安装/替换 App、不操作真实飞书数据。导入抽屉关闭焦点修复及交接文档已提交并推送到 `origin/main`；隔离审计稿仍未纳入版本控制。
 - 保留六页签、今日简报置顶、相对 API 地址、现有 feature 边界、审批与外部写回安全边界。
 
@@ -158,6 +158,15 @@
 - 针对本阶段边界的合成回归：冲突/导入/API/安全 `80 passed, 2 warnings`；审批/项目/工作区 `58 passed, 1 warning`；会议/onboarding `26 passed, 1 warning`；前端契约与纯渲染全部通过。CUA 视口能力在本次新会话不可用，因此没有把新的宽度数字扩展为本轮证据；既有 1280/960/768/390/320 页面级无溢出记录保持不变。
 
 | 提交后隔离 CUA 复核 | 通过设置高级区、项目页内详情返回焦点、导入抽屉关闭返回焦点；合成相关回归共 164 项通过 | 本次未新增 200%/浅色/reduced-motion/packaged App 证据；未触发在线连接、模型或写回 |
+
+## 2026-09-11 继续复核
+
+- 自动门禁：全量覆盖率测试 `840 passed, 1 skipped, 5 warnings`，总覆盖率 `81.12%`；route/security `12 passed, 2 warnings`；前端契约/纯渲染、TypeScript、ruff、format、mypy、锁文件、密钥扫描、原生更新与自动化测试均通过。packaged App smoke 仍为明确 skip。
+- 构建门禁：`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过，静态身份为 `v2026.09.10-4abe7fb-350853f1`；生成产物与页面显示身份一致。
+- 隔离 CUA：在临时 `HOME`、workspace/vault、`127.0.0.1:8798` 上真实打开设置页，确认高级与维护默认折叠；重新打开 onboarding，跳过模型和飞书后显示“设置完成”，进入工作台成功；六页签使用 `End` 到“设置”、`ArrowRight` 回到“今日”；导入抽屉关闭后焦点回到触发按钮。没有执行在线检查、OAuth、模型调用、真实文件处理或外部写回。
+- 本阶段没有新增代码问题；未把 CUA 本次不可用的 viewport 能力扩展为新的响应式证据，既有 1280/960/768/390/320 页面级无整体溢出记录保持不变。
+
+| 2026-09-11 继续复核 | 全量自动门禁通过；最新构建真实 CUA 验证 onboarding、六页签键盘循环、设置折叠语义和导入关闭焦点 | 200%/浅色/reduced-motion/packaged App、真实外部服务及完整异常矩阵仍未验证 |
 
 ## 下一阶段起点与未完成清单
 

@@ -6,7 +6,7 @@
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`
 - 当前分支：`main`
-- 交接基线提交：`6c910cc`；此前 UX/UI 改造已作为增量提交到 `origin/main`，当前主线 HEAD 为 `a07f1bc`（导入抽屉关闭焦点修复）。
+- 交接基线提交：`6c910cc`；此前 UX/UI 改造已作为增量提交到 `origin/main`，最近运行时代码提交为 `4abe7fb`（后续仅有文档/产物记录提交）。
 - `d11ec56` 与 `ce0b27e` 是本档案之前的历史提交，不是本轮验证身份。
 - 产品：SummitWorkbench v0.4.4，个人执行管理层 + 第二大脑，本地 Web 工作台由原生 macOS App 或 `wb web` 提供。
 - 前端：Vite + 原生 TypeScript + CSS；入口是 `web/src/main.ts`，大量现有交互仍在 `web/src/legacy-main.ts`。不得迁移 React/Next.js，不引入新第三方依赖。
@@ -180,7 +180,7 @@
 
 ### 当前续测记录（2026-09-10，最新事实）
 
-- 当前仍为 `main`，最新已推送提交为 `bb5f00f`（`origin/main`）；最近运行时代码提交为 `a07f1bc`，最新静态 frontend build 为 `v2026.09.10-a07f1bc-350853f1`。`1a773c8` 与 `bb5f00f` 仅更新交接记录/验证记录，没有改变运行时代码。
+- 当前仍为 `main`；本阶段运行时代码基线为 `4abe7fb`，最新静态 frontend build 为 `v2026.09.10-4abe7fb-350853f1`，其后仅有交接记录/构建记录提交，没有改变运行时代码。
 - 在隔离 `HOME`、隔离 workspace/vault 和 `127.0.0.1:8798` 上，CUA 已真实完成：onboarding 新建工作台并跳过模型/飞书后重启进入工作台；设置高级维护默认折叠和展开；六页签 Home/End/方向键巡航；审批状态筛选、复选框、切换筛选清空选择和单选批量批准；中文显示名与 `·` 特殊字符搜索；项目详情页内打开、返回查询与入口焦点、归档/恢复；导入抽屉关闭重开以及两个合成 `.md/.txt` 文件的原生多文件选择。
 - 本轮 CUA 发现两个实际问题并已小步修复：320px 设置页自动更新标签造成 4px 页面溢出（`web/src/style.css`）；项目详情返回时命中隐藏祖先中的重复入口，焦点落到 `body`（`web/src/legacy-main.ts`）。两处均先补 `web/scripts/test-browser-contract.mjs` 断言，旧代码先失败，修改后契约通过。
 - 响应式结果：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 页面级 `body/document scrollWidth` 均等于 client width；320px tablist 内部横向滚动仍是预期行为。页签键盘循环实际结果为 `End→设置`、`ArrowRight→今日`、`ArrowLeft→设置`、`Home→今日`。
@@ -191,6 +191,13 @@
 - 自动门禁（本阶段代码/产物）：`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、`npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`、`git diff --check` 均通过；构建身份 `v2026.09.10-cb1bd34-60122c81`。文档修改完成后已复跑全量 Python/route/security/coverage、ruff、format、mypy、native tests：`840 passed, 1 skipped, 5 warnings`，coverage `81.12%`；packaged App 条件仍为 skip。
 - 本阶段代码/产物门禁：前端契约、TypeScript、生产构建与产物校验均通过；构建身份 `v2026.09.10-a07f1bc-350853f1`。全量 Python/原生门禁已通过，覆盖率为 `81.12%`；packaged App smoke 明确为 skip。
 - 提交后合成定向门禁：冲突/导入/API/安全 `80 passed, 2 warnings`；审批/项目/工作区 `58 passed, 1 warning`；会议/onboarding `26 passed, 1 warning`；前端契约、纯渲染和浏览器交互契约全部通过。新的 CUA 会话未提供 viewport 能力，未新增宽度矩阵数字；既有五档页面级无溢出证据仍有效。
+
+### 2026-09-11 继续复核
+
+- 全量门禁再次通过：`840 passed, 1 skipped, 5 warnings`，覆盖率 `81.12%`；route/security `12 passed, 2 warnings`；前端、TypeScript、ruff、format、mypy、锁文件、密钥扫描、原生更新/自动化测试全部通过。
+- 最新静态产物 `v2026.09.10-4abe7fb-350853f1` 已重建并通过 `verify-build.mjs`；它对应最近运行时代码提交 `4abe7fb`，之后的变更仅为交接文档记录。
+- 隔离 CUA 真实结果：设置页显示高级与维护默认折叠；从设置重新打开 onboarding，跳过模型/飞书后进入“设置完成”，再回到工作台；六页签 `End → 设置`、`ArrowRight → 今日`；导入抽屉关闭后焦点回到 `#btn-import-meeting`。全程未连接外部服务、未提交凭据、未执行模型或写回。
+- 本次只读/本地测试仍使用临时 workspace/vault；CUA 未提供 viewport 控制能力，因此没有把本次新会话写成新的 200%/宽度证据。
 
 ### 本阶段明确仍未验证
 
