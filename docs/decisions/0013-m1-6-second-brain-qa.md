@@ -3,7 +3,7 @@
 - 状态：✅ 实现完成并真机冒烟；⏳ 待 10 个真实问答的显式验收（PRD L44）
 - 日期：2026-08-31
 - 里程碑：M1-6（`wb ask`）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-6；PRD L23
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-6；PRD L23
 
 ## 决策
 

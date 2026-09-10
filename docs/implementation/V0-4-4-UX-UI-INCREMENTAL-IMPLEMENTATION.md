@@ -168,6 +168,13 @@
 
 | 2026-09-11 继续复核 | 全量自动门禁通过；最新构建真实 CUA 验证 onboarding、六页签键盘循环、设置折叠语义和导入关闭焦点 | 200%/浅色/reduced-motion/packaged App、真实外部服务及完整异常矩阵仍未验证 |
 
+## 文档资产保守归档（2026-09-11）
+
+- 按产品所有者选择的“保守整理”方案，将早期背景、旧架构图、已完成开发/生命周期/多设备计划、P2-02 build 25–29 runbook、简报 v2 静态预览和 ponytail 审计移入 `docs/archive/`；内容保留、路径可追溯，没有删除历史资料。
+- 当前权威/操作文档仍保留在原位置：`docs/product/`、`docs/decisions/`、`docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`、`docs/implementation/`、`docs/DESKTOP_APP.md` 和 `docs/RELEASING.md`。
+- `README.md`、`PROJECTDESC.md`、PRD、相关 ADR、产品说明和 `CHANGELOG.md` 已改用归档路径；`web/scripts/preview-brief.mjs` 继续可运行，但只生成到 `docs/archive/design/brief-v2-preview.html`。
+- 归档不是当前规格：如果历史材料与 PRD、ADR 或现行代码冲突，以当前权威文档和代码为准。
+
 ## 下一阶段起点与未完成清单
 
 ### 优先继续优化的实现项

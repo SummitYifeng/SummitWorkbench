@@ -130,7 +130,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 ## 6. 技术实现
 
 - 前端：Vite + 原生 TypeScript（无组件库）；`web/` 目录，`npm run build`（tsc --noEmit + vite）输出到 `src/summit_workbench/webapp/static/`（随 Python 包分发，`wb web` 开箱即用）。
-- 简报 v2 渲染为纯字符串模块 `web/src/brief-card.ts`（无 DOM 依赖，可独立生成静态预览：`node web/scripts/preview-brief.mjs` → `docs/design/brief-v2-preview.html`）；全局设计令牌（zinc + indigo、深浅双色）集中在 `web/src/style.css` 的 CSS 变量。
+- 简报 v2 渲染为纯字符串模块 `web/src/brief-card.ts`（无 DOM 依赖，可独立生成历史静态预览：`node web/scripts/preview-brief.mjs` → `docs/archive/design/brief-v2-preview.html`）；全局设计令牌（zinc + indigo、深浅双色）集中在 `web/src/style.css` 的 CSS 变量。
 - 开发：`npm run dev` 经 Vite 代理直连本机 `wb web`（8787），热更新。
 - 后端：FastAPI 新增 `/api/*`；`/` 在 static/index.html 存在时服务 SPA，否则回退 SSR（views.py 保留，旧路由 `/review`、`/run/*`、`/ask` 全部可用）。
 - 通知闭环（L48）：`wb status --notify` 真正投递 macOS 通知中心（osascript）；`wb web --open` 服务未运行时后台拉起 + 打开浏览器。

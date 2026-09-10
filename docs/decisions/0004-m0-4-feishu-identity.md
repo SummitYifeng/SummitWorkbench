@@ -5,7 +5,7 @@
   `vc:note:read` + tenant token 通道，并兑现了 `FeishuNoteSource`。
 - 日期：2026-08-31
 - 里程碑：M0-4（飞书身份与权限）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-4；PRD NFR-4 / L14；PRD §6 M0-8、M0-10
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §5 M0-4；PRD NFR-4 / L14；PRD §6 M0-8、M0-10
 
 ## 已核实的端点（官方文档，2026-08）
 

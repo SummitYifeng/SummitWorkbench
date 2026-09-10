@@ -4,7 +4,7 @@
   ⏳ 用户需重新授权任务细粒度 scope 后 `wb feishu tasks` 才通；⏳ launchd 连续 7 天真机验收待跑
 - 日期：2026-09-01
 - 里程碑：M2 · 晨间简报与周复盘（环 A）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §7；PRD §「M2 晨间简报」、L12/L26/L28/L43、G1/G2、
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §7；PRD §「M2 晨间简报」、L12/L26/L28/L43、G1/G2、
   「环 A 输出契约」（3.4）
 
 ## 本轮范围（用户拍板，2026-09-01）

@@ -66,6 +66,6 @@ thread activity 事件切片接入 `shadow-read → dual-write`，提供确定�
 质量门与 build 29 双机退出验收均已收口：事件收集、已登记视图重建、脏工作树保护、审计失败
 可见性、普通 push 与最终汇合均有脱敏证据。M3 已由 ADR 0044 归档；P2-03 属于未授权的可选云服务，
 不默认实施。build 25–29 证据及现场 runbook 见
-`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。
+`docs/archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。
 
 v0.4.4 的 UI/UX 与交付稳定性维护收口见 ADR 0045；当前仓库和远端仅保留 `main` 主线。

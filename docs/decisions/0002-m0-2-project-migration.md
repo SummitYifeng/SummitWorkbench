@@ -3,7 +3,7 @@
 - 状态：已执行
 - 日期：2026-08-30
 - 里程碑：M0-2（工作目录与项目迁移）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-2；PRD L9 / L10 / NFR-3
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §5 M0-2；PRD L9 / L10 / NFR-3
 
 ## 背景
 

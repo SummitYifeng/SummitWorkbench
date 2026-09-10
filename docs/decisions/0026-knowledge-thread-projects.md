@@ -3,7 +3,7 @@
 - 状态：✅ 已实现并真机验收（2026-09-03；ruff + format + mypy strict + 前端 tsc + pytest 491 项全绿；P0/P1/P2 与 P3 第一批真机验收并装机，P3 停滞检测随 v0.4.0 装机后生效）
 - 日期：2026-09-03
 - 里程碑：v0.4.0 · 知识线程项目（需求再梳理结论 R2-A+）
-- 依据：业务线（财务运营 / 教练财务 / 报名产品 / ERP 探索等）是「只开脑、不开文件夹」的**知识线程**——过去强行挂在某个 Work 文件夹/git 仓库下会污染仓库语义；六轮需求梳理确认「业务线程 = vault 一等公民」，不需要 Work 文件夹与 git（`docs/background/REQUIREMENT_REDISCOVERY_THREAD_PROJECTS.md` §3 决策表 / §5 改造方案）
+- 依据：业务线（财务运营 / 教练财务 / 报名产品 / ERP 探索等）是「只开脑、不开文件夹」的**知识线程**——过去强行挂在某个 Work 文件夹/git 仓库下会污染仓库语义；六轮需求梳理确认「业务线程 = vault 一等公民」，不需要 Work 文件夹与 git（`docs/archive/background/REQUIREMENT_REDISCOVERY_THREAD_PROJECTS.md` §3 决策表 / §5 改造方案）
 
 ## 背景与问题
 

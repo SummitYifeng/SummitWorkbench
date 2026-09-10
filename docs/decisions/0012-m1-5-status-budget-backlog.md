@@ -3,7 +3,7 @@
 - 状态：✅ 实现完成，质量门全绿；⏳ 待真实积压/预算边界的显式验收
 - 日期：2026-08-31
 - 里程碑：M1-5（状态、费用与提醒）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-5；PRD L44、NFR-8
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-5；PRD L44、NFR-8
 
 ## 决策
 

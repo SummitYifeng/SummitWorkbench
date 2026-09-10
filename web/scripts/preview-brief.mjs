@@ -1,4 +1,4 @@
-// 生成 docs/design/brief-v2-preview.html：用真实生产代码（brief-card.ts + style.css）
+// 生成 docs/archive/design/brief-v2-preview.html：用真实生产代码（brief-card.ts + style.css）
 // 渲染晨间简报 v2 的静态预览，方便在浏览器里直接验收视觉，不必等简报重新生成。
 // 用法：node scripts/preview-brief.mjs
 
@@ -11,7 +11,7 @@ const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const WEB_ROOT = resolve(SCRIPT_PATH, '..', '..');
 const SRC_DIR = join(WEB_ROOT, 'src');
 const REPO_ROOT = resolve(WEB_ROOT, '..');
-const OUT_HTML = join(REPO_ROOT, 'docs', 'design', 'brief-v2-preview.html');
+const OUT_HTML = join(REPO_ROOT, 'docs', 'archive', 'design', 'brief-v2-preview.html');
 const TMP_DIR = join(WEB_ROOT, '.preview-tmp');
 
 const today = '2026-09-03';

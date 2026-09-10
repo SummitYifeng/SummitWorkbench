@@ -199,6 +199,12 @@
 - 隔离 CUA 真实结果：设置页显示高级与维护默认折叠；从设置重新打开 onboarding，跳过模型/飞书后进入“设置完成”，再回到工作台；六页签 `End → 设置`、`ArrowRight → 今日`；导入抽屉关闭后焦点回到 `#btn-import-meeting`。全程未连接外部服务、未提交凭据、未执行模型或写回。
 - 本次只读/本地测试仍使用临时 workspace/vault；CUA 未提供 viewport 控制能力，因此没有把本次新会话写成新的 200%/宽度证据。
 
+### 2026-09-11 文档资产整理
+
+- 按保守方案归档 9 份历史/非权威资料到 `docs/archive/`，包括早期背景、旧架构图、已完成计划、旧验收 runbook、静态设计预览和 ponytail 审计；没有删除内容。
+- 已保留当前产品规格、操作说明、桌面 App/发布说明、ADR、当前验收记录和本轮实施/交接档案；README、PROJECTDESC、PRD、相关 ADR、产品说明、CHANGELOG 与预览脚本的路径引用已同步。
+- `docs/archive/README.md` 是归档入口，明确历史文档不覆盖当前产品规则；`web/scripts/preview-brief.mjs` 的输出路径已固定在归档目录，防止后续生成重新污染当前设计目录。
+
 ### 本阶段明确仍未验证
 
 - Chrome 原生 200% 缩放、浅色主题、系统 reduced-motion、packaged App/WKWebView。

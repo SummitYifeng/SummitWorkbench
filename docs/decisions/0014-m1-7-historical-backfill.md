@@ -3,7 +3,7 @@
 - 状态：✅ 实现完成并真机冒烟；⏳「按日期枚举全部会议」的飞书 API 待真实租户确认（见下）
 - 日期：2026-09-01
 - 里程碑：M1-7（历史补导）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-7；PRD L14 第 10 条
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-7；PRD L14 第 10 条
 
 ## 决策
 

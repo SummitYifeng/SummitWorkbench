@@ -3,7 +3,7 @@
 - 状态：✅ 实现、自动化故障注入与真实会议云端验收完成
 - 日期：2026-08-31
 - 里程碑：M1-3（云端结构化处理）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-3；PRD L15/L22/L36/L41/L42
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-3；PRD L15/L22/L36/L41/L42
 
 ## 决策
 

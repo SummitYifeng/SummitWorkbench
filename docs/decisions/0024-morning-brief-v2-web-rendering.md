@@ -25,7 +25,7 @@
 - 领域/快照：`src/summit_workbench/domain/brief.py`（`TaskFact.task_id`、`as_snapshot()` 附加键）、`workflows/brief/collect.py`（透传 guid）
 - API：`src/summit_workbench/webapp/api.py`（`brief_payload`）、`webapp/app.py`（`/api/state` 新增 `brief`）
 - 前端：`web/src/brief-card.ts`（纯字符串组件渲染，无 DOM 依赖）、`web/src/main.ts`（接入 + 旧快照回退）、`web/src/style.css`（tokens + v2 组件样式）
-- 预览/验收：`web/scripts/preview-brief.mjs` → `docs/design/brief-v2-preview.html`（真实当日数据 + 状态示例，headless DOM 抽查通过）
+- 预览/验收：`web/scripts/preview-brief.mjs` → `docs/archive/design/brief-v2-preview.html`（真实当日数据 + 状态示例，headless DOM 抽查通过；历史预览）
 - 测试：`tests/unit/test_brief_domain.py`（快照附加演进断言）、`tests/unit/test_webapi.py`（`/api/state` 结构化载荷 / 旧快照回退）
 
 ## 验证

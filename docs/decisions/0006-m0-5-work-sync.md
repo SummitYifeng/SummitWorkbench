@@ -3,7 +3,7 @@
 - 状态：已执行并对真实 `~/Documents/Work` 冒烟通过
 - 日期：2026-08-31
 - 里程碑：M0-5（同步基础）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-5；PRD §6 M0-9、NFR-3、L10
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §5 M0-5；PRD §6 M0-9、NFR-3、L10
 
 ## 决策
 

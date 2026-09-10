@@ -3,7 +3,7 @@
 - 状态：已接受
 - 日期：2026-08-30
 - 里程碑：M0-1（工程与质量骨架）
-- 依据：`docs/product/PRD.md` v1.1、`docs/plans/DEVELOPMENT_PLAN.md` §2.1 / §12
+- 依据：`docs/product/PRD.md` v1.1、`docs/archive/plans/DEVELOPMENT_PLAN.md` §2.1 / §12
 
 ## 背景
 

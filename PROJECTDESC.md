@@ -77,11 +77,11 @@
 ## 开发者 / Agent 读取顺序
 
 1. `docs/product/PRD.md`
-2. `docs/plans/DEVELOPMENT_PLAN.md`
+2. `docs/archive/plans/DEVELOPMENT_PLAN.md`（历史实施计划，仅用于理解原始顺序）
 3. 本文件
 4. 与当前工作包直接相关的架构决策记录
 
-不得从 `docs/background/THINKING_DOC.md` 或当前旧版 `docs/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
+不得从 `docs/archive/background/THINKING_DOC.md` 或当前旧版 `docs/archive/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
 ## 当前交付边界（v0.4.4 build 9）
 
@@ -105,7 +105,7 @@
 - **加固**：工作区跨进程锁、JSONL 容错读、飞书退避重试（ADR 0016–0018）；schema 版本号、运行心跳健康度、`wb doctor` 预检、飞书授权可见性（ADR 0019–0022）；GitHub Actions 质量门（macOS，360 项全绿）。
 - **v0.2 · Web 工作台（SPA）**：`wb web` 升级为「今日工作台」——快速捕捉（AI 承诺/想法分类 + `#项目` 本地解析 + 失败兜底）、拖拽导入逐字稿全自动链路、待确认审批卡片、项目推进精选与「项目」页（ADR 0023）、简报与问答、内置「指南」页签；审批页即时批准/拒绝/修改 + 批量操作 + 预演/应用；`wb review sweep` 清理命令；`wb status --notify` 真正投递 macOS 通知。
 - **v0.2 · 晨间简报 v2（ADR 0024）**：Web 面板把简报从纯文本清单升级为**组件化日程视图**——会议时间列、任务截止语义色 + 倒计时徽章、AI 选中任务行「分类 · 排名」注解（与待办清单合一）、非任务行动单列、提议/最近完成折叠；前端设计令牌全局换新（Linear 型 zinc + 靛紫，深浅双色）。数据经信号快照**附加演进**下发（`*_list` 明细字段），vault 内简报 Markdown 版式不变，旧快照自动回退旧视图。质量门 433 项全绿。
-- **v0.2 · macOS 桌面 App**：自包含 `.app`（PyInstaller bundle server + 原生 Swift/AppKit + 受管 WKWebView），原子构建/安装/自更新、版本握手与构建身份校验（打包说明见 `docs/DESKTOP_APP.md`，生命周期方案见 `docs/plans/PANEL_LIFECYCLE_AND_UPDATE_IMPLEMENTATION.md`）。
+- **v0.2 · macOS 桌面 App**：自包含 `.app`（PyInstaller bundle server + 原生 Swift/AppKit + 受管 WKWebView），原子构建/安装/自更新、版本握手与构建身份校验（打包说明见 `docs/DESKTOP_APP.md`，历史生命周期方案见 `docs/archive/plans/PANEL_LIFECYCLE_AND_UPDATE_IMPLEMENTATION.md`）。
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 

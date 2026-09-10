@@ -3,7 +3,7 @@
 - 状态：✅ 真机冒烟通过（2026-08-31，取回 2783 字符真实逐字稿）
 - 日期：2026-08-31
 - 里程碑：M0-10（会议纪要 API 冒烟）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-4/M0-10；PRD L14/L15；ADR 0004（此处兑现其推迟项）
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §5 M0-4/M0-10；PRD L14/L15；ADR 0004（此处兑现其推迟项）
 
 ## 已核实端点（官方文档，2026-08）
 

@@ -3,7 +3,7 @@
 - 状态：已执行（适配器 + 冒烟机制），真实长逐字稿冒烟由用户带 api key 运行
 - 日期：2026-08-31
 - 里程碑：M0-6（云端模型冒烟）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §5 M0-6；PRD §6 M0-11、3.2.1/3.2.2、NFR-8、L41、L36
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §5 M0-6；PRD §6 M0-11、3.2.1/3.2.2、NFR-8、L41、L36
 
 ## 决策
 

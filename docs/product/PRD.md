@@ -1,6 +1,6 @@
 # SummitWorkbench · 产品需求文档（PRD）v1.3
 
-> **文档地位**：本文是 SummitWorkbench 的**唯一权威规格**。`docs/background/THINKING_DOC.md` 降级为背景资料（记录需求梳理过程），`docs/architecture/ARCHITECTURE.html` 需按本文第 4 章更新。凡本文与二者冲突，以本文为准。
+> **文档地位**：本文是 SummitWorkbench 的**唯一权威规格**。`docs/archive/background/THINKING_DOC.md` 是背景资料（记录需求梳理过程），`docs/archive/architecture/ARCHITECTURE.html` 是旧架构示意图。凡本文与二者冲突，以本文为准。
 >
 > **给未来 AI Agent 的话**：本文是可执行规格，不是愿景稿。每条需求都带验收标准。执行前先读第 0 章决策台账，理解哪些结论是**被推翻过的**。本文需求正文描述的是**产品能力与数据边界**；Web 面板的呈现细节以 `docs/product/WEB_WORKBENCH.md` / `WEB_USAGE_GUIDE.md` 与 ADR 为准，需求正文不因呈现层改版而重写（核心问题从未改变，变的是交付面与表达方式）。
 >
@@ -92,7 +92,7 @@
 
 ### 1.2 用户画像（基于 33 个仓库扫描的修正版）
 
-`THINKING_DOC.md` 中「自己写代码已很少，个人 vibe coding 的小项目可忽略」的自述与事实不符。实际情况：
+归档的 `THINKING_DOC.md` 中「自己写代码已很少，个人 vibe coding 的小项目可忽略」的自述与事实不符。实际情况：
 
 - **规模**：本机 33 个 git 仓库，其中约 19 个为工作项目（HIC / Hoffman 系列）
 - **技术栈广度**：Go、Spring Boot、React、Vue、Tauri/Rust、Swift、Next.js、Flask、XeLaTeX

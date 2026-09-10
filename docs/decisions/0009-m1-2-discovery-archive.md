@@ -3,7 +3,7 @@
 - 状态：✅ 代码 + 单测 + **飞书主链路真机冒烟通过**（2026-08-31）；质量门全绿（ruff / mypy strict / pytest 141）
 - 日期：2026-08-31
 - 里程碑：M1-2（会议发现与原文归档）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-2；PRD §3.1.9 L14/L15/L22；ADR 0007/0008
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-2；PRD §3.1.9 L14/L15/L22；ADR 0007/0008
 
 ## 背景
 

@@ -31,11 +31,11 @@ Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文
 发生冲突时，按以下顺序判断：
 
 1. [产品需求文档](docs/product/PRD.md)——唯一权威产品规格与验收标准。
-2. [开发计划](docs/plans/DEVELOPMENT_PLAN.md)——实现顺序、模块边界和质量门禁。
+2. [历史开发计划](docs/archive/plans/DEVELOPMENT_PLAN.md)——已完成阶段的实现顺序、模块边界和质量门禁。
 3. [项目说明](PROJECTDESC.md)——面向开发者与 AI Agent 的稳定项目摘要。
 4. [架构决策记录](docs/decisions/README.md)——各工作包的落地决策与真机验证结论（ADR 索引）。
-5. [需求思考记录](docs/background/THINKING_DOC.md)——历史背景，不代表当前结论。
-6. [旧架构示意图](docs/architecture/ARCHITECTURE.html)——v0.1 历史材料，部分结论已失效；必须按 PRD 更新后才能作为实现参考。
+5. [需求思考记录（归档）](docs/archive/background/THINKING_DOC.md)——历史背景，不代表当前结论。
+6. [旧架构示意图（归档）](docs/archive/architecture/ARCHITECTURE.html)——v0.1 历史材料，部分结论已失效；必须按 PRD 更新后才能作为实现参考。
 
 ## 仓库结构
 
@@ -44,11 +44,11 @@ SummitWorkbench/
 ├── README.md / PROJECTDESC.md / config.example.toml
 ├── docs/
 │   ├── product/          # 权威 PRD
-│   ├── plans/            # 开发计划与验收记录
+│   ├── archive/          # 已完成阶段的背景、计划、旧验收和设计预览
 │   ├── decisions/        # 架构决策记录（ADR 0001–0045）
-│   ├── design/           # 设计预览产物（晨间简报 v2 静态预览）
-│   ├── architecture/     # 架构资料；当前 HTML 为历史版本
-│   ├── background/       # 非权威需求背景
+│   ├── acceptance/       # 当前版本本地发布验收
+│   ├── implementation/   # 当前增量实施与交接记录
+│   ├── contracts/        # API/路由契约
 │   └── DESKTOP_APP.md    # macOS .app 打包说明
 ├── src/summit_workbench/
 │   ├── cli/              # wb 命令入口

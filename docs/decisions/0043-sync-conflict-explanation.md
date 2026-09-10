@@ -54,5 +54,5 @@ API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push
 主路径与保护分支，ADR 0043 现可视为完成。
 
 build 25–29 的候选包证据、已完成项和补验步骤见
-`docs/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。P2-02 已完成并标记 `[x]`；P2-03
+`docs/archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。P2-02 已完成并标记 `[x]`；P2-03
 仍未启动。

@@ -3,7 +3,7 @@
 - 状态：✅ 实现、人工审批解析与项目名解析完成；⏳ 待真实项目别名录入与显式写回验收
 - 日期：2026-08-31
 - 里程碑：M1-4（集中审批与写回）
-- 依据：`docs/plans/DEVELOPMENT_PLAN.md` §6 M1-4；PRD L21/L22/L23
+- 依据：`docs/archive/plans/DEVELOPMENT_PLAN.md` §6 M1-4；PRD L21/L22/L23
 
 ## 决策
 
