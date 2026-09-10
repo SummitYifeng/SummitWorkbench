@@ -1,4 +1,4 @@
 /** Projects feature boundary. */
 export const projectsFeature = 'projects';
-export type { ProjectState, ProjectView } from './types';
-export { projectDisplayName, projectsHtml, projectsListHtml } from './render';
+export type { ProjectListFilter, ProjectState, ProjectView } from './types';
+export { projectDetailHtml, projectDisplayName, projectsHtml, projectsListHtml } from './render';

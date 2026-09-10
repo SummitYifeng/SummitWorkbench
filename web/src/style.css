@@ -208,6 +208,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .import-result { margin-top: 10px; }
 .import-receipt { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; background: var(--bg); display: grid; gap: 3px; }
 .import-receipt.success { border-left-color: var(--ok); }
+.import-receipt.partial { border-left-color: var(--warn); }
+.import-receipt.processing { border-left-color: var(--accent); }
 .import-receipt.error { border-left-color: var(--bad); }
 .import-receipt ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
 .spinner {
@@ -479,6 +481,16 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 6px; flex-wrap: wrap;
 }
+.review-selection {
+  display: grid; gap: 8px; margin: 10px 0 14px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--card);
+}
+.review-selection-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.review-selection-line label { color: var(--muted); font-size: 12px; }
+.review-selection-line select { min-width: 110px; }
+.review-counts { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.entry-select { display: inline-flex; align-items: center; gap: 6px; }
+.entry-select input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .meeting-head {
   display: flex; align-items: baseline; gap: 10px;
   border-bottom: 1px solid var(--border); padding: 14px 2px 6px; margin-top: 8px;
@@ -567,6 +579,11 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
   padding: 7px 12px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--card); color: var(--fg);
 }
+.project-filter { display: inline-flex; align-items: center; gap: 6px; }
+.project-filter select {
+  font: inherit; font-size: 13.5px; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--card); color: var(--fg);
+}
 .project-toolbar details.thread-create { margin-left: auto; }
 .project-toolbar details.thread-create summary {
   font-size: 13px; cursor: pointer; padding: 7px 12px; border-radius: 8px;
@@ -643,6 +660,7 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 
 /* ---- 线视图（P2） ---- */
 .pv { display: flex; flex-direction: column; gap: 14px; }
+.pv-return { margin-bottom: -4px; }
 .pv-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .pv-head h3 { margin: 0 0 4px; }
 .pv-blocks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
@@ -764,6 +782,7 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .ask-side-list { display: none; }
   .ask-mobile-select { display: flex; }
   .ask-main { margin-top: 12px; }
+  .header-right .version-status { display: none; }
 }
 
 @media (max-width: 640px) {
@@ -780,6 +799,8 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .review-toolbar { align-items: flex-start; }
   .review-toolbar .form-row { width: 100%; }
   .review-toolbar .form-row button { flex: 1; }
+  .review-selection-line > span:first-child { flex: 1 1 100%; }
+  .review-selection-line button { min-height: 40px; flex: 1; }
   .meeting-head { align-items: flex-start; flex-wrap: wrap; }
   .meeting-head .group-actions { width: 100%; margin-left: 0; }
   .meeting-head .group-actions button { min-height: 40px; }
@@ -788,6 +809,10 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .project-row-actions button { min-height: 40px; }
   .modal-backdrop { padding: 10px; }
   .modal { max-height: 90vh; padding: 16px; }
+}
+
+@media (max-width: 380px) {
+  .header-right #btn-refresh, .header-right #btn-quit { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

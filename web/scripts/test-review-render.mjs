@@ -75,6 +75,22 @@ export const cases = {
     ...external,
     state: 'reconciled-not-found',
   }]),
+  filterPending: reviewHtml({
+    groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [
+      baseEntry,
+      { ...baseEntry, candidate_id: 'm1#decision-1', decision: 'approved' },
+      { ...baseEntry, candidate_id: 'm1#decision-2', decision: 'rejected' },
+    ] }],
+    errors: [],
+  }, 1, '2026-09-01', [], [], null, {
+    filter: 'pending', selectedIds: new Set(['m1#decision-0']),
+  }),
+  selectedSummary: reviewHtml({
+    groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [baseEntry] }],
+    errors: [],
+  }, 1, '2026-09-01', [], [], null, {
+    filter: 'all', selectedIds: new Set(['m1#decision-0']),
+  }),
 };
 `;
 
@@ -93,7 +109,7 @@ try {
   writeFileSync(bundlePath, result.outputFiles[0].text);
   const mod = await import(pathToFileURL(bundlePath).href + '?t=' + Date.now());
 
-  assert.match(mod.cases.empty, /暂无待确认候选/);
+  assert.match(mod.cases.empty, /当前筛选没有候选/);
   assert.match(mod.cases.empty, /一键拒绝过期项/);
   assert.match(mod.cases.pending, /截止：2026-08-31（已过期）/);
   assert.match(mod.cases.pending, /项目甲/);
@@ -115,6 +131,14 @@ try {
   assert.match(mod.cases.approvedError, /依据或目标项目缺失，暂不可批准写回/);
   assert.match(mod.cases.approvedError, /确认后重试/);
   assert.match(mod.cases.approvedError, /data-decision="pending"/);
+  assert.match(mod.cases.filterPending, /data-review-filter="pending"/);
+  assert.match(mod.cases.filterPending, /data-review-select="m1#decision-0" checked/);
+  assert.doesNotMatch(mod.cases.filterPending, /data-review-select="m1#decision-1"/);
+  assert.doesNotMatch(mod.cases.filterPending, /data-review-select="m1#decision-2"/);
+  assert.match(mod.cases.filterPending, /当前筛选：待确认/);
+  assert.match(mod.cases.selectedSummary, /已选 1 条/);
+  assert.match(mod.cases.selectedSummary, /批量批准/);
+  assert.match(mod.cases.selectedSummary, /批量拒绝/);
   console.log('Review pure render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

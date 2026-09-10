@@ -15,27 +15,29 @@ export interface TodayState {
   projects: ProjectState[];
 }
 
+export interface ImportReceipt {
+  fileName: string;
+  bytes: number;
+  status: 'processing' | 'success' | 'partial' | 'error';
+  message: string;
+  details?: string[];
+  estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
+}
+
 export interface TodayRenderOptions {
   state: TodayState | null;
   importing: boolean;
   importOpen: boolean;
   capturing?: boolean;
   loadError?: string | null;
-  importResult?: {
-    fileName: string;
-    bytes: number;
-    status: 'processing' | 'success' | 'error';
-    message: string;
-    details?: string[];
-    estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
-  } | null;
+  importResults?: ImportReceipt[];
   readStatus?: { lastSuccessfulAt: string | null; error: string | null };
   health: { tone: string; label: string };
 }
 
 export interface TodayActions {
   capture: (text: string) => Promise<{ ok: boolean }>;
-  importFile: (file: File) => Promise<void>;
+  importFiles: (files: File[]) => Promise<void>;
   toggleImport: (open: boolean) => void;
   refresh: () => void;
 }

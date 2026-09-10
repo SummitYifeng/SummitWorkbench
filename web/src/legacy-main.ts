@@ -24,12 +24,12 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
 import { briefCardHtml, type BriefData } from './brief-card';
-import { projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
-import type { ProjectState, ProjectView } from './features/projects';
+import { projectDetailHtml, projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
+import type { ProjectListFilter, ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
-import type { ExternalAction, ReviewEntry, ReviewGroup, ReviewPayload } from './features/review';
+import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewGroup, ReviewPayload } from './features/review';
 import { renderSettings as renderSettingsFeature } from './features/settings';
-import { mountToday } from './features/today';
+import { mountToday, type ImportReceipt } from './features/today';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
@@ -162,18 +162,28 @@ let importing = false;
 let importOpen = false;
 let capturing = false;
 let draftStorageWarningShown = false;
-let importResult: {
-  fileName: string;
-  bytes: number;
-  status: 'processing' | 'success' | 'error';
-  message: string;
-  details?: string[];
-  estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
-} | null = null;
+let importResults: ImportReceipt[] = [];
 let stateLoadError: string | null = null;
 let reviewLoadError: string | null = null;
 let externalActionsError: string | null = null;
 let reviewPlanReady = false;
+let reviewFilter: ReviewFilter = 'all';
+let reviewSelectedIds = new Set<string>();
+let projectDetail: ProjectView | null = null;
+let projectDetailLoading = false;
+let projectDetailError: string | null = null;
+let projectDetailName = '';
+let projectListQuery = '';
+let projectListFilter: ProjectListFilter = 'all';
+interface ProjectReturnContext {
+  tab: Tab;
+  query: string;
+  filter: ProjectListFilter;
+  scrollY: number;
+}
+let projectReturnContext: ProjectReturnContext | null = null;
+let projectReturnFocus: HTMLElement | null = null;
+let projectFocusAfterRenderName: string | null = null;
 let modalReturnFocus: HTMLElement | null = null;
 let lastStateReadAt: string | null = null;
 let lastReviewReadAt: string | null = null;
@@ -517,6 +527,18 @@ async function doCheckVersion(reason: string): Promise<void> {
     askErrors = {};
     askBusy = false;
     askBusyThreadId = null;
+    reviewFilter = 'all';
+    reviewSelectedIds.clear();
+    importResults = [];
+    importOpen = false;
+    projectDetail = null;
+    projectDetailLoading = false;
+    projectDetailError = null;
+    projectDetailName = '';
+    projectListQuery = '';
+    projectListFilter = 'all';
+    projectReturnContext = null;
+    projectReturnFocus = null;
     loadedAskWorkspace = workspaceId;
     loadAskStore();
   }
@@ -705,13 +727,22 @@ function renderShell(): void {
   });
 }
 
+function focusVisibleProjectLink(name: string): boolean {
+  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-action="open-view"]'))
+    .find((el) => el.dataset.name === name && getComputedStyle(el).display !== 'none' &&
+      getComputedStyle(el).visibility !== 'hidden');
+  if (!target) return false;
+  target.focus();
+  return document.activeElement === target;
+}
+
 function renderToday(view: HTMLElement): void {
   mountToday(view, state, {
     importing,
     importOpen,
     capturing,
     loadError: stateLoadError,
-    importResult,
+    importResults,
     readStatus: { lastSuccessfulAt: lastStateReadAt, error: stateLoadError },
     health: healthTone(),
     actions: {
@@ -735,48 +766,76 @@ function renderToday(view: HTMLElement): void {
           renderToday(view);
         }
       },
-      importFile: async (file) => {
-        if (importing) return;
-        if (!file.name.toLowerCase().endsWith('.md') && !file.name.toLowerCase().endsWith('.txt')) {
-          toast('仅支持 .md / .txt 逐字稿文件', 'err');
-          return;
-        }
-        importing = true;
-        importResult = { fileName: file.name, bytes: file.size, status: 'processing', message: '正在处理…' };
-        renderToday(view);
-        const form = new FormData();
-        form.append('file', file);
-        try {
-          const result = await mutation(() => api<{
-            ok: boolean;
-            message: string;
-            details?: string[];
-            estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
-          }>('/api/meetings/import', {
-            method: 'POST', body: form,
-          }));
-          importResult = {
+      importFiles: async (files) => {
+        if (importing || files.length === 0) return;
+        const supported = files.filter((file) => file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.txt'));
+        const unsupported = files.filter((file) => !supported.includes(file));
+        if (unsupported.length) {
+          importResults = importResults.concat(unsupported.map((file) => ({
             fileName: file.name,
             bytes: file.size,
-            status: result.ok ? 'success' : 'error',
-            message: result.message,
-            details: result.details,
-            estimate: result.estimate,
-          };
-          toast(result.message, result.ok ? 'ok' : 'err');
-        } catch (err) {
-          importResult = { fileName: file.name, bytes: file.size, status: 'error', message: String(err) };
-          toast(String(err), 'err');
-        } finally {
-          importing = false;
-          renderToday(view);
-          void refreshState();
+            status: 'error' as const,
+            message: '仅支持 .md / .txt 逐字稿文件',
+          })));
         }
+        if (supported.length === 0) {
+          renderToday(view);
+          return;
+        }
+        if (supported.length > 1) toast('已加入 ' + supported.length + ' 个文件，将按顺序处理', 'info');
+        importing = true;
+        const start = importResults.length;
+        importResults = importResults.concat(supported.map((file) => ({
+          fileName: file.name,
+          bytes: file.size,
+          status: 'processing' as const,
+          message: '排队中…',
+        })));
+        renderToday(view);
+        for (const [offset, file] of supported.entries()) {
+          const receiptIndex = start + offset;
+          importResults[receiptIndex] = { ...importResults[receiptIndex], message: '正在处理…' };
+          renderToday(view);
+          const form = new FormData();
+          form.append('file', file);
+          try {
+            const result = await mutation(() => api<{
+              ok: boolean;
+              status?: 'success' | 'partial' | 'failed';
+              message: string;
+              details?: string[];
+              estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
+            }>('/api/meetings/import', {
+              method: 'POST', body: form,
+            }));
+            const status: ImportReceipt['status'] = result.status === 'partial'
+              ? 'partial' : result.status === 'failed' || !result.ok ? 'error' : 'success';
+            importResults[receiptIndex] = {
+              fileName: file.name,
+              bytes: file.size,
+              status,
+              message: result.message,
+              details: result.details,
+              estimate: result.estimate,
+            };
+            toast(result.message, status === 'success' ? 'ok' : status === 'partial' ? 'info' : 'err');
+          } catch (err) {
+            importResults[receiptIndex] = { fileName: file.name, bytes: file.size, status: 'error', message: String(err) };
+            toast(String(err), 'err');
+          }
+          renderToday(view);
+        }
+        importing = false;
+        renderToday(view);
+        void refreshState();
       },
       toggleImport: (open) => { importOpen = open; },
       refresh: () => { void refreshState(); },
     },
   });
+  if (projectFocusAfterRenderName && focusVisibleProjectLink(projectFocusAfterRenderName)) {
+    projectFocusAfterRenderName = null;
+  }
 }
 
 // ---------- 第二大脑：会话存储（localStorage，上限 10） ----------
@@ -1180,6 +1239,7 @@ function renderReview(view: HTMLElement): void {
     state?.projects ?? [],
     externalActions,
     externalActionsError,
+    { filter: reviewFilter, selectedIds: reviewSelectedIds },
   );
   view.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
     const candidateId = String(new FormData(form).get('candidate_id') ?? '');
@@ -1194,6 +1254,27 @@ function renderReview(view: HTMLElement): void {
   });
   view.oninput = () => saveCurrentDraftSnapshot();
   view.onchange = () => saveCurrentDraftSnapshot();
+  const filter = view.querySelector<HTMLSelectElement>('#review-status-filter');
+  filter?.addEventListener('change', () => {
+    const next = filter.value;
+    if (next !== 'all' && next !== 'pending' && next !== 'approved' && next !== 'rejected') return;
+    reviewFilter = next;
+    reviewSelectedIds.clear();
+    renderReview(view);
+    view.querySelector<HTMLSelectElement>('#review-status-filter')?.focus();
+  });
+  view.querySelectorAll<HTMLInputElement>('[data-review-select]').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      const id = checkbox.dataset.reviewSelect ?? '';
+      if (!id) return;
+      if (checkbox.checked) reviewSelectedIds.add(id);
+      else reviewSelectedIds.delete(id);
+      renderReview(view);
+      const next = Array.from(view.querySelectorAll<HTMLInputElement>('[data-review-select]'))
+        .find((candidate) => candidate.dataset.reviewSelect === id);
+      next?.focus();
+    });
+  });
 }
 
 
@@ -1202,9 +1283,27 @@ function renderProjects(view: HTMLElement): void {
     view.innerHTML = '<div class="loading">加载中…</div>';
     return;
   }
+  if (projectDetailLoading) {
+    view.innerHTML = '<div class="section-head"><button class="ghost" data-action="project-detail-back">← 返回项目</button></div>' +
+      '<div class="loading">正在读取「' + esc(projectDetailName) + '」详情…</div>';
+    return;
+  }
+  if (projectDetail) {
+    view.innerHTML = projectDetailHtml(
+      projectDetail,
+      projectReturnContext?.tab === 'today' ? '返回今日' : '返回项目列表',
+    );
+    bindProjectDetail(view, projectDetail);
+    return;
+  }
+  if (projectDetailError) {
+    view.innerHTML = '<div class="empty load-error"><p>项目详情读取失败：' + esc(projectDetailError) + '</p>' +
+      '<button class="ghost" data-action="project-detail-back">返回项目</button></div>';
+    return;
+  }
   const projects = state.projects;
   const today = state.day;
-  const query = (view.querySelector<HTMLInputElement>('#project-search'))?.value ?? '';
+  const query = projectListQuery;
   const total = projects.length;
   const onHome = projects.filter((p) => p.registered && p.status === 'active').length;
   const fresh = projects.filter((p) => !p.registered).length;
@@ -1214,6 +1313,12 @@ function renderProjects(view: HTMLElement): void {
     '<span class="hint">共 ' + total + ' · 在工作台 ' + onHome + ' · 新 ' + fresh + ' · 已归档 ' + archived + '</span></div>' +
     '<div class="project-toolbar">' +
     '<input id="project-search" type="search" placeholder="搜索项目名…" value="' + esc(query) + '">' +
+    '<label class="project-filter"><span class="hint">显示</span><select id="project-status-filter">' +
+    '<option value="all"' + (projectListFilter === 'all' ? ' selected' : '') + '>全部项目</option>' +
+    '<option value="active"' + (projectListFilter === 'active' ? ' selected' : '') + '>在工作台</option>' +
+    '<option value="new"' + (projectListFilter === 'new' ? ' selected' : '') + '>新文件夹</option>' +
+    '<option value="archived"' + (projectListFilter === 'archived' ? ' selected' : '') + '>已归档</option>' +
+    '</select></label>' +
     '<details class="thread-create" title="业务线程不需要 Work 文件夹/git 仓库，直接在 vault 建档">' +
     '<summary class="ghost">＋ 新建知识线程</summary>' +
     '<form class="thread-create-form">' +
@@ -1224,11 +1329,22 @@ function renderProjects(view: HTMLElement): void {
     '</div>' +
     '<div id="projects-list"></div>';
   const listEl = document.getElementById('projects-list') as HTMLElement;
-  listEl.innerHTML = projectsListHtml(query, projects, today, true);
+  listEl.innerHTML = projectsListHtml(query, projects, today, true, projectListFilter);
+  if (projectFocusAfterRenderName && focusVisibleProjectLink(projectFocusAfterRenderName)) {
+    projectFocusAfterRenderName = null;
+  }
   const search = view.querySelector<HTMLInputElement>('#project-search');
   search?.addEventListener('input', () => {
+    projectListQuery = search.value;
     const el = document.getElementById('projects-list');
-    if (el) el.innerHTML = projectsListHtml(search.value, projects, today, true);
+    if (el) el.innerHTML = projectsListHtml(projectListQuery, projects, today, true, projectListFilter);
+  });
+  view.querySelector<HTMLSelectElement>('#project-status-filter')?.addEventListener('change', (event) => {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (value !== 'all' && value !== 'active' && value !== 'new' && value !== 'archived') return;
+    projectListFilter = value;
+    const el = document.getElementById('projects-list');
+    if (el) el.innerHTML = projectsListHtml(projectListQuery, projects, today, true, projectListFilter);
   });
 }
 
@@ -1720,12 +1836,35 @@ async function reconcileExternalAction(operationId: string, decision: string, re
   }
 }
 
+function selectedReviewEntries(): ReviewEntry[] {
+  const byId = new Map((review?.groups ?? []).flatMap((group) => group.entries).map((entry) => [entry.candidate_id, entry]));
+  return Array.from(reviewSelectedIds)
+    .map((id) => byId.get(id))
+    .filter((entry): entry is ReviewEntry => Boolean(entry && entry.decision === 'pending'));
+}
+
+function batchSelectedReview(decision: 'approved' | 'rejected'): void {
+  const picked = selectedReviewEntries();
+  const selected = picked.filter((entry) =>
+    decision === 'rejected' || (entry.actionable && !!entry.route),
+  );
+  if (decision === 'approved' && selected.length === 0) {
+    toast('选中的候选缺少依据或落点，未批准', 'info');
+    return;
+  }
+  const blocked = decision === 'approved' ? picked.length - selected.length : 0;
+  const note = blocked > 0 ? blocked + ' 条因依据或落点不完整未纳入批准' : '';
+  reviewSelectedIds.clear();
+  void batchDecide(selected.map((entry) => entry.candidate_id), decision, note);
+}
+
 // ---------- 全局事件（审批页操作） ----------
 
 document.addEventListener('click', (ev) => {
   const btn = (ev.target as HTMLElement).closest<HTMLElement>('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action ?? '';
+  btn.focus();
   if (action === 'go-review') {
     tab = 'review';
     render();
@@ -1794,6 +1933,10 @@ document.addEventListener('click', (ev) => {
   if (action === 'goto-projects') {
     tab = 'projects';
     render();
+    return;
+  }
+  if (action === 'project-detail-back') {
+    backFromProjectDetail();
     return;
   }
   if (action === 'profile-switch') {
@@ -1915,6 +2058,24 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'plan') {
     void planApply(false);
+    return;
+  }
+  if (action === 'review-select-all') {
+    const selectable = (review?.groups ?? [])
+      .flatMap((group) => group.entries)
+      .filter((entry) => entry.decision === 'pending' && (reviewFilter === 'all' || reviewFilter === 'pending'))
+      .map((entry) => entry.candidate_id);
+    const allSelected = selectable.length > 0 && selectable.every((id) => reviewSelectedIds.has(id));
+    selectable.forEach((id) => {
+      if (allSelected) reviewSelectedIds.delete(id);
+      else reviewSelectedIds.add(id);
+    });
+    renderReview(document.getElementById('view-review') as HTMLElement);
+    return;
+  }
+  if (action === 'review-batch') {
+    const decision = btn.dataset.decision;
+    if (decision === 'approved' || decision === 'rejected') batchSelectedReview(decision);
     return;
   }
   if (action === 'apply') {
@@ -2383,84 +2544,15 @@ async function submitArtifact(): Promise<void> {
   }
 }
 
-/** 线视图（P2）：渲染项目/线程的档案区块 + 时间线。 */
-function projectViewHtml(v: ProjectView): string {
-  const order = ['当前状态', '下一步', '阻塞', '跟进事项', '决策记录'];
-  const blockSections = order.map((label) => {
-    const lines = v.blocks[label] ?? [];
-    if (lines.length === 0) return '';
-    const rows = lines.map((raw) => {
-      let text = raw;
-      let mark = '';
-      if (text.startsWith('- [ ] ')) { mark = '☐ '; text = text.slice(6); }
-      else if (text.startsWith('- [x] ')) { mark = '☑ '; text = text.slice(6); }
-      else if (text.startsWith('- ')) { text = text.slice(2); }
-      return '<li>' + mark + esc(text) + '</li>';
-    }).join('');
-    const extra = label === '跟进事项' && v.followup_pending > 0
-      ? ' <span class="badge warn">' + v.followup_pending + ' 条待闭环</span>'
-      : (label === '下一步' && lines.length === 0 ? '' : '');
-    return '<div class="pv-block"><h4>' + esc(label) + extra + '</h4><ul>' + rows + '</ul></div>';
-  }).join('');
-  const timeline = v.timeline.length
-    ? '<ul class="pv-timeline">' + v.timeline.map((t) =>
-        '<li class="tl-kind-' + esc(t.kind) + '">' +
-        '<span class="tl-date">' + esc(t.date) + '</span>' +
-        '<span class="tl-label">' + esc(t.label) + '</span>' +
-        '<span class="tl-title">' + esc(t.title) + '</span>' +
-        (t.snippet ? '<div class="tl-snippet">' + esc(t.snippet) + '</div>' : '') +
-        '</li>'
-      ).join('') + '</ul>'
-    : '<p class="hint">还没有推进日志/产物/关联会议——用下方「✎ 日志」「存产物」开始积累。</p>';
-  const inboxNote = v.inbox_pending > 0
-    ? '<p class="hint">📥 线程 inbox 有 ' + v.inbox_pending + ' 条待处理</p>' : '';
-  const statusBadge = v.status === 'archived' ? '已归档' : '在工作台';
-  const disp = (v.title && v.title.trim()) || v.name;
-  return (
-    '<div class="pv">' +
-    '<div class="pv-head">' +
-    '<div><h3 class="project-name" id="pv-title">' + esc(disp) + '</h3>' +
-    (disp !== v.name ? '<div class="hint">档案 ID：' + esc(v.name) + '</div>' : '') +
-    '<div class="hint">状态：' + esc(statusBadge) + (v.updated ? ' · 更新于 ' + esc(v.updated) : '') + '</div>' +
-    inboxNote + '</div>' +
-    '<div class="row">' +
-    '<button class="ok" data-action="pv-log" title="追加推进日志">✎ 日志</button>' +
-    '<button class="ghost" id="pv-rename" title="修改显示名（不改档案 ID / 文件夹 / git）">✎ 显示名</button>' +
-    '<button class="ghost" data-action="pv-artifact" title="把 AI 产物存入本档案">存产物</button>' +
-    '<button class="ghost" data-action="pv-refresh" title="重新加载">↻ 刷新</button>' +
-    '</div></div>' +
-    '<div class="pv-blocks">' + blockSections + '</div>' +
-    '<div class="pv-timeline-wrap"><h4>时间线</h4>' + timeline + '</div>' +
-    '<div class="row"><button class="primary" data-action="pv-close">关闭</button></div>' +
-    '</div>'
-  );
-}
-
-/** 打开某项目/线程的线视图（模态内展示，含 日志/产物/刷新/关闭 操作）。 */
-async function showProjectView(name: string): Promise<void> {
-  if (!name) return;
-  let view: ProjectView;
-  try {
-    view = await api<ProjectView>('/api/projects/view?name=' + encodeURIComponent(name));
-  } catch (err) {
-    toast(String(err), 'err');
-    return;
-  }
-  if (!view.ok) {
-    toast(view.message ?? '打开失败', 'err');
-    return;
-  }
-  const modal = activateModal(projectViewHtml(view));
-  modal.querySelector('[data-action="pv-close"]')?.addEventListener('click', closeModal);
-  modal.querySelector('[data-action="pv-refresh"]')?.addEventListener('click', () => { void showProjectView(name); });
-  modal.querySelector('[data-action="pv-log"]')?.addEventListener('click', () => openLogModal(name));
-  modal.querySelector('[data-action="pv-artifact"]')?.addEventListener('click', () => openArtifactModal(name));
-
-  const renameBtn = modal.querySelector<HTMLButtonElement>('#pv-rename');
+function bindProjectDetail(container: HTMLElement, current: ProjectView): void {
+  container.querySelector('[data-action="pv-refresh"]')?.addEventListener('click', () => { void showProjectView(current.name); });
+  container.querySelector('[data-action="pv-log"]')?.addEventListener('click', () => openLogModal(current.name));
+  container.querySelector('[data-action="pv-artifact"]')?.addEventListener('click', () => openArtifactModal(current.name));
+  const renameBtn = container.querySelector<HTMLButtonElement>('#pv-rename');
   renameBtn?.addEventListener('click', () => {
-    const titleBox = modal.querySelector('#pv-title');
+    const titleBox = container.querySelector('#pv-title');
     if (!titleBox) return;
-    const cur = (view.title && view.title.trim()) || view.name;
+    const cur = (current.title && current.title.trim()) || current.name;
     const wrap = document.createElement('div');
     wrap.className = 'pv-rename';
     const input = document.createElement('input');
@@ -2479,6 +2571,7 @@ async function showProjectView(name: string): Promise<void> {
     titleBox.replaceWith(wrap);
     input.focus();
     input.select();
+    const reload = (): void => { void showProjectView(current.name); };
     const commit = (): void => {
       const value = input.value.trim();
       if (!value) {
@@ -2489,26 +2582,86 @@ async function showProjectView(name: string): Promise<void> {
         const r = await api<{ ok: boolean; message: string }>('/api/projects/rename', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: view.name, title: value }),
+          body: JSON.stringify({ name: current.name, title: value }),
         });
         toast(r.message, r.ok ? 'ok' : 'err');
         if (r.ok) {
-          void showProjectView(view.name);
+          reload();
           void refreshState();
         }
       }).catch((err: unknown) => toast(String(err), 'err'));
     };
     save.addEventListener('click', commit);
-    cancel.addEventListener('click', () => { void showProjectView(view.name); });
+    cancel.addEventListener('click', reload);
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter') {
         ev.preventDefault();
         commit();
       } else if (ev.key === 'Escape') {
-        void showProjectView(view.name);
+        reload();
       }
     });
   });
+}
+
+async function showProjectView(name: string): Promise<void> {
+  if (!name) return;
+  if (!projectReturnContext) {
+    projectReturnContext = {
+      tab,
+      query: projectListQuery,
+      filter: projectListFilter,
+      scrollY: window.scrollY,
+    };
+    projectReturnFocus = document.activeElement instanceof HTMLElement &&
+      document.activeElement !== document.body && document.activeElement !== document.documentElement
+      ? document.activeElement : null;
+  }
+  projectDetailName = name;
+  projectDetail = null;
+  projectDetailError = null;
+  projectDetailLoading = true;
+  tab = 'projects';
+  render();
+  window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
+  try {
+    const next = await api<ProjectView>('/api/projects/view?name=' + encodeURIComponent(name));
+    if (!next.ok) {
+      projectDetailError = next.message ?? '打开失败';
+      return;
+    }
+    projectDetail = next;
+  } catch (err) {
+    projectDetailError = String(err);
+  } finally {
+    projectDetailLoading = false;
+    if (tab === 'projects') {
+      render();
+      document.querySelector<HTMLElement>('[data-action="project-detail-back"]')?.focus();
+    }
+  }
+}
+
+function backFromProjectDetail(): void {
+  const context = projectReturnContext;
+  const name = projectDetailName;
+  projectFocusAfterRenderName = name || null;
+  projectDetail = null;
+  projectDetailError = null;
+  projectDetailLoading = false;
+  projectDetailName = '';
+  projectReturnContext = null;
+  tab = context?.tab ?? 'projects';
+  projectListQuery = context?.query ?? projectListQuery;
+  projectListFilter = context?.filter ?? projectListFilter;
+  render();
+  window.setTimeout(() => {
+    window.scrollTo({ top: context?.scrollY ?? 0, behavior: 'instant' as ScrollBehavior });
+    if (projectFocusAfterRenderName && focusVisibleProjectLink(projectFocusAfterRenderName)) {
+      projectFocusAfterRenderName = null;
+    }
+  }, 0);
+  projectReturnFocus = null;
 }
 
 // ---------- 撤销系统改动（P0'） ----------
@@ -2974,6 +3127,13 @@ function missingConflictSelections(): string[] {
   return conflictDetails?.paths.filter((item) => !item.automatic && !conflictSelections[item.path]).map((item) => item.path) ?? [];
 }
 
+function activateConflictModal(html: string): HTMLElement {
+  const modal = activateModal(html);
+  modal.dataset.draftEntity = 'sync-conflict';
+  modal.dataset.draftDirty = Object.values(conflictSelections).some(Boolean) ? '1' : '0';
+  return modal;
+}
+
 function renderSyncConflictModal(): void {
   const modal = document.getElementById('modal') as HTMLElement | null;
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
@@ -3006,7 +3166,10 @@ function renderSyncConflictModal(): void {
       '<span>事件 ' + preparation.event_count + ' · 聚合 ' + preparation.aggregate_count +
       ' · 重建视图 ' + preparation.rebuilt_view_count + ' · 候选文件 ' + preparation.candidate_path_count + '</span>' +
       (preparation.error_code ? '<span class="hint">原因：' + esc(preparation.error_code) + '</span>' : '') + '</div>' : '';
-  modal.innerHTML = '<h3>同步冲突详情</h3>' +
+  const activePath = document.activeElement instanceof HTMLElement
+    ? document.activeElement.dataset.conflictPath ?? ''
+    : '';
+  activateConflictModal('<h3>同步冲突详情</h3>' +
     '<p class="hint">当前处于保护态。这里只读取已存在的分叉快照，不展示正文；确认前不会修改 vault。</p>' +
     '<div class="conflict-revisions"><span>共同基线 <code>' + esc(conflictRevision(details.base_revision)) + '</code></span>' +
     '<span>本机 <code>' + esc(conflictRevision(details.local.revision)) + '</code></span>' +
@@ -3019,14 +3182,16 @@ function renderSyncConflictModal(): void {
     (preparation?.ok ? '<button class="ok" data-action="sync-conflict-apply"' + (conflictBusy ? ' disabled' : '') + '>确认恢复并创建提交</button>' : '') +
     '<button class="ghost" data-action="sync-conflict-export"' + (conflictBusy ? ' disabled' : '') + '>导出冲突包</button>' +
     '<button class="ghost" data-action="copy-diagnostics"' + (conflictBusy ? ' disabled' : '') + '>复制诊断</button>' +
-    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>稍后处理</button></div>';
+    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>稍后处理</button></div>');
   backdrop.hidden = false;
   modal.querySelectorAll<HTMLSelectElement>('[data-conflict-path]').forEach((select) => {
     select.addEventListener('change', () => {
       const path = select.dataset.conflictPath ?? '';
       if (path) conflictSelections[path] = select.value as ConflictSelection;
+      persistEntityDraft('sync-conflict', conflictSelectionsPayload());
       conflictMessage = null;
       renderSyncConflictModal();
+      if (path) modal.querySelector<HTMLSelectElement>('[data-conflict-path="' + CSS.escape(path) + '"]')?.focus();
     });
   });
 }
@@ -3035,25 +3200,34 @@ async function showSyncConflictDetails(): Promise<void> {
   const modal = document.getElementById('modal') as HTMLElement | null;
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
   if (!modal || !backdrop) return;
-  modal.innerHTML = '<div class="loading">正在读取分叉详情（只读）…</div>';
-  backdrop.hidden = false;
+  const returnFocus = document.querySelector<HTMLElement>('[data-action="sync-conflict-details"]');
   conflictDetails = null;
+  conflictSelections = {};
   conflictPreparation = null;
   conflictMessage = null;
   conflictBusy = false;
+  activateConflictModal('<div class="loading">正在读取分叉详情（只读）…</div>');
+  if (returnFocus) modalReturnFocus = returnFocus;
   try {
     const data = await api<SyncConflictDetailsPayload>('/api/sync/conflict/details');
     if (!data.ok || !data.available || !data.details) {
-      modal.innerHTML = '<h3>无法读取同步冲突</h3><p class="msg err">' + esc(data.reason ?? '当前已不在冲突保护态，请刷新同步状态。') + '</p>' +
-        '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>';
+      activateConflictModal('<h3>无法读取同步冲突</h3><p class="msg err">' + esc(data.reason ?? '当前已不在冲突保护态，请刷新同步状态。') + '</p>' +
+        '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>');
       return;
     }
     conflictDetails = data.details;
-    conflictSelections = Object.fromEntries(data.details.paths.filter((item) => !item.automatic).map((item) => [item.path, '']));
+    const saved = loadEntityDraft<Record<string, string>>('sync-conflict', Date.now(), remoteVersion?.workspace_id) ?? {};
+    conflictSelections = Object.fromEntries(data.details.paths.filter((item) => !item.automatic).map((item) => {
+      const allowed: ConflictSelection[] = item.kind === 'unknown-generated-view' || item.kind === 'opaque-binary'
+        ? ['preserve-both']
+        : ['keep-local', 'keep-remote', 'preserve-both'];
+      const choice = saved[item.path] as ConflictSelection;
+      return [item.path, allowed.includes(choice) ? choice : ''];
+    }));
     renderSyncConflictModal();
   } catch (err) {
-    modal.innerHTML = '<h3>无法读取同步冲突</h3><p class="msg err">' + esc(String(err)) + '</p>' +
-      '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>';
+    activateConflictModal('<h3>无法读取同步冲突</h3><p class="msg err">' + esc(String(err)) + '</p>' +
+      '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>');
   }
 }
 
@@ -3131,6 +3305,7 @@ async function applySyncConflictRecovery(): Promise<void> {
     }));
     if (data.recovery?.status === 'committed') {
       committed = true;
+      clearEntityDraft('sync-conflict', remoteVersion?.workspace_id);
       closeModal();
       const auditFailed = data.recovery.audit?.status === 'failed';
       const message = auditFailed

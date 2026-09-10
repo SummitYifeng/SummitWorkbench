@@ -1,7 +1,7 @@
 import { briefCardHtml } from '../../brief-card';
 import { esc, mdToHtml } from '../../md';
 import { projectsHtml } from '../projects';
-import type { TodayRenderOptions } from './types';
+import type { ImportReceipt, TodayRenderOptions } from './types';
 
 function reviewCard(pending: number, oldest: number | null): string {
   return pending > 0
@@ -13,20 +13,21 @@ function reviewCard(pending: number, oldest: number | null): string {
       '<p class="card-sub">当前没有需要你做决定的候选；已批准、失败或未知写回仍以审批页状态为准。</p></div>';
 }
 
-function importDrawer(open: boolean, importing: boolean, result: TodayRenderOptions['importResult']): string {
+function importDrawer(open: boolean, importing: boolean, results: ImportReceipt[] = []): string {
   const panel = importing
     ? '<div class="dropzone busy"><div class="spinner"></div><p>正在归档并结构化…（模型处理中，稍候）</p></div>'
     : '<div class="dropzone" id="dropzone"><div class="dz-icon">⤓</div>' +
       '<p><strong>拖入会议逐字稿</strong>（.md / .txt，带说话人+时间戳）</p>' +
-      '<p class="hint">或 <button class="link" id="btn-pick">点击选择文件</button> · 文件名建议 YYYY-MM-DD-会议标题.txt</p>' +
-      '<input type="file" id="file-input" accept=".md,.txt" hidden></div>' +
-      '<div class="import-result" id="import-result"></div>';
-  const resultHtml = result
-    ? '<div class="import-receipt ' + result.status + '"><strong>' + esc(result.fileName) + '</strong>' +
+      '<p class="hint">或 <button class="link" id="btn-pick">点击选择文件</button> · 可多选，系统会按顺序处理</p>' +
+      '<input type="file" id="file-input" accept=".md,.txt" multiple hidden></div>';
+  const resultHtml = results.length
+    ? '<div class="import-result" id="import-result" aria-live="polite">' + results.map((result) =>
+      '<div class="import-receipt ' + result.status + '"><strong>' + esc(result.fileName) + '</strong>' +
       '<span class="hint">' + (result.bytes / 1024 / 1024).toFixed(2) + ' MiB · ' + esc(result.message) + '</span>' +
       (result.details?.length ? '<ul>' + result.details.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '') +
       (result.estimate?.crosses_soft_budget ? '<span class="hint">本次估算接近软预算，仅提示，不阻断导入。</span>' : '') +
-      '</div>' : '';
+      '</div>'
+    ).join('') + '</div>' : '';
   return '<div class="import-drawer' + (open ? ' open' : '') + '" id="import-drawer"' +
     (open ? '' : ' hidden') + '><div class="import-drawer-head"><strong>导入会议纪要</strong>' +
     '<button class="ghost" id="btn-import-close" type="button" aria-label="关闭">✕</button></div>' +
@@ -63,7 +64,7 @@ export function todayHtml(options: TodayRenderOptions, captureValue: string): st
       '。可点击右上角刷新重试。</p>'
     : (options.readStatus?.lastSuccessfulAt ? '<p class="read-data">本地数据读取于 ' + esc(options.readStatus.lastSuccessfulAt) + '</p>' : '');
   return '<section class="brief brief2 brief-today">' + header + capture +
-    readStatus + '<div class="brief-body">' + briefBody + '</div>' + importDrawer(options.importOpen, options.importing, options.importResult) +
+    readStatus + '<div class="brief-body">' + briefBody + '</div>' + importDrawer(options.importOpen, options.importing, options.importResults) +
     '</section><section class="block">' + reviewCard(state.status.pending_review, state.status.backlog.oldest_age_days) +
     '</section>' + projectsHtml(state.projects, state.day);
 }

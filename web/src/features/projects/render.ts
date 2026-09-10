@@ -1,5 +1,5 @@
 import { esc } from '../../md';
-import type { ProjectState } from './types';
+import type { ProjectListFilter, ProjectState, ProjectView } from './types';
 
 /** 'YYYY-MM-DD' 差值（天）；任一非法返回 -1。 */
 function dayDiff(later: string | null | undefined, earlier: string | null | undefined): number {
@@ -139,15 +139,74 @@ function projectRow(p: ProjectState, today: string): string {
   );
 }
 
+/** 项目页内详情：保留档案区块与时间线，不再依赖通用弹层容器。 */
+export function projectDetailHtml(v: ProjectView, backLabel = '返回项目列表'): string {
+  const order = ['当前状态', '下一步', '阻塞', '跟进事项', '决策记录'];
+  const blockSections = order.map((label) => {
+    const lines = v.blocks[label] ?? [];
+    if (lines.length === 0) return '';
+    const rows = lines.map((raw) => {
+      let text = raw;
+      let mark = '';
+      if (text.startsWith('- [ ] ')) { mark = '☐ '; text = text.slice(6); }
+      else if (text.startsWith('- [x] ')) { mark = '☑ '; text = text.slice(6); }
+      else if (text.startsWith('- ')) { text = text.slice(2); }
+      return '<li>' + mark + esc(text) + '</li>';
+    }).join('');
+    const extra = label === '跟进事项' && v.followup_pending > 0
+      ? ' <span class="badge warn">' + v.followup_pending + ' 条待闭环</span>' : '';
+    return '<div class="pv-block"><h4>' + esc(label) + extra + '</h4><ul>' + rows + '</ul></div>';
+  }).join('');
+  const timeline = v.timeline.length
+    ? '<ul class="pv-timeline">' + v.timeline.map((t) =>
+        '<li class="tl-kind-' + esc(t.kind) + '">' +
+        '<span class="tl-date">' + esc(t.date) + '</span>' +
+        '<span class="tl-label">' + esc(t.label) + '</span>' +
+        '<span class="tl-title">' + esc(t.title) + '</span>' +
+        (t.snippet ? '<div class="tl-snippet">' + esc(t.snippet) + '</div>' : '') +
+        '</li>'
+      ).join('') + '</ul>'
+    : '<p class="hint">还没有推进日志/产物/关联会议——用下方「✎ 日志」「存产物」开始积累。</p>';
+  const inboxNote = v.inbox_pending > 0
+    ? '<p class="hint">📥 线程 inbox 有 ' + v.inbox_pending + ' 条待处理</p>' : '';
+  const statusBadge = v.status === 'archived' ? '已归档' : '在工作台';
+  const disp = (v.title && v.title.trim()) || v.name;
+  return (
+    '<section class="pv project-detail" aria-labelledby="pv-title">' +
+    '<div class="pv-return"><button class="ghost" data-action="project-detail-back">← ' + esc(backLabel) + '</button></div>' +
+    '<div class="pv-head">' +
+    '<div><h3 class="project-name" id="pv-title">' + esc(disp) + '</h3>' +
+    (disp !== v.name ? '<div class="hint">档案 ID：' + esc(v.name) + '</div>' : '') +
+    '<div class="hint">状态：' + esc(statusBadge) + (v.updated ? ' · 更新于 ' + esc(v.updated) : '') + '</div>' +
+    inboxNote + '</div>' +
+    '<div class="row">' +
+    '<button class="ok" data-action="pv-log" title="追加推进日志">✎ 日志</button>' +
+    '<button class="ghost" id="pv-rename" title="修改显示名（不改档案 ID / 文件夹 / git）">✎ 显示名</button>' +
+    '<button class="ghost" data-action="pv-artifact" title="把 AI 产物存入本档案">存产物</button>' +
+    '<button class="ghost" data-action="pv-refresh" title="重新加载">↻ 刷新</button>' +
+    '</div></div>' +
+    '<div class="pv-blocks">' + blockSections + '</div>' +
+    '<div class="pv-timeline-wrap"><h4>时间线</h4>' + timeline + '</div>' +
+    '</section>'
+  );
+}
+
 export function projectsListHtml(
   query: string,
   projects: ProjectState[],
   today: string,
   loaded: boolean,
+  filter: ProjectListFilter = 'all',
 ): string {
   if (!loaded) return '<div class="loading">加载中…</div>';
   const q = query.trim().toLowerCase();
-  const matched = projects.filter((p) => !q || p.name.toLowerCase().includes(q) || projectDisplayName(p).toLowerCase().includes(q));
+  const matchesFilter = (p: ProjectState): boolean =>
+    filter === 'all' ||
+    (filter === 'active' && isOnHome(p)) ||
+    (filter === 'new' && isNewProject(p)) ||
+    (filter === 'archived' && p.status === 'archived');
+  const matched = projects.filter((p) => matchesFilter(p) &&
+    (!q || p.name.toLowerCase().includes(q) || projectDisplayName(p).toLowerCase().includes(q)));
   if (matched.length === 0) {
     return '<div class="empty"><p>' + (q ? '没有匹配「' + esc(q) + '」的项目' : '暂无项目文件夹') + '</p></div>';
   }

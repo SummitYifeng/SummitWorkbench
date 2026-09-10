@@ -33,3 +33,5 @@ export interface ProjectView {
   inbox_pending: number;
   timeline: { date: string; kind: string; label: string; title: string; snippet: string }[];
 }
+
+export type ProjectListFilter = 'all' | 'active' | 'new' | 'archived';

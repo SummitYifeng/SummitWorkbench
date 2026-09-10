@@ -10,7 +10,7 @@ export function mountToday(
     importOpen: boolean;
     capturing?: boolean;
     loadError?: string | null;
-    importResult?: TodayRenderOptions['importResult'];
+    importResults?: TodayRenderOptions['importResults'];
     readStatus?: TodayRenderOptions['readStatus'];
     health: { tone: string; label: string };
     actions: TodayActions;
@@ -36,14 +36,16 @@ export function mountToday(
   const drawer = view.querySelector<HTMLElement>('#import-drawer');
   const importButton = view.querySelector<HTMLButtonElement>('#btn-import-meeting');
   const closeButton = view.querySelector<HTMLButtonElement>('#btn-import-close');
+  let currentOpen = options.importOpen;
   const setOpen = (open: boolean): void => {
+    currentOpen = open;
     options.actions.toggleImport(open);
     if (drawer) drawer.hidden = !open;
     if (importButton) importButton.textContent = open ? '－ 收起导入' : '＋ 导入会议纪要';
   };
-  importButton?.addEventListener('click', () => setOpen(!options.importOpen));
+  importButton?.addEventListener('click', () => setOpen(!currentOpen));
   closeButton?.addEventListener('click', () => setOpen(false));
-  importButton && (importButton.textContent = options.importOpen ? '－ 收起导入' : '＋ 导入会议纪要');
+  importButton && (importButton.textContent = currentOpen ? '－ 收起导入' : '＋ 导入会议纪要');
 
   const zone = view.querySelector<HTMLElement>('#dropzone');
   const fileInput = view.querySelector<HTMLInputElement>('#file-input');
@@ -51,8 +53,8 @@ export function mountToday(
   if (!zone || !fileInput) return;
   pick?.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (file) void options.actions.importFile(file);
+    const files = Array.from(fileInput.files ?? []);
+    if (files.length) void options.actions.importFiles(files);
     fileInput.value = '';
   });
   zone.addEventListener('dragover', (event) => {
@@ -64,14 +66,10 @@ export function mountToday(
     event.preventDefault();
     zone.classList.remove('dragover');
     const files = event.dataTransfer?.files;
-    if (files && files.length > 1) {
-      options.actions.toggleImport(true);
-      return;
-    }
-    const file = files?.[0];
-    if (file) void options.actions.importFile(file);
+    const selected = Array.from(files ?? []);
+    if (selected.length) void options.actions.importFiles(selected);
   });
 }
 
 export { todayHtml } from './render';
-export type { TodayActions, TodayRenderOptions, TodayState } from './types';
+export type { ImportReceipt, TodayActions, TodayRenderOptions, TodayState } from './types';

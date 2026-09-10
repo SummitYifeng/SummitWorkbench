@@ -9,7 +9,7 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.project-render-test-tmp');
 const entry = `
-import { projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
+import { projectDetailHtml, projectDisplayName, projectsHtml, projectsListHtml } from './features/projects';
 
 const base = {
   name: 'Alpha',
@@ -61,6 +61,18 @@ export const cases = {
     name: 'A<&',
     title: '显示名',
   }], '2026-09-01', true),
+  archivedOnly: projectsListHtml('', [base, { ...base, name: 'Archived', status: 'archived' }], '2026-09-01', true, 'archived'),
+  detail: projectDetailHtml({
+    ok: true,
+    name: 'Alpha',
+    title: '显示名',
+    status: 'active',
+    updated: '2026-09-01',
+    blocks: { '当前状态': ['- 正常'], '下一步': ['- [ ] 继续验收'] },
+    followup_pending: 1,
+    inbox_pending: 0,
+    timeline: [{ date: '2026-09-01', kind: 'log', label: '日志', title: '已检查', snippet: '合成记录' }],
+  }, '返回今日'),
 };
 `;
 
@@ -97,6 +109,12 @@ try {
   );
   assert.match(mod.cases.escaped, /data-name="A&lt;&amp;".*>显示名<\/button>/);
   assert.match(mod.cases.titleSearch, /data-name="A&lt;&amp;".*显示名/);
+  assert.doesNotMatch(mod.cases.archivedOnly, />Alpha</);
+  assert.match(mod.cases.archivedOnly, /data-name="Archived"/);
+  assert.match(mod.cases.detail, /data-action="project-detail-back"/);
+  assert.match(mod.cases.detail, /返回今日/);
+  assert.match(mod.cases.detail, /显示名/);
+  assert.match(mod.cases.detail, /合成记录/);
   console.log('Project pure render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

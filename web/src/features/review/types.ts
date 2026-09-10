@@ -30,6 +30,13 @@ export interface ReviewPayload {
   errors: string[];
 }
 
+export type ReviewFilter = 'all' | 'pending' | 'approved' | 'rejected';
+
+export interface ReviewRenderOptions {
+  filter: ReviewFilter;
+  selectedIds: ReadonlySet<string>;
+}
+
 export interface ExternalAction {
   operation_id: string;
   candidate_id: string;

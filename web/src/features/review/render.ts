@@ -1,7 +1,13 @@
 import { projectDisplayName } from '../projects/render';
 import { esc } from '../../md';
 import type { ProjectState } from '../projects/types';
-import type { ExternalAction, ReviewEntry, ReviewPayload } from './types';
+import type {
+  ExternalAction,
+  ReviewEntry,
+  ReviewFilter,
+  ReviewPayload,
+  ReviewRenderOptions,
+} from './types';
 
 const KIND_LABELS: Record<string, string> = {
   decision: '决策',
@@ -18,6 +24,12 @@ const ROUTE_LABELS: Record<string, string> = {
   'global-inbox': '全局 inbox',
 };
 const DECISION_LABELS: Record<string, string> = {
+  pending: '待确认',
+  approved: '已批准',
+  rejected: '已拒绝',
+};
+const FILTER_LABELS: Record<ReviewFilter, string> = {
+  all: '全部',
   pending: '待确认',
   approved: '已批准',
   rejected: '已拒绝',
@@ -42,7 +54,7 @@ function sourceLink(raw: string, label: string): string {
     '" title="打开' + esc(label) + '">' + esc(label) + ' · ' + esc(value) + '</button>';
 }
 
-function entryCard(e: ReviewEntry, today: string): string {
+function entryCard(e: ReviewEntry, today: string, selectedIds: ReadonlySet<string>): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
   const expired = e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today;
@@ -71,7 +83,12 @@ function entryCard(e: ReviewEntry, today: string): string {
       : ' disabled title="落点未定，请点「修改」设置后再批准"';
   return (
     '<div class="card entry ' + e.decision + '" data-id="' + esc(e.candidate_id) + '">' +
-    '<div class="entry-top"><span class="kind">' + esc(kind) + '</span>' +
+    '<div class="entry-top"><span class="entry-select">' +
+    (e.decision === 'pending'
+      ? '<input type="checkbox" data-review-select="' + esc(e.candidate_id) + '"' +
+        (selectedIds.has(e.candidate_id) ? ' checked' : '') +
+        ' aria-label="选择：' + esc(e.description) + '">' : '') +
+    '<span class="kind">' + esc(kind) + '</span>' +
     '<span class="badge ' + e.decision + '">' + esc(decision) + '</span></div>' +
     '<p class="desc">' + esc(e.description) + '</p>' +
     warn + err +
@@ -134,13 +151,44 @@ export function reviewHtml(
   projects: ProjectState[],
   externalActions: ExternalAction[],
   externalActionsError: string | null = null,
+  options: ReviewRenderOptions = { filter: 'all', selectedIds: new Set<string>() },
 ): string {
+  const allEntries = review.groups.flatMap((group) => group.entries);
+  const filteredGroups = review.groups
+    .map((group, sourceIndex) => ({
+      ...group,
+      sourceIndex,
+      entries: group.entries.filter((entry) => options.filter === 'all' || entry.decision === options.filter),
+    }))
+    .filter((group) => group.entries.length > 0);
+  const filteredEntries = filteredGroups.flatMap((group) => group.entries);
+  const selectableIds = filteredEntries
+    .filter((entry) => entry.decision === 'pending')
+    .map((entry) => entry.candidate_id);
+  const selectedCount = selectableIds.filter((id) => options.selectedIds.has(id)).length;
+  const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
+  const filterOptions = (Object.keys(FILTER_LABELS) as ReviewFilter[]).map((value) =>
+    '<option value="' + value + '"' + (options.filter === value ? ' selected' : '') + '>' +
+    FILTER_LABELS[value] + '</option>'
+  ).join('');
+  const countText = (decision: string): string => String(allEntries.filter((entry) => entry.decision === decision).length);
+  const selectionText = selectedCount > 0 ? '已选 ' + selectedCount + ' 条待确认候选' : '尚未选择待确认候选';
+  const selectionToolbar =
+    '<div class="review-selection" aria-live="polite">' +
+    '<div class="review-selection-line"><label for="review-status-filter">状态筛选</label>' +
+    '<select id="review-status-filter" data-review-filter="' + esc(options.filter) + '">' + filterOptions + '</select>' +
+    '<span class="review-counts">待确认 ' + countText('pending') + ' · 已批准 ' + countText('approved') + ' · 已拒绝 ' + countText('rejected') + '</span></div>' +
+    '<div class="review-selection-line"><span>' + esc(selectionText) + ' · 当前筛选：' + esc(FILTER_LABELS[options.filter]) + '</span>' +
+    '<button class="ghost" type="button" data-action="review-select-all"' + (selectableIds.length === 0 ? ' disabled' : '') + '>' +
+    (allSelected ? '取消全选' : '全选当前') + '</button>' +
+    '<button class="ok" type="button" data-action="review-batch" data-decision="approved"' + (selectedCount === 0 ? ' disabled' : '') + '>批量批准</button>' +
+    '<button class="bad" type="button" data-action="review-batch" data-decision="rejected"' + (selectedCount === 0 ? ' disabled' : '') + '>批量拒绝</button></div></div>';
   const errorsHtml = review.errors.length
     ? '<div class="msg err">审批页解析错误：<br>' + review.errors.map(esc).join('<br>') + '</div>'
     : '';
-  const groupsHtml = review.groups.length
-    ? review.groups.map((g, gi) => {
-        const cards = g.entries.map((entry) => entryCard(entry, today)).join('');
+  const groupsHtml = filteredGroups.length
+    ? filteredGroups.map((g) => {
+        const cards = g.entries.map((entry) => entryCard(entry, today, options.selectedIds)).join('');
         const groupPending = g.entries.filter((e) => e.decision === 'pending').length;
         const groupApprovable = g.entries.filter((e) => e.decision === 'pending' && e.actionable && !!e.route).length;
         const groupBlocked = groupPending - groupApprovable;
@@ -151,14 +199,14 @@ export function reviewHtml(
           '<span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
           '<span class="meeting-title">' + esc(g.meeting_title) + '</span>' +
           '<span class="group-actions">' +
-          '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + gi + '"' +
+          '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + g.sourceIndex + '"' +
           (groupApprovable === 0 ? ' disabled' : '') + approvalTitle + '>✓ 全批(' + groupApprovable + ')</button>' +
-          '<button class="ghost" data-action="group-decide" data-decision="rejected" data-group="' + gi + '"' +
+          '<button class="ghost" data-action="group-decide" data-decision="rejected" data-group="' + g.sourceIndex + '"' +
           (groupPending === 0 ? ' disabled' : '') + '>✗ 全拒(' + groupPending + ')</button>' +
           '</span></div>' + cards;
       }).join('')
-    : '<div class="empty"><p>暂无待确认候选。</p>' +
-      '<p class="hint">导入会议逐字稿后，提取结果会出现在这里。</p></div>';
+    : '<div class="empty"><p>当前筛选没有候选。</p>' +
+      '<p class="hint">可以切换状态筛选，或导入会议逐字稿生成新的待确认项。</p></div>';
   const approvedPending = review.groups.reduce(
     (n, g) => n + g.entries.filter((e) => e.decision === 'approved' && !e.apply_error).length,
     0,
@@ -184,6 +232,7 @@ export function reviewHtml(
     '<button class="primary" data-action="plan">检查并写回</button>' +
     '</div></div>' +
     errorsHtml +
+    selectionToolbar +
     externalHtml +
     '<div id="review-groups">' + groupsHtml + '</div>' +
     projectOptions +

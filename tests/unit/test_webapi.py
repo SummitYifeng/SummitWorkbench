@@ -499,6 +499,85 @@ def test_api_import_full_auto_pipeline(tmp_path: Path, monkeypatch) -> None:
     assert data["estimate"]["currency"] == "CNY"
 
 
+def test_api_import_partial_pipeline_is_not_reported_as_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _ = _client(tmp_path, seed_review=False)
+
+    class FakePricing:
+        currency = "CNY"
+
+        def estimate(self, _in: int, _out: int) -> float:
+            return 0.001
+
+    class FakeCfg:
+        api_key_ref = "fake-key-ref"
+        max_output_tokens = 1024
+        pricing = FakePricing()
+
+    from summit_workbench.workflows.meetings.backfill import BackfillRunReport
+
+    monkeypatch.setattr("summit_workbench.providers.llm.load_model_config", lambda _name: FakeCfg())
+    monkeypatch.setattr(
+        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
+    )
+    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
+    monkeypatch.setattr(
+        "summit_workbench.workflows.meetings.backfill.run_backfill",
+        lambda *_a, **_k: BackfillRunReport(
+            results=[], processed=1, skipped=1, failed=1, candidates=0
+        ),
+    )
+
+    resp = client.post(
+        "/api/meetings/import",
+        files={
+            "file": (
+                "2026-09-02-部分失败.txt",
+                "张三 00:01:02 需要复核".encode(),
+                "text/plain",
+            )
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is False
+    assert data["status"] == "partial"
+    assert "导入部分完成" in data["message"]
+
+
+def test_api_import_done_item_is_idempotent_without_model_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, _ = _client(tmp_path, seed_review=False)
+    from summit_workbench.workflows.meetings.backfill import BackfillItem
+
+    done_item = BackfillItem(
+        path=tmp_path / "already-done.txt",
+        title="已处理会议",
+        date="2026-09-03",
+        idem_key="meeting:2026-09-03:already-done",
+        input_tokens=12,
+        done=True,
+    )
+    monkeypatch.setattr(
+        "summit_workbench.workflows.meetings.backfill.scan_for_import",
+        lambda *_a, **_k: [done_item],
+    )
+    resp = client.post(
+        "/api/meetings/import",
+        files={"file": ("2026-09-03-已处理会议.txt", "重复导入".encode(), "text/plain")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["status"] == "success"
+    assert "跳过 1" in data["message"]
+    assert "幂等" in data["message"]
+
+
 def test_api_import_empty_file(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
     client, _ = _client(tmp_path)
