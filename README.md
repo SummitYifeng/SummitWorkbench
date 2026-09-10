@@ -45,7 +45,7 @@ SummitWorkbench/
 ├── docs/
 │   ├── product/          # 权威 PRD
 │   ├── archive/          # 已完成阶段的背景、计划、旧验收和设计预览
-│   ├── decisions/        # 架构决策记录（ADR 0001–0045）
+│   ├── decisions/        # 当前架构决策记录（ADR 0043–0045；历史 ADR 见 archive/decisions/）
 │   ├── acceptance/       # 当前版本本地发布验收
 │   ├── implementation/   # 当前增量实施与交接记录
 │   ├── contracts/        # API/路由契约
