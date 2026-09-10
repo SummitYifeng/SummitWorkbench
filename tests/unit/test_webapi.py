@@ -336,12 +336,10 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
         "truncated": False,
     }
     assert (
-        client.get("/api/sources/read", params={"source_id": "../projects/P1"}).status_code
-        == 400
+        client.get("/api/sources/read", params={"source_id": "../projects/P1"}).status_code == 400
     )
     assert (
-        client.get("/api/sources/read", params={"source_id": "settings/secrets"}).status_code
-        == 400
+        client.get("/api/sources/read", params={"source_id": "settings/secrets"}).status_code == 400
     )
 
 
@@ -554,13 +552,15 @@ def test_api_ask_preserves_structured_answer_and_citation_scope(
         "summary": "结论",
         "facts": [{"text": "事实一", "source_id": "projects/P1"}],
         "suggestions": ["建议一"],
-        "conflicts": [{
-            "topic": "状态",
-            "sides": [
-                {"position": "进行中", "source_id": "projects/P1"},
-                {"position": "已暂停", "source_id": "projects/P2"},
-            ],
-        }],
+        "conflicts": [
+            {
+                "topic": "状态",
+                "sides": [
+                    {"position": "进行中", "source_id": "projects/P1"},
+                    {"position": "已暂停", "source_id": "projects/P2"},
+                ],
+            }
+        ],
         "unanswerable": False,
     }
     monkeypatch.setattr(

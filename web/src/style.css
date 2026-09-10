@@ -430,6 +430,8 @@ code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0
 .ask-side-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .ask-side-head .ask-new-btn { flex: 1; }
 .ask-side-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ask-mobile-select { display: none; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.ask-mobile-select select { flex: 1; min-width: 0; margin: 0; }
 .ask-side-list { display: flex; flex-direction: column; gap: 2px; }
 .ask-item { display: flex; align-items: center; gap: 2px; border-radius: 8px; padding: 2px; }
 .ask-item.active { background: var(--accent-soft); }
@@ -732,6 +734,15 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 .guide details.faq-item[open] summary { border-bottom: 1px solid var(--border); }
 .guide .faq-answer { padding: 6px 14px 12px; font-size: 13.5px; }
 .guide .faq-answer p { margin: 6px 0; }
+.guide-tools { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; }
+.guide-tools label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.guide-tools input { flex: 1; min-width: 0; }
+.guide-index { display: grid; gap: 6px; padding: 10px 12px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.guide-index-links { display: flex; gap: 6px 14px; flex-wrap: wrap; }
+.guide-index-link { color: var(--accent); font-size: 12.5px; }
+.guide-index-link.level-h3 { padding-left: 10px; }
+.guide-section + .guide-section { margin-top: 24px; }
+.guide-no-results { padding: 12px; border: 1px dashed var(--border); border-radius: 8px; }
 
 @media (max-width: 640px) {
   main { padding: 14px 12px 80px; }
@@ -741,13 +752,15 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .settings-grid { grid-template-columns: 1fr; }
   .bf-grid { grid-template-columns: 1fr; }
   .bf-col-schedule { padding-right: 0; border-right: none; }
+  .guide-tools { align-items: stretch; flex-wrap: wrap; }
+  .guide-tools label { width: 100%; }
 }
 
 @media (max-width: 900px) {
   .ask-side { position: static; width: 100%; max-height: none; }
   .ask-layout { display: block; }
   .ask-side-list { display: none; }
-  .ask-side:focus-within .ask-side-list, .ask-side:hover .ask-side-list { display: flex; }
+  .ask-mobile-select { display: flex; }
   .ask-main { margin-top: 12px; }
 }
 

@@ -32,6 +32,9 @@ assert.match(source, /renderAskAnswer/, 'structured ask answers have a dedicated
 assert.match(source, /仅召回、未在回答中引用的材料/, 'ask distinguishes recalled-only materials');
 assert.match(source, /cited_source_ids/, 'ask response preserves actual citations separately');
 assert.match(source, /answer\.conflicts/, 'ask answer renders structured conflicts');
+assert.match(source, /ask-thread-select/, 'narrow ask view has a keyboard-friendly session selector');
+assert.match(source, /guide-search/, 'guide has local search');
+assert.match(source, /guide-index-links/, 'guide has a local directory');
 assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
 assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
 assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');

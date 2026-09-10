@@ -863,6 +863,10 @@ function askView(): HTMLElement {
 
 function renderAsk(view: HTMLElement): void {
   const full = askThreads.length >= ASK_MAX_THREADS;
+  const threadOptions = askThreads.map((thread) =>
+    '<option value="' + esc(thread.id) + '"' + (thread.id === askActiveId ? ' selected' : '') + '>' +
+    esc(thread.title) + '</option>'
+  ).join('');
   view.innerHTML =
     '<div class="ask-layout">' +
     '<aside class="ask-side">' +
@@ -870,12 +874,20 @@ function renderAsk(view: HTMLElement): void {
     '<button class="primary ask-new-btn" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限，请先删除或清空一个"' : '') + '>＋ 新会话</button>' +
     '<span class="ask-side-count">' + askThreads.length + '/' + ASK_MAX_THREADS + '</span>' +
     '</div>' +
+    '<label class="ask-mobile-select">当前会话<select id="ask-thread-select"><option value="">选择会话</option>' + threadOptions + '</select></label>' +
     '<div class="ask-side-list" id="ask-side-list"></div>' +
     '</aside>' +
     '<div class="ask-main" id="ask-main"></div>' +
     '</div>';
   renderAskSide();
   renderAskChat();
+  const selector = document.getElementById('ask-thread-select') as HTMLSelectElement | null;
+  selector?.addEventListener('change', () => {
+    if (!selector.value || selector.value === askActiveId) return;
+    askActiveId = selector.value;
+    askDraft = '';
+    renderAsk(view);
+  });
 }
 
 function renderAskSide(): void {
@@ -1268,7 +1280,58 @@ function guideBodyHtml(): string {
 }
 
 function renderGuide(view: HTMLElement): void {
-  view.innerHTML = '<div class="guide">' + guideBodyHtml() + '</div>';
+  view.innerHTML =
+    '<div class="guide">' +
+    '<div class="guide-tools"><label for="guide-search">搜索指南</label>' +
+    '<input id="guide-search" type="search" placeholder="搜索本地指南…">' +
+    '<button class="ghost" type="button" id="guide-search-clear" hidden>清除</button></div>' +
+    '<nav class="guide-index" aria-label="指南目录"><strong>目录</strong><div id="guide-index-links"></div></nav>' +
+    '<p class="hint guide-no-results" id="guide-no-results" hidden>没有匹配内容，请清除搜索词。</p>' +
+    '<div id="guide-content">' + guideBodyHtml() + '</div></div>';
+  const content = document.getElementById('guide-content');
+  const index = document.getElementById('guide-index-links');
+  if (!content || !index) return;
+  const nodes = Array.from(content.children);
+  let section: HTMLElement | null = null;
+  let sectionIndex = 0;
+  for (const node of nodes) {
+    if (!section || node.tagName === 'H2') {
+      section = document.createElement('section');
+      section.className = 'guide-section';
+      sectionIndex += 1;
+      section.id = 'guide-section-' + sectionIndex;
+      content.appendChild(section);
+    }
+    section.appendChild(node);
+  }
+  const sections = Array.from(content.querySelectorAll<HTMLElement>('.guide-section'));
+  const headings = Array.from(content.querySelectorAll<HTMLElement>('h2, h3'));
+  index.innerHTML = headings.map((heading, headingIndex) => {
+    heading.id = 'guide-heading-' + headingIndex;
+    return '<a href="#' + heading.id + '" class="guide-index-link level-' + heading.tagName.toLowerCase() + '">' +
+      esc(heading.textContent ?? '') + '</a>';
+  }).join('');
+  const search = document.getElementById('guide-search') as HTMLInputElement | null;
+  const clear = document.getElementById('guide-search-clear') as HTMLButtonElement | null;
+  const empty = document.getElementById('guide-no-results');
+  const applySearch = (): void => {
+    const query = search?.value.trim().toLocaleLowerCase() ?? '';
+    let visible = 0;
+    sections.forEach((item) => {
+      const match = !query || (item.textContent ?? '').toLocaleLowerCase().includes(query);
+      item.hidden = !match;
+      if (match) visible += 1;
+    });
+    if (clear) clear.hidden = !query;
+    if (empty) empty.hidden = visible > 0;
+  };
+  search?.addEventListener('input', applySearch);
+  clear?.addEventListener('click', () => {
+    if (!search) return;
+    search.value = '';
+    applySearch();
+    search.focus();
+  });
 }
 
 interface ProfileSummaryPayload {

@@ -1839,14 +1839,15 @@ def create_app(
             "reviews",
             "insights",
         }
-        allowed = relative.as_posix() == "inbox.md" or bool(relative.parts) and relative.parts[0] in allowed_roots
-        if (
-            not raw_id
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or not allowed
-        ):
-            return JSONResponse({"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400)
+        allowed = (
+            relative.as_posix() == "inbox.md"
+            or bool(relative.parts)
+            and relative.parts[0] in allowed_roots
+        )
+        if not raw_id or relative.is_absolute() or ".." in relative.parts or not allowed:
+            return JSONResponse(
+                {"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400
+            )
         root = ctx.vault_dir.resolve()
         source = (root / relative).resolve()
         try:
@@ -1856,10 +1857,14 @@ def create_app(
         if not source.is_file():
             return JSONResponse({"ok": False, "message": "来源不存在或已失效"}, status_code=404)
         if source.stat().st_size > 256 * 1024:
-            return JSONResponse({"ok": False, "message": "来源超过 256 KiB，请缩小范围后重试"}, status_code=413)
+            return JSONResponse(
+                {"ok": False, "message": "来源超过 256 KiB，请缩小范围后重试"}, status_code=413
+            )
         note = load_note(source)
         if note.parse_error is not None:
-            return JSONResponse({"ok": False, "message": "来源不是可读取的 Markdown 笔记"}, status_code=415)
+            return JSONResponse(
+                {"ok": False, "message": "来源不是可读取的 Markdown 笔记"}, status_code=415
+            )
         title = next(
             (line[2:].strip() for line in note.body.splitlines() if line.startswith("# ")),
             str(note.meta.get("title") or note.meta.get("project") or source.stem),
