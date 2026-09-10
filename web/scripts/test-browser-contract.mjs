@@ -49,6 +49,9 @@ assert.match(source, /X-WB-Workspace-Generation/, 'API requests carry workspace 
 assert.match(source, /latestStateRequest|latestReviewRequest/, 'stale refresh responses are ignored');
 assert.match(source, /saveEntityDraft|loadEntityDraft|clearEntityDraft/, 'entity drafts have an explicit storage contract');
 assert.match(source, /requestModalClose/, 'modal close is routed through the unsaved-draft guard');
+assert.match(source, /function activateModal/, 'specialized modals use the shared focus setup');
+assert.match(source, /if \(backdrop\.hidden\)[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
+assert.match(source, /const modal = activateModal\(projectViewHtml\(view\)\)/, 'project view receives modal focus semantics');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 console.log('Browser interaction contract tests passed');

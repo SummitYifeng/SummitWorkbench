@@ -2248,10 +2248,7 @@ async function showProjectView(name: string): Promise<void> {
     toast(view.message ?? '打开失败', 'err');
     return;
   }
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
-  const modal = document.getElementById('modal') as HTMLElement;
-  modal.innerHTML = projectViewHtml(view);
-  backdrop.hidden = false;
+  const modal = activateModal(projectViewHtml(view));
   modal.querySelector('[data-action="pv-close"]')?.addEventListener('click', closeModal);
   modal.querySelector('[data-action="pv-refresh"]')?.addEventListener('click', () => { void showProjectView(name); });
   modal.querySelector('[data-action="pv-log"]')?.addEventListener('click', () => openLogModal(name));
@@ -2600,11 +2597,39 @@ async function planApply(exec: boolean): Promise<void> {
   }
 }
 
-function openModal(html: string): void {
+function activateModal(html: string, includeCloseButton = false): HTMLElement {
   const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
   const modal = document.getElementById('modal') as HTMLElement;
-  modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (backdrop.hidden) {
+    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }
   modal.innerHTML = html;
+  backdrop.hidden = false;
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('tabindex', '-1');
+  const heading = modal.querySelector<HTMLElement>('h2, h3');
+  if (heading) {
+    if (!heading.id) heading.id = 'modal-title';
+    modal.setAttribute('aria-labelledby', heading.id);
+  } else {
+    modal.removeAttribute('aria-labelledby');
+  }
+  if (includeCloseButton) {
+    const close = document.createElement('button');
+    close.className = 'ghost close-modal';
+    close.textContent = '关闭';
+    close.style.marginTop = '12px';
+    modal.appendChild(close);
+    close.addEventListener('click', requestModalClose);
+  }
+  const first = modal.querySelector<HTMLElement>('button, input, select, textarea, [tabindex="0"]');
+  (first ?? modal).focus();
+  return modal;
+}
+
+function openModal(html: string): void {
+  const modal = activateModal(html, true);
   modal.dataset.draftDirty = '0';
   delete modal.dataset.draftEntity;
   modal.oninput = () => {
@@ -2613,18 +2638,6 @@ function openModal(html: string): void {
   modal.onchange = () => {
     if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
   };
-  backdrop.hidden = false;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('tabindex', '-1');
-  const close = document.createElement('button');
-  close.className = 'ghost close-modal';
-  close.textContent = '关闭';
-  close.style.marginTop = '12px';
-  modal.appendChild(close);
-  close.addEventListener('click', requestModalClose);
-  const first = modal.querySelector<HTMLElement>('button, input, select, textarea, [tabindex="0"]');
-  (first ?? modal).focus();
 }
 
 function closeModal(): void {

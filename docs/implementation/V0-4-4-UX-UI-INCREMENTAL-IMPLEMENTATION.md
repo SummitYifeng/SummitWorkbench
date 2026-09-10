@@ -27,6 +27,7 @@
 - [x] 自动化 worker 将简报返回的显式持久化路径（用量/授权状态/简报）与运行心跳一起提交，避免系统信号制造 `dirty-protected`。
 - [x] 设置页“立即运行”使用强制执行语义，不会被当天已执行过的调度记录误判为“当前不在任务执行时间”。
 - [x] 顶部“刷新”同时刷新工作区数据与同步横幅，避免实际已恢复后继续显示旧的 `dirty-protected` 状态。
+- [x] 项目线视图等专用弹层复用统一焦点初始化；打开后焦点进入弹层，嵌套日志/产物弹层不覆盖原始返回焦点，Escape 关闭后归还到触发按钮。
 
 ## 阶段 2：导航、弹层与视觉
 
@@ -46,13 +47,14 @@
 | 阶段 | 测试 | 结果 | 未验证/限制 |
 |---|---|---|---|
 | 基线 | `npm --prefix web run test:frontend` | 通过；含新增浏览器交互契约 | 仅源码契约/纯渲染，不等同真实浏览器点击布局验证 |
-| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-ab705254` | 未执行 App 重启/WKWebView 真机验证 |
+| 阶段 0–2 | `npm --prefix web run build` | 通过；生成 `v2026.09.10-f594f1e-70edad54` | 未执行 App 重启/WKWebView 真机验证 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/contract/test_web_route_contract.py` | 1 passed | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest tests/unit` | 763 passed, 5 warnings | 警告来自第三方依赖弃用提示与非 loopback 开发配置 |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync ruff check .` / `ruff format --check .` | 通过 | — |
 | 阶段 0–2 | `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync mypy` | 通过；312 个源码文件 | — |
-| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-b2faecb-ab705254` | — |
+| 阶段 0–2 | `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过；`v2026.09.10-f594f1e-70edad54` | — |
 | 阶段 0–2 | `git diff --check` | 通过 | — |
 | 阶段 1 | 本机 `127.0.0.1:8797` 真实界面验收 | 通过；设置页立即运行成功，显式信号已提交，刷新后顶部同步横幅恢复隐藏/`ready` | 未执行真实飞书写回 |
+| 阶段 2 | 本机 `127.0.0.1:8797` 专用弹层焦点验收 | 通过；项目线视图焦点进入“✎ 日志”，Escape 关闭后归还 `demo-project` 触发按钮 | 未执行 App/WKWebView 独立回归 |
 
 每个阶段完成后更新本表，并记录下一阶段起点。未执行的真机、WKWebView、真实飞书操作不宣称通过。
