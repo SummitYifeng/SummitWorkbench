@@ -3,8 +3,8 @@
 ## 基线
 
 - 历史审计起点：源码 `b2faecb`（2026-09-10）；本轮继续工作的交接基线是 `6c910cc`（`main`）。
-- 本轮最新静态 frontend build：`v2026.09.10-6c910cc-bec098fc`；已验收 App build 9 的身份不在本轮改写。
-- 本轮范围止于源码、前端构建产物与本地验证；不安装/替换 App、不操作真实飞书数据。代码提交与推送已获用户明确授权，目标远程为 `origin/main`。
+- 本轮最新静态 frontend build：`v2026.09.10-cb1bd34-60122c81`；已验收 App build 9 的身份不在本轮改写。
+- 本轮范围止于源码、前端构建产物与本地验证；不安装/替换 App、不操作真实飞书数据。此前实现已推送到 `origin/main`；本轮后续复核产生的测试夹具、文档和静态产物变更尚未提交或推送。
 - 保留六页签、今日简报置顶、相对 API 地址、现有 feature 边界、审批与外部写回安全边界。
 
 ## 当前复盘（2026-09-10）
@@ -110,9 +110,36 @@
 | 本轮解锁后 CUA 项目路径 | 合成中文显示名项目；真实键盘打开详情并返回，另验证项目页搜索值恢复 | 今日 → 项目详情显示“返回今日”，返回后中文项目入口获得焦点；项目页搜索 `中文验收项目` 后进入/返回保留查询值 | 项目页路径的 CUA AX 在部分 Playwright 点击/重绘后回报页面根节点，不能把该路径的返回焦点单独记为稳定通过；今日路径是稳定通过 |
 | 本轮解锁后 CUA 冲突路径 | 合成分叉；详情初始焦点、人工选择“保留本机”、临时预检、Tab 环、Escape 草稿保护 | 初始焦点落在人工选择；预检显示“临时预检通过”且明确“确认后才会写回”；Tab 从最后按钮回到选择；Escape 弹出未保存保护，取消保持弹层 | 没有点击“确认恢复并创建提交”；冲突包导出动作曾尝试但下载事件未取得确定证据；确认框关闭后的 AX 返回焦点受原生对话框缓存影响，不单独宣称通过 |
 | 本轮解锁后 CUA 导入路径 | 真实打开导入抽屉、关闭/重开；隔离合成 `.md/.txt/.pdf/空文件` 通过本地 API 投递 | 抽屉关闭后可重开且保留可选状态；本地 API 对合成 Markdown 返回“模型未配置”失败、PDF 返回类型错误、空文件返回内容为空；没有真实模型调用 | 当前 CUA `filechooser.setFiles` 返回 `Not allowed`，原生文件面板虽能看到临时合成目录但未完成实际选中；未把浏览器文件导入回执记为通过 |
-| 本轮最后自动门禁 | `uv run --no-sync pytest -q`；route/security；`npm --prefix web run test:frontend`；build + `verify-build.mjs`；ruff/format/mypy/diff | `840 passed, 1 skipped, 5 warnings`；route/security `12 passed, 2 warnings`；前端脚本、构建、产物、静态门禁全部通过；最终身份 `v2026.09.10-6c910cc-bec098fc` | skip 为 packaged App smoke；未执行真实外部服务、原生 App/WKWebView、真实写回 |
+| 本轮最后自动门禁 | `uv run --no-sync pytest -q`；route/security；`npm --prefix web run test:frontend`；build + `verify-build.mjs`；ruff/format/mypy/diff | `840 passed, 1 skipped, 5 warnings`；route/security `12 passed, 2 warnings`；前端脚本、构建、产物、静态门禁全部通过；最终身份 `v2026.09.10-cb1bd34-ebdc777c` | skip 为 packaged App smoke；未执行真实外部服务、原生 App/WKWebView、真实写回 |
+
+## 冗余清理后复核（2026-09-10）
+
+- 当前 HEAD：`cb1bd34`（`main` = `origin/main`）；本轮验证未执行真实外部写回。
+- 覆盖率门：`uv run --no-sync pytest --cov=summit_workbench --cov-report=term-missing --cov-fail-under=80 -q` 通过，`840 passed, 1 skipped, 5 warnings`，总覆盖率 `81.12%`。
+- `cd web && ./node_modules/.bin/tsc --noEmit`、`uv lock --check`、`uv run --no-sync python scripts/secret_scan.py` 均通过。
+- `bash scripts/test-native-updates.sh` 与 `bash scripts/test-native-automation.sh` 均通过；更新协调器测试夹具补充合成 workspace compatibility marker，未改变生产 Swift 代码或 fail-closed 语义。
+- `uv run --no-sync pytest -q tests/integration/test_packaged_app.py -m integration`：`1 skipped`；未设置 `WB_PACKAGED_APP`，不能替代 packaged App/WKWebView 验收。
+- `npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过，静态产物身份为 `v2026.09.10-cb1bd34-ebdc777c`。
+- CUA 浏览器通道本轮连续两次超时并自动重置，未取得新的真实页面状态；先前隔离 Chrome 证据仍按原记录保留，不把本轮 CUA 记为通过。
 
 每个阶段完成后更新本表，并记录下一阶段起点。未执行的真机、WKWebView、真实飞书操作不宣称通过。
+
+## 本轮 CUA 续测与窄屏修复（2026-09-10）
+
+- 真实发现并修复 320px 设置页 4px 整体横向溢出：原因是自动更新说明标签强制 `white-space: nowrap`；先在 `web/scripts/test-browser-contract.mjs` 增加窄屏换行契约，确认旧 CSS 会失败，再在 `web/src/style.css` 的 `max-width: 380px` 内允许 `.automation-enabled` 换行并按词/字符断行。生产产物已重建，最终身份为 `v2026.09.10-cb1bd34-60122c81`。
+- 真实发现并修复项目详情返回焦点误落 `body`：今日推进和项目页存在同名入口时，旧 helper 只检查入口自身的 `display`，会选中隐藏祖先中的重复按钮；先补契约断言，再在 `web/src/legacy-main.ts` 加入 `getClientRects().length > 0`，只选择实际占据布局的可见入口。
+- 隔离 CUA 环境：`127.0.0.1:8798`、临时 `HOME`、临时 workspace/vault；不含真实凭据、真实飞书、真实模型或真实业务资料。CUA 真实完成 onboarding 新建工作台 → 跳过模型/飞书 → 重启后进入工作台；设置高级维护默认折叠/展开；六页签 Home/End/方向键循环；审批状态筛选、复选框、切换筛选清空选择、单选批量批准；中文显示名与 `·` 特殊字符搜索、项目归档/恢复、项目页内详情返回查询与入口焦点；导入抽屉关闭重开和两个合成 `.md/.txt` 文件的原生 file chooser 选择。
+- CUA 响应式复测：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 的 `body/document scrollWidth` 均等于 client width（分别 `1280/1280`、`945/945`、`753/753`、`375/375`、`305/305`）；320px 页签内部仍有预期的可横向滚动 tablist，不构成页面整体溢出。
+- CUA 导入结果：file chooser 在 IAB 中可用且报告 `multiple=true`，两份合成文件均显示明确的“模型未配置”失败回执；关闭后重开仍保留两条回执。成功、部分失败、软预算提醒和重复完成导入仍未执行，因为隔离环境没有配置模型/本地 mock 模型服务。
+- CUA 项目结果：修复后返回焦点稳定落在中文项目入口，搜索值保留；本次 fixture 页面高度等于视口，未形成可移动滚动位置，因此滚动位置恢复单独记为未验证。审批单次批量操作已观察到一次按钮点击后的结果，但当前浏览器通道未提供可靠的 POST 请求计数面板，不把“一次点击一次请求”网络证据写成通过。
+
+| 本轮 CUA 续测 | 结果 | 未验证/限制 |
+|---|---|---|
+| 320px 溢出回归 | 通过；先失败契约后修复，最终 `305/305` | 仅验证页面级溢出；tablist 内部滚动保留 |
+| 项目返回焦点 | 通过；隐藏祖先重复入口不再抢焦点，查询值保留 | 本次 fixture 无可移动页面滚动，滚动位置未验证 |
+| 原生多文件导入 | 通过文件选择与失败回执；两条回执关闭重开保留 | 模型未配置，成功/部分/软预算/幂等完成导入未验证 |
+| 审批真实交互 | 通过筛选、选择、清空和单选批量批准 | 未取得网络请求计数；0/1/100/101 条完整矩阵未验证；未执行检查并写回 |
+| 全宽度页面溢出 | 通过；1280/960/768/390/320 无整体溢出 | 浅色主题、原生 200% 缩放、系统 reduced-motion 未切换 |
 
 ## 下一阶段起点与未完成清单
 

@@ -87,6 +87,7 @@ assert.match(source, /projectReturnContext/, 'project detail keeps list context 
 assert.match(source, /projectFocusAfterRenderName/, 'project detail queues a visible return-focus target for the rebuilt page');
 assert.match(source, /function focusVisibleProjectLink/, 'project detail has one visibility-aware return-focus helper');
 assert.match(source, /getComputedStyle\(el\)\.display !== 'none'/, 'project detail fallback focus ignores display-hidden duplicate project links');
+assert.match(source, /getClientRects\(\)\.length > 0/, 'project detail fallback focus ignores links hidden by an ancestor');
 assert.match(source, /window\.scrollTo\(\{ top: context\?\.scrollY/, 'project detail restores the previous list scroll position');
 assert.doesNotMatch(source, /activateModal\(projectViewHtml\(view\)\)/, 'project details do not use the generic modal container');
 assert.match(source, /function activateConflictModal/, 'sync conflict uses the shared modal activation path');
@@ -107,4 +108,5 @@ assert.match(read('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 'im
 assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
 assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
 assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-refresh, \.header-right #btn-quit\s*\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');
+assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,420}\.automation-enabled\s*\{[\s\S]{0,180}white-space: normal[\s\S]{0,180}overflow-wrap: anywhere/, 'very narrow settings labels wrap before they can overflow the page');
 console.log('Browser interaction contract tests passed');

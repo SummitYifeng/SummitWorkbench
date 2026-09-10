@@ -6,7 +6,7 @@
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`
 - 当前分支：`main`
-- 交接基线提交：`6c910cc`（当前 `main`；本轮改造作为增量提交到 `origin/main`）。
+- 交接基线提交：`6c910cc`；此前 UX/UI 改造已作为增量提交到 `origin/main`，当前主线 HEAD 为冗余清理提交 `cb1bd34`。
 - `d11ec56` 与 `ce0b27e` 是本档案之前的历史提交，不是本轮验证身份。
 - 产品：SummitWorkbench v0.4.4，个人执行管理层 + 第二大脑，本地 Web 工作台由原生 macOS App 或 `wb web` 提供。
 - 前端：Vite + 原生 TypeScript + CSS；入口是 `web/src/main.ts`，大量现有交互仍在 `web/src/legacy-main.ts`。不得迁移 React/Next.js，不引入新第三方依赖。
@@ -136,6 +136,14 @@
 
 ### 实际验证
 
+- 当前 HEAD：`cb1bd34`（`main` = `origin/main`）；本轮验证未执行真实外部写回。
+- 本轮覆盖率门：`uv run --no-sync pytest --cov=summit_workbench --cov-report=term-missing --cov-fail-under=80 -q` 通过，`840 passed, 1 skipped, 5 warnings`，总覆盖率 `81.12%`。
+- 本轮 `cd web && ./node_modules/.bin/tsc --noEmit`：通过；307 个源码文件无错误；`uv lock --check`、`uv run --no-sync python scripts/secret_scan.py`：均通过。
+- 本轮 `bash scripts/test-native-updates.sh`、`bash scripts/test-native-automation.sh`：均通过；更新协调器测试夹具补充合成 workspace compatibility marker，未改变生产 Swift 代码或安全 fail-closed 语义。
+- 本轮 `uv run --no-sync pytest -q tests/integration/test_packaged_app.py -m integration`：`1 skipped`；因未设置 `WB_PACKAGED_APP`，packaged App smoke 未执行，不能替代真实 App/WKWebView 验收。
+- 本轮静态产物重建与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`：通过；身份为 `v2026.09.10-cb1bd34-ebdc777c`。
+- 本轮 CUA 浏览器通道连续两次超时并自动重置，未取得新的真实页面状态；只保留此前已取得的隔离 Chrome 证据，不将本轮 CUA 记为通过。
+
 - 本次最终 `uv run --no-sync pytest -q`：840 passed，1 skipped，5 warnings。
 - `uv run --no-sync pytest -q tests/contract/test_web_route_contract.py tests/unit/test_web_security.py`：12 passed，2 warnings。
 - `uv run --no-sync pytest tests/contract/test_web_route_contract.py`：1 passed。
@@ -143,7 +151,7 @@
 - `uv run --no-sync ruff format --check .`：394 个文件已格式化。
 - `uv run --no-sync mypy`：312 个源码文件无错误。
 - `npm --prefix web run test:frontend`：build identity、feature contract、项目/审批纯渲染、浏览器交互契约全部通过。
-- `npm --prefix web run build`：通过；本次静态产物身份为 `v2026.09.10-6c910cc-bec098fc`。
+- `npm --prefix web run build`：通过；本次静态产物身份为 `v2026.09.10-cb1bd34-ebdc777c`。
 - `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`：通过。
 - `git diff --check`：通过。
 - CUA 既有真实本地 Chrome：今日、审批、第二大脑、项目、指南、设置主流程可打开；导入抽屉、项目线视图、指南搜索、问答范围切换、设置高级区可开关；审批预演显示 `DRY-RUN（零写入）`，设置页及高级区 `scrollWidth=clientWidth`。
@@ -158,7 +166,7 @@
 - U10：`web/src/legacy-main.ts` 让同步冲突详情、加载失败和预检重绘统一经过 dialog 激活；人工选择按 workspace 保存，稍后处理走关闭保护，成功恢复后清理；合成冲突 workflow/API 回归已通过。
 - U13/U14：`web/src/features/projects/render.ts` 与 `web/src/legacy-main.ts` 将详情放入项目页，增加状态筛选和返回上下文，恢复查询/筛选/滚动；未改 `activity_at`/`updated` 语义。
 - U09：`web/src/features/today/types.ts`、`render.ts`、`index.ts`、`legacy-main.ts` 和 `src/summit_workbench/webapp/legacy_app.py` 支持多条导入收据、部分失败状态、软预算提示和幂等重复跳过；新增纯渲染/API 测试。
-- 本轮测试：前端契约/纯渲染/构建产物通过；最终 `uv run --no-sync pytest -q` 为 840 passed、1 skipped、5 warnings；route/security 为 12 passed、2 warnings；最新构建身份为 `v2026.09.10-6c910cc-bec098fc`。
+- 本轮测试：前端契约/纯渲染/构建产物通过；最终 `uv run --no-sync pytest -q` 为 840 passed、1 skipped、5 warnings；route/security 为 12 passed、2 warnings；最新构建身份为 `v2026.09.10-cb1bd34-ebdc777c`。
 
 ### 明确未执行
 
@@ -169,6 +177,24 @@
 - 没有替换已安装 App、执行独立 WKWebView 或 packaged App 黑盒 smoke。
 - 320/390/768/960/1280 已在隔离 Chrome 验证无整体溢出；尚未完成 Chrome 原生 200% 缩放、浅色主题、系统减少动态效果的全矩阵验收。
 - CUA 测试留下 1 个空问答会话，仅在浏览器本地状态中，不在 vault/飞书中；删除动作因需要 GUI 确认而没有执行。
+
+### 当前续测记录（2026-09-10，最新事实）
+
+- 当前仍为 `main`，代码基线 `cb1bd34`；本轮续测没有提交或推送。最新静态 frontend build 为 `v2026.09.10-cb1bd34-60122c81`。
+- 在隔离 `HOME`、隔离 workspace/vault 和 `127.0.0.1:8798` 上，CUA 已真实完成：onboarding 新建工作台并跳过模型/飞书后重启进入工作台；设置高级维护默认折叠和展开；六页签 Home/End/方向键巡航；审批状态筛选、复选框、切换筛选清空选择和单选批量批准；中文显示名与 `·` 特殊字符搜索；项目详情页内打开、返回查询与入口焦点、归档/恢复；导入抽屉关闭重开以及两个合成 `.md/.txt` 文件的原生多文件选择。
+- 本轮 CUA 发现两个实际问题并已小步修复：320px 设置页自动更新标签造成 4px 页面溢出（`web/src/style.css`）；项目详情返回时命中隐藏祖先中的重复入口，焦点落到 `body`（`web/src/legacy-main.ts`）。两处均先补 `web/scripts/test-browser-contract.mjs` 断言，旧代码先失败，修改后契约通过。
+- 响应式结果：`1280×820`、`960×640`、`768×640`、`390×700`、`320×700` 页面级 `body/document scrollWidth` 均等于 client width；320px tablist 内部横向滚动仍是预期行为。页签键盘循环实际结果为 `End→设置`、`ArrowRight→今日`、`ArrowLeft→设置`、`Home→今日`。
+- 导入结果：IAB 的原生 file chooser 可用，`multiple=true`，两个合成文件均得到“模型未配置”失败回执；关闭重开保留两条回执。这证明文件选择和失败回执闭环，但不证明模型成功、部分失败、软预算或完成导入幂等。
+- 项目结果：修复后项目页返回稳定聚焦到中文项目入口并保留查询值；本次 fixture 高度等于视口，滚动位置恢复没有形成可观察位移，继续记为未验证。审批按钮结果已通过 CUA 观察，但通道没有可靠的 POST 计数证据，不能将“一次点击一次请求”记为通过。
+- 自动门禁（本阶段代码/产物）：`npm --prefix web run test:frontend`、`cd web && ./node_modules/.bin/tsc --noEmit`、`npm --prefix web run build`、`node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`、`git diff --check` 均通过；构建身份 `v2026.09.10-cb1bd34-60122c81`。文档修改完成后已复跑全量 Python/route/security/coverage、ruff、format、mypy、native tests：`840 passed, 1 skipped, 5 warnings`，coverage `81.12%`；packaged App 条件仍为 skip。
+
+### 本阶段明确仍未验证
+
+- Chrome 原生 200% 缩放、浅色主题、系统 reduced-motion、packaged App/WKWebView。
+- 审批 `0/1/100/101` 条完整真实矩阵、缺 route/global inbox/个人日程的浏览器网络证据、一次点击一次请求的可靠计数；没有点击“检查并写回”或任何真实外部写回。
+- 冲突包导出下载事件的确定证据、原生确认框关闭后的稳定返回焦点；既有合成分叉的只读预检、人工选择校验、Tab 约束、Escape 草稿保护仍不扩展为恢复写回通过。
+- 导入成功/部分失败/软预算/幂等完成导入；当前只完成原生选择和模型未配置失败回执。真实模型、飞书 OAuth、任务/日历写回、真实用户文件和真实远端 Git 均未执行。
+- 问答冲突/无法作答/模型失败/来源 404/非 Markdown/超长/路径穿越/符号链接越界/workspace 隔离的完整真实浏览器矩阵；本阶段未引入 mock 模型来伪造成功链路。
 
 ## 5. 后续 agent 必须按此顺序工作
 

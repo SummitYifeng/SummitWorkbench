@@ -131,7 +131,13 @@ private func makeCoordinator(
     opener: FakeOpener,
     defaults: FakeDefaults = FakeDefaults(),
     decision: @escaping (UpdateArtifactInfo) -> UpdateDecision = { _ in .download },
-    workspace: @escaping () -> UpdateWorkspaceCompatibility? = { nil },
+    workspace: @escaping () -> UpdateWorkspaceCompatibility? = {
+        UpdateWorkspaceCompatibility(
+            schemaVersion: 2,
+            minimumReaderVersion: "0.4.1",
+            minimumWriterVersion: "0.4.1"
+        )
+    },
     osVersion: OperatingSystemVersion = OperatingSystemVersion(majorVersion: 14, minorVersion: 0, patchVersion: 0),
     statusBox: StatusBox
 ) -> UpdateCoordinator {
