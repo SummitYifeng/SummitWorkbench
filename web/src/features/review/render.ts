@@ -38,9 +38,8 @@ function sourceLink(raw: string, label: string): string {
   if (!path || path.startsWith('/') || path.includes('://')) {
     return '<span class="wikilink">' + esc(value) + '</span>';
   }
-  return '<a class="wikilink source-link" href="/api/review/source?path=' + encodeURIComponent(path) +
-    '" target="_blank" rel="noreferrer" title="在新标签页打开' + esc(label) + '">' +
-    esc(label) + ' · ' + esc(value) + '</a>';
+  return '<button type="button" class="link source-link" data-action="source-open" data-source-id="' + esc(path) +
+    '" title="打开' + esc(label) + '">' + esc(label) + ' · ' + esc(value) + '</button>';
 }
 
 function entryCard(e: ReviewEntry, today: string): string {

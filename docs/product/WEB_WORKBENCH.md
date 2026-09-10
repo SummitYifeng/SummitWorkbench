@@ -99,7 +99,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
   自动化 worker 还会把运行心跳作为显式路径加入同一提交，只包含当次简报、快照、用量、授权状态和
   心跳文件，不会把其他未提交文件带入提交。设置页「立即运行」使用 `force` 语义，避免被当天的
   `last_run_at` 误判为未到执行时间；定时调度仍保留原有 due 门控。
-- 问答走 `wb ask` 全链路，回答带来源；模型不可用时显示可见错误而非空页。
+- 问答走 `wb ask` 全链路，保留结构化回答的结论、事实、冲突、建议和无法作答标记；事实/冲突来源与仅召回材料分开显示，点击来源进入 vault 范围内的只读阅读面板。模型不可用时显示可见错误而非空页。
 - 产物入库与主档案状态同步分成两步：产物先保存；若用户选择同步当前状态，面板先展示最终摘要预览，
   只有确认后才覆盖主档案，取消只保留产物。
 
@@ -109,6 +109,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 |---|---|
 | `GET /api/state` | 日期、状态速览（StatusReport.as_dict）、今日简报（`brief_md` + 结构化 `brief`，ADR 0024）、inbox 积压、项目推进 |
 | `GET /api/review` | 审批页分组 JSON（meetings.md 事实源） |
+| `GET /api/sources/read` | 只读读取允许的知识 Markdown（返回来源 ID、标题、日期、正文与截断标记） |
 | `POST /api/review/decide` / `POST /api/review/edit` | 即时批准/拒绝/修改（review_edit）；批准要求候选具备依据与落点 |
 | `POST /api/review/plan` / `POST /api/review/apply` | 预演 / 显式应用（apply_meeting_review） |
 | `POST /api/capture` | 快速捕捉 + AI 分类 + 标记写回 |

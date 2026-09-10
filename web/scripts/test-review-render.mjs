@@ -102,7 +102,8 @@ try {
   assert.match(mod.cases.pending, /确认未创建/);
   assert.match(mod.cases.pending, /会议笔记/);
   assert.match(mod.cases.pending, /逐字稿/);
-  assert.match(mod.cases.pending, /\/api\/review\/source\?path=/);
+  assert.match(mod.cases.pending, /data-action="source-open"/);
+  assert.match(mod.cases.pending, /data-source-id="meetings\/notes\/2026-08-27-排版会\.md"/);
   assert.match(mod.cases.pending, /全批\(1\)/);
   assert.match(mod.cases.scopedBatch, /全批\(1\)/);
   assert.match(mod.cases.scopedBatch, /全拒\(2\)/);

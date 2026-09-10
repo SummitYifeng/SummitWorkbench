@@ -93,6 +93,7 @@ from summit_workbench.repositories.thread_notes import (
     append_work_log,
     save_thread_artifact,
 )
+from summit_workbench.repositories.vault import load_note, meta_date_iso
 from summit_workbench.webapp.api import (
     AcceptancePreflightPayload,
     ArtifactSavePayload,
@@ -457,6 +458,28 @@ def _build_meeting_creator(ctx: WebContext, clients: _FeishuClientPool) -> Meeti
     return create
 
 
+def _cited_source_ids(answer: dict[str, object] | None) -> list[str]:
+    if not answer:
+        return []
+    cited: set[str] = set()
+    facts = answer.get("facts")
+    if isinstance(facts, list):
+        for fact in facts:
+            if isinstance(fact, dict) and isinstance(fact.get("source_id"), str):
+                cited.add(fact["source_id"])
+    conflicts = answer.get("conflicts")
+    if isinstance(conflicts, list):
+        for conflict in conflicts:
+            if not isinstance(conflict, dict):
+                continue
+            sides = conflict.get("sides")
+            if isinstance(sides, list):
+                for side in sides:
+                    if isinstance(side, dict) and isinstance(side.get("source_id"), str):
+                        cited.add(side["source_id"])
+    return sorted(cited)
+
+
 def _ask_html(
     vault_dir: Path,
     question: str,
@@ -465,7 +488,7 @@ def _ask_html(
     *,
     config_file: Path | None = None,
     workspace_id: str | None = None,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], dict[str, object] | None]:
     """跑一次 wb ask（可带追问上下文与项目/线程范围）并渲染为 HTML。
 
     模型不可用时返回可见错误；source_ids 供前端存进会话，追问时回传给后端。
@@ -486,7 +509,7 @@ def _ask_html(
             vault_dir, question, cfg, api_key, prompt=prompt, history=history, project=project
         )
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', []
+        return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', [], None
 
     answer = result.answer
     parts = [f"<p><strong>{escape(answer.summary)}</strong></p>"]
@@ -505,7 +528,7 @@ def _ask_html(
     if result.sources:
         srcs = "、".join(f"[[{escape(c.source_id)}]]" for c in result.sources)
         parts.append(f'<p class="not-actionable">召回来源：{srcs}</p>')
-    return "\n".join(parts), source_ids
+    return "\n".join(parts), source_ids, answer.model_dump(mode="json")
 
 
 def _run_web_import(
@@ -1799,6 +1822,58 @@ def create_app(
             return PlainTextResponse("来源过大，请在本地编辑器中打开", status_code=413)
         return PlainTextResponse(source.read_text(encoding="utf-8"))
 
+    @app.get("/api/sources/read", response_model=None)
+    def api_sources_read(source_id: str = "") -> dict[str, object] | JSONResponse:
+        """只读返回允许的知识 Markdown，供问答与审批共用证据面板。"""
+        raw_id = source_id.strip()
+        relative = Path(raw_id)
+        if relative.suffix.lower() != ".md":
+            relative = relative.with_suffix(".md")
+        allowed_roots = {
+            "projects",
+            "meetings",
+            "logs",
+            "artifacts",
+            "inboxes",
+            "daily",
+            "reviews",
+            "insights",
+        }
+        allowed = relative.as_posix() == "inbox.md" or bool(relative.parts) and relative.parts[0] in allowed_roots
+        if (
+            not raw_id
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or not allowed
+        ):
+            return JSONResponse({"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400)
+        root = ctx.vault_dir.resolve()
+        source = (root / relative).resolve()
+        try:
+            source.relative_to(root)
+        except ValueError:
+            return JSONResponse({"ok": False, "message": "来源路径越界"}, status_code=400)
+        if not source.is_file():
+            return JSONResponse({"ok": False, "message": "来源不存在或已失效"}, status_code=404)
+        if source.stat().st_size > 256 * 1024:
+            return JSONResponse({"ok": False, "message": "来源超过 256 KiB，请缩小范围后重试"}, status_code=413)
+        note = load_note(source)
+        if note.parse_error is not None:
+            return JSONResponse({"ok": False, "message": "来源不是可读取的 Markdown 笔记"}, status_code=415)
+        title = next(
+            (line[2:].strip() for line in note.body.splitlines() if line.startswith("# ")),
+            str(note.meta.get("title") or note.meta.get("project") or source.stem),
+        )
+        date_value = meta_date_iso(note.meta.get("date")) or meta_date_iso(note.meta.get("updated"))
+        return {
+            "ok": True,
+            "source_id": raw_id,
+            "title": title,
+            "date": date_value,
+            "body": note.body,
+            "truncated": False,
+        }
+
     @app.post("/api/review/decide", response_model=None)
     def api_decide(payload: DecidePayload) -> dict[str, object]:
         try:
@@ -2462,7 +2537,7 @@ def create_app(
         project = None
         if payload.project:
             project = load_project_registry(ctx.vault_dir).resolve(payload.project)
-        html, source_ids = _ask_html(
+        ask_result = _ask_html(
             ctx.vault_dir,
             question,
             history=history,
@@ -2470,6 +2545,9 @@ def create_app(
             config_file=ctx.config_file,
             workspace_id=ctx.workspace_id,
         )
+        # 保留旧测试/扩展对二元返回值的兼容；新实现额外提供结构化答案。
+        html, source_ids = ask_result[0], ask_result[1]
+        answer = ask_result[2] if len(ask_result) > 2 else None
         if html.startswith('<p class="not-actionable">问答不可用：'):
             return JSONResponse(
                 status_code=503,
@@ -2479,7 +2557,13 @@ def create_app(
                     operation_id=_operation_id(request),
                 ),
             )
-        return {"ok": True, "answer_html": html, "source_ids": source_ids}
+        return {
+            "ok": True,
+            "answer_html": html,
+            "source_ids": source_ids,
+            "cited_source_ids": _cited_source_ids(answer),
+            "answer": answer,
+        }
 
     @app.post("/api/meetings/import")
     def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
@@ -2656,7 +2740,7 @@ def create_app(
         q = question.strip()
         if not q:
             return _dashboard(msg="请输入问题")
-        html, _source_ids = _ask_html(
+        html, _source_ids, _answer = _ask_html(
             ctx.vault_dir,
             q,
             config_file=ctx.config_file,

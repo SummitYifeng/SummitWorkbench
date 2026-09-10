@@ -314,6 +314,37 @@ def test_api_review_source_is_read_only_and_vault_scoped(tmp_path: Path) -> None
     assert not (vault / "outside.md").exists()
 
 
+def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths(
+    tmp_path: Path,
+) -> None:
+    client, vault = _client(tmp_path, seed_review=False)
+    source = vault / "projects" / "P1.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "---\ntitle: 项目一\ndate: 2026-09-01\ntype: project-main\n---\n\n# 项目一\n\n正文。",
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/sources/read", params={"source_id": "projects/P1"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "source_id": "projects/P1",
+        "title": "项目一",
+        "date": "2026-09-01",
+        "body": "# 项目一\n\n正文。",
+        "truncated": False,
+    }
+    assert (
+        client.get("/api/sources/read", params={"source_id": "../projects/P1"}).status_code
+        == 400
+    )
+    assert (
+        client.get("/api/sources/read", params={"source_id": "settings/secrets"}).status_code
+        == 400
+    )
+
+
 # ---------- decide / edit ----------
 
 
@@ -513,6 +544,35 @@ def test_api_ask_accepts_history_payload(tmp_path: Path, monkeypatch) -> None:
     data = resp.json()
     assert data["ok"] is False
     assert data["code"] == "ask_unavailable"
+
+
+def test_api_ask_preserves_structured_answer_and_citation_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client, _ = _client(tmp_path, seed_review=False)
+    answer = {
+        "summary": "结论",
+        "facts": [{"text": "事实一", "source_id": "projects/P1"}],
+        "suggestions": ["建议一"],
+        "conflicts": [{
+            "topic": "状态",
+            "sides": [
+                {"position": "进行中", "source_id": "projects/P1"},
+                {"position": "已暂停", "source_id": "projects/P2"},
+            ],
+        }],
+        "unanswerable": False,
+    }
+    monkeypatch.setattr(
+        "summit_workbench.webapp.legacy_app._ask_html",
+        lambda *_args, **_kwargs: ("<p>旧版回答</p>", ["projects/P1", "projects/P2"], answer),
+    )
+    data = client.post("/api/ask", json={"question": "状态如何"}).json()
+    assert data["ok"] is True
+    assert data["answer_html"] == "<p>旧版回答</p>"
+    assert data["source_ids"] == ["projects/P1", "projects/P2"]
+    assert data["cited_source_ids"] == ["projects/P1", "projects/P2"]
+    assert data["answer"] == answer
 
 
 # ---------- SPA 服务 ----------

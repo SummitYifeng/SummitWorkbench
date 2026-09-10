@@ -25,7 +25,13 @@ assert.match(source, /脱敏审计记录未完成/, 'audit failure remains visib
 assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is explicit and write-free');
 assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
-assert.match(reviewSource, /\/api\/review\/source\?path=/, 'review evidence links open a local read-only source route');
+assert.match(reviewSource, /data-action="source-open"/, 'review evidence links open the shared source panel');
+assert.match(source, /function openSource/, 'ask and review evidence share a source reader');
+assert.match(source, /\/api\/sources\/read\?source_id=/, 'source reader uses the vault-scoped API');
+assert.match(source, /renderAskAnswer/, 'structured ask answers have a dedicated renderer');
+assert.match(source, /仅召回、未在回答中引用的材料/, 'ask distinguishes recalled-only materials');
+assert.match(source, /cited_source_ids/, 'ask response preserves actual citations separately');
+assert.match(source, /answer\.conflicts/, 'ask answer renders structured conflicts');
 assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
 assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
 assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');

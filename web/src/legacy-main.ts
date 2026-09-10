@@ -214,6 +214,8 @@ interface AskMsg {
   ts: string;
   /** ai 消息本次召回/引用的来源 id（追问时回传，让后端重新纳入候选） */
   sources: string[];
+  /** ai 消息实际在事实/冲突中引用的来源；旧会话缺失时回退为空 */
+  citedSources?: string[];
 }
 interface AskThread {
   id: string;
@@ -230,6 +232,37 @@ interface AskResponse {
   message?: string;
   answer_html?: string;
   source_ids?: string[];
+  cited_source_ids?: string[];
+  answer?: AskAnswer;
+}
+
+interface AskFact {
+  text: string;
+  source_id: string;
+}
+interface AskConflictSide {
+  position: string;
+  source_id: string;
+}
+interface AskConflict {
+  topic: string;
+  sides: AskConflictSide[];
+}
+interface AskAnswer {
+  summary: string;
+  facts: AskFact[];
+  suggestions: string[];
+  conflicts: AskConflict[];
+  unanswerable: boolean;
+}
+interface SourceReadPayload {
+  ok: boolean;
+  message?: string;
+  source_id?: string;
+  title?: string;
+  date?: string | null;
+  body?: string;
+  truncated?: boolean;
 }
 
 const ASK_MAX_THREADS = 10;
@@ -862,6 +895,77 @@ function renderAskSide(): void {
   }).join('');
 }
 
+function askSourceButton(sourceId: string, label = sourceId): string {
+  return '<button type="button" class="link source-link" data-action="source-open" data-source-id="' +
+    esc(sourceId) + '" title="打开只读来源">' + esc(label) + '</button>';
+}
+
+function renderAskAnswer(answer: AskAnswer, citedSources: string[], recalledSources: string[]): string {
+  const cited = new Set(citedSources);
+  const parts = [
+    '<p class="answer-summary"><strong>' + esc(answer.summary) + '</strong></p>',
+  ];
+  if (answer.unanswerable) {
+    parts.push('<p class="msg info">当前来源不足以回答，下面内容不会被当作确定事实。</p>');
+  }
+  if (answer.facts.length) {
+    parts.push('<section class="answer-facts"><h4>事实（实际引用）</h4><ul>');
+    parts.push(...answer.facts.map((fact) =>
+      '<li>' + esc(fact.text) + ' · ' + askSourceButton(fact.source_id, fact.source_id) + '</li>'
+    ));
+    parts.push('</ul></section>');
+  }
+  if (answer.conflicts.length) {
+    parts.push('<section class="answer-conflicts"><h4>证据冲突（并列保留）</h4>');
+    parts.push(...answer.conflicts.map((conflict) =>
+      '<div class="answer-conflict"><strong>' + esc(conflict.topic) + '</strong><ul>' +
+      conflict.sides.map((side) => '<li>' + esc(side.position) + ' · ' + askSourceButton(side.source_id, side.source_id) + '</li>').join('') +
+      '</ul></div>'
+    ));
+    parts.push('</section>');
+  }
+  if (answer.suggestions.length) {
+    parts.push('<section class="answer-suggestions"><h4>建议（模型推断）</h4><ul>');
+    parts.push(...answer.suggestions.map((suggestion) => '<li>' + esc(suggestion) + '</li>'));
+    parts.push('</ul></section>');
+  }
+  const recalledOnly = recalledSources.filter((sourceId) => !cited.has(sourceId));
+  if (recalledOnly.length) {
+    parts.push('<p class="hint answer-recalled">仅召回、未在回答中引用的材料：' +
+      recalledOnly.map((sourceId) => askSourceButton(sourceId, sourceId)).join(' · ') + '</p>');
+  }
+  return parts.join('');
+}
+
+let sourceReadSequence = 0;
+
+async function openSource(sourceId: string): Promise<void> {
+  const id = sourceId.trim();
+  if (!id) return;
+  const requestId = ++sourceReadSequence;
+  openModal('<h3>正在读取来源…</h3><p class="hint">只读请求，不会修改工作区。</p>');
+  try {
+    const result = await api<SourceReadPayload>('/api/sources/read?source_id=' + encodeURIComponent(id));
+    const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
+    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
+    if (!result.ok || result.body === undefined) {
+      openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(result.message ?? '来源不存在或已失效') +
+        '</p><p class="hint">请刷新审批/问答后重试；系统不会用猜测内容替代来源。</p>');
+      return;
+    }
+    openModal(
+      '<h3>' + esc(result.title ?? id) + '</h3>' +
+      '<p class="hint">来源：' + esc(result.source_id ?? id) + ' · 日期：' + esc(result.date ?? '未知') + '</p>' +
+      (result.truncated ? '<p class="hint">正文已截断，以下内容仅供核查。</p>' : '') +
+      '<pre class="source-reader">' + esc(result.body) + '</pre>'
+    );
+  } catch (err) {
+    const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
+    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
+    openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(String(err)) + '</p>');
+  }
+}
+
 function renderAskChat(): void {
   const main = document.getElementById('ask-main');
   if (!main) return;
@@ -985,12 +1089,19 @@ async function askSubmit(): Promise<void> {
       restoreFailedQuestion(r.message ?? '提问失败');
       return;
     }
-    const html = r.answer_html;
+    const html = r.answer
+      ? renderAskAnswer(r.answer, r.cited_source_ids ?? [], r.source_ids ?? [])
+      : r.answer_html;
+    if (!html) {
+      restoreFailedQuestion('问答没有返回可显示内容');
+      return;
+    }
     thread.messages.push({
       role: 'ai',
       text: html,
       ts: new Date().toISOString(),
       sources: r.source_ids ?? [],
+      citedSources: r.cited_source_ids ?? [],
     });
   } catch (err) {
     if (isStaleWorkspaceResponse(err)) {
@@ -1562,6 +1673,10 @@ document.addEventListener('click', (ev) => {
     }
     saveCurrentDraftSnapshot();
     reloadToBuild(remoteVersion.frontend_build);
+    return;
+  }
+  if (action === 'source-open') {
+    void openSource(btn.dataset.sourceId ?? '');
     return;
   }
   if (action === 'copy-diagnostics') {
@@ -2660,6 +2775,7 @@ function openModal(html: string): void {
 }
 
 function closeModal(): void {
+  sourceReadSequence += 1;
   (document.getElementById('modal-backdrop') as HTMLElement).hidden = true;
   modalReturnFocus?.focus();
   modalReturnFocus = null;

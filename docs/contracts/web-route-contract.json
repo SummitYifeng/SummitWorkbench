@@ -568,6 +568,18 @@
     "method": [
       "GET"
     ],
+    "path": "/api/sources/read",
+    "request_fields": [
+      "source_id"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/state",
     "request_fields": [],
     "request_model": null,
