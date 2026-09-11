@@ -20,6 +20,8 @@ from summit_workbench.repositories.meeting_state import record_task
 from summit_workbench.repositories.review_page import parse_review_page, review_path
 from summit_workbench.workflows.local_mutation import run_local_mutation
 from summit_workbench.workflows.meetings.backfill import (
+    MAX_TRANSCRIPT_BYTES,
+    oversized_transcripts,
     run_backfill,
     scan_for_import,
     scan_local_transcripts,
@@ -51,6 +53,41 @@ def test_scan_for_import_accepts_txt_and_no_date_range(tmp_path):
     assert by_title["财务对齐"].date == "2026-08-31"
     assert "随手记" in by_title  # 无日期名也不丢
     assert all(len(item.date) == 10 for item in items)  # 都得到了 YYYY-MM-DD
+
+
+def test_oversized_transcript_is_skipped_by_both_scanners_and_listed(tmp_path):
+    """体积上限必须由 workflow 层执行。
+
+    此前只有 web 上传路径检查 10 MiB，CLI 完全没有，能把任意大文件直接送进模型
+    （实测一个 12 MiB 文件预估 419 万 input token）。这里锁住「两个扫描函数都跳过」
+    以及「能被显式列出」，避免退回静默放行或静默丢弃。
+    """
+    src = tmp_path / "drop"
+    src.mkdir()
+    (src / "2026-08-20-正常.md").write_text("张三 00:01 讨论网课。", encoding="utf-8")
+    huge = src / "2026-08-21-超大.md"
+    huge.write_bytes(b"x" * (MAX_TRANSCRIPT_BYTES + 1))
+
+    imported = scan_for_import(tmp_path / "vault", src)
+    assert [item.path.name for item in imported] == ["2026-08-20-正常.md"]
+
+    ranged = scan_local_transcripts(tmp_path / "vault", src, since="2026-01-01", until="2026-12-31")
+    assert [item.path.name for item in ranged] == ["2026-08-20-正常.md"]
+
+    assert [p.name for p in oversized_transcripts(src)] == ["2026-08-21-超大.md"]
+
+
+def test_transcript_exactly_at_the_limit_is_accepted(tmp_path):
+    """边界：等于上限应放行，只有「超过」才拦。"""
+    src = tmp_path / "drop"
+    src.mkdir()
+    exact = src / "2026-08-22-边界.md"
+    exact.write_bytes(b"y" * MAX_TRANSCRIPT_BYTES)
+
+    assert [p.name for p in oversized_transcripts(src)] == []
+    assert [item.path.name for item in scan_for_import(tmp_path / "vault", src)] == [
+        "2026-08-22-边界.md"
+    ]
 
 
 def _ok_client(*, with_decision: bool = False) -> httpx.Client:

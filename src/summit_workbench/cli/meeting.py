@@ -39,6 +39,8 @@ from summit_workbench.workflows.meetings import (
     process_archived_transcript,
 )
 from summit_workbench.workflows.meetings.backfill import (
+    MAX_TRANSCRIPT_BYTES,
+    oversized_transcripts,
     plan_backfill,
     run_backfill,
     scan_for_import,
@@ -74,6 +76,22 @@ def _date_of(start_time: str | None, tz: ZoneInfo) -> str:
     if start_time and start_time.isdigit():
         return datetime.fromtimestamp(int(start_time), tz).strftime("%Y-%m-%d")
     return datetime.now(tz).strftime("%Y-%m-%d")
+
+
+def _warn_oversized(source: Path) -> None:
+    """显式列出被体积上限跳过的逐字稿。
+
+    静默跳过会使用户以为已经导入，所以这里必须说话。上限由 workflow 层统一执行
+    （``MAX_TRANSCRIPT_BYTES``），web 抽屉与 CLI 共用同一数值。
+    """
+    oversized = oversized_transcripts(source)
+    if not oversized:
+        return
+    limit_mib = MAX_TRANSCRIPT_BYTES // (1024 * 1024)
+    typer.echo(f"⚠ 已跳过 {len(oversized)} 个超过 {limit_mib} MiB 的逐字稿（未送模型）：")
+    for path in oversized:
+        size_mib = path.stat().st_size / (1024 * 1024)
+        typer.echo(f"    {path.name}（{size_mib:.1f} MiB）")
 
 
 def _echo_report(meeting_label: str, report: ArchiveReport) -> None:
@@ -198,6 +216,7 @@ def import_transcripts(
         typer.echo(f"来源不存在：{source}")
         raise typer.Exit(code=2)
     vault_dir = _vault_dir()
+    _warn_oversized(source)
     try:
         cfg = load_model_config("meeting")
         api_key = resolve_credential(cfg.api_key_ref)
@@ -317,6 +336,7 @@ def backfill(
         raise typer.Exit(code=2)
 
     vault_dir = _vault_dir()
+    _warn_oversized(source)
     try:
         cfg = load_model_config("meeting")
         api_key = resolve_credential(cfg.api_key_ref)

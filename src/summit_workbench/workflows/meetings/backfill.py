@@ -120,6 +120,12 @@ def _derive_title(body: str, path: Path) -> str:
 
 _TRANSCRIPT_SUFFIXES = frozenset({".md", ".txt"})
 
+# 逐字稿体积上限。这是**产品规则**，必须由 workflow 层统一负责：web 抽屉在流式上传时
+# 就返回 413，但 CLI（`wb meeting import` / `backfill`）此前完全没有检查，能直接把一个
+# 12 MiB 文件送进模型（实测预估 419 万 input token）。上限放在这里，两条路径共用同一数值，
+# 不会再出现「抽屉拦住、CLI 放行」的口径分裂。
+MAX_TRANSCRIPT_BYTES = 10 * 1024 * 1024
+
 
 def _transcript_files(source: Path) -> list[Path]:
     if source.is_file():
@@ -129,6 +135,22 @@ def _transcript_files(source: Path) -> list[Path]:
             p for p in source.iterdir() if p.is_file() and p.suffix.lower() in _TRANSCRIPT_SUFFIXES
         )
     return []
+
+
+def _is_oversized(path: Path) -> bool:
+    try:
+        return path.stat().st_size > MAX_TRANSCRIPT_BYTES
+    except OSError:
+        # 读不到大小时不在这里拦；后续读取会以真实错误暴露。
+        return False
+
+
+def oversized_transcripts(source: Path) -> list[Path]:
+    """列出因超过 :data:`MAX_TRANSCRIPT_BYTES` 而被跳过的逐字稿。
+
+    调用方（CLI）用它把「为什么少导了几份」显式告诉用户；静默跳过会让用户误以为已导入。
+    """
+    return [path for path in _transcript_files(source) if _is_oversized(path)]
 
 
 def _mtime_date(path: Path) -> str:
@@ -143,6 +165,8 @@ def scan_for_import(vault_dir: Path, source: Path) -> list[BackfillItem]:
     """
     items: list[BackfillItem] = []
     for path in _transcript_files(source):
+        if _is_oversized(path):
+            continue
         text = path.read_text(encoding="utf-8")
         if not text.strip():
             continue
@@ -170,6 +194,8 @@ def scan_local_transcripts(
     """扫描本地逐字稿，按 ``[since, until]`` 过滤，标注是否已补导（可续跑）。"""
     items: list[BackfillItem] = []
     for path in _transcript_files(source):
+        if _is_oversized(path):
+            continue
         text = path.read_text(encoding="utf-8")
         if not text.strip():
             continue

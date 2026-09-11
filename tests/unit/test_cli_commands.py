@@ -347,6 +347,26 @@ def test_meeting_import_without_model_config_fails_closed(
     assert not (work / "_vault").exists()
 
 
+def test_meeting_import_warns_about_oversized_transcripts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """超限文件必须被跳过**并显式告知**，不能静默少导或静默送模型。"""
+    from summit_workbench.workflows.meetings.backfill import MAX_TRANSCRIPT_BYTES
+
+    _env(monkeypatch, tmp_path)
+    source = tmp_path / "drop"
+    source.mkdir()
+    (source / "2026-09-11-正常.txt").write_text("说话人 甲 00:00:01\n内容\n", encoding="utf-8")
+    (source / "2026-09-11-超大.txt").write_bytes(b"x" * (MAX_TRANSCRIPT_BYTES + 1))
+
+    result = runner.invoke(app, ["meeting", "import", str(source)])
+
+    # 隔离环境无模型配置 → 退出 2；但警告在这之前就已输出。
+    assert result.exit_code == 2
+    assert "已跳过 1 个超过 10 MiB 的逐字稿" in result.stdout
+    assert "2026-09-11-超大.txt" in result.stdout
+
+
 def test_meeting_archive_without_feishu_config_exits_2(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

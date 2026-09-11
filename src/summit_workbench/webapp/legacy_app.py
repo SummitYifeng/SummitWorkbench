@@ -2583,7 +2583,9 @@ def create_app(
     @app.post("/api/meetings/import")
     def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
         """拖拽上传逐字稿 → 全自动归档 + 结构化 + 生成审批候选。"""
-        max_upload_bytes = 10 * 1024 * 1024
+        from summit_workbench.workflows.meetings.backfill import MAX_TRANSCRIPT_BYTES
+
+        max_upload_bytes = MAX_TRANSCRIPT_BYTES
         chunk_size = 64 * 1024
         name = (file.filename or "transcript.txt")[:200]
         if not name.lower().endswith((".md", ".txt")):
