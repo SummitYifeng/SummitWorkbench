@@ -141,7 +141,7 @@ try {
   assert.match(mod.cases.selectedSummary, /批量拒绝/);
   // 「一键拒绝过期项」必须先显示自身范围，且没有过期项时不可点。
   assert.match(mod.cases.pending, /一键拒绝过期项（1）/);
-  assert.match(mod.cases.empty, /data-action="reject-expired"[^>]*disabled/);
+  assert.match(mod.cases.empty, /data-action="reject-expired"[^>]*disabled[^>]*>一键拒绝过期项（0）</);
   console.log('Review pure render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

@@ -233,8 +233,7 @@ export function reviewHtml(
     '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
     '<div class="form-row">' +
     '<button class="ghost" data-action="reject-expired"' + (expiredCount === 0 ? ' disabled' : '') +
-    ' title="不受当前筛选影响：把截止日期早于今天的待确认条目全部置为拒绝（当前 ' + expiredCount + ' 条）">一键拒绝过期项' +
-    (expiredCount > 0 ? '（' + expiredCount + '）' : '') + '</button>' +
+    ' title="不受当前筛选影响：把截止日期早于今天的待确认条目全部置为拒绝（当前 ' + expiredCount + ' 条）">一键拒绝过期项（' + expiredCount + '）</button>' +
     '<button class="primary" data-action="plan">检查并写回</button>' +
     '</div></div>' +
     errorsHtml +
