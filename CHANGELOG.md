@@ -26,14 +26,20 @@
 
 ### 构建与交付
 
-- **build 11 内部包**：`0.4.4` / build `11` / arm64 / `INTERNAL-DEV`，前端
+- **build 12 内部包（当前装机版本）**：`0.4.4` / build `12` / arm64 / `INTERNAL-DEV`，前端
+  `v2026.09.11-e8ed6f7-6e6e0c91`；DMG SHA-256
+  `71958a14f72caccc0822ff839ba854538bcecde001ae1863b777abade35dd1c0`。包含本版全部修复
+  （runtime record、安装脚本自我误报、CLI 会议创建器、飞书任务 assignee），已装机替换 build 11。
+  产物目录 `dist/releases-local-v0.4.4-build12/0.4.4/arm64/`。
+- build 11 内部包（历史留档）：`0.4.4` / build `11` / arm64 / `INTERNAL-DEV`，前端
   `v2026.09.11-1abcebe-6e6e0c91`；DMG SHA-256
-  `da7ae2ab7685da5f53e8509b9c85cd4cd97a410df87e8c650ed707f8bcec972e`。已装机替换本机 build 10。
-  产物目录 `dist/releases-local-v0.4.4-build11/0.4.4/arm64/`。
+  `da7ae2ab7685da5f53e8509b9c85cd4cd97a410df87e8c650ed707f8bcec972e`。它从 `1abcebe` 构建，
+  **不含其后的四项修复**（尤其是面板侧任务 assignee），不要再用作验收基线。
 - build 11 之前完成 D/E 真实写回验收（真实模型 + 真实飞书）：导入与幂等重跑、零写入预演、
   `project-main` / `feishu-task` / `feishu-meeting` 三种落点写回与回读、部分失败可见性。
-  证据与两个发现（CLI meeting creator 已修；10 MiB 上限只在 web 层未修）见
-  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §K。
+  证据与发现（CLI meeting creator 已修、任务 assignee 已修、10 MiB 上限只在 web 层未修）见
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §K。验收用的合成数据已清理：vault 回退到
+  `8dba623d`，飞书上两条测试任务已删除（测试日程未删，见 §K）。
 
 - 仓库迁移到组织 `SummitYifeng/SummitWorkbench`：Actions 分钟数按**仓库所有者**计费，组织 Team 额度
   对个人账户名下的仓库不生效；迁移后远端 CI 恢复，secrets、`release` environment 与 releases 均保留。
