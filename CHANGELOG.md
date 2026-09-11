@@ -1,6 +1,6 @@
 ## [Unreleased] - 2026-09-11
 
-> 远端 CI 启用与交付门禁补强：不改变 v0.4.4 build 9 已发布产物的身份。
+> 远端 CI、前端工具链与交付门禁补强，并产出 build 11 内部包。build 9 的历史产物身份不变。
 
 ### 修复
 
@@ -9,8 +9,26 @@
   `_same_server_executable()` 把活着的 server 当作复用 PID，删除活着的 runtime 记录并绕过
   `server_entry.py` 的重复实例保护。现在同时接受 `sys.executable`、`sys._base_executable` 与
   `sys.base_prefix/Resources/Python.app/.../Python` 三个合法镜像，并新增回归测试。
+- 修复 `wb review apply` 缺少会议创建器：CLI 只注入 `task_creator`，面板则同时注入
+  `task_creator` 与 `meeting_creator`，导致 `feishu-meeting` 落点在 CLI 下必然失败
+  （`缺少飞书日历会议创建器`），同一份审批页只能在面板应用。已补齐并让两个 creator 都透传
+  `operation_id`，附回归测试。
+- 修复 `scripts/install-macos-app.sh` 的自我误报：旧启动器探测对整条命令行做正则匹配，会匹配到
+  探测自身的 `awk` 进程（其命令行含同一 target 字符串），使安装随机失败在「检测到运行中的
+  SummitWorkbench」。改为对 `comm`（可执行文件路径）做精确相等比较。
+- 修复 `web/scripts/*.mjs` 的幽灵依赖：6 个脚本直接 import `esbuild` 但清单从未声明，一直靠
+  Vite 提升；Vite 8 移除 esbuild 后全部 `ERR_MODULE_NOT_FOUND`。已显式声明并加契约测试。
 
 ### 构建与交付
+
+- **build 11 内部包**：`0.4.4` / build `11` / arm64 / `INTERNAL-DEV`，前端
+  `v2026.09.11-1abcebe-6e6e0c91`；DMG SHA-256
+  `da7ae2ab7685da5f53e8509b9c85cd4cd97a410df87e8c650ed707f8bcec972e`。已装机替换本机 build 10。
+  产物目录 `dist/releases-local-v0.4.4-build11/0.4.4/arm64/`。
+- build 11 之前完成 D/E 真实写回验收（真实模型 + 真实飞书）：导入与幂等重跑、零写入预演、
+  `project-main` / `feishu-task` / `feishu-meeting` 三种落点写回与回读、部分失败可见性。
+  证据与两个发现（CLI meeting creator 已修；10 MiB 上限只在 web 层未修）见
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §K。
 
 - 仓库迁移到组织 `SummitYifeng/SummitWorkbench`：Actions 分钟数按**仓库所有者**计费，组织 Team 额度
   对个人账户名下的仓库不生效；迁移后远端 CI 恢复，secrets、`release` environment 与 releases 均保留。
