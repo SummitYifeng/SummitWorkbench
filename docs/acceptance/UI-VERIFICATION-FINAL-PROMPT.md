@@ -1,33 +1,39 @@
-# 收尾提示词 v4：剩余 5 项 UI 层验收（整段复制给 Codex）
+# 收尾提示词 v5：剩余 4 项 UI 层验收（整段复制给 Codex）
 
-> **v4 变更**
-> - ✅ **已关闭，不要重跑**：C1、C2、R01、R03、R06、R07、R08、R10、R11、D2、D3、E1、E2、E3、E4。
-> - 🔧 **R04 上一轮的失败是我配方错**：`saveModel` 里有
->   `if (!secret) { toast('请先粘贴 DeepSeek API Key'); return; }`，**表单拒绝无密钥提交**，
->   而直接 POST 假密钥会**写登录钥匙串**（不受临时 `HOME` 隔离，ACL 不含调用方时会弹 GUI 框阻塞）
->   —— 这就是你看到的"10 秒未返回"。**已改为完全不需要凭据、且测试同一段守卫的配方。**
-> - 🔧 **R09 上一轮的失败是时序**：旧脚本只扣 6 秒，来不及触发第二次读取。
->   已改为**闸门式**（扣住直到你 `touch` 一个文件），不再依赖秒数。**脚本已实测。**
-> - **只有 C4 需要账号所有者介入**（真实飞书日历）。
+> **v5 变更**
+> - ✅ **R04 已通过**（放行 #1 后页面仍显示 `work 【已更新】`），**不要重跑**。
+> - ❌ **B4 上一轮的结论"原生服务未隔离"很可能是误判**：你看到的
+>   `--work-root /Users/…/Documents/Work` 是**原生层传的参数**，而打包服务
+>   `server_entry.py` 第 112 行是 `resolve_active_workspace(allow_env_fallback=False)` ——
+>   **它根本不消费 `--work-root`**。判断是否隔离要看**界面显示的工作区**，不是进程参数。
+>   而且**要同时设 `WORK_ROOT`**：原生层 `Models.swift:124` 就是
+>   `environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`。
+> - 🔧 **R09 的触发方式换了**：切页签可能让被扣住的请求被取消（你遇到的
+>   `Invalid InterceptionId`）。改为在**审批页内点「批准」**触发第二次读取 ——
+>   `decide/batchDecide` 会调 `refreshReview()` → `refreshExternalActions()`，
+>   **不离开页面**（注意：dry-run 的「检查并写回」**不会**触发，别用它）。
+> - 🔧 **R05 不再需要真的切走浏览器**：用 `visibilityState` 覆盖 + 派发 `visibilitychange`
+>   事件，并用 5 秒探针**证明定时器未被节流**，从而彻底消除"无法区分"的歧义。
+> - **只有 C4 需要账号所有者介入。**
 
 ---
 
 ## 复制区（从这里开始）
 
-你是真实浏览器验收执行者。在**隔离环境**里跑完下面 6 个任务，逐条回报**原始证据**。
+你是真实浏览器验收执行者。在**隔离环境**里跑完下面 4 个任务，逐条回报**原始证据**。
 
 ### 铁律
 
 1. **只用临时环境**：临时 `HOME`、`WORK_ROOT`、vault。**绝不**指向真实工作区。
 2. **不连真实模型、不连真实飞书**——唯一例外是任务 4（C4），必须先取得明确授权。
-3. **没有实际观察到的，一律写「未验证」**并说明卡在哪。前几轮你把 R05 判未验证都是对的。
+3. **没有实际观察到的，一律写「未验证」**并说明卡在哪。
 4. **每条断言要有原始证据**：计数、时间戳、响应原文、界面文案等可判定量。
-5. **不要点任何写回按钮**，除非任务明确要求。
+5. **不要点「确认应用（写回）」「恢复写回」**。点「批准/拒绝」只改标记、不写回，是允许的。
 
 ### 环境准备
 
 ```bash
-ISO=$(mktemp -d /tmp/swb-v4-XXXXXX)
+ISO=$(mktemp -d /tmp/swb-v5-XXXXXX)
 mkdir -p "$ISO/home" "$ISO/work"
 export HOME="$ISO/home" WORK_ROOT="$ISO/work"
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
@@ -46,12 +52,13 @@ sleep 5
 curl -s http://127.0.0.1:9333/json/list | grep -c '"type": "page"'   # 必须 ≥ 1
 ```
 
-`0` 或空数组就**先停下报告**，不要继续任务 1/2。
+`0` 或空数组就**先停下报告**，不要继续任务 1。
 
-### 公共脚本 A · 闸门式扣留（**决定性时序**，任务 1、2 用）
+### 公共脚本 · 闸门式扣留（任务 1 用）
 
-存成 `gate.mjs`。它**自己查找或新建 page target**、**导航到应用**、在导航**之前**启用拦截，
-然后把**第一个**匹配请求一直扣住，直到 gate 文件出现；其余请求立即放行。
+存成 `gate.mjs`。它自己查找/新建 page target、导航到应用、在导航**之前**启用拦截，
+把**第一个**匹配请求一直扣住直到 gate 文件出现，其余立即放行。
+**被扣住的请求若被页面取消，它会明确告警**——那种情况本次不成立，需要重来。
 
 ```js
 // 用法: node gate.mjs <cdpPort> <appUrl> <url子串> <gateFile>
@@ -79,7 +86,7 @@ async function ensurePage() {
 
 const page = await ensurePage();
 const ws = new WebSocket(page.webSocketDebuggerUrl);
-let id = 0, seen = 0;
+let id = 0, seen = 0, cancelled = 0;
 const pending = new Map();
 const send = (method, params = {}) =>
   new Promise((res, rej) => {
@@ -93,6 +100,19 @@ const waitForGate = async () => {
   for (;;) {
     if (existsSync(gateFile)) return;
     await new Promise((r) => setTimeout(r, 200));
+  }
+};
+
+const release = async (requestId, label) => {
+  try {
+    await send('Fetch.continueRequest', { requestId });
+    return true;
+  } catch (err) {
+    cancelled += 1;
+    console.log(`⚠ ${label} 放行失败：${err.message}`);
+    console.log('⚠ 这通常意味着页面刷新/导航，把被扣住的请求取消了。');
+    console.log('⚠ 本次乱序【不成立】，请重来：过程中不要刷新、不要离开审批页签。');
+    return false;
   }
 };
 
@@ -112,10 +132,12 @@ ws.addEventListener('message', async (ev) => {
     console.log(`[${new Date().toISOString()}] #1 到达 ${request.url} → 扣住（等你 touch 闸门）`);
     await waitForGate();
     console.log(`[${new Date().toISOString()}] #1 收到闸门 → 放行`);
+    await release(requestId, '#1');
+    console.log(`\n取消计数：${cancelled}（0 = 乱序成立）`);
   } else {
     console.log(`[${new Date().toISOString()}] #${n} 到达 ${request.url} → 立即放行`);
+    await release(requestId, `#${n}`);
   }
-  await send('Fetch.continueRequest', { requestId });
 });
 
 await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', rej); });
@@ -125,63 +147,55 @@ await send('Page.navigate', { url: appUrl });
 console.log(`已连接 ${base} 并导航到 ${appUrl}；pattern=${pattern}。#1 扣住直到 ${gateFile} 出现。`);
 ```
 
-> **已实测**：#1 被扣住期间 #2–#5 正常通行；`touch` 闸门后 #1 才放行。
-
-### 公共脚本 B · 删除响应里的一个 JSON 字段（任务 3 用，可跳过）
-
-即 `strip-field.mjs`，与上一版相同（**已实测**）：把响应里某个 JSON 字段删掉再放行，
-并会自检打印页面真实收到的内容。若任务 3 已通过可跳过，脚本见本文件 v3 版本或按需重写。
+> **已实测**：#1 被扣住期间后续请求正常通行；`touch` 闸门后 #1 才放行。
 
 ---
 
-### 任务 1 · R04：设置页保存后不被旧读取覆盖 —— **不需要任何凭据**
-
-**上一轮为什么失败（不是你的错）**：`saveModel` 里有
-`if (!secret) { toast('请先粘贴 DeepSeek API Key'); return; }` —— 表单**拒绝无密钥提交**；
-而绕过表单直接 POST 假密钥会走 `update_provider_settings` → **写 macOS 登录钥匙串**
-（`security add-generic-password`）。钥匙串**不在临时 `HOME` 内**，ACL 不含调用方时会弹出
-GUI 授权框，请求就一直不返回 —— 这正是你观察到的现象。
-
-**改成不需要凭据、但测试同一段守卫的配方。** 要验的守卫是 `settingsRenderSequence`
-（"先发起的旧响应不得覆盖后发起的新内容"），两次读取都打 `/api/settings/profiles`
-（`web/src/features/settings/index.ts`）。只要**两次读取的内容不同**就能看出有没有被覆盖——
-而该响应里含 `display_name`，它来自**临时 `HOME` 内**的 registry，可以随便改。
-
-**关键前提（你先观察到的，是对的）**：设置页在读取期间会把内容清成「正在读取设置…」，
-所以**扣住期间页面上没有可用表单**。因此触发第二次读取要靠**切页签**，而不是点保存。
-
-**步骤**：
-
-1. 找到临时 registry 并记下当前 `display_name`：
-   ```bash
-   REG="$ISO/home/Library/Application Support/SummitWorkbench/registry.json"
-   cat "$REG"
-   ```
-2. 启动闸门脚本（它会自己打开应用）：
-   ```bash
-   node gate.mjs 9333 http://127.0.0.1:18931/ /api/settings/profiles "$ISO/gate-r04"
-   ```
-3. 在应用里切到**设置**页签 → 触发读取 **#1**，被扣住；页面显示「正在读取设置…」。
-   确认脚本打印了 `#1 到达 … 被扣住`。
-4. **在被扣住期间**，把 registry 里的 `display_name` 改成明显不同的值（例如原值后加
-   `【已更新】`）并保存文件。记下改前/改后的值。
-5. **切到别的页签，再切回设置** → 触发读取 **#2**，立即放行并渲染出**新**名称。
-   确认脚本打印了 `#2 到达 … 立即放行`。
-6. 确认页面上「工作区」卡片显示的是**新**名称。
-7. **`touch "$ISO/gate-r04"`** → 扣住的 #1（携带**旧**名称）此刻才放行。
-8. **通过标准**：页面上的「工作区」卡片**仍然是新名称**。
-   若它变回旧名称 → 守卫失效（**那才是真失败**）。
-
-**回报**：脚本全部输出（含两个时间戳）；改前/改后的 `display_name`；第 6 步与第 8 步页面上
-「工作区」卡片实际显示的文字。
-
-> **可选、需账号所有者同意**：想连"保存→刷新"这条触发路径一起验，就必须用**真实 DeepSeek 密钥**
-> （表单强制校验，且保存会真的连网验证并写登录钥匙串）。**没拿到明确授权就不要做这一条**，
-> 按上面的守卫测试给结论即可，并在回报里说明哪条路径验了、哪条没验。
-
-### 任务 2 · R09：外部写回列表不被旧响应覆盖 —— **本地造数据 + 闸门**
+### 任务 1 · R09：外部写回列表不被旧响应覆盖 —— **页内触发，不要切页签**
 
 `/api/external-actions` 读本地账本 `_vault/_signals/external-actions/log.jsonl`，**不需要飞书**。
+
+**上一轮为什么没成**：`#2` 确实先到达并渲染了 2 条，但放行 `#1` 时报
+`Invalid InterceptionId` —— **被扣住的旧请求已被页面取消**（很可能因为切了页签/刷新），
+所以"旧响应返回后仍保持 2 条"这一步**没有真正发生**。你的判断是对的。
+
+**这次改为页内触发**：点候选上的**「批准」**会走 `decide/batchDecide` → `refreshReview()`
+→ `refreshExternalActions()`，**不离开页面**，旧请求不会被取消。
+（注意：dry-run 的「检查并写回」**不会**触发 `refreshReview`，别用它。）
+
+**夹具**：审批页上至少要有 1 条候选。用已验证的格式（frontmatter + `## 日期 标题  [[笔记]]`
++ 两空格缩进字段）：
+
+```markdown
+---
+date: '2026-09-11'
+type: approval-page
+status: active
+project: global
+---
+
+# 会议提取待确认
+
+## 2026-09-11 合成会议  [[meetings/notes/2026-09-11-synthetic]]
+
+- [ ] `id: local:fixture#action-item-1` [action-item] 合成候选正文 1
+  - target_project: demo-project
+  - route: project-main
+  - due_date: 2026-09-01
+  - start_at:
+  - end_at:
+  - evidence: 说话人 甲 00:00:01
+  - actionable: yes
+  - historical: no
+  - note: [[meetings/notes/2026-09-11-synthetic]]
+  - transcript: [[meetings/transcripts/2026-09-11-synthetic]]
+  - error:
+  <!-- wb-original: <base64url(JSON: description,target_project,route,due_date)> -->
+```
+
+写入 `_vault/review/meetings.md`，并建好 `_vault/projects/demo-project.md`。
+
+**账本**：
 
 ```bash
 WS=$(python3 -c "import json;print(json.load(open('$WORK_ROOT/_vault/.summit-workbench/workspace.json'))['workspace_id'])")
@@ -201,28 +215,116 @@ EOF
    ```bash
    node gate.mjs 9333 http://127.0.0.1:18931/ /api/external-actions "$ISO/gate-r09"
    ```
-2. 在应用里切到**审批**页签 → 触发读取 **#1**（此刻账本只有 1 条），被扣住。
-   确认脚本打印了 `#1 到达 … 被扣住`。
-3. **在被扣住期间**，往同一个 `log.jsonl` **追加**第二条：
+2. **进审批页签**（之后不要再来回切换）→ 触发读取 **#1**（账本此时 1 条），被扣住。
+   确认脚本打印 `#1 到达 … 扣住`。
+3. **在被扣住期间**，追加第二条：
    ```bash
    cat >> "$WORK_ROOT/_vault/_signals/external-actions/log.jsonl" <<EOF
    {"schema_version":1,"operation_id":"race-op-2","candidate_id":"local:fixture#action-item-2","workspace_id":"$WS","kind":"feishu-meeting","request_fingerprint":"fp-2","target_account_ref":"test","state":"failed","attempt":1,"timestamp":"2026-09-11T13:05:00+08:00","remote_id":null,"error":"合成数据：新的一条","retry_allowed":true}
    EOF
    ```
-4. **切到别的页签，再切回审批** → 触发读取 **#2**，立即放行，渲染出 **2 条**。
-   确认脚本打印了 `#2 到达 … 立即放行`，且页面上显示 2 条。
+4. **就在审批页上点候选的「批准」**（只改标记，不写回）→ 触发读取 **#2**，立即放行，
+   页面显示 **2 条**。确认脚本打印 `#2 到达 … 立即放行`。
 5. **`touch "$ISO/gate-r09"`** → 扣住的 #1（只有 1 条）此刻才放行。
-6. **通过标准**：外部写回列表**仍然是 2 条**。
-   若被覆盖回 1 条 → 守卫失效（**那才是真失败**）。
+6. **通过标准**：外部写回列表**仍然是 2 条**。若被覆盖回 1 条 → 守卫失效（**真失败**）。
+7. 看脚本打印的**取消计数：必须是 0**。若是 1，说明 #1 又被取消了，本次**不成立**，
+   如实报「未验证」并附脚本输出。
 
-**回报**：脚本全部输出（含时间戳）；第 4 步与第 6 步列表里实际显示的条数与文案。
+**回报**：脚本全部输出（含时间戳与取消计数）；第 4 步与第 6 步列表里实际显示的条数与文案。
 
-### 任务 3 · R07 复跑（**可选，已通过**）
+### 任务 2 · R05：隐藏页暂停 + 回到前台补一次 —— **不用真的切走浏览器**
 
-R07 上一轮已通过（剥离 `workspace_id` 后 `2/10` 刷新两次仍是 `2/10`，
-`localStorage` 为 `["wb.ask.threads.v1.unknown"]`），**除非想复现，否则跳过**。
+**不要再真的隐藏 130 秒**：把 `visibilityState` 做成可控的，并派发 `visibilitychange`
+事件。页面在浏览器看来一直可见，所以**定时器不会被节流**——这就彻底消除了
+"分不清守卫与节流"的歧义。
 
-### 任务 4 · C4：「新建会议（个人日程）」落点 —— **这一项需要账号所有者介入**
+在页面 Console 里：
+
+```js
+// ① 让 visibilityState 可控
+window.__hidden = false;
+Object.defineProperty(document, 'visibilityState', {
+  configurable: true,
+  get: () => (window.__hidden ? 'hidden' : 'visible'),
+});
+
+// ② 计数 + 5 秒探针（探针用来证明定时器确实在跑）
+performance.setResourceTimingBufferSize(1000);
+const count = (p) => performance.getEntriesByType('resource').filter((e) => e.name.includes(p)).length;
+window.__tick = 0;
+window.__probe = setInterval(() => { window.__tick++; }, 5000);
+window.__base = { version: count('/api/version'), sync: count('/api/sync/status'), at: new Date().toISOString() };
+window.__base;
+
+// ③ 进入"隐藏"
+window.__hidden = true;
+window.__hiddenAt = new Date().toISOString();
+```
+
+**等 ≥ 70 秒**（应用轮询间隔是 60 秒，需要它至少触发一次）。然后：
+
+```js
+// ④ 回到可见并派发事件
+window.__hidden = false;
+document.dispatchEvent(new Event('visibilitychange'));
+await new Promise((r) => setTimeout(r, 1500));   // 给请求落账
+({
+  after: { version: count('/api/version'), sync: count('/api/sync/status') },
+  tick: window.__tick, base: window.__base, hiddenAt: window.__hiddenAt,
+  at: new Date().toISOString(),
+});
+clearInterval(window.__probe);
+```
+
+**通过标准**：
+- `after.version - base.version === 1` **且** `after.sync - base.sync === 1`。
+- `tick >= 12`（70 秒 ÷ 5 秒）→ **证明定时器确实在运行且未被节流**，因此隐藏期间
+  "没有发出请求"就是**可见性守卫生效**，而非浏览器节流。
+
+**若 `after` 比 `base` 多 2**：把两个请求的时间戳一并贴回来（可能是应用自身的 60 秒轮询
+恰好在切回时触发），由我判断，**不要**自行判通过。
+
+**回报**：③ 和 ④ 的原始对象（含 `tick` 与时间戳）。
+
+### 任务 3 · B4：原生 App 黑盒 —— **要同时设 `WORK_ROOT`，并按界面判断隔离**
+
+**上一轮的结论很可能是误判，先读这段**：
+
+- 你看到进程参数是 `--work-root /Users/…/Documents/Work`，据此判断"未隔离"。
+  但打包服务 `server_entry.py` 第 112 行是
+  `active_workspace = resolve_active_workspace(allow_env_fallback=False)` ——
+  **它根本不消费 `--work-root`，而是从 profile registry 解析**。
+  所以那个参数是**原生层传下来的、服务端会忽略**的，**不能作为隔离与否的判据**。
+- 而原生层**确实读环境变量**：`Models.swift:124`
+  `let workRoot = environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`。
+  **上一轮只设了 `HOME`、没设 `WORK_ROOT`**，所以它回退到了真实家目录。
+
+**正确启动方式（两个都设）**：
+
+```bash
+ISO2=$(mktemp -d /tmp/swb-app-XXXXXX)
+mkdir -p "$ISO2/home/Library/Application Support" "$ISO2/work"
+HOME="$ISO2/home" WORK_ROOT="$ISO2/work" \
+  /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
+```
+
+**判据是界面，不是进程参数**：等 App 加载完成（不要停在「正在启动…」），打开设置页看工作区。
+
+- ✅ **通过**：显示 onboarding / 空工作区，**不出现** `/Users/<真实用户>/Documents/Work/_vault`
+  → 隔离成立，继续下面的黑盒检查。
+- ❌ **失败**：确实显示了真实 vault 路径 → 隔离不成立，**立即退出**，把设置页文案原文贴回来，
+  作为 B4 的**阻塞结论**。
+- ⚠ 若 App 停在「正在启动 SummitWorkbench…」超过 60 秒：贴回原生层日志
+  （`$ISO2/home/Library/Logs/SummitWorkbench/` 与真实 `~/Library/Logs/SummitWorkbench/`
+  里最新的一份），并报「未验证：App 未能启动」。
+
+隔离成立后：确认设置页显示的 build identity 与实际产物一致；走一遍新建工作台（指向
+`$ISO2/work`）；跑六页签可达性；确认操作发生在 **WKWebView** 内；退出重启确认不出现
+crash loop、不误认旧服务；结束后删除 `$ISO2`。
+
+**回报**：启动命令原文；设置页工作区文案原文；六页签结果；重启结果。
+
+### 任务 4 · C4：「新建会议（个人日程）」落点 —— **需要账号所有者介入**
 
 会在**真实飞书日历建事件**：
 
@@ -231,55 +333,6 @@ R07 上一轮已通过（剥离 `workspace_id` 后 `2/10` 刷新两次仍是 `2/
 - 获授权后：在隔离 workspace 造一条 `route: feishu-meeting` 的候选（带 `start_at`/`end_at`，
   本地 naive `YYYY-MM-DDTHH:MM`），确认它在真实页面上**可选中、可批准**；
   若被要求写回，只建一个事件，**回读校验后立即删除**，回报事件 id 与删除结果，**不留残留**。
-
-### 任务 5 · B4：原生 App / WKWebView 黑盒 —— **不要用 `WORK_ROOT`**
-
-**不能用 `WORK_ROOT` 隔离**：`webapp/server_entry.py` 明确写着打包后的 server
-**永不消费 `WORK_ROOT` 或 `--work-root`**。App 只认 **active profile**，而本机状态从
-`home_dir()`（= `Path.home()`）派生，所以要用**临时 `HOME` 直接启动可执行文件**，
-**不要**用 `open -a`：
-
-```bash
-ISO2=$(mktemp -d /tmp/swb-app-XXXXXX)
-mkdir -p "$ISO2/Library/Application Support"
-HOME="$ISO2" /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
-```
-
-**动手前强制自检（不通过就停）**：打开设置页看工作区路径。
-
-- ✅ 期望：onboarding / 空工作区，**不出现** `/Users/<真实用户>/Documents/Work/_vault`。
-- ❌ 若仍显示真实 vault 路径：说明 `HOME` 没生效（原生层可能用 `NSHomeDirectory()`，
-  它读账户数据库而不是 `$HOME`）。**立即退出，不要再做任何操作**，把
-  「原生 App 无法用环境变量隔离」作为 B4 的**阻塞结论**回报。
-
-自检通过后：确认 build identity 与实际产物一致；走一遍新建工作台（指向临时目录）；
-跑六页签可达性；确认操作发生在 **WKWebView** 内；退出重启确认不出现 crash loop、不误认旧服务。
-结束后删除 `$ISO2`。
-
-### 任务 6 · R05：隐藏页 60 秒暂停 + 回到前台立即补一次
-
-**用 Console 计数，不要肉眼数 Network 面板**，并**埋探针**做归因：
-
-```js
-performance.setResourceTimingBufferSize(1000);
-const count = (p) => performance.getEntriesByType('resource').filter((e) => e.name.includes(p)).length;
-window.__tick = 0;
-window.__probe = setInterval(() => { window.__tick++; }, 60000);
-({ base: { version: count('/api/version'), sync: count('/api/sync/status') }, at: new Date().toISOString() })
-```
-
-切到别的标签页 / 最小化，**隐藏 ≥ 130 秒**，切回后**立刻**读：
-
-```js
-({ after: { version: count('/api/version'), sync: count('/api/sync/status') },
-   tick: window.__tick, at: new Date().toISOString() })
-clearInterval(window.__probe);
-```
-
-**通过标准**：`after.version - base.version === 1` **且** `after.sync - base.sync === 1`。
-
-**归因（必须如实写）**：`tick > 0` → 定时器确实跑了，因此"没发请求"**证明可见性守卫生效**；
-`tick === 0` → **无法区分**守卫与浏览器节流，写「无法区分」，**不要**写通过。
 
 ### 回报格式
 
@@ -297,17 +350,15 @@ clearInterval(window.__probe);
 
 ---
 
-## 附：状态与建议顺序
+## 附：状态
 
-| 任务 | 覆盖 | 状态 | 需要账号所有者？ |
+| 任务 | 覆盖 | 上一轮 | 本轮变化 |
 |---|---|---|---|
-| 1 | R04 | 配方改为**无凭据**测同一段守卫 | 否（可选路径才需要） |
-| 2 | R09 | 改为**闸门式**（已实测脚本） | 否 |
-| 3 | R07 | **已通过**，可跳过 | 否 |
-| 4 | C4 | 待授权 | ✅ **真实飞书** |
-| 5 | B4 | 临时 `HOME` 隔离配方 | 否 |
-| 6 | R05 | 原配方不变，只需真的隐藏 130 秒 | 否 |
+| 1 | R09 | 未验证（旧请求被取消） | 改**页内「批准」**触发，脚本会报取消计数 |
+| 2 | R05 | 未验证（三轮都没做成） | 改 `visibilityState` 覆盖 + 5 秒探针，不用真隐藏 |
+| 3 | B4 | 未验证（判断依据有误） | 同时设 `WORK_ROOT`，**按界面判断** |
+| 4 | C4 | 未验证 | 需授权，**唯一需要账号所有者的一项** |
 
-**建议顺序：1 → 2 → 6 → 5 → 4。** 前四项都不需要账号所有者介入；到 **4（C4）** 再停下请求授权。
+**建议顺序：2 → 1 → 3 → 4。** 前三项都不需要账号所有者介入。
 
-**已关闭，不要重跑**：C1、C2、R01、R03、R06、R07、R08、R10、R11、D2、D3、E1、E2、E3、E4。
+**已关闭，不要重跑**：C1、C2、R01、R03、R04、R06、R07、R08、R10、R11、D2、D3、E1、E2、E3、E4。

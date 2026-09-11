@@ -30,9 +30,9 @@
 **推荐顺序：0 → 1 → 2 → 3 → 4 → 5 → 6 → 7。** 批次之间互不依赖（只因夹具不同而拆分），
 所以也**可以并行**；只有批次 0 是所有批次的前置。
 
-## 1.1 执行结果与**剩余待跑项**（截至第四轮）
+## 1.1 执行结果与**剩余待跑项**（截至第五轮）
 
-已跑过四轮（`frontend_build=v2026.09.11-6ff10a6-6e6e0c91`）。**不要重复已通过的项**。
+已跑过五轮（`frontend_build=v2026.09.11-6ff10a6-6e6e0c91`）。**不要重复已通过的项**。
 
 | 批次 | 已通过（不必重跑） | 剩余待跑 | 关键原因 |
 |---|---|---|---|
@@ -42,12 +42,11 @@
 | 3 | E1、E2、R06（**全通过**） | — | — |
 | 4 | **E3、R01（第三轮全通过）** | — | 夹具自证可滚动后一次通过；R01 靠自愈脚本跑通 |
 | 5 | **E4、R07（R07 第四轮通过）** | — | R07 第三轮曾是**误判**，按更正判据一次通过 |
-| 6 | R03、R10、R11 | **R04 / R05 / R09** | R04 配方两处错误已更正（表单拒绝无密钥、写登录钥匙串），改为**无凭据**测同一守卫；R09 改**闸门式**时序。见提示词 v4 任务 1、2、6 |
-| 7 | — | **B4 全部**（按 §9 的临时 `HOME` 隔离配方） | 第一轮因绑定真实工作区而停止 |
+| 6 | R03、R04、R10、R11 | **R05 / R09** | R04 第五轮用**无凭据**配方通过；R09 改**页内「批准」**触发；R05 改 `visibilityState` 覆盖 + 5 秒探针 |
+| 7 | — | **B4 全部**（按 §9 更正后的配方：`HOME` + `WORK_ROOT` 都设，**按界面判断**） | 第五轮"未隔离"很可能是**判据选错**（argv 不作数） |
 
 > **下一轮请直接用 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)**
-> （现为 v4）：自包含、只含剩余项，带**已实测**的闸门式脚本与逐项夹具。
-> 本文件的夹具配方作为背景保留。
+> （现为 v5）：自包含、只含剩余 4 项。本文件的夹具配方作为背景保留。
 
 ---
 
@@ -347,37 +346,50 @@ def wb_original(description, target_project, route, due_date):
 **唯一需要打包 App 的一批。** CI 里的 packaged smoke 只覆盖打包后的 server 与构建身份，
 **不覆盖原生 UI**，所以这一批必须在**已安装的 `.app`** 里做，不能用浏览器代替。
 
-### 9.1 上一轮的卡点与解法（**先读这段再动手**）
+### 9.1 隔离配方（**⚠ 本节早先写错过，下面是更正后的版本**）
 
-上一轮**正确地停了下来**：直接 `open -a SummitWorkbench` 会绑定产品所有者的**真实工作区**
-（设置页显示 `/Users/yifengstudio/Documents/Work/_vault`、DeepSeek 已配置、飞书已授权），
-继续操作就会碰真实数据。这个判断是对的。
+> **更正记录（2026-09-11 第五轮）**：本节曾写「**不能用 `WORK_ROOT` 隔离**」——**这是错的**。
+> 原生层 `native/SummitWorkbench/Models.swift:124` 就是
+> `let workRoot = environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`，
+> **它读 `WORK_ROOT`**。上一轮只设了 `HOME`，于是按 `NSHomeDirectory()` 回退到真实家目录，
+> 子进程参数里就出现了真实路径——而**那个参数随后会被服务端忽略**，所以它**不能**作为
+> "未隔离"的判据。
 
-但**不能用 `WORK_ROOT` 来隔离**：`webapp/server_entry.py` 明确写着打包后的 server
-**永不消费 `WORK_ROOT` 或 `--work-root`**（那是给源码运行的）。App 只认 **active profile**。
-
-App 的本机状态从 `home_dir()` 派生，而 `home_dir()` 就是 `Path.home()`
-（`config/app_support.py` 的 docstring 明确说「测试通过显式 `home` 参数或 **HOME env 隔离**」）。
-所以要隔离，就**用一个临时 `HOME` 直接启动可执行文件**，而不是 `open -a`：
+直接 `open -a SummitWorkbench` 会绑定真实工作区，必须用**临时环境直接启动可执行文件**，
+并且 **`HOME` 与 `WORK_ROOT` 两个都要设**：
 
 ```bash
 ISO=$(mktemp -d /tmp/swb-app-iso-XXXXXX)
-mkdir -p "$ISO/Library/Application Support"
-HOME="$ISO" /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
+mkdir -p "$ISO/home/Library/Application Support" "$ISO/work"
+HOME="$ISO/home" WORK_ROOT="$ISO/work" \
+  /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
 ```
 
-这样 profile registry 指向
-`$ISO/Library/Application Support/SummitWorkbench/registry.json`——**不存在**，
-App 应进入 **onboarding / 空安装**状态，而不是真实工作区。
+为什么两个都要设：
+
+- **`HOME`**：App 的本机状态从 `home_dir()`（= `Path.home()`）派生，
+  `config/app_support.py` 的 docstring 明确说「测试通过显式 `home` 参数或 **HOME env 隔离**」。
+  设了它，profile registry 指向
+  `$ISO/home/Library/Application Support/SummitWorkbench/registry.json`——**不存在**。
+- **`WORK_ROOT`**：原生层会把它传给子进程。**但即使不设也不会污染真实工作区**——
+  `webapp/server_entry.py:112` 是 `resolve_active_workspace(allow_env_fallback=False)`，
+  打包服务**根本不消费 `WORK_ROOT` 或 `--work-root`**，只从 registry 解析。
+
+**判据是界面，不是进程参数**：打开设置页看工作区。只因为 argv 里出现真实路径就判"未隔离"，
+会把一个其实已经隔离的环境误判掉。
 
 ### 9.2 动手前的**强制自检**（不通过就停）
 
-启动后先看设置页：
+启动后**等 App 加载完成**（不要停在「正在启动 SummitWorkbench…」），再打开设置页：
 
 - ✅ 期望：显示 onboarding 或空工作区，**不出现** `/Users/<真实用户>/Documents/Work/_vault`。
-- ❌ 若仍显示真实 vault 路径：说明 `HOME` 没有生效（原生层可能用的是 `NSHomeDirectory()`，
-  它读的是账户数据库而不是 `$HOME`）。**此时立即退出，不要再做任何操作**，
-  把「原生 App 无法用环境变量隔离」作为 B4 的阻塞结论回报，不要强行继续。
+- ❌ 若确实显示真实 vault 路径：说明隔离没生效。**立即退出，不要再做任何操作**，
+  把设置页文案原文贴回，作为 B4 的**阻塞结论**，不要强行继续。
+- ⚠ 若 App 长时间停在「正在启动…」：贴回原生层日志
+  （`$ISO/home/Library/Logs/SummitWorkbench/` 与真实 `~/Library/Logs/SummitWorkbench/`
+  里最新的一份），报「未验证：App 未能启动」。
+
+**不要**用子进程 argv 里的 `--work-root` 判断隔离——那个参数会被服务端忽略（见 §9.1）。
 
 ### 9.3 步骤与通过标准
 
