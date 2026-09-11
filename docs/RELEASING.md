@@ -6,8 +6,9 @@
 
 tag 触发的 `.github/workflows/release.yml` 曾在 `v0.4.3-rc.3`–`v0.4.3-rc.5` 上成功运行；随后账户
 用完免费 Actions 额度且没有有效支付方式，`v0.4.3` 与 `v0.4.4` 的 tag 运行被平台拒绝启动。仓库迁移到
-`SummitYifeng` 组织后额度已恢复，但 `v0.4.4` 尚未用 tag 重跑该工作流，因此正式发布路径仍以本文件的
-本地脚本为准。
+`SummitYifeng` 组织后额度已恢复，并已用 `v0.4.4-rc.1` 实跑验证：签名 DMG、`update-feed.json`、
+SBOM、SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库，`latest` 保持 `v0.4.2`
+不变（rc 渠道不污染 stable）。自动发布链路因此可用；日常发布仍可继续使用本文件的本地脚本。
 
 ## 内部/个人自用包（仅 M2+ Apple Silicon）
 

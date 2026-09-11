@@ -67,8 +67,9 @@
 
 | # | 项 | 说明 |
 |---|---|---|
-| F1 | `release.yml`（tag 触发）在当前组织下实跑 | 自 `v0.4.3-rc.5` 后未成功运行；`v0.4.4` 那次被计费拦截 |
-| F2 | Developer ID / 公证 / Intel / Windows / 公开更新 feed | **明确超出 `INTERNAL-DEV` 交付范围**，非缺陷 |
+| F1 | Developer ID / 公证 / Intel / Windows | **明确超出 `INTERNAL-DEV` 交付范围**，非缺陷 |
+
+> tag 触发的 `release.yml` 实跑已于 2026-09-11 关闭，见下方「已关闭」。
 
 ## G. 测试覆盖洼地（代码有、测试未走到）
 
@@ -104,3 +105,5 @@
 | 冲突恢复提交无自动化端到端覆盖（A6 的代码路径部分） | 2026-09-11 | `tests/integration/test_acceptance_dual_device.py`（变异测试验证有效） |
 | Node 20 弃用告警 | 2026-09-11 | action 升级到 node24 大版本，告警清零 |
 | 「本地绿、CI 红」反复发生 | 2026-09-11 | `scripts/pre-push-gate.sh` + `scripts/check-action-refs.sh` + pre-push hook |
+| `release.yml`（tag 触发）从未在组织下实跑 | 2026-09-11 | `v0.4.4-rc.1` 运行成功：签名 DMG + `update-feed.json` + SBOM + SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库；`latest` 仍为 `v0.4.2`，rc 未污染 stable 通道；证明最小权限 `contents: read` 与升级后的 action 在发布路径同样可用 |
+| 冲突恢复无法在 CI 中验证 | 2026-09-11 | `test_dual_device_divergence_recovery_converges_with_two_parent_merge` 随全量测试在 CI 运行 |

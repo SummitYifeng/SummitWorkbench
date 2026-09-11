@@ -54,3 +54,7 @@ M3 上下文启动/会话收尾和 P2-03 组织级 OAuth Broker 仍不实施。�
   `uses:` 的 action ref 是否真实存在；Dependabot 接管 action / uv / npm 的版本漂移。
 - **未验证清单的单一真源**：后续未验证项统一维护在
   [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](../acceptance/OPEN-VERIFICATION-ITEMS.md)。
+- **发布链路实跑验证**：`v0.4.4-rc.1` tag 触发 `release.yml` 全绿——签名 DMG、`update-feed.json`、
+  SBOM、SHA256SUMS 全部产出并作为 prerelease 发布到公开 Updates 仓库，`latest` 保持 `v0.4.2`；
+  同时证明最小权限 `contents: read` 在发布路径可行（本工作流从不使用 `GITHUB_TOKEN` 写仓库，
+  更新 feed 的 release 由 `UPDATE_REPO_TOKEN` 创建）。
