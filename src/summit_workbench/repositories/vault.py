@@ -84,7 +84,12 @@ def meta_date_iso(value: object) -> str | None:
 
 
 def load_note(path: Path) -> ParsedNote:
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        # 非 UTF-8 文件（例如被误放进 vault 的二进制）不是可读笔记：走 parse_error 通道，
+        # 让每个已有的调用方一致地跳过或报错，而不是让整个扫描/请求抛 500。
+        return ParsedNote(path=path, meta={}, body="", parse_error="文件不是 UTF-8 文本")
     meta, body, error = parse_frontmatter(text)
     return ParsedNote(path=path, meta=meta, body=body, parse_error=error)
 

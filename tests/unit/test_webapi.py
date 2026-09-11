@@ -388,6 +388,26 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
     )
 
 
+def test_api_sources_read_rejects_non_utf8_file_instead_of_internal_error(tmp_path: Path) -> None:
+    """误放进 vault 的二进制文件必须以 415 明确拒绝，不能 500。
+
+    500 会让前端把响应解析失败，最终显示兜底的「服务内部错误 [internal_error]」，
+    用户看不到真正原因（2026-09-11 真实浏览器 D2 矩阵发现）。
+    """
+    client, vault = _client(tmp_path, seed_review=False)
+    binary = vault / "projects" / "probe.md"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02\xff\xfe binary payload")
+
+    response = client.get("/api/sources/read", params={"source_id": "projects/probe"})
+    assert response.status_code == 415
+    assert response.json()["ok"] is False
+
+    # 同一份文件经只读来源端点打开时，也要给出明确错误而不是抛异常。
+    plain = client.get("/api/review/source", params={"path": "projects/probe.md"})
+    assert plain.status_code == 415
+
+
 # ---------- decide / edit ----------
 
 

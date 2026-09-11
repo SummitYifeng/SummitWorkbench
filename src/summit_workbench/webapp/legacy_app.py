@@ -1837,7 +1837,11 @@ def create_app(
             return PlainTextResponse("来源不存在", status_code=404)
         if source.stat().st_size > 2_000_000:
             return PlainTextResponse("来源过大，请在本地编辑器中打开", status_code=413)
-        return PlainTextResponse(source.read_text(encoding="utf-8"))
+        try:
+            text = source.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return PlainTextResponse("来源不是可读取的 UTF-8 文本", status_code=415)
+        return PlainTextResponse(text)
 
     @app.get("/api/sources/read", response_model=None)
     def api_sources_read(source_id: str = "") -> dict[str, object] | JSONResponse:

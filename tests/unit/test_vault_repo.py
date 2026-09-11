@@ -7,6 +7,7 @@ from datetime import date, datetime
 from summit_workbench.repositories.vault import (
     check_vault,
     iter_markdown_files,
+    load_note,
     meta_date_iso,
     parse_frontmatter,
 )
@@ -73,3 +74,23 @@ def test_check_vault_flags_bad_and_skips_signals(tmp_path):
 
     files = list(iter_markdown_files(tmp_path))
     assert good in files and bad in files and sig not in files
+
+
+def test_load_note_reports_non_utf8_instead_of_raising(tmp_path):
+    """非 UTF-8 文件（例如误放进 vault 的二进制）必须走 parse_error 通道。
+
+    2026-09-11 真实浏览器验收发现：二进制来源会让 ``load_note`` 抛出 UnicodeDecodeError，
+    审批来源面板因此显示 500 的兜底文案「服务内部错误」，而不是明确的不可读提示。
+    """
+    binary = tmp_path / "projects" / "binary.md"
+    binary.parent.mkdir()
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x01\x02\xff\xfe binary payload")
+
+    note = load_note(binary)
+    assert note.parse_error is not None
+    assert note.meta == {}
+    assert note.body == ""
+
+    # 批量校验应把它汇总成一条问题，而不是让整次扫描崩溃。
+    results = check_vault(tmp_path)
+    assert binary in results
