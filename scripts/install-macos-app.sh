@@ -29,8 +29,10 @@ if [[ "$REPLACE_RUNNING" != true && -n "$(find "$RUNTIME_ROOT/profiles" -path '*
 fi
 
 # Phase 2 旧启动器没有 runtime record；按完整可执行路径识别它，避免新旧 App 同时争用端口。
-LEGACY_LAUNCHER_PID="$(ps -ww -axo pid=,command= | awk -v target="$DEST_APP/Contents/MacOS/SummitWorkbench" \
-  '$0 ~ target { sub(/^[[:space:]]+/, ""); split($0, fields, /[[:space:]]+/); print fields[1]; exit }' || true)"
+# 用 comm（可执行文件路径）做「精确相等」比较，而不是对整条命令行做正则匹配：
+# 后者会匹配到本命令自己的 awk 进程（其命令行里含有同一个 target 字符串），造成随机的误报。
+LEGACY_LAUNCHER_PID="$(ps -ww -axo pid=,comm= | awk -v target="$DEST_APP/Contents/MacOS/SummitWorkbench" \
+  '{ pid=$1; sub(/^[[:space:]]*[0-9]+[[:space:]]+/, ""); if ($0 == target) { print pid; exit } }' || true)"
 if [[ -n "$LEGACY_LAUNCHER_PID" && "$REPLACE_RUNNING" != true ]]; then
   echo "✗ 检测到运行中的 SummitWorkbench：请先退出 App，或明确传入 --replace-running" >&2
   exit 1
