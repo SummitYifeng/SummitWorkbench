@@ -8,10 +8,12 @@
 >
 > **怎么验证**：需要真实浏览器执行构建产物的项，逐条可执行提示词见
 > [`BROWSER-VERIFICATION-PROMPTS.md`](BROWSER-VERIFICATION-PROMPTS.md)——可直接交给具备
-> computer use 能力的 agent 执行。
+> computer use 能力的 agent 执行。**夹具怎么造、按什么顺序做、每批的通过标准**见
+> [`UI-VERIFICATION-BATCHES.md`](UI-VERIFICATION-BATCHES.md)：它把本文件剩下的 11 个 UI 层开放项
+> 按「需要什么数据」重新分批（批 0 环境基线 → 批 7 原生 App 黑盒），并逐批给出可执行夹具配方。
 
 - 最近更新：2026-09-11
-- 当前基线：`v0.4.4` build 9（前端 `v2026.09.10-df4ba1f-1cb9c2eb`），远端 CI 全绿（844→878 passed）
+- 当前基线：`v0.4.4` build 12（前端 `v2026.09.11-e8ed6f7-6e6e0c91`），远端 CI 全绿
 - 判定口径：**「历史某个 build 上验证过」不等于「当前代码已验证」**，见 A 组。
 
 ## A. 真实外部服务回归
