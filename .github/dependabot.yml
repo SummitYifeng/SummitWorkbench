@@ -17,15 +17,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    ignore:
-      # dulwich 0.22.8 当前没有任何可达漏洞（逐条 CVE 审计见
-      # docs/acceptance/OPEN-VERIFICATION-ITEMS.md §I）：3 个 RCE 级 CVE 的受影响范围从
-      # 0.23.2/0.24.0 才开始，另两个需要服务端或 SSH——本项目都是纯客户端 + HTTPS。
-      # 因此升级属于技术债而非安全修复，需人工评审后显式放开，不自动合并。
-      # 官方文档保证 ignore 不影响安全更新（"Security updates are unaffected by this setting"），
-      # 所以将来若 0.22.8 真的命中 CVE，安全 PR 仍会照常开出。
-      - dependency-name: "dulwich"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "npm"
     directory: "/web"

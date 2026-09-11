@@ -95,26 +95,49 @@
 - 跨动态端口的历史与草稿迁移（需独立持久化设计）
 - Intel / Windows / 公网 notarized 发行
 
-## I. 依赖安全评估（dulwich 0.22.8）
+## I. 依赖安全评估（dulwich 0.22.8）——已评估，决定暂不升级
 
-2026-09-11 审计结论：**当前锁定版本没有任何可达的已知漏洞**，因此**不构成升级驱动**。
-交叉验证：GitHub 依赖图已建立（122 个包，含 `dulwich 0.22.8`），Dependabot 告警数为 **0**，
-与手工结论一致（不是"尚未扫描"）。
+**结论：两条开放 advisory 在支持平台与实际用法上均不可达；升级代价经实测为一次真实迁移，
+因此暂不升级，转入计划内技术债。** 本节保留完整证据链，便于将来复核。
 
-| CVE | 受影响范围 | 攻击面 | 本项目可达 |
-|---|---|---|---|
-| CVE-2026-52726 | 0.23.2 – 1.2.4 | submodule 路径穿越 → RCE | 否：0.22.8 不在范围，且不使用 submodule |
-| CVE-2026-42563 | 0.24.0 – 1.2.4 | merge driver `shell=True` 注入 → RCE | 否：0.22.8 不在范围，且无 merge driver |
-| CVE-2026-47712 | 0.24.0 – 1.2.4 | `format_patch` 路径穿越 | 否：0.22.8 不在范围，且不使用 |
-| CVE-2026-47734 | 0.1.0 – 1.2.4 | thin pack 内存放大 DoS | 否：需 dulwich **服务端**接收 push，本项目纯客户端 |
-| CVE-2026-38974 | ≤ 1.1.0 | 缺 SSH host key 验证 | 否：dulwich 侧不走 SSH，生产同步限 HTTPS |
+### 开放告警（Dependabot，4 条 = 2 条 advisory × 2 个清单）
+
+| Advisory | 严重度 | 受影响范围 | 攻击面 | 本项目可达 |
+|---|---|---|---|---|
+| [GHSA-897w-fcg9-f6xj](https://github.com/advisories/GHSA-897w-fcg9-f6xj) | **HIGH** | ≥0.10.0, <1.2.5 | 恶意仓库 clone/checkout 时经 `\` 路径写文件 → RCE | 否：**Windows 专属**（反斜杠语义）；产品为 macOS-only arm64 |
+| [GHSA-xrvj-v92f-53gj](https://github.com/advisories/GHSA-xrvj-v92f-53gj) | MEDIUM | ≥0.1.0, <1.2.5 | `receive-pack` 瘦包内存放大 DoS | 否：需 dulwich **服务端**接收 push；本项目纯客户端 |
+
+另有 3 条 CVE（CVE-2026-52726 / 42563 / 47712）的受影响范围分别**从 0.23.2 / 0.24.0 才开始**，
+0.22.8 不在范围内（见 [Debian 追踪表](https://security-tracker.debian.org/tracker/source-package/dulwich)）。
 
 代码面核验（全 `src/` grep）：无 `ReceivePackHandler` / `dulwich.server`、无 submodule、
 无 `format_patch`、无 merge driver 与 `shell=True`、`dulwich_git.py` 无 SSH。
 
-**技术债（非安全驱动，可延后）**：`pyproject.toml` 钉 `dulwich>=0.22,<0.23`，上界使安全补丁
-永远无法流入。将来升级到 1.2.5+ 时需：修 `dulwich_git.py:831` 的 `type: ignore[attr-defined]`
-（补 `union-attr`），并跑全量 + 冲突恢复端到端 + packaged smoke。1.0 起官方承诺 2.0 前不破坏兼容。
+### 升级代价：实测为一次真实迁移（不是改一行）
+
+在 1.2.14 上实测：
+
+- **16 个运行时测试失败**：双机验收、冲突恢复端到端、git 后端一致性、sync 加固、thread activity 迁移等。
+- 根因：**`Repo.do_commit` 在 1.x 被移除**（`dulwich_git.py:211` → `AttributeError`）。
+- 另有 **29 个 mypy strict 错误**——1.x 开始自带类型标注，旧的 `type: ignore` 全部过时，
+  并暴露出 `Ref` 已成为独立类型、`Tree.add` 要求 `ObjectID` 等更严格的契约。
+
+`dulwich_git.py` 是**写用户 vault 的 git 后端**，因此这次迁移必须在有充分验证的前提下专门做，
+不能作为顺带升级。
+
+### 决定与复发防护
+
+- 维持 `dulwich>=0.22,<0.23`。上界同时挡住了上述 3 条 RCE 的受影响范围。
+- 曾尝试用 `dependabot.yml` 的 `ignore: semver-major` 抑制升级 PR，**已撤销**：它会把
+  Dependabot 从修复版本（1.2.5+）压到 0.25.2，产生一个**修不了漏洞的 PR**，比噪音更有害。
+- 本节的审计教训：**不要只依赖单一来源做安全审计**——本次手工审计漏掉了上面那条 HIGH，
+  而"GitHub 告警数 0"曾被我误读为"扫描完成"，实际是扫描尚未跑完。
+
+### 将来升级时的清单
+
+1. 替换 `Repo.do_commit`（1.x 新 API）并处理其余 API 差异。
+2. 清理/重写 29 处受影响的 `type: ignore` 与类型标注。
+3. 通过：全量 `pytest`、冲突恢复端到端、双机验收、packaged smoke。
 
 ## 已关闭（保留证据指针）
 
@@ -128,5 +151,5 @@
 | 「本地绿、CI 红」反复发生 | 2026-09-11 | `scripts/pre-push-gate.sh` + `scripts/check-action-refs.sh` + pre-push hook |
 | `release.yml`（tag 触发）从未在组织下实跑 | 2026-09-11 | `v0.4.4-rc.1` 运行成功：签名 DMG + `update-feed.json` + SBOM + SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库；`latest` 仍为 `v0.4.2`，rc 未污染 stable 通道；证明最小权限 `contents: read` 与升级后的 action 在发布路径同样可用 |
 | 冲突恢复无法在 CI 中验证 | 2026-09-11 | `test_dual_device_divergence_recovery_converges_with_two_parent_merge` 随全量测试在 CI 运行 |
-| 依赖漏洞无人监控（CVE 可能静默存在） | 2026-09-11 | 开启 Dependabot **alerts** + **security updates**（`automated-security-fixes.enabled = true`）；依赖图 122 个包，当前告警 0 |
+| 依赖漏洞无人监控（CVE 可能静默存在） | 2026-09-11 | 开启 Dependabot **alerts** + **security updates**（`automated-security-fixes.enabled = true`）；依赖图 122 个包；扫描完成后报出 4 条告警，均为不可达 advisory，逐条评估见 §I |
 | `v0.4.4-rc.1` 测试产物遗留在公开渠道 | 2026-09-11 | 已删除 prerelease 与本地/远程 tag；`latest` 保持 `v0.4.2` |
