@@ -71,3 +71,25 @@ def test_p107c_has_real_workflow_and_native_behavior_gates() -> None:
     assert "workspaceIsCompatible" in update_source
     assert "updateAutoCheckChanged" in bridge + main
     assert "UpdateCoordinatorTests.swift" in swift_test
+
+
+def test_local_gate_script_mirrors_the_remote_quality_gate() -> None:
+    """本地门禁必须覆盖远端 CI 的检查，否则「本地绿、CI 红」会再次发生。"""
+    gate = (ROOT / "scripts/pre-push-gate.sh").read_text(encoding="utf-8")
+    refs = (ROOT / "scripts/check-action-refs.sh").read_text(encoding="utf-8")
+    installer = (ROOT / "scripts/install-git-hooks.sh").read_text(encoding="utf-8")
+    for required in (
+        "verify-workflows.sh",
+        "check-action-refs.sh",
+        'ruff" check .',
+        'ruff" format --check .',
+        '"$BIN/mypy"',
+        "-m pytest",
+        "--cov-fail-under=80",
+        "test:frontend",
+        "git diff --check",
+    ):
+        assert required in gate
+    # action ref 预检必须真的查远端 ref，而不是只做字符串检查。
+    assert "contents/action.yml?ref=" in refs
+    assert "pre-push" in installer

@@ -126,6 +126,8 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。v0.4.4 build 9 的本地门禁已通过；远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）已在 `SummitYifeng/SummitWorkbench` 上全绿。
 
+建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
+
 ## 版本
 
 `v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版，build 9）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。
