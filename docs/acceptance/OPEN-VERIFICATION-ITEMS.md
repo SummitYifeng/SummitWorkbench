@@ -95,6 +95,27 @@
 - 跨动态端口的历史与草稿迁移（需独立持久化设计）
 - Intel / Windows / 公网 notarized 发行
 
+## I. 依赖安全评估（dulwich 0.22.8）
+
+2026-09-11 审计结论：**当前锁定版本没有任何可达的已知漏洞**，因此**不构成升级驱动**。
+交叉验证：GitHub 依赖图已建立（122 个包，含 `dulwich 0.22.8`），Dependabot 告警数为 **0**，
+与手工结论一致（不是"尚未扫描"）。
+
+| CVE | 受影响范围 | 攻击面 | 本项目可达 |
+|---|---|---|---|
+| CVE-2026-52726 | 0.23.2 – 1.2.4 | submodule 路径穿越 → RCE | 否：0.22.8 不在范围，且不使用 submodule |
+| CVE-2026-42563 | 0.24.0 – 1.2.4 | merge driver `shell=True` 注入 → RCE | 否：0.22.8 不在范围，且无 merge driver |
+| CVE-2026-47712 | 0.24.0 – 1.2.4 | `format_patch` 路径穿越 | 否：0.22.8 不在范围，且不使用 |
+| CVE-2026-47734 | 0.1.0 – 1.2.4 | thin pack 内存放大 DoS | 否：需 dulwich **服务端**接收 push，本项目纯客户端 |
+| CVE-2026-38974 | ≤ 1.1.0 | 缺 SSH host key 验证 | 否：dulwich 侧不走 SSH，生产同步限 HTTPS |
+
+代码面核验（全 `src/` grep）：无 `ReceivePackHandler` / `dulwich.server`、无 submodule、
+无 `format_patch`、无 merge driver 与 `shell=True`、`dulwich_git.py` 无 SSH。
+
+**技术债（非安全驱动，可延后）**：`pyproject.toml` 钉 `dulwich>=0.22,<0.23`，上界使安全补丁
+永远无法流入。将来升级到 1.2.5+ 时需：修 `dulwich_git.py:831` 的 `type: ignore[attr-defined]`
+（补 `union-attr`），并跑全量 + 冲突恢复端到端 + packaged smoke。1.0 起官方承诺 2.0 前不破坏兼容。
+
 ## 已关闭（保留证据指针）
 
 | 项 | 关闭日期 | 证据 |
@@ -107,3 +128,5 @@
 | 「本地绿、CI 红」反复发生 | 2026-09-11 | `scripts/pre-push-gate.sh` + `scripts/check-action-refs.sh` + pre-push hook |
 | `release.yml`（tag 触发）从未在组织下实跑 | 2026-09-11 | `v0.4.4-rc.1` 运行成功：签名 DMG + `update-feed.json` + SBOM + SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库；`latest` 仍为 `v0.4.2`，rc 未污染 stable 通道；证明最小权限 `contents: read` 与升级后的 action 在发布路径同样可用 |
 | 冲突恢复无法在 CI 中验证 | 2026-09-11 | `test_dual_device_divergence_recovery_converges_with_two_parent_merge` 随全量测试在 CI 运行 |
+| 依赖漏洞无人监控（CVE 可能静默存在） | 2026-09-11 | 开启 Dependabot **alerts** + **security updates**（`automated-security-fixes.enabled = true`）；依赖图 122 个包，当前告警 0 |
+| `v0.4.4-rc.1` 测试产物遗留在公开渠道 | 2026-09-11 | 已删除 prerelease 与本地/远程 tag；`latest` 保持 `v0.4.2` |
