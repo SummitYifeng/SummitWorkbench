@@ -69,7 +69,14 @@ function httpsCandidate(url: string | null | undefined): string {
   return match ? 'https://github.com/' + match[1] : '';
 }
 
+/**
+ * 设置页渲染序号：保存/刷新/切页会并发触发多次读取，先发起的旧响应
+ * 不得覆盖后发起的新内容（例如刚保存模型后的刷新被保存前的读取盖回）。
+ */
+let settingsRenderSequence = 0;
+
 export async function renderSettings(view: HTMLElement, actions: SettingsActions): Promise<void> {
+  const requestId = ++settingsRenderSequence;
   view.innerHTML = '<div class="loading">正在读取设置…</div>';
   try {
     const [response, automation, state] = await Promise.all([
@@ -77,6 +84,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       actions.api<AutomationSettings>('/api/settings/automation'),
       actions.api<{ status: { feishu_auth?: { needs_reauthorize?: boolean } } }>('/api/state'),
     ]);
+    if (requestId !== settingsRenderSequence) return;
     const active = response.profiles.find((p) => p.active) ?? response.profiles[0];
     const modelStatus = active?.provider_status.model;
     const feishuStatus = active?.provider_status.feishu;
@@ -135,6 +143,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       actions.toast(enabled ? '已开启每天自动检查更新' : '已关闭自动检查更新', 'ok');
     });
   } catch (error) {
+    if (requestId !== settingsRenderSequence) return;
     view.innerHTML = '<div class="error">设置暂时无法读取：' + esc(String(error)) + '</div>';
   }
 }

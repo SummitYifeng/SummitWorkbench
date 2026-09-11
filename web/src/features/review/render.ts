@@ -223,12 +223,18 @@ export function reviewHtml(
     ? '<section class="external-actions error-state"><h4>外部写回状态暂时无法读取</h4><p class="hint">' + esc(externalActionsError) +
       '。审批决定仍保留；请稍后重试读取，不要据此重复应用。</p></section>'
     : '') + renderExternalActions(externalActions);
+  // 「一键拒绝过期项」不受当前筛选/选择影响；必须先显示真实范围，且无可拒绝项时不可点。
+  const expiredCount = allEntries.filter((entry) =>
+    entry.decision === 'pending' && !!entry.due_date && !!today && entry.due_date < today,
+  ).length;
   return (
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
     '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
     '<div class="form-row">' +
-    '<button class="ghost" data-action="reject-expired" title="把截止日期早于今天的待确认条目批量置为拒绝">一键拒绝过期项</button>' +
+    '<button class="ghost" data-action="reject-expired"' + (expiredCount === 0 ? ' disabled' : '') +
+    ' title="不受当前筛选影响：把截止日期早于今天的待确认条目全部置为拒绝（当前 ' + expiredCount + ' 条）">一键拒绝过期项' +
+    (expiredCount > 0 ? '（' + expiredCount + '）' : '') + '</button>' +
     '<button class="primary" data-action="plan">检查并写回</button>' +
     '</div></div>' +
     errorsHtml +

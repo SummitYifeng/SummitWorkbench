@@ -167,6 +167,8 @@ let stateLoadError: string | null = null;
 let reviewLoadError: string | null = null;
 let externalActionsError: string | null = null;
 let reviewPlanReady = false;
+/** apply（写回）在途保护：双击/重复点击不能发出第二次 /api/review/apply */
+let reviewApplyBusy = false;
 let reviewFilter: ReviewFilter = 'all';
 let reviewSelectedIds = new Set<string>();
 let projectDetail: ProjectView | null = null;
@@ -190,6 +192,8 @@ let reviewDrafts: Record<string, ReviewDraftFields> = {};
 let apiRequestSequence = 0;
 let latestStateRequest = 0;
 let latestReviewRequest = 0;
+/** 项目详情读取序号：离开/切换详情后，过期响应不得复活旧详情 */
+let latestProjectViewRequest = 0;
 
 class StaleWorkspaceResponseError extends Error {
   constructor() {
@@ -206,7 +210,8 @@ let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
 let connectionHadFailure = false;
 let restoredDraft: DraftSnapshot | null = null;
-let loadedAskWorkspace = 'unknown';
+// null = 尚未按任何 workspace 载入过；服务端省略 workspace_id 时回退为 'unknown'，也必须载入一次。
+let loadedAskWorkspace: string | null = null;
 let conflictDetails: ConflictDetails | null = null;
 let conflictSelections: Record<string, ConflictSelection> = {};
 let conflictPreparation: RecoveryPreparationSummary | null = null;
@@ -521,8 +526,15 @@ async function doCheckVersion(reason: string): Promise<void> {
     askBusyThreadId = null;
     reviewFilter = 'all';
     reviewSelectedIds.clear();
+    // 旧工作区的预演/在途写回标记不得带入新工作区。
+    reviewPlanReady = false;
+    reviewApplyBusy = false;
+    reviewDrafts = {};
+    restoredDraft = null;
     importResults = [];
     importOpen = false;
+    // 失效在途的详情读取，避免旧工作区响应把错误写进新工作区页面。
+    latestProjectViewRequest += 1;
     projectDetail = null;
     projectDetailLoading = false;
     projectDetailError = null;
@@ -1714,6 +1726,10 @@ document.addEventListener('click', (ev) => {
     void retrySync();
     return;
   }
+  if (action === 'sync-refresh') {
+    void refreshSyncBanner();
+    return;
+  }
   if (action === 'sync-conflict-details') {
     void showSyncConflictDetails();
     return;
@@ -2064,6 +2080,8 @@ async function decide(candidateId: string, decision: string): Promise<void> {
   } catch (err) {
     toast(String(err), 'err');
   }
+  // 决定变化后旧预演失效：必须重新「检查并写回」才能应用。
+  reviewPlanReady = false;
   void refreshReview();
   void refreshState();
 }
@@ -2094,6 +2112,8 @@ async function batchDecide(candidateIds: string[], decision: string, note = ''):
   } catch (err) {
     toast(String(err), 'err');
   }
+  // 批量决定同样使旧预演失效。
+  reviewPlanReady = false;
   void refreshReview();
   void refreshState();
 }
@@ -2418,6 +2438,7 @@ async function showProjectView(name: string): Promise<void> {
       scrollY: window.scrollY,
     };
   }
+  const requestId = ++latestProjectViewRequest;
   projectDetailName = name;
   projectDetail = null;
   projectDetailError = null;
@@ -2427,23 +2448,29 @@ async function showProjectView(name: string): Promise<void> {
   window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
   try {
     const next = await api<ProjectView>('/api/projects/view?name=' + encodeURIComponent(name));
+    if (requestId !== latestProjectViewRequest) return;
     if (!next.ok) {
       projectDetailError = next.message ?? '打开失败';
       return;
     }
     projectDetail = next;
   } catch (err) {
+    if (requestId !== latestProjectViewRequest || isStaleWorkspaceResponse(err)) return;
     projectDetailError = String(err);
   } finally {
-    projectDetailLoading = false;
-    if (tab === 'projects') {
-      render();
-      document.querySelector<HTMLElement>('[data-action="project-detail-back"]')?.focus();
+    if (requestId === latestProjectViewRequest) {
+      projectDetailLoading = false;
+      if (tab === 'projects') {
+        render();
+        document.querySelector<HTMLElement>('[data-action="project-detail-back"]')?.focus();
+      }
     }
   }
 }
 
 function backFromProjectDetail(): void {
+  // 失效在途详情读取：返回/切换后，过期响应不得把详情重新推回页面。
+  latestProjectViewRequest += 1;
   const context = projectReturnContext;
   const name = projectDetailName;
   projectFocusAfterRenderName = name || null;
@@ -2491,27 +2518,28 @@ const UNDO_FLYNOTE =
   '还原只作用于 vault 文件；飞书侧已产生的副作用（已建任务/会议、已完成状态）不可撤销、不受本次还原影响。';
 
 async function openUndoModal(): Promise<void> {
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
-  const modal = document.getElementById('modal') as HTMLElement;
-  modal.innerHTML = '<div class="loading">正在读取系统自动提交…</div>';
-  backdrop.hidden = false;
+  // 复用统一 dialog 激活：初始焦点进入弹层、dialog/aria-modal 语义、关闭按钮与返回焦点，
+  // 并清掉上一个弹层遗留的草稿标记，避免 Escape 出现无关的"未保存内容"确认。
+  const modal = openModal('<div class="loading">正在读取系统自动提交…</div>');
   let history: UndoHistoryPayload;
   try {
     history = await api<UndoHistoryPayload>('/api/undo/history');
   } catch (err) {
-    modal.innerHTML = '<h3>撤销系统改动</h3><p class="msg err">' + esc(String(err)) + '</p>';
+    openModal('<h3>撤销系统改动</h3><p class="msg err">' + esc(String(err)) + '</p>');
     return;
   }
   if (!history.ok || !history.commits) {
-    modal.innerHTML =
-      '<h3>撤销系统改动</h3><p class="msg err">' + esc(history.message ?? '读取失败') + '</p>';
+    openModal(
+      '<h3>撤销系统改动</h3><p class="msg err">' + esc(history.message ?? '读取失败') + '</p>',
+    );
     return;
   }
   if (history.commits.length === 0) {
-    modal.innerHTML =
+    openModal(
       '<h3>撤销系统改动</h3>' +
       '<p>' + esc(history.note ?? '暂无系统自动提交') + '</p>' +
-      '<p class="hint">每次系统写回成功都会自动留痕（git 提交，消息以 wb: 开头），可在此一键还原。' + UNDO_FLYNOTE + '</p>';
+      '<p class="hint">每次系统写回成功都会自动留痕（git 提交，消息以 wb: 开头），可在此一键还原。' + UNDO_FLYNOTE + '</p>',
+    );
     return;
   }
   const rows = history.commits.map((c) =>
@@ -2524,9 +2552,10 @@ async function openUndoModal(): Promise<void> {
     '<pre class="undo-diff" hidden></pre>' +
     '</div>'
   ).join('');
-  modal.innerHTML =
+  openModal(
     '<h3>撤销系统改动</h3>' +
-    '<p class="hint">' + UNDO_FLYNOTE + ' 工作树有未提交人工改动的文件会被拒绝还原。</p>' + rows;
+    '<p class="hint">' + UNDO_FLYNOTE + ' 工作树有未提交人工改动的文件会被拒绝还原。</p>' + rows,
+  );
   modal.querySelectorAll<HTMLElement>('[data-undo]').forEach((btn) => {
     const sha = btn.dataset.sha ?? '';
     if (btn.dataset.undo === 'diff') {
@@ -2703,9 +2732,16 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
 }
 
 async function planApply(exec: boolean): Promise<void> {
+  if (exec && reviewApplyBusy) return;
   if (exec && !reviewPlanReady) {
     toast('请先查看最新预演，再确认写回', 'info');
     return;
+  }
+  if (exec) {
+    reviewApplyBusy = true;
+    document.querySelectorAll<HTMLButtonElement>('#modal [data-action="apply"]').forEach((button) => {
+      button.disabled = true;
+    });
   }
   const planResult = document.getElementById('plan-result');
   try {
@@ -2749,6 +2785,8 @@ async function planApply(exec: boolean): Promise<void> {
   } catch (err) {
     toast(String(err), 'err');
     if (planResult) planResult.innerHTML = '<div class="msg err">' + esc(String(err)) + '</div>';
+  } finally {
+    if (exec) reviewApplyBusy = false;
   }
 }
 
@@ -2783,7 +2821,7 @@ function activateModal(html: string, includeCloseButton = false): HTMLElement {
   return modal;
 }
 
-function openModal(html: string): void {
+function openModal(html: string): HTMLElement {
   const modal = activateModal(html, true);
   modal.dataset.draftDirty = '0';
   delete modal.dataset.draftEntity;
@@ -2793,6 +2831,7 @@ function openModal(html: string): void {
   modal.onchange = () => {
     if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
   };
+  return modal;
 }
 
 function closeModal(): void {
@@ -3156,8 +3195,16 @@ async function refreshSyncBanner(): Promise<void> {
         '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
         '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
     }
-  } catch {
-    el.hidden = true;
+  } catch (err) {
+    // 读取失败不能静默隐藏：已显示的保护态（如 diverged-protected 及其"查看冲突详情"入口）
+    // 必须保留，并明确标注这是上次成功读取的状态。
+    if (el.hidden) return;
+    el.querySelector('.sync-read-error')?.remove();
+    const note = document.createElement('div');
+    note.className = 'sync-detail sync-read-error';
+    note.innerHTML = '同步状态读取失败：' + esc(String(err)) +
+      '（上方为上次成功读取的状态） <button class="ghost" data-action="sync-refresh">重新读取</button>';
+    el.appendChild(note);
   }
 }
 
@@ -3226,7 +3273,9 @@ export function mountLegacyWorkbench(): void {
   });
   window.addEventListener('focus', () => { void checkVersion('focus'); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void checkVersion('visible');
+    if (document.visibilityState !== 'visible') return;
+    void checkVersion('visible');
+    void refreshSyncBanner();
   });
 
   async function startApp(): Promise<void> {
@@ -3236,8 +3285,15 @@ export function mountLegacyWorkbench(): void {
     if (restoredDraft) render();
   }
 
+  // 60 秒自动刷新只发生在可见页；隐藏页暂停读取，回到前台时由 visibilitychange 立即补一次。
   void startApp();
   void refreshSyncBanner();
-  window.setInterval(() => { void checkVersion('interval'); }, 60000);
-  window.setInterval(() => { void refreshSyncBanner(); }, 60000);
+  window.setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    void checkVersion('interval');
+  }, 60000);
+  window.setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    void refreshSyncBanner();
+  }, 60000);
 }

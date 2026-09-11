@@ -57,6 +57,12 @@ assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains w
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
 assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');
 assert.match(settingsSource, /needs_reauthorize/, 'settings exposes Feishu reauthorization state');
+assert.match(settingsSource, /settingsRenderSequence/, 'settings renders carry a request sequence');
+assert.match(
+  settingsSource,
+  /if \(requestId !== settingsRenderSequence\) return;/,
+  'stale settings responses do not overwrite newer settings content',
+);
 assert.match(
   source,
   /\/api\/settings\/git\/remote\/preview[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
@@ -90,6 +96,49 @@ assert.match(source, /getComputedStyle\(el\)\.display !== 'none'/, 'project deta
 assert.match(source, /getClientRects\(\)\.length > 0/, 'project detail fallback focus ignores links hidden by an ancestor');
 assert.match(source, /window\.scrollTo\(\{ top: context\?\.scrollY/, 'project detail restores the previous list scroll position');
 assert.doesNotMatch(source, /activateModal\(projectViewHtml\(view\)\)/, 'project details do not use the generic modal container');
+// 过期详情响应不得覆盖用户已经离开详情的导航，也不得在稍后进入项目页时"复活"旧详情。
+assert.match(source, /latestProjectViewRequest/, 'project detail reads carry a request sequence');
+assert.match(source, /const requestId = \+\+latestProjectViewRequest/, 'each project detail read takes a fresh sequence number');
+assert.match(source, /latestProjectViewRequest \+= 1/, 'leaving a project detail invalidates its in-flight read');
+assert.match(
+  source,
+  /requestId !== latestProjectViewRequest/,
+  'stale project detail responses are discarded before touching shared state',
+);
+// 写回前置的 apply 必须有单次在途保护，双击不能发出第二次 /api/review/apply。
+assert.match(source, /reviewApplyBusy/, 'review apply has a single in-flight guard');
+assert.match(source, /if \(exec && reviewApplyBusy\) return/, 'repeat apply clicks cannot fire a second writeback request');
+assert.match(source, /reviewPlanReady = false;\s*\n\s*void refreshReview\(\)/, 'changing decisions invalidates the previous dry-run plan');
+// 撤销弹层必须复用统一 dialog 激活（初始焦点、dialog 语义、关闭按钮、返回焦点）。
+assert.match(
+  source,
+  /async function openUndoModal[\s\S]{0,500}openModal\(/,
+  'undo dialog uses the shared modal activation',
+);
+// 后台轮询只在可见页运行；回到前台时同时刷新同步横幅。
+assert.match(
+  source,
+  /document\.visibilityState !== 'visible'\) return;[\s\S]{0,80}checkVersion\('interval'\)/,
+  'the 60s version poll pauses while the page is hidden',
+);
+assert.match(
+  source,
+  /document\.visibilityState !== 'visible'\) return;[\s\S]{0,80}refreshSyncBanner\(\)/,
+  'the 60s sync poll pauses while the page is hidden',
+);
+// 同步状态读取失败时不能把已显示的保护态横幅静默隐藏。
+assert.match(source, /同步状态读取失败/, 'sync banner read failures stay visible instead of hiding protection state');
+assert.doesNotMatch(
+  source,
+  /async function refreshSyncBanner[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/,
+  'sync banner read failure does not silently hide the protection banner',
+);
+// 服务端省略 workspace_id 时，问答历史仍必须加载。
+assert.match(
+  source,
+  /let loadedAskWorkspace: string \| null = null/,
+  'ask history loads even when the server omits workspace_id',
+);
 assert.match(source, /function activateConflictModal/, 'sync conflict uses the shared modal activation path');
 assert.match(source, /activateConflictModal\(/, 'sync conflict modal content gets initial focus and return-focus handling');
 assert.match(source, /const returnFocus = document\.querySelector<HTMLElement>\('\[data-action="sync-conflict-details"\]'\)/, 'sync conflict captures a stable return-focus trigger before async loading');

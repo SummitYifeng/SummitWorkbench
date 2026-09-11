@@ -242,3 +242,130 @@
 - 本阶段实际执行 `npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`，构建身份为 `v2026.09.11-5efe838-350853f1`；因本阶段是文档-only 提交，构建生成的静态文件已恢复为提交前状态，没有把产物噪声混入本次提交。
 - 既有最新自动门禁仍为：全量 `840 passed, 1 skipped, 5 warnings`，覆盖率 `81.12%`；route/security `12 passed, 2 warnings`；前端测试、TypeScript、build、`verify-build.mjs`、ruff、format、mypy、`git diff --check` 全部通过；packaged App smoke 的 1 个 skip 仍是条件未满足，不是通过。
 - 本阶段 CUA 只补充真实页面交互证据；任何未执行的外部服务、原生 App、原生缩放、主题和模型链路继续按“未验证”记录。
+
+## 2026-09-11 终审级代码审核与小步优化（本轮新增，含未提交改动）
+
+范围：只做前端并发/焦点/范围可见性与文档同步的小步修复；不改 API 契约、六个页签、审批写回边界、外部事实源、锁、原子写、outbox、迁移与重试语义；不新增依赖；不做真实写回。分支 `main`，`HEAD` 为 `a9bbc4a`（最近运行时代码基线 `cb1bd34`）。以下改动在执行时**尚未提交**。
+
+### 发现与修复（R01–R08）
+
+**R01 · P1 · 项目详情过期响应会复活/覆盖用户导航**
+
+- 用户场景：项目页点开项目 A（详情读取较慢）后立刻「← 返回项目列表」，或从今日进入后返回；旧响应随后到达。
+- 现象与证据：`showProjectView` 没有请求序号，`finally` 只判断 `tab === 'projects'` 就 `render()`；`backFromProjectDetail` 清空 `projectDetail` 后，旧响应仍会把 `projectDetail` 写回并重绘详情，焦点也被抢到详情返回按钮。即使先返回今日，之后切到项目页也会直接看到 A 详情。
+- 根因：`/api/state`、`/api/review` 已有 `latestStateRequest` / `latestReviewRequest` 乱序保护，详情读取路径缺失同类保护。
+- 最小修复：新增 `latestProjectViewRequest`；请求取号，`try` 赋值前、`catch`、`finally` 三段都比对；`backFromProjectDetail` 自增使在途读取失效；工作区切换自增。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 新增 4 条源码级交互契约（修复前失败）。
+- 回归风险：低。只影响详情读取结果的采纳条件，列表/返回/滚动/焦点路径不变。
+- 值得现在修复：是。
+
+**R02 · P1 · 「确认应用（写回）」可被双击重复提交**
+
+- 用户场景：审批预演弹层内双击「确认应用（写回项目/建任务/归档）」。
+- 现象与证据：点击派发器每次点击都调用 `planApply(true)`，`reviewPlanReady` 在请求返回前不会清空，apply 按钮也不禁用 → 可能发出两次 `POST /api/review/apply`。
+- 根因：唯一写回入口缺少单次在途保护（决定类操作幂等，但 apply 会触发真实外部写回）。
+- 最小修复：新增 `reviewApplyBusy`，`exec` 前检查并置位、禁用弹层内 apply 按钮，`finally` 复位；`decide`/`batchDecide` 成功后置 `reviewPlanReady = false`，使旧预演失效；工作区切换复位。预演/确认两步与服务端 action 不变。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 新增 3 条契约（修复前失败）。
+- 回归风险：低。仅在客户端阻止重复触发，不改变服务端写回边界。
+- 值得现在修复：是。
+
+**R03 · P2 · 撤销弹层绕过统一 dialog 激活**
+
+- 用户场景：仅用键盘打开顶栏「↩ 撤销」，或先开过带草稿的弹层再打开撤销。
+- 现象与证据：`openUndoModal` 直接写 `modal.innerHTML` 并置 `backdrop.hidden=false`，没有初始焦点、dialog/aria-modal 语义与关闭按钮，Tab 会走到弹层背后的页面；上一个弹层的 `draftDirty`/`draftEntity` 残留，Escape 会弹出无关的「未保存内容」确认。
+- 根因：专用弹层未复用共享 `activateModal/openModal`。
+- 最小修复：全部内容分支改用 `openModal(...)`（含关闭按钮、dialog 语义、初始焦点、返回焦点），`#btn-undo` 成为稳定返回焦点；`openModal` 返回 `HTMLElement` 供后续查询。撤销列表、差异查看与还原请求不变。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 契约（修复前失败）。
+- 回归风险：低-中。新增关闭按钮属于增量；未改变还原语义。
+- 值得现在修复：是。
+
+**R04 · P2 · 设置页过期异步渲染覆盖新内容**
+
+- 用户场景：设置页读取在途时保存模型触发刷新，或快速切走再切回设置。
+- 现象与证据：`renderSettings` 无渲染序号；先发起的旧响应最后返回时会覆盖新内容，刚保存后的「已配置」可能被保存前的「未配置」盖回。
+- 根因：设置页异步渲染缺少乱序保护。
+- 最小修复：模块级 `settingsRenderSequence`；`Promise.all` 之后与 `catch` 中比对，过期直接返回。
+- 修改文件：`web/src/features/settings/index.ts`。
+- 测试：新增 `web/scripts/test-settings-render.mjs`，用 esbuild 打包 settings 模块并以受控 Promise 制造「旧响应最后返回」的真实并发；修复前断言失败（`the newer settings render must win`），修复后通过。
+- 回归风险：低。正常串行渲染行为不变。
+- 值得现在修复：是。
+
+**R05 · P2 · 60 秒自动刷新在隐藏页继续读取**
+
+- 用户场景：工作台标签页切到后台长时间放置。
+- 现象与证据：`setInterval` 无条件每 60 秒请求 `/api/version` 与 `/api/sync/status`；回到前台只补一次版本检查。阶段 4 计划要求「可见页 60 秒读取、隐藏页暂停读取」，此前未落到代码。
+- 根因：轮询未按 `document.visibilityState` 门控。
+- 最小修复：两个 interval 在隐藏时跳过；`visibilitychange` 变为可见时同时刷新版本与同步横幅。
+- 修改文件：`web/src/legacy-main.ts`；同步说明 `docs/product/WEB_WORKBENCH.md` 第 2 节。
+- 测试：`web/scripts/test-browser-contract.mjs` 2 条契约（修复前失败）。
+- 回归风险：低。可见页仍 60 秒刷新；隐藏页回到前台立即补齐一次。
+- 值得现在修复：是。
+
+**R06 · P2 · 同步横幅读取失败会静默隐藏保护态**
+
+- 用户场景：处于 `diverged-protected` 保护态时 `/api/sync/status` 一次读取失败（服务重启/短暂不可用）。
+- 现象与证据：`catch` 直接 `el.hidden = true`，保护横幅与「查看冲突详情」唯一入口一起消失，用户看不到冲突状态。
+- 根因：失败路径按「无事发生」处理，而非「状态未知」。
+- 最小修复：失败时若横幅当前可见，保留上次成功内容并追加「同步状态读取失败…」与新增的「重新读取」（`data-action="sync-refresh"`，只重读状态、不触发同步）；若横幅原本隐藏（多为启动期）则维持隐藏，避免启动噪声。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 契约 + 反例断言（不再出现 `catch { el.hidden = true }`）。
+- 回归风险：低。
+- 值得现在修复：是。
+
+**R07 · P3 · 服务端省略 `workspace_id` 时问答历史永不加载**
+
+- 用户场景：`/api/version` 未返回 `workspace_id`（无活动工作区/回退场景）时打开第二大脑。
+- 现象与证据：初始化哨兵 `'unknown'` 与回退 id 相同，`loadAskStore()` 从不执行，已存在 `wb.ask.threads.v1.unknown` 的会话历史不显示。
+- 最小修复：哨兵改为 `null`（`let loadedAskWorkspace: string | null = null`），首次必然载入一次。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 契约。
+- 回归风险：低。有 `workspace_id` 的正常路径行为不变。
+- 值得现在修复：是。
+
+**R08 · P2 · 「一键拒绝过期项」范围不可见且任意筛选下可点**
+
+- 用户场景：在「已批准」筛选下看到「一键拒绝过期项」，或列表里其实没有过期项。
+- 现象与证据：按钮不显示影响条数、不受当前筛选/选择约束，容易误判范围；无过期项时仍可点。
+- 根因：批量入口的操作范围未在动作前呈现。
+- 最小修复：`reviewHtml` 计算 `expiredCount`，按钮显示「一键拒绝过期项（N）」，为 0 时 `disabled`，title 说明「不受当前筛选影响」；执行入口仍是 `batchDecide`（100 条上限、只改决定、不写回）。
+- 修改文件：`web/src/features/review/render.ts`。
+- 测试：`web/scripts/test-review-render.mjs` 纯渲染断言（修复前失败）。
+- 回归风险：低。动作语义与请求路径不变。
+- 值得现在修复：是。
+
+### 记录但本轮不实施
+
+- P3 文档漂移：`docs/product/PRD.md` L50/L51 仍写「日志/产物入库自动刷新 frontmatter `updated`」，与本轮确认的 P1 语义拆分（日志/产物只写 `activity_at`，`updated` 只由建档/激活/归档/改名/状态确认刷新）以及 `WEB_WORKBENCH.md` 4.4 不一致。涉及权威产品文档，本轮只记录。
+- P3 历史只读入口 `/api/review/source` 仍注册在路由契约内，只校验「vault 内 + `.md/.txt`」，不限制知识目录；前端已改用 `/api/sources/read`（限制知识目录并拒绝非 Markdown）。不能删除该路由（契约），已把 `WEB_WORKBENCH.md` 4.3 改为描述真实路由。
+- P3 `/api/sources/read` 恒返回 `truncated: false`（超过 256 KiB 直接 413），前端「正文已截断」分支实际不可达。
+- P3 `refreshExternalActions` 没有请求序号；并发刷新时较旧的外部动作列表可能后到覆盖新列表（同一来源，影响极小）。
+- P3 `submitArtifact` / `submitLog` / `submitRowEdit` 无在途保护：双击可能重复本地保存或重复 PATCH 外部本体。`/api/review/apply` 已加保护；其余属独立小项，未在本次一并改动。
+- P3 `test-browser-contract.mjs` 是源码级交互契约，不是真实浏览器测试；本轮新增断言不得被当成点击/键盘/布局验收。
+
+### 本轮验证结果（明确区分通过/失败/跳过/未执行）
+
+| 项目 | 结果 |
+|---|---|
+| `UV_CACHE_DIR=/tmp/summit-workbench-uv-cache uv run --no-sync pytest --cov=summit_workbench --cov-report=term-missing --cov-fail-under=80 -q` | 通过：`840 passed, 1 skipped, 5 warnings`，总覆盖率 `81.12%` |
+| `uv run --no-sync pytest -q tests/contract/test_web_route_contract.py tests/unit/test_web_security.py` | 通过：`12 passed, 2 warnings` |
+| `npm --prefix web run test:frontend` | 通过：build identity、feature contract、项目/审批/今日导入/设置渲染纯测试、浏览器交互契约全部通过（含本轮新增 `test-settings-render.mjs`） |
+| `cd web && ./node_modules/.bin/tsc --noEmit` | 通过（无输出即无错误） |
+| `npm --prefix web run build` | 通过；静态产物身份 `v2026.09.11-a9bbc4a-5a34fb69` |
+| `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过：`Build verified: v2026.09.11-a9bbc4a-5a34fb69` |
+| `uv run --no-sync ruff check .` | 通过 |
+| `uv run --no-sync ruff format --check .` | 通过（391 files already formatted） |
+| `uv run --no-sync mypy` | 通过（307 source files，无错误） |
+| `git diff --check` | 通过 |
+| packaged App smoke（`tests/integration/test_packaged_app.py`） | **跳过**：未设置 `WB_PACKAGED_APP`；不是通过 |
+| 真实浏览器（CUA）复测 | **未执行**：本轮没有可用浏览器通道 |
+| 200%/浅色主题/reduced-motion、packaged App/WKWebView | **未执行/未验证** |
+| 真实模型、飞书 OAuth、任务/日历写回、真实远端 Git、冲突恢复提交、真实审批写回 | **未执行**（本轮未点击任何写回确认） |
+
+说明：R04 的测试是真实并发单元测试（受控 Promise 顺序）；其余交互类问题使用 `test-browser-contract.mjs` 源码级断言，修复前已实际失败、修复后通过，但它**不能**替代真实浏览器验证。
+
+### 本轮修改文件
+
+`web/src/legacy-main.ts`、`web/src/features/settings/index.ts`、`web/src/features/review/render.ts`、`web/scripts/test-browser-contract.mjs`、`web/scripts/test-review-render.mjs`、新增 `web/scripts/test-settings-render.mjs`、`web/package.json`、重新构建的 `src/summit_workbench/webapp/static/*`（`build-meta.json`、`index.html`、`assets/index-*.js`）、`docs/product/WEB_WORKBENCH.md`、本文件与交接档案。无新增依赖。
