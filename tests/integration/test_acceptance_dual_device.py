@@ -14,6 +14,14 @@ from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
 from summit_workbench.repositories.workspace_manifest import manifest_path, write_workspace_manifest
 from summit_workbench.workflows import sync_coordinator, workspace_migration
+from summit_workbench.workflows.sync_conflict_recovery import (
+    RECOVERY_AUDIT_PATH,
+    SelectionChoice,
+    apply_prepared_recovery,
+    inspect_divergence,
+    prepare_manual_recovery,
+    validate_manual_selections,
+)
 from summit_workbench.workflows.workspace_migration import MigrationRegistry, MigrationStep
 
 pytestmark = pytest.mark.integration
@@ -147,3 +155,106 @@ def test_two_homes_two_clones_migrate_ff_diverge_and_preserve_data(
         )
     assert manifest_path(failed_clone).read_bytes() == before
     assert _dulwich(failed_remote).head_revision().encode() == failed_head
+
+
+def test_dual_device_divergence_recovery_converges_with_two_parent_merge(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """P2-02 end to end: diverge, inspect, prepare, apply, push, and converge.
+
+    The dual-device test above stops at DIVERGED_PROTECTED.  This one drives the
+    recovery through the real production entry points and asserts the two-parent
+    merge, the body-free audit, and that the peer fast-forwards onto it.
+    """
+    monkeypatch.setattr(workspace_migration, "require_https_remote", lambda _url: None)
+    monkeypatch.setattr(sync_coordinator, "require_https_remote", lambda _url: None)
+
+    remote = tmp_path / "remote.git"
+    workspace_id, _ = _seed(remote, tmp_path)
+    a = tmp_path / "clone-a"
+    b = tmp_path / "clone-b"
+    _dulwich(a).clone(str(remote), a)
+    _dulwich(b).clone(str(remote), b)
+    home_a = tmp_path / "home-a"
+    home_b = tmp_path / "home-b"
+
+    for clone, home in ((a, home_a), (b, home_b)):
+        state, _, _ = sync_coordinator.sync_workspace(
+            clone, home=home, workspace_id=workspace_id, backend_kind="dulwich"
+        )
+        assert state is SyncState.READY
+
+    # Both devices commit while disconnected; A pushes first so B sees a real
+    # divergence instead of a fast-forward.
+    (a / "from-a.md").write_text("A\n", encoding="utf-8")
+    repo_a = _dulwich(a)
+    repo_a.add(["from-a.md"])
+    repo_a.commit("wb: offline A", author=ID)
+    repo_a.push()
+
+    (b / "from-b.md").write_text("B\n", encoding="utf-8")
+    repo_b = _dulwich(b)
+    repo_b.add(["from-b.md"])
+    repo_b.commit("wb: offline B", author=ID)
+    b_head = repo_b.head_revision()
+
+    state, _, _ = sync_coordinator.sync_workspace(
+        b, home=home_b, workspace_id=workspace_id, backend_kind="dulwich"
+    )
+    assert state is SyncState.DIVERGED_PROTECTED
+    # Protection never rewrites B's history or drops its file.
+    assert repo_b.head_revision() == b_head
+    assert (b / "from-b.md").read_text(encoding="utf-8") == "B\n"
+
+    details = inspect_divergence(b)
+    assert {item.path for item in details.paths} == {"from-a.md", "from-b.md"}
+    assert details.base_revision
+
+    selections = {
+        "from-a.md": SelectionChoice.KEEP_REMOTE,
+        "from-b.md": SelectionChoice.KEEP_LOCAL,
+    }
+    validation = validate_manual_selections(
+        details,
+        base_revision=details.base_revision,
+        local_revision=details.local.revision,
+        remote_revision=details.remote.revision,
+        selections=selections,
+    )
+    assert validation.status == "validated"
+
+    with prepare_manual_recovery(
+        b, details, workspace_id=workspace_id, selections=selections
+    ) as prepared:
+        assert prepared.ready
+        result = apply_prepared_recovery(
+            b, prepared, workspace_id=workspace_id, confirm=True, author=ID
+        )
+
+    assert result.status == "committed"
+    assert result.revision is not None
+    assert result.audit_status == "committed"
+    assert repo_b.commit_parent_count(result.revision) == 2
+
+    # Both sides survive the merge and the audit stays body-free.
+    assert (b / "from-a.md").read_text(encoding="utf-8") == "A\n"
+    assert (b / "from-b.md").read_text(encoding="utf-8") == "B\n"
+    audit_records = [
+        json.loads(line)
+        for line in (b / RECOVERY_AUDIT_PATH).read_text(encoding="utf-8").splitlines()
+    ]
+    assert [record["status"] for record in audit_records] == ["committed"]
+    assert audit_records[0]["merge_revision"] == result.revision
+    assert audit_records[0]["applied_paths"]
+    assert "payload" not in json.dumps(audit_records[0])
+
+    # An ordinary push; the peer then fast-forwards onto the same history.
+    repo_b.push()
+    assert _dulwich(remote).head_revision() == repo_b.head_revision()
+
+    state, _, _ = sync_coordinator.sync_workspace(
+        a, home=home_a, workspace_id=workspace_id, backend_kind="dulwich"
+    )
+    assert state is SyncState.READY
+    assert _dulwich(a).head_revision() == repo_b.head_revision()
+    assert (a / "from-b.md").read_text(encoding="utf-8") == "B\n"
