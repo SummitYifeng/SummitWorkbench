@@ -19,6 +19,15 @@
   `actions/upload-artifact@v7`、`astral-sh/setup-uv@v10.1.0`），项目 Node 工具链由 20 升到 24。
 - 远端 CI 全绿：workflow lint、macOS arm64 contract、macOS x86_64 负向 contract、quality-gate
   （844 passed / 1 skipped，覆盖率 81.19%）。
+- **前端工具链升级**：`vite 6.4.3 → 8.3.0`（打包器由 esbuild/Rollup 换成 Rolldown）、
+  `typescript 5.9.3 → 7.0.2`、`esbuild 0.25.12 → 0.28.2`（Vite 8 声明
+  `peerOptional esbuild ^0.27||^0.28`，故 esbuild 必须随 Vite 大版本同步抬升）。
+  产物 `v2026.09.11-6ff10a6-6e6e0c91`，JS 143.18→139.55 kB、CSS 35.07→34.86 kB。
+  合并前在真实浏览器完成 A/B/C/F/G 验收（含 C 的弹层初始焦点：两分支各 3 次机器测量一致），
+  并以无头 Chrome 比对 Vite 6/Vite 8 产物 DOM 逐字相同。
+- **修复前端脚本的幽灵依赖**：`web/scripts/` 下 6 个脚本直接 import `esbuild`，但清单从未声明它，
+  一直靠 Vite 提升；Vite 8 移除 esbuild 后全部 `ERR_MODULE_NOT_FOUND`。已显式声明，并新增契约测试
+  `test_frontend_scripts_only_import_declared_packages` 防止复发。
 
 ## [0.4.4] - 2026-09-10
 
