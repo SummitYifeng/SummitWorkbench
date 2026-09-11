@@ -129,6 +129,12 @@ jobs:
           OUTPUT_APP: dist/ci/${{ matrix.architecture }}/SummitWorkbench.app
         run: scripts/build-macos-app.sh
 
+      - name: Run packaged app smoke test
+        if: matrix.supported == true
+        env:
+          WB_PACKAGED_APP: dist/ci/${{ matrix.architecture }}/SummitWorkbench.app
+        run: uv run pytest tests/integration/test_packaged_app.py -m integration -q
+
       - name: Reject unsupported architecture
         if: matrix.supported == false
         env:
