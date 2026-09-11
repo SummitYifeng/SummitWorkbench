@@ -5,9 +5,13 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
+from summit_workbench.webapp import runtime
 from summit_workbench.webapp.runtime import (
     RuntimeRecord,
     cleanup_stale_runtime_record,
@@ -72,6 +76,31 @@ def test_record_with_reused_pid_for_unrelated_process_is_removed(tmp_path: Path)
     finally:
         process.terminate()
         process.wait(timeout=5)
+
+
+def test_framework_python_reexec_image_is_recognized_as_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A macOS framework build re-execs into Python.app; that image is still ours."""
+    framework = tmp_path / "Python.framework" / "Versions" / "3.12"
+    interpreter = framework / "bin" / "python3.12"
+    app_image = framework / "Resources" / "Python.app" / "Contents" / "MacOS" / "Python"
+    interpreter.parent.mkdir(parents=True)
+    app_image.parent.mkdir(parents=True)
+    interpreter.write_text("", encoding="utf-8")
+    app_image.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "executable", str(interpreter))
+    monkeypatch.setattr(sys, "base_prefix", str(framework))
+    monkeypatch.setattr(runtime, "_macos_process_path", lambda _pid: str(app_image))
+
+    assert runtime._same_server_executable(os.getpid()) is True
+
+
+def test_unrelated_live_image_is_not_treated_as_own(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runtime, "_macos_process_path", lambda _pid: "/bin/sleep")
+
+    assert runtime._same_server_executable(os.getpid()) is False
 
 
 def _record_from_json(path: Path) -> RuntimeRecord:

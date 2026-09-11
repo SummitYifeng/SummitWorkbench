@@ -89,10 +89,7 @@ def _same_server_executable(pid: int) -> bool:
     """Return whether a live PID is still the current Python/server executable."""
     actual = _macos_process_path(pid)
     if actual:
-        try:
-            return Path(actual).resolve() == Path(sys.executable).resolve()
-        except OSError:
-            return actual == sys.executable
+        return _is_server_image(actual)
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "comm="],
@@ -107,10 +104,40 @@ def _same_server_executable(pid: int) -> bool:
     actual = result.stdout.strip()
     if result.returncode != 0 or not actual:
         return False
+    return _is_server_image(actual)
+
+
+def _is_server_image(actual: str) -> bool:
+    return _resolve_quietly(actual) in _server_executable_paths()
+
+
+def _server_executable_paths() -> frozenset[Path]:
+    """Every on-disk image that can legitimately represent this process.
+
+    A virtualenv ``sys.executable`` is a symlink to the base interpreter, and a
+    macOS framework build (the python.org installer) additionally re-execs into
+    ``Python.app``.  libproc and ``ps`` therefore report the app-bundle binary
+    for a live process instead of the interpreter path, and both spellings have
+    to be accepted or a running server looks like a reused PID.
+    """
+    candidates = {_resolve_quietly(sys.executable)}
+    base_executable = getattr(sys, "_base_executable", None)
+    if base_executable:
+        candidates.add(_resolve_quietly(base_executable))
+    base_prefix = getattr(sys, "base_prefix", None)
+    if base_prefix:
+        framework_image = (
+            Path(base_prefix) / "Resources" / "Python.app" / "Contents" / "MacOS" / "Python"
+        )
+        candidates.add(_resolve_quietly(framework_image))
+    return frozenset(candidates)
+
+
+def _resolve_quietly(path: str | Path) -> Path:
     try:
-        return Path(actual).resolve() == Path(sys.executable).resolve()
+        return Path(path).resolve()
     except OSError:
-        return actual == sys.executable
+        return Path(path)
 
 
 def _macos_process_path(pid: int) -> str | None:
