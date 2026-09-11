@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 
 import typer
@@ -13,9 +13,11 @@ from summit_workbench.providers.feishu import (
     FeishuClient,
     FeishuError,
     FeishuSession,
+    create_event,
     create_task,
     load_feishu_config,
 )
+from summit_workbench.providers.feishu.calendar import primary_calendar_id
 from summit_workbench.repositories.review_edit import ReviewEditError
 from summit_workbench.workflows.review import refresh_meeting_review
 from summit_workbench.workflows.review_apply import apply_meeting_review
@@ -66,14 +68,55 @@ def apply_review(
         # P0-06：Feishu refresh 锁根取本 workspace 单一解析入口的 lock_root。
         return FeishuClient(cfg, FeishuSession(cfg, lock_root=paths.lock_root).access_token())
 
-    def create(summary: str, due_date: str | None, candidate_id: str) -> str:
+    def create(
+        summary: str,
+        due_date: str | None,
+        candidate_id: str,
+        *,
+        operation_id: str | None = None,
+    ) -> str:
         return create_task(
             task_client(),
             summary,
             due_date,
             candidate_id,
             timezone=settings.timezone,
+            operation_id=operation_id,
         ).guid
+
+    def create_meeting(
+        summary: str,
+        start_at: str | None,
+        end_at: str | None,
+        candidate_id: str,
+        *,
+        operation_id: str | None = None,
+    ) -> str:
+        """审批「新建会议」写回器；行为与 webapp 一致（缺省结束 = 开始 + 60 分钟）。
+
+        此前 CLI 只注入了 task_creator，导致 `feishu-meeting` 落点必然失败并报
+        「缺少飞书日历会议创建器」——该落点只能从面板应用。这里补齐，使 CLI 与
+        面板具备同等能力。
+        """
+        if start_at is None:
+            raise ValueError("新建会议需要开始时间")
+        start = datetime.fromisoformat(start_at).replace(tzinfo=None)
+        end_iso = (
+            end_at
+            if end_at is not None
+            else (start + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M")
+        )
+        client = task_client()
+        return create_event(
+            client,
+            primary_calendar_id(client),
+            summary,
+            start_at,
+            end_iso,
+            timezone=settings.timezone,
+            candidate_id=candidate_id,
+            operation_id=operation_id,
+        )
 
     try:
         report = apply_meeting_review(
@@ -81,6 +124,7 @@ def apply_review(
             paths.work_root,
             apply=execute,
             task_creator=create if execute else None,
+            meeting_creator=create_meeting if execute else None,
         )
     except LockBusy as exc:
         typer.echo(f"✗ 工作区忙，稍后重试：{exc}")

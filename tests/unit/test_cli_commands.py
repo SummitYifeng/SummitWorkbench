@@ -181,6 +181,51 @@ def test_review_apply_busy_workspace_exits_1(
     assert "工作区忙" in result.stdout
 
 
+def test_review_apply_injects_both_task_and_meeting_creators(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CLI 必须像面板一样注入 meeting_creator。
+
+    此前 CLI 只注入 task_creator，导致 `feishu-meeting` 落点在 CLI 下必然失败并报
+    「缺少飞书日历会议创建器」——同一份审批页只能在面板里应用。这条测试锁住两者对等。
+    """
+    from summit_workbench.cli import review as review_cli
+
+    _env(monkeypatch, tmp_path)
+    captured: dict[str, Any] = {}
+
+    def fake_apply(
+        _vault: Any,
+        _work_root: Any,
+        *,
+        apply: bool,
+        task_creator: Any = None,
+        meeting_creator: Any = None,
+    ) -> Any:
+        captured.update(apply=apply, task_creator=task_creator, meeting_creator=meeting_creator)
+        return SimpleNamespace(
+            dry_run=not apply,
+            actions=[],
+            applied=0,
+            rejected=0,
+            failed=0,
+            archive_path=None,
+        )
+
+    monkeypatch.setattr(review_cli, "apply_meeting_review", fake_apply)
+
+    dry = runner.invoke(app, ["review", "apply"])
+    assert dry.exit_code == 0
+    # 预演不得注入任何写回器（零写入）。
+    assert captured["task_creator"] is None
+    assert captured["meeting_creator"] is None
+
+    real = runner.invoke(app, ["review", "apply", "--apply"])
+    assert real.exit_code == 0
+    assert callable(captured["task_creator"])
+    assert callable(captured["meeting_creator"])
+
+
 def test_review_sweep_rejects_malformed_before_date(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
