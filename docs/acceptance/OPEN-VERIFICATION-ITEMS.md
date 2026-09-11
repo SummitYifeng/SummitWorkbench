@@ -62,7 +62,8 @@
 
 > **D1 已部分验证（2026-09-11，见 §K）**：成功导入（含项目解析）与**幂等重跑**
 > （`待导入 0 场，已跳过 3 场，约 0.0 CNY`，零模型调用）均已取得证据。
-> **软预算与部分失败的导入路径仍未验证**；另发现 10 MiB 上限只做在 web/App 层，CLI 路径没有。
+> **软预算与部分失败的导入路径仍未验证**；10 MiB 上限原只做在 web/App 层，**已于 2026-09-11
+> 下沉到 workflow 层修复（`7e25cd3`）**，见 §K。
 
 ## E. 交互细节
 
@@ -236,9 +237,23 @@
    （`缺少飞书日历会议创建器`），同一份审批页只能在面板应用。已补齐并加回归测试
    （`test_review_apply_injects_both_task_and_meeting_creators`，经 TDD 验证）。
 
-2. **10 MiB 上限只在 web/App 层（未修复）**：`legacy_app.py:2575` 有 `max_upload_bytes`，
-   而 CLI 的 `scan_for_import` 只判断「非空」。本次一个 12 MiB 文件因此被真实送进模型，
-   预估 **419 万 input token（约 4.24 CNY）**。CLI 是文档化入口，建议把上限下沉到 workflow 层。
+2. **10 MiB 上限只在 web/App 层（已修复 `7e25cd3`）**：`legacy_app.py` 有 `max_upload_bytes`，
+   而 CLI 的 `scan_for_import` / `scan_local_transcripts` 只判断「非空」。本次一个 12 MiB 文件
+   因此被真实送进模型，预估 **419 万 input token（约 4.24 CNY）**。
+
+   修复：`MAX_TRANSCRIPT_BYTES` 上移到 workflow 层作为单一真源，两个扫描函数都执行该上限，
+   web 上传路径改为复用同一常量（数值不会再分裂）；新增 `oversized_transcripts()` 让 CLI
+   **显式列出被跳过的文件**，而不是静默丢弃。
+
+   真实验证（同一目录含 1 个 12 MiB + 1 个正常文件）：
+
+   | | 预估 input token | 预估费用 |
+   |---|---|---|
+   | 修复前 | 4,194,541 | ~4.24 CNY |
+   | 修复后 | **12** | ~0.016 CNY |
+
+   CLI 输出：`⚠ 已跳过 1 个超过 10 MiB 的逐字稿（未送模型）：2026-09-11-超大.txt（12.0 MiB）`。
+   边界为「超过才拦」：等于上限的文件仍放行，有测试锁定。
 
 ### 由人工飞书复核确认并已修复的问题
 
@@ -281,6 +296,8 @@
 
 | 项 | 关闭日期 | 证据 |
 |---|---|---|
+| 10 MiB 逐字稿上限未覆盖 CLI 路径 | 2026-09-11 | `7e25cd3`：上限下沉到 workflow 层（`MAX_TRANSCRIPT_BYTES`），两个扫描函数都执行，CLI 显式列出被跳过文件；真实对比 419 万 → 12 input token。详见 §K |
+| 审批创建的飞书任务缺少负责人 | 2026-09-11 | `7b20002`：`create_task` 带 `members[{role:"assignee"}]`，CLI 与面板两处接入；真实验证「我的任务」3→4 条，修复前那条仍不在列表。详见 §K |
 | 远端 CI 从未真正运行 | 2026-09-11 | 仓库迁移到 `SummitYifeng/SummitWorkbench`；quality-gate + arm64/x86_64 矩阵 + workflow lint 全绿 |
 | `packaged App smoke` 从未纳入 CI | 2026-09-11 | `ci.yml` arm64 构建矩阵 `WB_PACKAGED_APP` 步骤 |
 | macOS framework Python 下 runtime record 身份误判 | 2026-09-11 | `src/summit_workbench/webapp/runtime.py` + `tests/unit/test_runtime_record.py` 回归测试 |
