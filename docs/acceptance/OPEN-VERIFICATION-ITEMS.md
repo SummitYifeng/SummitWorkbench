@@ -128,10 +128,17 @@
 ### 决定与复发防护
 
 - 维持 `dulwich>=0.22,<0.23`。上界同时挡住了上述 3 条 RCE 的受影响范围。
-- 曾尝试用 `dependabot.yml` 的 `ignore: semver-major` 抑制升级 PR，**已撤销**：它会把
-  Dependabot 从修复版本（1.2.5+）压到 0.25.2，产生一个**修不了漏洞的 PR**，比噪音更有害。
-- 本节的审计教训：**不要只依赖单一来源做安全审计**——本次手工审计漏掉了上面那条 HIGH，
-  而"GitHub 告警数 0"曾被我误读为"扫描完成"，实际是扫描尚未跑完。
+- **4 条告警已 dismiss**（HIGH → `tolerable_risk`，MEDIUM → `not_used`），注释指向本节。
+  新出现的 advisory 仍会照常告警。
+- **刻意不加 `dependabot.yml` 的 `ignore` 规则来消除 dulwich 升级 PR**：
+  官方选项参考把 `ignore` 同时标记了 security-updates 图标（"All options marked with the
+  security icon also change how Dependabot creates pull requests for security updates"），
+  因此 ignore 会**连安全更新一起抑制**。曾短暂加过 `ignore: semver-major`，除了这个风险之外，
+  它还把 Dependabot 从修复版本压到 0.25.2，产生一个**修不了漏洞的 PR**；已撤销。
+- 接受 N 代价：Dependabot 会周期性重开 dulwich 升级 PR（每次重开触发一轮 CI）。代价有界
+  （约每次 dulwich 发版一轮），远低于失去安全更新通道的代价。
+- 本节的审计教训有两条：**不要只依赖单一来源做安全审计**（手工审计漏掉了上面那条 HIGH）；
+  **不要把"告警数为 0"当作"扫描完成"**（曾如此误读）。
 
 ### 将来升级时的清单
 
