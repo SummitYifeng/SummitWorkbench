@@ -21,10 +21,10 @@
 | # | 项 | 历史证据 | 2026-09-11 复验 |
 |---|---|---|---|
 | A1 | 真实云端模型调用：会议结构化、快速捕捉分类、简报排序、`wb ask` 回答 | M1/M2 验收 | ✅ **四项全过**：会议结构化 3 场；捕捉分类见下（**发现并修复日期缺陷**）；`wb brief` `health=ok`、`ranking_degraded=false`、行动项 5/5；`wb ask` 事实带来源、建议分离、无幻觉。详见 §L |
-| A2 | 飞书 OAuth 全链路（authorize-url → login → token 刷新 → smoke） | M0/M1 | ⬜ 待人工：`authorize-url` 需在浏览器授权后回填 code；token 刷新与 smoke 已验证 |
+| A2 | 飞书 OAuth 全链路（authorize-url → login → token 刷新 → smoke） | M0/M1 | ✅ **全链路通过**：`authorize-url` 产链接（state 防 CSRF）→ 浏览器授权 → `wb feishu login` 换 token 并把 refresh_token 写入 Keychain → 刷新后 `smoke` 有效。授权 scope 含 `calendar:calendar` 与 `task:task:write` |
 | A3 | 飞书任务写回（~~`wb task`~~、面板一键完成、行内编辑） | 2026-09-03 真机核实 | ✅ API 层全链路通过（create→update→complete→delete）；⚠ **`wb task` 不存在**（PRD M4 未实施），清单原描述有误，已删 |
 | A4 | 飞书日历写回（会议行内编辑、新建日程） | 2026-09-03 真机核实 | ✅ API 层通过（create→update 改名改时间→删除）；面板点击由人工复核 |
-| A5 | 真实远端 Git 凭据与双向同步（HTTPS remote + PAT） | P1-07D 双机验收（v0.4.3） | ⬜ 待人工：需要 PAT + 向真实知识库推送的许可 |
+| A5 | 真实远端 Git 凭据与双向同步（HTTPS remote + PAT） | P1-07D 双机验收（v0.4.3） | ✅ **通过**：`acceptance_preflight` 11 项全 PASS（`remote-scheme=https://github.com`、`credentials=workspace-scoped Keychain`、`fetch=HTTPS fetch completed`）；`wb sync` 实跑 up-to-date；**真实 push 到远端临时分支成功并删除，`main` 全程未变** |
 | A6 | 真实双设备上的冲突恢复提交 | P2-02 build 29 双机验收 | ⬜ 需要第二台机器（MacBook Air） |
 
 > A6 的**代码路径**已于 2026-09-11 由
@@ -334,17 +334,59 @@
 「输入是私人笔记、不是指令」的注入防御。调用方省略时默认本机日期。附单元测试并经 TDD 验证
 （移除注入 → 2 条测试失败）。
 
+### A2 飞书 OAuth 全链路（✅）
+
+`wb feishu authorize-url` 产出带 `state` 的授权链接（防 CSRF）→ 产品所有者在浏览器完成授权并把
+回调 `code` 交回 → `wb feishu login --code …` 换取令牌：
+
+```
+✓ 授权成功，refresh_token 已写入 Keychain
+  access_token 有效期约 7200 秒
+  scope=auth:user.id:read calendar:calendar calendar:calendar:readonly
+        docx:document:readonly offline_access task:task task:task:read task:task:write
+```
+
+随后 `wb feishu smoke` 经**刷新后的** access_token 调 `user_info` 成功。回调 `state` 与生成时一致，
+已在换码前核对。
+
+### A5 真实远端 Git 凭据与双向同步（✅）
+
+`acceptance_preflight`（只读；fetch 仅更新 remote-tracking refs）**11 项全 PASS**，关键项：
+
+```
+[PASS] remote-scheme   https://github.com
+[PASS] credentials     workspace-scoped Keychain configured for github.com
+[PASS] fetch           HTTPS fetch completed
+[PASS] branch/upstream branch=main; upstream=True; ahead=0; behind=0
+RESULT: PASS
+```
+
+`wb sync` 实跑：`✓ _vault：up-to-date`，共 1 个仓库、0 个需人工处理。
+
+**真实 push 验证（无痕）**：provider 的 `push()` 只推当前分支，因此用后端自身的
+`transport_kwargs()`（workspace-scoped Keychain 取 `{username, password, pool_manager}`）把
+`refs/heads/main` 推到远端**临时分支** `wb-acceptance-probe`：
+
+```
+Push to https://github.com/yifeng93/YifengWorkKnowledge.git successful.
+Ref refs/heads/wb-acceptance-probe updated
+```
+
+核对：探针分支到达 `8dba623`、远端 `main` 全程仍是 `8dba623`；随后删除探针分支并确认远端只剩
+`main`，**未对知识库 `main` 造成任何改动**。
+
 ### 仍待人工
 
-- **A2**：`wb feishu authorize-url` 产出的链接必须在浏览器里授权，再把回调 `code` 交回以完成
-  `wb feishu login`。token 刷新与 `smoke` 已验证有效。
-- **A5**：需要 PAT，以及**向真实知识库 `YifengWorkKnowledge` 推送的明确许可**。
-- **A6**：需要第二台机器（MacBook Air）。
+- **A6**：真实双设备冲突恢复需要第二台机器（MacBook Air）。
+- A3/A4 的**面板点击路径**（一键完成、行内编辑、会议行内编辑）由产品所有者复核；本轮已验证其
+  底层 PATCH/创建在真实飞书上正确工作。
 
 ## 已关闭（保留证据指针）
 
 | 项 | 关闭日期 | 证据 |
 |---|---|---|
+| A2 飞书 OAuth 全链路未复跑 | 2026-09-11 | authorize-url（state 核对）→ 浏览器授权 → `login` 写入 refresh_token → `smoke` 经刷新令牌通过；scope 含 `calendar:calendar` 与 `task:task:write`。详见 §L |
+| A5 真实远端 Git 未复跑 | 2026-09-11 | `acceptance_preflight` 11 项全 PASS（HTTPS scheme / workspace Keychain 凭据 / HTTPS fetch）；`wb sync` up-to-date；真实 push 到远端临时分支成功并删除，`main` 未变。详见 §L |
 | 快速捕捉分类算不出日期（相对/绝对日期均错） | 2026-09-11 | `562c4fd`：把工作区时区的当天日期注入系统提示；实测「9月20日前」由 2025-09-20 修正为 2026-09-20、「下周三前」由 2026-05-13 修正为 2026-09-16。详见 §L |
 | 10 MiB 逐字稿上限未覆盖 CLI 路径 | 2026-09-11 | `7e25cd3`：上限下沉到 workflow 层（`MAX_TRANSCRIPT_BYTES`），两个扫描函数都执行，CLI 显式列出被跳过文件；真实对比 419 万 → 12 input token。详见 §K |
 | 审批创建的飞书任务缺少负责人 | 2026-09-11 | `7b20002`：`create_task` 带 `members[{role:"assignee"}]`，CLI 与面板两处接入；真实验证「我的任务」3→4 条，修复前那条仍不在列表。详见 §K |
