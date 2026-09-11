@@ -5,6 +5,10 @@
 >
 > 维护约定：本文件只记录**尚未取得证据**或**证据不足**的项；取得证据后把该项移入下方
 > 「已关闭」并注明证据位置（提交、CI run、测试文件名）。不要在这里写计划或需求。
+>
+> **怎么验证**：需要真实浏览器执行构建产物的项，逐条可执行提示词见
+> [`BROWSER-VERIFICATION-PROMPTS.md`](BROWSER-VERIFICATION-PROMPTS.md)——可直接交给具备
+> computer use 能力的 agent 执行。
 
 - 最近更新：2026-09-11
 - 当前基线：`v0.4.4` build 9（前端 `v2026.09.10-df4ba1f-1cb9c2eb`），远端 CI 全绿（844→878 passed）
@@ -145,6 +149,21 @@
 1. 替换 `Repo.do_commit`（1.x 新 API）并处理其余 API 差异。
 2. 清理/重写 29 处受影响的 `type: ignore` 与类型标注。
 3. 通过：全量 `pytest`、冲突恢复端到端、双机验收、packaged smoke。
+
+## J. 前端依赖 major 升级（本地已验，待真实浏览器复验）
+
+| Dependabot PR | 变更 | 本地验证结果 | 真实浏览器 |
+|---|---|---|---|
+| #3 | `typescript` 5.9.3 → 7.0.2 | `tsc --noEmit` + 8 个前端契约/纯渲染测试 + 生产构建 + `verify-build` 全通过 | 未跑。TS 在本仓库**只做类型检查**（`--noEmit`），转译由 esbuild 负责，故风险面小 |
+| #4 | `vite` 6.4.3 → 8.2.2 | **必须先修幽灵依赖**（见下）；补上后同样全通过，产物更小（JS 143.18→139.55 kB，CSS 35.07→34.86 kB） | 已用无头 Chrome 做启动/渲染 A/B：Vite 6 与 Vite 8 产物 DOM **逐字相同**（2941 B、六页签、26 个 id、同样文案）。**交互矩阵（弹层/表单/草稿/导入）未跑** |
+
+**附带发现（独立于升级，本身就该修）**：`web/scripts/` 下 6 个测试脚本直接
+`import { build } from 'esbuild'`，但 `web/package.json` **从未声明 esbuild**——一直靠 Vite 提升的
+幽灵依赖。Vite 8 改用 Rolldown 后 esbuild 被移除，这 6 个脚本全部 `ERR_MODULE_NOT_FOUND`，
+CI 的 `Frontend tests` 步骤即因此失败。修法是显式声明 `esbuild`，与是否升级 Vite 无关。
+
+**复验方式**：用 [`BROWSER-VERIFICATION-PROMPTS.md`](BROWSER-VERIFICATION-PROMPTS.md) 的
+提示词 **A + G**（合并前最低要求），并建议加 **B + C**（打包器切换的主要风险面）。
 
 ## 已关闭（保留证据指针）
 
