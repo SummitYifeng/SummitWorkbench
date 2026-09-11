@@ -14,20 +14,17 @@
 - 当前基线：`v0.4.4` build 9（前端 `v2026.09.10-df4ba1f-1cb9c2eb`），远端 CI 全绿（844→878 passed）
 - 判定口径：**「历史某个 build 上验证过」不等于「当前代码已验证」**，见 A 组。
 
-## A. 真实外部服务回归（历史验证过，当前 build 未回归）
+## A. 真实外部服务回归
 
-这些链路在更早的里程碑真机通过，但 v0.4.4 代码上未重新执行。需要真实凭据，且必须在隔离环境做。
+| # | 项 | 说明 |
+|---|---|---|
+| A6 | 真实双设备上的冲突恢复提交 | 需要第二台机器（MacBook Air） |
 
-| # | 项 | 历史证据 | 2026-09-11 复验 |
-|---|---|---|---|
-| A1 | 真实云端模型调用：会议结构化、快速捕捉分类、简报排序、`wb ask` 回答 | M1/M2 验收 | ✅ **四项全过**：会议结构化 3 场；捕捉分类见下（**发现并修复日期缺陷**）；`wb brief` `health=ok`、`ranking_degraded=false`、行动项 5/5；`wb ask` 事实带来源、建议分离、无幻觉。详见 §L |
-| A2 | 飞书 OAuth 全链路（authorize-url → login → token 刷新 → smoke） | M0/M1 | ✅ **全链路通过**：`authorize-url` 产链接（state 防 CSRF）→ 浏览器授权 → `wb feishu login` 换 token 并把 refresh_token 写入 Keychain → 刷新后 `smoke` 有效。授权 scope 含 `calendar:calendar` 与 `task:task:write` |
-| A3 | 飞书任务写回（~~`wb task`~~、面板一键完成、行内编辑） | 2026-09-03 真机核实 | ✅ API 层全链路通过（create→update→complete→delete）；⚠ **`wb task` 不存在**（PRD M4 未实施），清单原描述有误，已删 |
-| A4 | 飞书日历写回（会议行内编辑、新建日程） | 2026-09-03 真机核实 | ✅ API 层通过（create→update 改名改时间→删除）；面板点击由人工复核 |
-| A5 | 真实远端 Git 凭据与双向同步（HTTPS remote + PAT） | P1-07D 双机验收（v0.4.3） | ✅ **通过**：`acceptance_preflight` 11 项全 PASS（`remote-scheme=https://github.com`、`credentials=workspace-scoped Keychain`、`fetch=HTTPS fetch completed`）；`wb sync` 实跑 up-to-date；**真实 push 到远端临时分支成功并删除，`main` 全程未变** |
-| A6 | 真实双设备上的冲突恢复提交 | P2-02 build 29 双机验收 | ⬜ 需要第二台机器（MacBook Air） |
-
-> A6 的**代码路径**已于 2026-09-11 由
+> **A1–A5 已于 2026-09-11 在真实凭据 / 真实飞书 / 真实远端上复验通过**，当时用真实 vault 与真实
+> 模型（未用隔离副本，保护手段是 git 基线与事后回退）。逐项结果、证据与两个修复见 §L，并已登记到
+> 下方「已关闭」。
+>
+> A6 的**代码路径**已由
 > `tests/integration/test_acceptance_dual_device.py::test_dual_device_divergence_recovery_converges_with_two_parent_merge`
 > 端到端自动化覆盖（双父提交、审计、推送、对端快进），并做过变异测试验证。仍缺的只是真实双设备现场复跑。
 >
@@ -385,6 +382,9 @@ Ref refs/heads/wb-acceptance-probe updated
 
 | 项 | 关闭日期 | 证据 |
 |---|---|---|
+| A1 真实云端模型四项未复跑 | 2026-09-11 | 会议结构化 3 场；捕捉分类（含日期缺陷修复 `562c4fd`）；`wb brief` 真实排序 `ranking_degraded=false`、行动项 5/5；`wb ask` 事实带来源、无幻觉。详见 §L |
+| A3 飞书任务写回 | 2026-09-11 | 真实飞书 `create→update→complete→delete` 全链路通过，测试对象已删除。详见 §L |
+| A4 飞书日历写回 | 2026-09-11 | 真实飞书 `create→update（改名+改时间）→delete` 通过并回读校验。详见 §L |
 | A2 飞书 OAuth 全链路未复跑 | 2026-09-11 | authorize-url（state 核对）→ 浏览器授权 → `login` 写入 refresh_token → `smoke` 经刷新令牌通过；scope 含 `calendar:calendar` 与 `task:task:write`。详见 §L |
 | A5 真实远端 Git 未复跑 | 2026-09-11 | `acceptance_preflight` 11 项全 PASS（HTTPS scheme / workspace Keychain 凭据 / HTTPS fetch）；`wb sync` up-to-date；真实 push 到远端临时分支成功并删除，`main` 未变。详见 §L |
 | 快速捕捉分类算不出日期（相对/绝对日期均错） | 2026-09-11 | `562c4fd`：把工作区时区的当天日期注入系统提示；实测「9月20日前」由 2025-09-20 修正为 2026-09-20、「下周三前」由 2026-05-13 修正为 2026-09-16。详见 §L |
