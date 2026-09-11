@@ -326,3 +326,22 @@
 - R01–R14 中本次覆盖的 R02、R08 已有源码/构建/真实浏览器/人工证据，不再列为“待真实浏览器验收”。
 - 本次人工 R02 写回只发生在临时 vault；真实模型、Feishu OAuth、任务/日历写回、真实远端 Git、冲突恢复提交仍未执行。
 - packaged App/WKWebView、Chrome 原生 200% 缩放、浅色主题、系统 `prefers-reduced-motion` 和真实外部服务仍未验证；这些不能由本次本地 Chrome 或自动化测试替代。
+
+## 10. 远端 CI 启用与门禁补强快照（2026-09-11，最新）
+
+本节覆盖第 9 节及更早关于“远端 CI 未启动”的状态。
+
+- 仓库已迁移到组织 `SummitYifeng/SummitWorkbench`。根因：Actions 分钟数按**仓库所有者**计费，
+  `yifeng93` 个人账户额度耗尽且没有有效支付方式，而 Team 计划买在组织上；迁移后 CI 恢复，
+  secrets、`release` environment 与 releases 均保留，本地 remote 已更新。
+- 远端 CI 首次真实运行即暴露并修复一个缺陷（详见 ADR 0045「后续修订」与 CHANGELOG Unreleased）：
+  macOS framework 版 Python 的 re-exec 使 `_same_server_executable()` 把活着的 server 误判为复用 PID，
+  删除活着的 runtime 记录并绕过 `server_entry.py` 的重复实例保护。
+- `packaged App smoke` 已接入 CI 的 arm64 构建矩阵；两个 workflow 的 action 升级到 node24 大版本，
+  项目 Node 工具链 20 → 24。
+- 当前 CI 全绿：workflow lint、macOS arm64 contract、macOS x86_64 负向 contract、quality-gate
+  （844 passed / 1 skipped，覆盖率 81.19%）。
+- **第 9.1 节列出的真实验收边界全部保持不变**：真实模型、飞书 OAuth、任务/日历写回、真实远端 Git、
+  冲突恢复提交、WKWebView/原生 UI 黑盒、Chrome 原生 200% 缩放、浅色主题、reduced-motion，以及审批
+  0/1/100/101 矩阵与网络计数，仍未验证。CI 里的 packaged smoke 只覆盖打包后的 server 与构建身份，
+  **不替代**原生 App/WKWebView 黑盒验收；CI 转绿也不替代上述真实验收。

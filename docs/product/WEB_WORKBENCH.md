@@ -166,4 +166,5 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - 会议内容上云边界（L33）、写回需确认（L13）、软预算提醒线（L42）全部不变。
 - 质量门：ruff + format + mypy strict + `pytest tests/unit`、route contract、前端契约测试和生产构建。
   v0.4.4 build 9 本地验证为 unit 762 passed、route contract 51 passed、frontend test 全部通过；
-  GitHub Actions 因账户付款/额度问题未启动。
+  远端 GitHub Actions 质量门已在 `SummitYifeng/SummitWorkbench` 上跑通（844 passed、覆盖率 81.19%，
+  含 macOS arm64 构建矩阵与 packaged App smoke）。

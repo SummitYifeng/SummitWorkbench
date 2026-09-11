@@ -2,8 +2,8 @@
 
 状态：✅ 已完成（2026-09-10）
 
-本记录只描述本地门禁和脱敏后的交互结果，不包含真实凭据、会议正文或 vault 内容。GitHub Actions
-因账户付款/额度问题未启动，因此本记录不宣称远端 CI 全绿。
+本记录只描述本地门禁和脱敏后的交互结果，不包含真实凭据、会议正文或 vault 内容。本记录成文时
+GitHub Actions 因账户付款/额度问题未启动；该阻塞已于 2026-09-11 解除并跑通远端质量门，见第 8 节。
 
 ## 1. 交付物
 
@@ -47,7 +47,8 @@
 
 ## 5. 未覆盖项
 
-- GitHub Actions 远端运行：因账户付款/额度阻塞，未启动。
+- GitHub Actions 远端运行：本记录成文时因账户付款/额度阻塞未启动。该阻塞已解除，远端质量门已在
+  `SummitYifeng/SummitWorkbench` 跑通，见第 8 节。本文件第 1–4 节的 build 9 身份不受影响。
 - Developer ID、notarization、Intel/Windows 和公开自动更新 feed：不属于当前 `INTERNAL-DEV` 交付范围。
 - M3 与 P2-03：按 ADR 0044 和当前产品边界不实施。
 
@@ -76,3 +77,28 @@
 - CUA 真实浏览器复核覆盖今日、审批、项目、指南、第二大脑和设置：导入抽屉、项目线视图、指南搜索、问答范围切换、设置高级区均可正常打开/关闭；审批预演显示 `DRY-RUN（零写入）`，未执行写回。
 - 设置页及高级维护区的页面宽度复核为 `scrollWidth=clientWidth`，修复了真实浏览器中发现的横向滚动。
 - 未覆盖：真实文件导入、真实模型回答、真实飞书写回、真实 OAuth、320/390px 与 200% 缩放、WKWebView/打包 App 黑盒验收、动态端口迁移。
+
+## 8. 远端 CI 启用与质量门补强（2026-09-11）
+
+本节记录 build 9 之后的远端 CI 事实，不改变上方已发布 DMG 的历史身份。
+
+- **仓库迁移**：从个人账户迁移到组织 `SummitYifeng/SummitWorkbench`。原因是 Actions 分钟数按
+  **仓库所有者**计费：`yifeng93` 个人账户免费额度耗尽且没有有效支付方式（`release.yml` 在
+  `v0.4.3-rc.3`–`rc.5` 成功运行后，`v0.4.3`/`v0.4.4` 的 tag 运行在数秒内被平台拒绝启动），而
+  Team 计划买在组织上。迁移后 CI 恢复；secrets（`UPDATE_REPO_TOKEN`、`UPDATE_SIGNING_KEY`）、
+  `release` environment 与 releases 均随仓库保留。
+- **CI 首次真实运行即暴露一个缺陷**：macOS framework 版 Python（python.org 安装包）会 re-exec 到
+  `Python.app/Contents/MacOS/Python`，使真实进程路径与 `sys.executable` 永不相等。
+  `_same_server_executable()` 因此把活着的 server 误判为复用 PID，删除活着的 runtime 记录并绕过
+  `server_entry.py` 的重复实例保护。修复为同时接受 `sys.executable`、`sys._base_executable` 与
+  `sys.base_prefix/Resources/Python.app/.../Python` 三个合法镜像，并新增回归测试；在触发该问题的
+  runner 上验证 `same_executable` 由 `False` 变为 `True`、该文件由 `2 failed` 变为 `6 passed`。
+- **门禁补强**：`packaged App smoke` 已接入 CI 的 arm64 构建矩阵（`WB_PACKAGED_APP`），不再只在本地执行；
+  两个 workflow 的 action 升级到 node24 大版本（`actions/checkout@v7`、`actions/setup-node@v7`、
+  `actions/upload-artifact@v7`、`astral-sh/setup-uv@v10.1.0`），项目 Node 工具链由 20 升到 24，
+  Node 20 弃用告警消失。
+- **全绿 job**：workflow lint、macOS arm64 contract（含 packaged smoke）、macOS x86_64 负向 contract、
+  quality-gate（844 passed / 1 skipped、覆盖率 81.19%、ruff/format/mypy/secret scan/native 测试全通过）。
+- **仍然未覆盖**（与第 5、7 节一致，不因 CI 转绿而改变）：真实外部服务（模型、飞书 OAuth、
+  任务/日历写回、真实远端 Git）、无障碍矩阵（200% 缩放、浅色主题、reduced-motion）、
+  WKWebView/打包 App 黑盒、审批 0/1/100/101 矩阵与网络计数。

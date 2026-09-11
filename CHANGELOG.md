@@ -1,3 +1,25 @@
+## [Unreleased] - 2026-09-11
+
+> 远端 CI 启用与交付门禁补强：不改变 v0.4.4 build 9 已发布产物的身份。
+
+### 修复
+
+- 修复 macOS framework 版 Python（python.org 安装包）下的 runtime record 身份误判：framework 构建会
+  re-exec 到 `Python.app/Contents/MacOS/Python`，真实进程路径与 `sys.executable` 永不相等，导致
+  `_same_server_executable()` 把活着的 server 当作复用 PID，删除活着的 runtime 记录并绕过
+  `server_entry.py` 的重复实例保护。现在同时接受 `sys.executable`、`sys._base_executable` 与
+  `sys.base_prefix/Resources/Python.app/.../Python` 三个合法镜像，并新增回归测试。
+
+### 构建与交付
+
+- 仓库迁移到组织 `SummitYifeng/SummitWorkbench`：Actions 分钟数按**仓库所有者**计费，组织 Team 额度
+  对个人账户名下的仓库不生效；迁移后远端 CI 恢复，secrets、`release` environment 与 releases 均保留。
+- `packaged App smoke` 接入 CI 的 arm64 构建矩阵（`WB_PACKAGED_APP`），不再只在本地执行。
+- 两个 workflow 的 action 升级到 node24 大版本（`actions/checkout@v7`、`actions/setup-node@v7`、
+  `actions/upload-artifact@v7`、`astral-sh/setup-uv@v10.1.0`），项目 Node 工具链由 20 升到 24。
+- 远端 CI 全绿：workflow lint、macOS arm64 contract、macOS x86_64 负向 contract、quality-gate
+  （844 passed / 1 skipped，覆盖率 81.19%）。
+
 ## [0.4.4] - 2026-09-10
 
 > UI/UX 优化与交付稳定性维护版：初始界面方案于 2026-09-08 落地，build 9 于 2026-09-10 完成本地打包和真实工作区 Computer Use 验收；GitHub Actions 因账户付款或额度问题未启动。
@@ -10,7 +32,7 @@
 - 原生 App 生命周期加固：仅接管自身且身份匹配的服务；PID 被系统复用或运行记录过期时忽略旧记录，避免误判 crash loop。
 - 修复网页端“现在生成/重新生成”：生成成功后显式提交并推送本次产生的简报、快照、用量和授权状态文件，绝不使用 `add -A` 带入其他用户改动。
 - build 9 arm64 `INTERNAL-DEV` DMG 已通过离线发布验证和实际 vault 交互验收：`v2026.09.10-df4ba1f-1cb9c2eb`；DMG 位于 `dist/releases-local-v0.4.4-brief-fix-df4ba1f/0.4.4/arm64/`，SHA-256 为 `d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`。
-- 本地门禁：Ruff、格式检查、mypy、`pytest tests/unit`（762 passed，5 warnings）、route contract（51 passed，1 warning）、`npm run test:frontend`、生产构建和 packaged smoke 均通过；远端 CI 未启动，不宣称 CI 全绿。
+- 本地门禁：Ruff、格式检查、mypy、`pytest tests/unit`（762 passed，5 warnings）、route contract（51 passed，1 warning）、`npm run test:frontend`、生产构建和 packaged smoke 均通过；远端 CI 当时未启动，不在本节宣称 CI 全绿（后续已于 2026-09-11 跑通，见 Unreleased）。
 
 ## [0.4.3] - 2026-09-07
 

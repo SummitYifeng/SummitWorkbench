@@ -29,9 +29,24 @@ v0.4.4 的目标是把工作台从“功能入口集合”收敛为每天可直�
   自动提交 `wb: brief 2026-09-10` 已推送，重启 App 后显示“已同步”。
 - 本地 DMG：`dist/releases-local-v0.4.4-brief-fix-df4ba1f/0.4.4/arm64/`，SHA-256
   `d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`。
-- GitHub Actions 因账户付款/额度问题未启动；本 ADR 不把它记为 CI 通过。
+- GitHub Actions 当时因账户额度/付款问题未启动；该 ADR 不把它记为 CI 通过。后续已在组织
+  `SummitYifeng/SummitWorkbench` 上恢复额度并跑通质量门（见下方「后续修订」）。
 
 ## 后续边界
 
 M3 上下文启动/会话收尾和 P2-03 组织级 OAuth Broker 仍不实施。后续仅处理现有功能缺陷、稳定性维护和
 用户明确提出的增量需求；任何新的外部权限或服务都必须先新增 ADR 并重新确认产品边界。
+
+## 后续修订（2026-09-11）
+
+- **仓库迁移**：从个人账户迁移到组织 `SummitYifeng/SummitWorkbench`。Actions 分钟数按**仓库所有者**
+  计费，组织 Team 额度对个人账户名下的仓库不生效；迁移后远端 CI 恢复。secrets、environment 与
+  releases 均随仓库保留。
+- **CI 暴露并修复一个缺陷**：macOS framework 版 Python（python.org 安装包）会 re-exec 到
+  `Python.app/Contents/MacOS/Python`，使真实进程路径与 `sys.executable` 永不相等。原
+  `_same_server_executable()` 因此把活着的 server 误判为复用 PID，删除活着的 runtime 记录并绕过
+  `server_entry.py` 的重复实例保护——正是本 ADR 决策 4 要防的场景。修复为同时接受
+  `sys.executable`、`sys._base_executable` 和 `sys.base_prefix/Resources/Python.app/.../Python`
+  三个合法镜像，并新增回归测试；在触发该问题的 runner 上验证 `same_executable` 由 `False` 变为 `True`。
+- **门禁补强**：`packaged App smoke` 已接入 CI 的 arm64 构建矩阵，不再只在本地执行；两个 workflow
+  的 action 升级到 node24 大版本，项目 Node 工具链由 20 升到 24。

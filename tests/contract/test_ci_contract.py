@@ -16,6 +16,7 @@ def test_ci_has_reproducible_python_node_lock_and_secret_gates() -> None:
         "verify-build.mjs",
         "scripts/secret_scan.py",
         "package-lock.json",
+        "WB_PACKAGED_APP:",
     ):
         assert required in ci
 
@@ -29,7 +30,7 @@ def test_release_workflow_validates_tag_and_runs_packaged_integration() -> None:
         "macos-14",
         "ARCH: arm64",
         "WB_PACKAGED_APP:",
-        "actions/upload-artifact@v4",
+        "actions/upload-artifact@v7",
         "raven-actions/actionlint@v2",
         "environment:",
         "secrets.UPDATE_SIGNING_KEY",

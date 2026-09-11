@@ -109,4 +109,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.4 build 9 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。
+P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.4 build 9 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。

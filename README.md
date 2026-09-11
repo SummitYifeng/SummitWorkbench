@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> **当前状态：`v0.4.4` 内部实际使用维护版。** UI/UX 优化、workspace-scoped 凭据与授权可见性、原生 App 生命周期加固、网页简报提交闭环均已落地；最新本地 arm64 内部包为 build 9（`v2026.09.10-df4ba1f-1cb9c2eb`）。P1-07D、P2-01B 与 P2-02 已完成，M3 与 P2-03 不实施；仓库不含凭据或真实会议内容。
+> **当前状态：`v0.4.4` 内部实际使用维护版。** UI/UX 优化、workspace-scoped 凭据与授权可见性、原生 App 生命周期加固、网页简报提交闭环均已落地；最新本地 arm64 内部包为 build 9（`v2026.09.10-df4ba1f-1cb9c2eb`）。P1-07D、P2-01B 与 P2-02 已完成，M3 与 P2-03 不实施；仓库不含凭据或真实会议内容。仓库已迁移到 `SummitYifeng/SummitWorkbench` 组织，远端 CI 质量门全绿。
 
 ## 产品解决的问题
 
@@ -124,7 +124,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。定时任务安装见 [deploy/launchd/README.md](deploy/launchd/README.md)，桌面 App 打包见 [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)。
 
-质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。v0.4.4 build 9 的本地门禁已通过；GitHub Actions 因账户付款/额度问题未能启动，不能据此宣称 CI 全绿。
+质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。v0.4.4 build 9 的本地门禁已通过；远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）已在 `SummitYifeng/SummitWorkbench` 上全绿。
 
 ## 版本
 
