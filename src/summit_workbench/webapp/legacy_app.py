@@ -2294,7 +2294,13 @@ def create_app(
             cfg = _load_model_config_for_context(ctx, "capture")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("capture-classifier")
-            cls = classify_capture(cfg, api_key, prompt, text)
+            cls = classify_capture(
+                cfg,
+                api_key,
+                prompt,
+                text,
+                today=datetime.now(ZoneInfo(ctx.timezone)).date().isoformat(),
+            )
             kind = cls.kind
             due_date = cls.due_date
             model_used = True

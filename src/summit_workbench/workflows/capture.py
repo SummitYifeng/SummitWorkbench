@@ -14,6 +14,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import date
 
 import httpx
 from pydantic import SecretStr, ValidationError
@@ -32,6 +33,23 @@ from summit_workbench.repositories.project_registry import ProjectRegistry
 _CAPTURE_TIMEOUT = 8.0
 
 _TAG_RE = re.compile(r"#([^\s#，,。]+)")
+
+_WEEKDAY_CN = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+
+def _system_with_today(body: str, today: str) -> str:
+    """把「今天」注入系统提示。
+
+    提示词要求相对日期「按今年与今天推算」且「禁止猜测」，但提示词是静态文件、里面没有日期，
+    调用方此前也没传——模型只能瞎猜。实测（2026-09-11）：「9月20日前」被算成 **2025-09-20**、
+    「下周三前」被算成 **2026-05-13**、「明天」「周五前」直接返回 null。把当天日期显式给出后，
+    这些才可能算对。
+    """
+    try:
+        day = date.fromisoformat(today)
+    except ValueError:
+        return body
+    return f"{body}\n\n今天的日期是 {today}（{_WEEKDAY_CN[day.weekday()]}）。"
 
 
 def extract_project_tags(text: str, registry: ProjectRegistry) -> list[str]:
@@ -55,12 +73,18 @@ def classify_capture(
     *,
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    today: str | None = None,
 ) -> CaptureClassification:
-    """单次调用分类；任何失败（超时/网络/解析/schema）都回退为想法。"""
+    """单次调用分类；任何失败（超时/网络/解析/schema）都回退为想法。
+
+    ``today`` 应为**工作区时区**下的当天日期（``YYYY-MM-DD``）；省略时用本机日期。
+    调用方必须传它，否则相对日期（「明天」「下周三」）无法正确解析。
+    """
     fast_cfg = replace(cfg, timeout_seconds=min(cfg.timeout_seconds, _CAPTURE_TIMEOUT))
     model = ModelClient(fast_cfg, api_key, client=client, sleep=sleep)
+    system = _system_with_today(prompt.body, today or date.today().isoformat())
     try:
-        result = model.complete(prompt.body, text, json_mode=True, max_retries=0)
+        result = model.complete(system, text, json_mode=True, max_retries=0)
         return CaptureClassification.model_validate_json(result.text)
     except (LLMError, ValidationError, ValueError, TypeError):
         return fallback_classification()
