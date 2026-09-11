@@ -93,3 +93,33 @@ def test_local_gate_script_mirrors_the_remote_quality_gate() -> None:
     # action ref 预检必须真的查远端 ref，而不是只做字符串检查。
     assert "contents/action.yml?ref=" in refs
     assert "pre-push" in installer
+
+
+def test_frontend_scripts_only_import_declared_packages() -> None:
+    """前端脚本不得依赖未声明的包（幽灵依赖）。
+
+    Vite 8 用 Rolldown 取代 esbuild 后，`web/scripts/*.mjs` 里那 6 处
+    ``import { build } from 'esbuild'`` 立刻全线 ERR_MODULE_NOT_FOUND——因为 esbuild
+    从未被声明，只是恰好被 Vite 提升。这条测试把「脚本只能引用已声明的包」变成契约。
+    """
+    import json
+    import re
+
+    manifest = json.loads((ROOT / "web/package.json").read_text(encoding="utf-8"))
+    declared = set(manifest.get("dependencies", {})) | set(manifest.get("devDependencies", {}))
+
+    # 只匹配行首的顶层静态 import/export，避免误伤 Buffer.from('...') 这类调用。
+    bare_import = re.compile(
+        r"""^(?:import|export)\s+(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]""",
+        re.MULTILINE,
+    )
+    undeclared: dict[str, set[str]] = {}
+    for script in sorted((ROOT / "web/scripts").glob("*.mjs")):
+        for spec in bare_import.findall(script.read_text(encoding="utf-8")):
+            if spec.startswith((".", "/", "node:")):
+                continue
+            name = "/".join(spec.split("/")[:2]) if spec.startswith("@") else spec.split("/")[0]
+            if name not in declared:
+                undeclared.setdefault(script.name, set()).add(name)
+
+    assert not undeclared, f"前端脚本引用了未声明的包（幽灵依赖）：{undeclared}"
