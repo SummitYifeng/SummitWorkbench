@@ -50,3 +50,7 @@ M3 上下文启动/会话收尾和 P2-03 组织级 OAuth Broker 仍不实施。�
   三个合法镜像，并新增回归测试；在触发该问题的 runner 上验证 `same_executable` 由 `False` 变为 `True`。
 - **门禁补强**：`packaged App smoke` 已接入 CI 的 arm64 构建矩阵，不再只在本地执行；两个 workflow
   的 action 升级到 node24 大版本，项目 Node 工具链由 20 升到 24。
+- **本地门禁前置**：`scripts/pre-push-gate.sh` + pre-push hook 在 push 前跑完 CI 的全部检查，并校验每个
+  `uses:` 的 action ref 是否真实存在；Dependabot 接管 action / uv / npm 的版本漂移。
+- **未验证清单的单一真源**：后续未验证项统一维护在
+  [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](../acceptance/OPEN-VERIFICATION-ITEMS.md)。

@@ -128,6 +128,8 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
 
+尚未取得验证证据的项集中在 [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)——那是该清单的单一真源，其他文档只链接过去。
+
 ## 版本
 
 `v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版，build 9）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。

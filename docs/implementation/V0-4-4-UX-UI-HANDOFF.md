@@ -345,3 +345,7 @@
   冲突恢复提交、WKWebView/原生 UI 黑盒、Chrome 原生 200% 缩放、浅色主题、reduced-motion，以及审批
   0/1/100/101 矩阵与网络计数，仍未验证。CI 里的 packaged smoke 只覆盖打包后的 server 与构建身份，
   **不替代**原生 App/WKWebView 黑盒验收；CI 转绿也不替代上述真实验收。
+- **本条之后，未验证项不再在本文件中逐条维护**：请以
+  [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](../acceptance/OPEN-VERIFICATION-ITEMS.md) 为单一真源。
+  同日新增的自动化覆盖：冲突恢复端到端测试、`wb sync/review/meeting/feishu` 行为测试、
+  `packaged App smoke` 入 CI、pre-push 本地门禁。

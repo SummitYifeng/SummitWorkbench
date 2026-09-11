@@ -98,7 +98,9 @@ GitHub Actions 因账户付款/额度问题未启动；该阻塞已于 2026-09-1
   `actions/upload-artifact@v7`、`astral-sh/setup-uv@v10.1.0`），项目 Node 工具链由 20 升到 24，
   Node 20 弃用告警消失。
 - **全绿 job**：workflow lint、macOS arm64 contract（含 packaged smoke）、macOS x86_64 负向 contract、
-  quality-gate（844 passed / 1 skipped、覆盖率 81.19%、ruff/format/mypy/secret scan/native 测试全通过）。
-- **仍然未覆盖**（与第 5、7 节一致，不因 CI 转绿而改变）：真实外部服务（模型、飞书 OAuth、
-  任务/日历写回、真实远端 Git）、无障碍矩阵（200% 缩放、浅色主题、reduced-motion）、
-  WKWebView/打包 App 黑盒、审批 0/1/100/101 矩阵与网络计数。
+  quality-gate（878 passed / 1 skipped、覆盖率 82.38%、ruff/format/mypy/secret scan/native 测试全通过）。
+- **同日追加的覆盖**：`tests/unit/test_cli_commands.py` 补齐 `wb sync/review/meeting/feishu` 的退出码与
+  fail-closed 分支（`cli/sync.py` 28%→100%、`cli/review.py` 23%→77%）；`tests/integration/` 新增冲突恢复
+  端到端测试（双父提交 + 审计 + 推送 + 对端快进，并经变异测试验证）。
+- **仍然未覆盖**：完整清单见 [`OPEN-VERIFICATION-ITEMS.md`](OPEN-VERIFICATION-ITEMS.md)（单一真源），
+  含真实外部服务、无障碍矩阵、WKWebView 黑盒、审批 0/1/100/101 矩阵与网络计数等，不因 CI 转绿而改变。
