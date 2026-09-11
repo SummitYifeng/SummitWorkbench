@@ -1,0 +1,24 @@
+version: 2
+# 依赖与 action 版本漂移由 Dependabot 统一跟进。
+#
+# 动机：setup-uv 自 v8 起停止发布滚动 major tag，手动升级时写 `@v10` 会让 CI 在
+# "Set up job" 阶段失败（2026-09-11 实际发生过）。有 Dependabot 后这类版本变更会
+# 以 PR 形式出现，并由 CI + pre-push 门禁验证。
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"

@@ -5,8 +5,10 @@ on:
     tags:
       - "v*"
 
+# 最小权限：本工作流从不使用 GITHUB_TOKEN 写仓库——更新 feed 的 release 由
+# secrets.UPDATE_REPO_TOKEN（PAT）在 UPDATE_REPOSITORY 上创建，构建产物走运行时 token。
 permissions:
-  contents: write
+  contents: read
 
 env:
   UPDATE_REPOSITORY: yifeng93/SummitWorkbench-Updates
