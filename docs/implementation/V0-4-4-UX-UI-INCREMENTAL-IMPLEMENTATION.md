@@ -474,3 +474,33 @@
 ### 第三轮修改文件
 
 `src/summit_workbench/webapp/legacy_app.py`、`tests/unit/test_webapi.py`、`web/scripts/test-browser-contract.mjs`、`docs/product/WEB_WORKBENCH.md`、本文件与交接档案。无新增依赖；路由路径/方法与六个页签、写回边界、锁/原子写/outbox/迁移语义不变。
+
+## 2026-09-11 R08 修正、构建重建与人工验收补记（最新）
+
+本节是第三轮之后的最新事实，覆盖前文将 R02/R08 列为未验证的旧记录；历史记录不删除。
+
+### R08 修正
+
+- 现象：无过期项时按钮没有显示数量，验收文案与“显示实际范围”约定不一致。
+- 修复：`web/src/features/review/render.ts` 统一渲染为「一键拒绝过期项（N）」；`N=0` 时保留原生 `disabled` 和范围说明 title。
+- 回归：`web/scripts/test-review-render.mjs` 新增 `（0）` + `disabled` 断言；前端纯渲染、浏览器交互契约和构建均通过。
+
+### R02 与真实浏览器/人工证据
+
+- 隔离环境使用临时 HOME、workspace/vault、bare Git remote、合成审批 Markdown、本地回环服务和临时 Chrome；没有真实飞书、OAuth、模型、业务资料或远端凭据。
+- DevTools Fetch 拦截并延迟 `/api/review/apply`，真实页面快速双击确认按钮：只观察到 1 个 apply 请求，按钮立即禁用，最终只显示一次合成完成结果。
+- 人工验收先完成零写入预演，再在临时 vault 双击确认写回；无可见异常。事后检查只有 1 条审批审计记录和 1 条 inbox 写入，没有重复结果。
+- 人工验收没有提供网络计数，因此网络层的“1 请求”以独立 CDP 证据记录；两者均未触碰真实外部写回。
+
+### R08 人工验收
+
+- 有过期项：确认显示「一键拒绝过期项（1）」且可用，切换状态筛选后仍显示真实范围。
+- 无过期项：将临时数据中的过期日期改为未来日期后，确认显示「一键拒绝过期项（0）」、按钮呈灰色、点击无提示、不出现「已批量更新」、待确认项仍保留。
+
+### 最新构建与门禁
+
+- 当前提交：`046d940`，`main` 与 `origin/main` 一致。
+- 构建身份：`v2026.09.11-a851f70-1d8d7004`；`npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` 通过。
+- 前端测试：`npm --prefix web run test:frontend` 全部通过。
+- Python 全量回归：`842 passed, 1 skipped, 5 warnings`；skip 为未设置 `WB_PACKAGED_APP` 的 packaged App smoke，不是通过。
+- 临时服务已停止，临时验收资料已移入回收站；真实模型、Feishu OAuth、任务/日历/远端 Git 写回、冲突恢复提交和 packaged App/WKWebView 仍未验证。

@@ -307,3 +307,22 @@
 
 - 分支 `main`；`ee561f5`（R01–R08）与 `ecafdb0`（R09–R12）均已推送。
 - 第三轮 R13–R14 改动与重建的静态产物（构建身份 `v2026.09.11-ecafdb0-a107073b`）按产品所有者指示随后提交并推送。
+
+## 9. 2026-09-11 R08 修正、构建重建与人工验收终结快照（最新）
+
+本节覆盖并 supersede 第 8 节中关于 R08、R02、构建身份和真实浏览器证据的旧状态；前文仍保留为历史记录。
+
+- 当前身份：`main` 与 `origin/main` 均为 `046d940`（`fix(webapp): show expired review batch scope`），工作区干净。
+- R08 修正：审批工具栏始终显示实际范围，包括无项时的「一键拒绝过期项（0）」；无过期项时原生 `disabled`，title 仍说明「当前 0 条」且范围不受筛选影响。修改文件：`web/src/features/review/render.ts`、`web/scripts/test-review-render.mjs`。
+- 构建：在 `046d940` 上重新执行 `npm --prefix web run build` 与 `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static`，构建身份为 `v2026.09.11-a851f70-1d8d7004`；静态入口已指向新 JS bundle，不再引用 `ecafdb0`。
+- R02 真实浏览器/CDP 验收：临时 HOME/workspace/vault、临时 bare remote、本地 `127.0.0.1` 服务和 Chrome 页面；通过 Fetch 拦截并延迟 `/api/review/apply`，快速双击确认按钮只观察到 1 个请求，按钮立即禁用，最终仅返回一次合成完成结果，未触碰真实外部写回。
+- R08 人工验收：本地临时验收页先观察「一键拒绝过期项（1）」可用且切换筛选后范围不变；再将唯一过期项截止日期改为未来日期，确认「一键拒绝过期项（0）」呈灰色，点击无提示、不出现「已批量更新」、待确认项保留。
+- R02 人工验收：临时页完成零写入预演后双击「确认应用（写回）」；按钮立即禁用、无可见异常。事后检查临时 vault 仅有 1 条审批审计记录和 1 条 inbox 写入，没有重复结果；没有连接真实飞书、OAuth、模型或远端。
+- 自动门禁：`npm --prefix web run test:frontend`、定向来源测试 `4 passed`、全量 `uv run --no-sync pytest -q` 为 `842 passed, 1 skipped, 5 warnings`；`verify-build.mjs` 与 `git diff --check` 通过。唯一 skip 仍为未设置 `WB_PACKAGED_APP` 的 packaged App smoke。
+- 临时服务已停止；临时验收目录移入用户回收站，可恢复；仓库没有残留临时文件。
+
+### 9.1 当前结论与仍需单独验收的边界
+
+- R01–R14 中本次覆盖的 R02、R08 已有源码/构建/真实浏览器/人工证据，不再列为“待真实浏览器验收”。
+- 本次人工 R02 写回只发生在临时 vault；真实模型、Feishu OAuth、任务/日历写回、真实远端 Git、冲突恢复提交仍未执行。
+- packaged App/WKWebView、Chrome 原生 200% 缩放、浅色主题、系统 `prefers-reduced-motion` 和真实外部服务仍未验证；这些不能由本次本地 Chrome 或自动化测试替代。
