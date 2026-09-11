@@ -262,8 +262,8 @@
 
 ## 8. 2026-09-11 终审级审核与小步优化快照（覆盖前文同项的较新事实）
 
-- 环境与身份：分支 `main`，最近运行时代码基线 `cb1bd34`。第一轮 R01–R08 已提交并推送为 `ee561f5`（`a9bbc4a..ee561f5`）；第二轮 R09–R12 记录时**未提交**。第二轮构建身份：`v2026.09.11-ee561f5-a107073b`（`npm --prefix web run build` + `verify-build.mjs` 通过）。未执行真实外部写回、真实模型、飞书 OAuth、真实远端 Git 或冲突恢复提交。
-- 两轮共记录 12 个问题（P1×2、P2×8、P3×2），全部做了小步修复；另记录若干仅记录不实施的风险。逐项证据、根因、修复、文件、测试与回归风险见实施记录 `V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md` 的两节记录。
+- 环境与身份：分支 `main`，最近运行时代码基线 `cb1bd34`。逐轮提交：R01–R08 → `ee561f5`（`a9bbc4a..ee561f5`）；R09–R12 → `ecafdb0`；R13–R14 见下方第三轮。第三轮构建身份：`v2026.09.11-ecafdb0-a107073b`（`npm --prefix web run build` + `verify-build.mjs` 通过）。未执行真实外部写回、真实模型、飞书 OAuth、真实远端 Git 或冲突恢复提交。
+- 三轮共记录 14 个问题（P1×2、P2×9、P3×3），全部做了小步修复。逐项证据、根因、修复、文件、测试与回归风险见实施记录 `V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md` 的三节记录。
 
 ### 已修复（用户可见变化）
 
@@ -278,28 +278,32 @@
 7. **P3 问答历史**：`/api/version` 省略 `workspace_id` 时，本地问答历史也会载入一次。
 8. **P2 审批批量范围**：「一键拒绝过期项」显示实际条数（`（N）`），为 0 时不可点，title 说明不受当前筛选影响；执行仍走 `batchDecide`（100 条上限、只改决定）。
 
-**第二轮 R09–R12（本次续修）**
+**第二轮 R09–R12（已推送 `ecafdb0`）**
 
 9. **P3 外部写回状态乱序**：`/api/external-actions` 读取加请求序号，旧响应不再覆盖审批页的外部写回列表。
 10. **P2 长文本提交提示**：捕捉/日志/产物正文超过后端 100,000 字符上限时本地拦截并说明「超过 10 万字上限（当前 N 字），请拆分后重试」；`normalizeApiError` 追加 envelope `details[0].msg`，其余校验失败也可诊断。
 11. **P2 重复提交**：日志、产物、任务/会议行内编辑增加在途保护与按钮禁用，双击不再重复保存/重复 PATCH 飞书本体。
 12. **P3 文档漂移**：PRD L51/3.1.5 的 `updated` 表述按现行实现改为 `activity_at`/`updated` 语义拆分。
 
+**第三轮 R13–R14（本次续修，来源只读边界与截断语义）**
+
+13. **P2 `/api/review/source` 目录收紧**：历史只读入口与 `/api/sources/read` 共用同一份知识目录白名单（`projects/ meetings/ logs/ artifacts/ inboxes/ daily/ reviews/ insights/` 或 `inbox.md`）；vault 内的 `_signals/`、`notes/` 等非知识路径现在返回 400。路由路径/方法与契约快照不变，行为只收紧。
+14. **P3 `truncated` 语义**：`/api/sources/read` 新增 100,000 字符正文展示预算；超过时返回前 100,000 字符并置 `truncated: true`，前端「正文已截断」提示由此可达；>256 KiB 文件仍直接 413（用新测试锁定不放宽）。
+
 ### 验证范围（通过 / 失败 / 跳过 / 未执行）
 
-- 通过：全量覆盖率门 `840 passed, 1 skipped, 5 warnings`、覆盖率 `81.12%`；route/security `12 passed, 2 warnings`；`npm --prefix web run test:frontend`（8 个脚本，含真实并发测试 `test-settings-render.mjs` 与真实单元测试 `test-api-error.mjs`）；`tsc --noEmit`；`npm --prefix web run build`；`verify-build.mjs`；`ruff check`；`ruff format --check`；`mypy`；`git diff --check`。
-- 失败：最终状态无失败项。两轮新增断言的每一项在修复前都实际失败（`test-browser-contract.mjs`、`test-review-render.mjs`、`test-settings-render.mjs`、`test-api-error.mjs`），作为复现证据；修复后全部通过。
+- 通过：全量覆盖率门 `842 passed, 1 skipped, 5 warnings`、覆盖率 `81.14%`；route/security `12 passed, 2 warnings`；`npm --prefix web run test:frontend`（8 个脚本，含真实并发测试 `test-settings-render.mjs` 与真实单元测试 `test-api-error.mjs`）；`tsc --noEmit`；`npm --prefix web run build`；`verify-build.mjs`；`ruff check`；`ruff format --check`；`mypy`；`git diff --check`。
+- 失败：最终状态无失败项。三轮新增断言/测试的每一项在修复前都实际失败（`test-browser-contract.mjs`、`test-review-render.mjs`、`test-settings-render.mjs`、`test-api-error.mjs`、`tests/unit/test_webapi.py` 的来源用例），作为复现证据；修复后全部通过。
 - 跳过：packaged App smoke（未设置 `WB_PACKAGED_APP`）。
 - 未执行：真实浏览器（CUA）点击/键盘/布局复测；Chrome 原生 200% 缩放、浅色主题、系统 reduced-motion；packaged App/WKWebView 黑盒；真实模型、飞书 OAuth、任务/日历写回、真实远端 Git；冲突恢复提交与真实审批写回。
-- 边界：`test-browser-contract.mjs` 是源码级交互契约，**不是**真实浏览器测试；两轮都没有新增 CUA/浏览器证据，也不把源码断言写成浏览器通过。
+- 边界：`test-browser-contract.mjs` 是源码级交互契约，**不是**真实浏览器测试；三轮都没有新增 CUA/浏览器证据，也不把源码断言写成浏览器通过。
 
-### 未修复风险（记录，不擅改）
+### 仍未验证 / 待真实浏览器验收（交给下一个 agent）
 
-- `/api/review/source` 作为历史只读入口仍在路由契约内，只校验「vault 内 + `.md/.txt`」而不限制知识目录；按「不改变现有 API 契约」只记录不改路由行为。前端已用 `/api/sources/read`；`WEB_WORKBENCH.md` 4.3 已改为描述真实路由。
-- `/api/sources/read` 恒返回 `truncated:false`（>256 KiB 直接 413）；按既有验收口径保留拒绝语义，不改后端截断。
-- 前文（第 4–7 节）列出的所有未验证项保持不变，本节不改变产品边界、写回保护、workspace generation、锁、原子写、outbox、迁移与重试语义。
+- 第 4–7 节列出的全部未验证项保持不变。第三轮之后新增的可验项：来源面板在正文 100,000–256 KiB 时显示「正文已截断，以下内容仅供核查」且不崩；`/api/review/source` 对 `_signals/` 等非知识路径返回 400 的浏览器/网络层证据；以及所有 R01–R14 的交互断言在真实页面上的复验。
+- 本节不改变产品边界、写回保护、workspace generation、锁、原子写、outbox、迁移与重试语义。
 
 ### 分支与提交状态
 
-- 分支 `main`；第一轮 `ee561f5` 已推送（`a9bbc4a..ee561f5`）。
-- 第二轮 R09–R12 改动与重建的静态产物在本节记录时位于工作树；按产品所有者指示随后提交并推送。
+- 分支 `main`；`ee561f5`（R01–R08）与 `ecafdb0`（R09–R12）均已推送。
+- 第三轮 R13–R14 改动与重建的静态产物（构建身份 `v2026.09.11-ecafdb0-a107073b`）按产品所有者指示随后提交并推送。

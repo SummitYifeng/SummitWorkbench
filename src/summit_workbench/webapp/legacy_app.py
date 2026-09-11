@@ -643,6 +643,32 @@ def _run_web_import(
     }
 
 
+# 允许作为「知识来源」只读打开的 vault 顶层目录；审批来源只读入口与问答来源面板
+# 共用同一份白名单，避免出现一个更宽的旁路。
+KNOWLEDGE_SOURCE_ROOTS = frozenset(
+    {
+        "projects",
+        "meetings",
+        "logs",
+        "artifacts",
+        "inboxes",
+        "daily",
+        "reviews",
+        "insights",
+    }
+)
+# 单次只读来源返回的正文展示预算（字符）：超过则截断并置 ``truncated=true``，
+# 避免把超长正文整段塞进面板；文件字节数超过 256 KiB 仍然直接拒绝。
+SOURCE_BODY_DISPLAY_CHARS = 100_000
+
+
+def _is_knowledge_source(relative: Path) -> bool:
+    """相对路径是否落在允许只读打开的知识来源白名单内。"""
+    if relative.as_posix() == "inbox.md":
+        return True
+    return bool(relative.parts) and relative.parts[0] in KNOWLEDGE_SOURCE_ROOTS
+
+
 def _create_restricted_app(
     active_workspace: ActiveWorkspaceContext,
     *,
@@ -1786,6 +1812,8 @@ def create_app(
         relative = Path(path.strip())
         if not path.strip() or relative.is_absolute() or ".." in relative.parts:
             return PlainTextResponse("来源路径无效", status_code=400)
+        if not _is_knowledge_source(relative):
+            return PlainTextResponse("来源路径不在允许的知识范围内", status_code=400)
         root = ctx.vault_dir.resolve()
         source = (root / relative).resolve()
         try:
@@ -1807,22 +1835,12 @@ def create_app(
         relative = Path(raw_id)
         if relative.suffix.lower() != ".md":
             relative = relative.with_suffix(".md")
-        allowed_roots = {
-            "projects",
-            "meetings",
-            "logs",
-            "artifacts",
-            "inboxes",
-            "daily",
-            "reviews",
-            "insights",
-        }
-        allowed = (
-            relative.as_posix() == "inbox.md"
-            or bool(relative.parts)
-            and relative.parts[0] in allowed_roots
-        )
-        if not raw_id or relative.is_absolute() or ".." in relative.parts or not allowed:
+        if (
+            not raw_id
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or not _is_knowledge_source(relative)
+        ):
             return JSONResponse(
                 {"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400
             )
@@ -1848,13 +1866,16 @@ def create_app(
             str(note.meta.get("title") or note.meta.get("project") or source.stem),
         )
         date_value = meta_date_iso(note.meta.get("date")) or meta_date_iso(note.meta.get("updated"))
+        # 正文超过展示预算时返回前 N 字符并显式标记；256 KiB 以上的文件仍在上方直接拒绝。
+        truncated = len(note.body) > SOURCE_BODY_DISPLAY_CHARS
+        body = note.body[:SOURCE_BODY_DISPLAY_CHARS] if truncated else note.body
         return {
             "ok": True,
             "source_id": raw_id,
             "title": title,
             "date": date_value,
-            "body": note.body,
-            "truncated": False,
+            "body": body,
+            "truncated": truncated,
         }
 
     @app.post("/api/review/decide", response_model=None)

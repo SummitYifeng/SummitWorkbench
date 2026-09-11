@@ -312,6 +312,51 @@ def test_api_review_source_is_read_only_and_vault_scoped(tmp_path: Path) -> None
     assert response.text == "# 来源\n\n原文证据。"
     assert client.get("/api/review/source", params={"path": "../outside.md"}).status_code == 400
     assert not (vault / "outside.md").exists()
+    # vault 内但非知识目录的 Markdown 也必须拒绝（与 /api/sources/read 同一份白名单）。
+    stray = vault / "notes" / "stray.md"
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_text("# stray", encoding="utf-8")
+    hidden = vault / "_signals" / "hidden.md"
+    hidden.parent.mkdir(parents=True, exist_ok=True)
+    hidden.write_text("# hidden", encoding="utf-8")
+    assert client.get("/api/review/source", params={"path": "notes/stray.md"}).status_code == 400
+    assert (
+        client.get("/api/review/source", params={"path": "_signals/hidden.md"}).status_code == 400
+    )
+    # inbox.md 是允许的知识来源。
+    (vault / "inbox.md").write_text("# inbox\n\n记录。", encoding="utf-8")
+    inbox = client.get("/api/review/source", params={"path": "inbox.md"})
+    assert inbox.status_code == 200
+    assert inbox.text == "# inbox\n\n记录。"
+
+
+def test_api_sources_read_marks_truncated_body(tmp_path: Path) -> None:
+    from summit_workbench.webapp.legacy_app import SOURCE_BODY_DISPLAY_CHARS
+
+    client, vault = _client(tmp_path, seed_review=False)
+    body = "x" * (SOURCE_BODY_DISPLAY_CHARS + 500)
+    source = vault / "logs" / "long.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(f"---\ntitle: 长日志\ndate: 2026-09-01\n---\n\n{body}", encoding="utf-8")
+
+    response = client.get("/api/sources/read", params={"source_id": "logs/long"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["truncated"] is True
+    assert payload["body"] == body[:SOURCE_BODY_DISPLAY_CHARS]
+    assert len(payload["body"]) == SOURCE_BODY_DISPLAY_CHARS
+
+
+def test_api_sources_read_still_rejects_oversized_file(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path, seed_review=False)
+    source = vault / "logs" / "huge.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("x" * (256 * 1024 + 1), encoding="utf-8")
+
+    response = client.get("/api/sources/read", params={"source_id": "logs/huge"})
+    assert response.status_code == 413
+    assert response.json()["ok"] is False
 
 
 def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths(

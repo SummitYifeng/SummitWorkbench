@@ -431,3 +431,46 @@
 ### 第二轮修改文件
 
 `web/src/legacy-main.ts`、`web/src/api/client.ts`、新增 `web/scripts/test-api-error.mjs`、`web/scripts/test-browser-contract.mjs`、`web/package.json`、`docs/product/PRD.md`、重新构建的 `src/summit_workbench/webapp/static/*`、本文件与交接档案。无新增依赖，未改 Python 运行时代码或 API 契约。
+
+## 2026-09-11 第三轮：来源只读边界与截断语义（R13–R14）
+
+前置：第一轮 `ee561f5`、第二轮 `ecafdb0` 已推送。本轮由产品所有者明确要求处理上一节「本轮明确不改」中的两项，因此边界更新为：允许对来源只读入口做**收紧**（不改路由路径/方法、不放宽任何检查），并把 `truncated` 语义做成真实可达。
+
+**R13 · P2 · 历史只读入口 `/api/review/source` 缺少知识目录白名单**
+
+- 用户场景：任意本地网页/脚本对回环服务请求 `/api/review/source?path=<vault 内任意 .md/.txt>`。
+- 现象与证据：该入口只校验「vault 内 + `.md`/`.txt`」，`_signals/`、`views/` 等内部目录或 vault 根的任意 Markdown/文本都能被读取；而前端实际使用的 `/api/sources/read` 已经限制知识目录。两个入口能力不一致，形成更宽的旁路。
+- 根因：两处各自维护路径规则，历史入口没有跟上收紧。
+- 最小修复：抽出模块级 `KNOWLEDGE_SOURCE_ROOTS` 常量与 `_is_knowledge_source()` 判定，`/api/review/source` 与 `/api/sources/read` 共用同一份白名单（`projects/`、`meetings/`、`logs/`、`artifacts/`、`inboxes/`、`daily/`、`reviews/`、`insights/` 或 `inbox.md`）。非知识路径返回 400「来源路径不在允许的知识范围内」。路由路径、方法与响应类型不变（路由契约快照不受影响）。
+- 修改文件：`src/summit_workbench/webapp/legacy_app.py`。
+- 测试：扩展 `tests/unit/test_webapi.py::test_api_review_source_is_read_only_and_vault_scoped`——新增 `notes/stray.md`→400、`_signals/hidden.md`→400、`inbox.md`→200 断言（修复前 `notes/stray.md` 实际返回 200，失败）。
+- 回归风险：中-低。行为收紧（200→400）只影响 vault 内非知识目录路径；仓库内无其他调用者，前端使用另一个入口。已确认没有测试依赖旧行为。
+- 值得现在修复：是（产品所有者明确要求）。
+
+**R14 · P3 · `/api/sources/read` 的 `truncated` 恒为 false，前端「正文已截断」分支不可达**
+
+- 用户场景：打开一份正文很长的知识来源（例如 8 万–25 万字符的日志/项目档案）。
+- 现象与证据：接口只在文件 >256 KiB 时直接 413，否则整篇返回且恒 `truncated: false`；前端 `openSource` 的「正文已截断，以下内容仅供核查」分支永远不会出现，字段语义与实际不符。
+- 根因：只实现了「整篇返回 / 整体拒绝」两态，缺少「大但可读」的中间态。
+- 最小修复：新增模块级 `SOURCE_BODY_DISPLAY_CHARS = 100_000`（正文展示预算，字符）；正文超过预算时返回前 100,000 字符并置 `truncated: true`，否则原样返回并置 false。**不放宽已有的超大拒绝**：文件字节数仍以 256 KiB 为硬上限直接 413（本轮用新测试锁定该属性）。前端无需改动，既有截断提示由此变为可达；新增一条契约断言 `result.truncated`。
+- 修改文件：`src/summit_workbench/webapp/legacy_app.py`、`web/scripts/test-browser-contract.mjs`、`docs/product/WEB_WORKBENCH.md`。
+- 测试：新增 `tests/unit/test_webapi.py::test_api_sources_read_marks_truncated_body`（构造 100,500 字符正文，断言 `truncated=true` 且 `body == 前 100,000 字符`；修复前因常量不存在而 ImportError 失败）与 `test_api_sources_read_still_rejects_oversized_file`（256 KiB+1 仍为 413，锁定不放宽）。
+- 回归风险：低-中。100,000–256 KiB 的来源由「整篇返回」变为「返回前 100,000 字符 + 截断提示」，属于收紧且减少页面负担；小来源行为不变；文件级 256 KiB 硬拒绝与既有 `truncated: false` 断言都保持。
+- 值得现在修复：是（产品所有者明确要求）。
+
+### 第三轮验证结果
+
+| 项目 | 结果 |
+|---|---|
+| 定向：`pytest -q tests/unit/test_webapi.py -k "review_source or sources_read"` | 通过：`4 passed`（修复前 2 failed，含实际 200≠400 与 ImportError） |
+| `uv run --no-sync pytest --cov=summit_workbench --cov-report=term-missing --cov-fail-under=80 -q` | 通过：`842 passed, 1 skipped, 5 warnings`，覆盖率 `81.14%` |
+| `uv run --no-sync pytest -q tests/contract/test_web_route_contract.py tests/unit/test_web_security.py` | 通过：`12 passed, 2 warnings`（路由契约快照未变） |
+| `npm --prefix web run test:frontend` | 通过（8 个脚本，含新增 `result.truncated` 断言） |
+| `tsc --noEmit` / `ruff check` / `ruff format --check` / `mypy` / `git diff --check` | 全部通过 |
+| `npm --prefix web run build` + `verify-build.mjs` | 通过；构建身份 `v2026.09.11-ecafdb0-a107073b` |
+| packaged App smoke | **跳过**（未设置 `WB_PACKAGED_APP`） |
+| 真实浏览器/CUA、200%/浅色/reduced-motion、真实外部服务与写回 | **未执行**，与前文相同 |
+
+### 第三轮修改文件
+
+`src/summit_workbench/webapp/legacy_app.py`、`tests/unit/test_webapi.py`、`web/scripts/test-browser-contract.mjs`、`docs/product/WEB_WORKBENCH.md`、本文件与交接档案。无新增依赖；路由路径/方法与六个页签、写回边界、锁/原子写/outbox/迁移语义不变。

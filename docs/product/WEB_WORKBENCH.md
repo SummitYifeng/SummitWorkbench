@@ -68,7 +68,7 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - 响应回显：处理/跳过/失败/候选数 + 预估费用；软预算只提示不阻断（PRD L42 提醒线语义）。
 - 写回边界不变：全自动只到「生成候选进审批页」，批准只做决定标记；检查并确认「应用（写回）」后才写回（L13）。
 - 分组批量批准只纳入具备依据与落点的待确认候选，并在按钮上显示实际范围；批量拒绝显示全部待确认范围。前端单批上限为 100 条，超过时不发送请求。
-- 审批卡片的会议笔记与逐字稿来源通过 `/api/sources/read` 只读打开（历史兼容入口 `/api/review/source` 仍在路由契约内），并校验路径必须位于当前 vault 内、且属于允许的知识目录（`projects/`、`meetings/`、`logs/`、`artifacts/`、`inboxes/`、`daily/`、`reviews/`、`insights/` 或 `inbox.md`）；来源缺失、越界、非 Markdown、过大时返回可解释错误。
+- 审批卡片的会议笔记与逐字稿来源通过 `/api/sources/read` 只读打开（历史兼容入口 `/api/review/source` 仍在路由契约内，使用同一份知识目录白名单），并校验路径必须位于当前 vault 内、且属于允许的知识目录（`projects/`、`meetings/`、`logs/`、`artifacts/`、`inboxes/`、`daily/`、`reviews/`、`insights/` 或 `inbox.md`）；来源缺失、越界、非知识文件、非 Markdown、过大时返回可解释错误。正文超过 100,000 字符时只返回前 100,000 字符并带 `truncated: true`，面板显示「正文已截断」；文件本身超过 256 KiB 时仍然直接拒绝（413），不会整篇返回。
 - 文件名建议 `YYYY-MM-DD-会议标题.txt`（日期与标题的稳定来源）。
 
 ### 4.4 项目推进卡
@@ -111,7 +111,8 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 |---|---|
 | `GET /api/state` | 日期、状态速览（StatusReport.as_dict）、今日简报（`brief_md` + 结构化 `brief`，ADR 0024）、inbox 积压、项目推进 |
 | `GET /api/review` | 审批页分组 JSON（meetings.md 事实源） |
-| `GET /api/sources/read` | 只读读取允许的知识 Markdown（返回来源 ID、标题、日期、正文与截断标记） |
+| `GET /api/sources/read` | 只读读取允许的知识 Markdown（返回来源 ID、标题、日期、正文与截断标记；正文超过 100,000 字符时截断并置 `truncated: true`，文件超过 256 KiB 直接 413） |
+| `GET /api/review/source` | 历史兼容的纯文本来源只读入口；与 `/api/sources/read` 使用同一份知识目录白名单 |
 | `POST /api/review/decide` / `POST /api/review/edit` | 即时批准/拒绝/修改（review_edit）；批准要求候选具备依据与落点 |
 | `POST /api/review/plan` / `POST /api/review/apply` | 预演 / 显式应用（apply_meeting_review） |
 | `POST /api/capture` | 快速捕捉 + AI 分类 + 标记写回 |

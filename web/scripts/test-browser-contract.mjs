@@ -30,6 +30,7 @@ assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
 assert.match(reviewSource, /data-action="source-open"/, 'review evidence links open the shared source panel');
 assert.match(source, /function openSource/, 'ask and review evidence share a source reader');
 assert.match(source, /\/api\/sources\/read\?source_id=/, 'source reader uses the vault-scoped API');
+assert.match(source, /result\.truncated/, 'source reader surfaces the truncation notice for oversized-but-capped bodies');
 assert.match(source, /renderAskAnswer/, 'structured ask answers have a dedicated renderer');
 assert.match(source, /仅召回、未在回答中引用的材料/, 'ask distinguishes recalled-only materials');
 assert.match(source, /cited_source_ids/, 'ask response preserves actual citations separately');
