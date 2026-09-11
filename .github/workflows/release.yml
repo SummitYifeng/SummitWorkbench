@@ -16,7 +16,7 @@ jobs:
     name: GitHub Actions workflow lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate workflows with actionlint
         uses: raven-actions/actionlint@v2
 
@@ -27,7 +27,7 @@ jobs:
     environment:
       name: release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate tag and runner architecture before signing
         id: version
@@ -58,15 +58,15 @@ jobs:
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v10
         with:
           python-version: "3.12"
           enable-cache: true
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -143,7 +143,7 @@ jobs:
         run: uv run pytest tests/integration/test_acceptance_dual_device.py -m integration -q
 
       - name: Upload fully verified package as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SummitWorkbench-${{ github.ref_name }}-arm64
           path: dist/ci-release/**
