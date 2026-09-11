@@ -190,8 +190,15 @@ def create_task(
     *,
     timezone: str,
     operation_id: str | None = None,
+    assignee_open_id: str | None = None,
 ) -> CreatedTask:
-    """创建任务；candidate ID 派生 client_token，让飞书侧也参与幂等防重。"""
+    """创建任务；candidate ID 派生 client_token，让飞书侧也参与幂等防重。
+
+    必须传 ``assignee_open_id``（当前授权用户的 open_id）：飞书只把 ``creator`` 记为
+    创建者，**不会**因此把任务指派给本人；而工作台的今日简报用 ``list_tasks`` 只列
+    「当前用户的任务」。不设 ``members[].assignee`` 的任务虽然在「全部任务」里可见，
+    却永远不会进入用户自己的清单，审批→建任务的闭环会在最后一步断掉。
+    """
     body: dict[str, object] = {
         "summary": summary,
         "description": f"由 SummitWorkbench 会议审批创建（{candidate_id}）",
@@ -201,6 +208,8 @@ def create_task(
         body["description"] = (
             f"由 SummitWorkbench 会议审批创建（{candidate_id}；WB operation_id={operation_id}）"
         )
+    if assignee_open_id:
+        body["members"] = [{"id": assignee_open_id, "type": "user", "role": "assignee"}]
     if due_date is not None:
         body["due"] = _all_day_due(due_date, timezone)
     data = client.post(

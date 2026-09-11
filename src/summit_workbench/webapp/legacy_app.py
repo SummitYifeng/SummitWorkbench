@@ -395,6 +395,16 @@ def _build_task_creator(ctx: WebContext, clients: _FeishuClientPool) -> TaskCrea
     from summit_workbench.providers.feishu import (
         create_task,
     )
+    from summit_workbench.providers.feishu.meetings import verify_identity
+
+    # 同一次 apply 内只解析一次身份；缺失时退化为不带 assignee（保持旧行为而不是失败）。
+    resolved: dict[str, str | None] = {}
+
+    def assignee_open_id() -> str | None:
+        if "value" not in resolved:
+            profile = verify_identity(clients.user_client())  # type: ignore[arg-type]
+            resolved["value"] = str(profile.get("open_id") or "") or None
+        return resolved["value"]
 
     def create(
         summary: str, due_date: str | None, candidate_id: str, *, operation_id: str | None = None
@@ -406,6 +416,7 @@ def _build_task_creator(ctx: WebContext, clients: _FeishuClientPool) -> TaskCrea
             candidate_id,
             timezone=ctx.timezone,
             operation_id=operation_id,
+            assignee_open_id=assignee_open_id(),
         ).guid
 
     return create

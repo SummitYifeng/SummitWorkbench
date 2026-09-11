@@ -18,6 +18,7 @@ from summit_workbench.providers.feishu import (
     load_feishu_config,
 )
 from summit_workbench.providers.feishu.calendar import primary_calendar_id
+from summit_workbench.providers.feishu.meetings import verify_identity
 from summit_workbench.repositories.review_edit import ReviewEditError
 from summit_workbench.workflows.review import refresh_meeting_review
 from summit_workbench.workflows.review_apply import apply_meeting_review
@@ -68,6 +69,15 @@ def apply_review(
         # P0-06：Feishu refresh 锁根取本 workspace 单一解析入口的 lock_root。
         return FeishuClient(cfg, FeishuSession(cfg, lock_root=paths.lock_root).access_token())
 
+    @lru_cache(maxsize=1)
+    def current_open_id() -> str | None:
+        """当前授权用户的 open_id。
+
+        新建任务必须带 ``assignee``，否则飞书只记 creator 而不指派给本人，任务不会出现在
+        用户自己的任务清单里——而今日简报读的正是那份清单。
+        """
+        return str(verify_identity(task_client()).get("open_id") or "") or None
+
     def create(
         summary: str,
         due_date: str | None,
@@ -82,6 +92,7 @@ def apply_review(
             candidate_id,
             timezone=settings.timezone,
             operation_id=operation_id,
+            assignee_open_id=current_open_id(),
         ).guid
 
     def create_meeting(

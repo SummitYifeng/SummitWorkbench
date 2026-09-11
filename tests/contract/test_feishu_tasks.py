@@ -19,6 +19,57 @@ from summit_workbench.providers.feishu.config import FeishuConfig
 CFG = FeishuConfig(app_id="cli_test", redirect_uri="http://localhost/callback")
 
 
+def _capture_create() -> tuple[FeishuClient, list[dict[str, object]]]:
+    bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"code": 0, "data": {"task": {"guid": "g", "url": "https://t"}}},
+        )
+
+    return (
+        FeishuClient(
+            CFG, SecretStr("token"), client=httpx.Client(transport=httpx.MockTransport(handler))
+        ),
+        bodies,
+    )
+
+
+def test_create_task_assigns_the_current_user_so_it_lands_in_their_list():
+    """必须带 members[role=assignee]。
+
+    飞书只把 creator 记为创建者，不会据此指派给本人；而今日简报用 list_tasks 只列
+    「当前用户的任务」——不带 assignee 的任务只会在「全部任务」里可见，永远进不了
+    用户自己的清单，审批→建任务的闭环会在最后一步断掉。
+    """
+    client, bodies = _capture_create()
+
+    create_task(
+        client,
+        "写出排期表",
+        "2026-09-19",
+        "m:n#action-item-0",
+        timezone="Asia/Shanghai",
+        assignee_open_id="ou_3e9a8be618f19172c65b81d1c8be61f9",
+    )
+
+    members = bodies[0].get("members")
+    assert members == [
+        {"id": "ou_3e9a8be618f19172c65b81d1c8be61f9", "type": "user", "role": "assignee"}
+    ]
+
+
+def test_create_task_omits_members_without_an_assignee():
+    """没拿到身份时退化为不带 members，而不是伪造一个负责人。"""
+    client, bodies = _capture_create()
+
+    create_task(client, "内部推进", None, "stable", timezone="Asia/Shanghai")
+
+    assert "members" not in bodies[0]
+
+
 def test_create_task_uses_official_v2_shape_and_stable_token():
     seen: dict[str, object] = {}
 
