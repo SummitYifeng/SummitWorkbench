@@ -40,19 +40,43 @@ cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
 .venv/bin/wb web --host 127.0.0.1 --port 18931 &
 ```
 
+**每段脚本开头先做这个断言**（防止变量为空时把文件写到仓库里）：
+
+```bash
+: "${ISO:?ISO 未设置，请先执行上面的 mktemp}"
+: "${WORK_ROOT:?WORK_ROOT 未设置}"
+```
+
+> **⚠ 一个真实踩过的坑**：不要在**跨命令**时用 `$(cat /tmp/xxx 2>&1)` 这类方式传递临时路径。
+> 若那个文件不存在，`2>&1` 会把 `cat` 的**报错文本**当成路径值，而脚本里的 `Path(...)` 又是
+> **相对路径**，于是整棵临时夹具树会被种进**仓库目录**（曾经真的发生过，导致 `ruff check .`
+> 扫描到垃圾文件而失败）。**每个 shell 调用都是独立的**——要么在每个块里重新 `export`，
+> 要么把临时根路径显式写死成字面量。
+
 按向导新建工作区，**模型与飞书都选「跳过」**。回报 `frontend_build`、端口、Chrome 版本。
 
-需要 DevTools 协议时：
+需要 DevTools 协议时（**必须带 `--password-store=basic --use-mock-keychain`**，理由见下）：
 
 ```bash
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9333 --user-data-dir="$ISO/chrome" \
+  --password-store=basic --use-mock-keychain \
   --no-first-run --no-default-browser-check "http://127.0.0.1:18931/" &
 sleep 5
 curl -s http://127.0.0.1:9333/json/list | grep -c '"type": "page"'   # 必须 ≥ 1
 ```
 
 `0` 或空数组就**先停下报告**，不要继续任务 1。
+
+> **为什么必须加这两个开关**：以一次性 `--user-data-dir` 启动的 Chrome 默认会去读写**系统登录
+> 钥匙串**，可能弹出钥匙串授权 / 默认钥匙串弹窗。这类弹窗是**模态**的，会阻塞钥匙串访问——
+> 而应用的凭据读写（例如 C4 的飞书令牌）正好走钥匙串，于是可能**因为一个弹窗而卡住**，
+> 让失败看起来像产品缺陷。`--password-store=basic` 让 Chrome 改用本地文件存密码、
+> **完全不碰系统钥匙串**；`--use-mock-keychain` 进一步避免钥匙串交互。
+> 这两个开关**不影响 CDP**，已实测（加了之后 `page_count` 仍为 1，拦截脚本可用）。
+>
+> **若运行前/运行中看到钥匙串弹窗**：先**取消 / 不允许**（这个 profile 是一次性的，不需要钥匙串），
+> 确认弹窗消失后再继续。**不要把弹窗留在屏幕上就开始验证**，否则结果不可信。
 
 ### 公共脚本 · 闸门式扣留（任务 1 用）
 
@@ -330,6 +354,9 @@ crash loop、不误认旧服务；结束后删除 `$ISO2`。
 
 - **到这一步就停下来，向账号所有者请求授权**，不要自行尝试。
 - 未获授权 → 回报「未验证：无飞书授权」。
+- **开始前先确认屏幕上没有钥匙串弹窗**：飞书令牌是从**登录钥匙串**读的
+  （`com.summitworkbench.credentials.<workspace_id>` / `feishu:<app_id>:refresh_token`），
+  一个模态弹窗就能让读取阻塞，从而产出一个**与产品无关的失败**。若出现弹窗，先处理掉再继续。
 - 获授权后：在隔离 workspace 造一条 `route: feishu-meeting` 的候选（带 `start_at`/`end_at`，
   本地 naive `YYYY-MM-DDTHH:MM`），确认它在真实页面上**可选中、可批准**；
   若被要求写回，只建一个事件，**回读校验后立即删除**，回报事件 id 与删除结果，**不留残留**。
