@@ -192,8 +192,11 @@ let reviewDrafts: Record<string, ReviewDraftFields> = {};
 let apiRequestSequence = 0;
 let latestStateRequest = 0;
 let latestReviewRequest = 0;
+let latestExternalActionsRequest = 0;
 /** 项目详情读取序号：离开/切换详情后，过期响应不得复活旧详情 */
 let latestProjectViewRequest = 0;
+/** 长文本提交上限（与后端 Pydantic max_length 一致）：超出时本地拦截并说明原因 */
+const MAX_TEXT_CHARS = 100_000;
 
 class StaleWorkspaceResponseError extends Error {
   constructor() {
@@ -338,6 +341,16 @@ function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info'): void {
   el.textContent = msg;
   toasts.appendChild(el);
   window.setTimeout(() => el.remove(), 4600);
+}
+
+/**
+ * 长文本提交前拦截：后端对捕捉/日志/产物正文设了 100,000 字符上限，
+ * 直接发送只会得到笼统的 422。这里提前说明原因与当前长度，避免用户以为"保存失败"。
+ */
+function rejectOversizeText(text: string): boolean {
+  if (text.length <= MAX_TEXT_CHARS) return false;
+  toast('内容超过 10 万字上限（当前 ' + text.length + ' 字），请拆分后重试', 'err');
+  return true;
 }
 
 function healthTone(): { tone: string; label: string } {
@@ -751,6 +764,7 @@ function renderToday(view: HTMLElement): void {
     actions: {
       capture: async (text) => {
         if (capturing) return { ok: false };
+        if (rejectOversizeText(text)) return { ok: false };
         capturing = true;
         renderToday(view);
         try {
@@ -2181,7 +2195,10 @@ function openLogModal(defaultProject: string): void {
   });
 }
 
+let logSubmitting = false;
+
 async function submitLog(): Promise<void> {
+  if (logSubmitting) return;
   const text = ((document.getElementById('log-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
   const projects = Array.from(
     document.querySelectorAll<HTMLInputElement>('#log-form input[name="log-proj"]:checked')
@@ -2190,10 +2207,14 @@ async function submitLog(): Promise<void> {
     toast('日志内容为空', 'err');
     return;
   }
+  if (rejectOversizeText(text)) return;
   if (projects.length === 0) {
     toast('至少勾选一个线程/项目', 'err');
     return;
   }
+  logSubmitting = true;
+  const submitButton = document.querySelector<HTMLButtonElement>('#log-form button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   try {
     const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/logs', {
       method: 'POST',
@@ -2208,6 +2229,9 @@ async function submitLog(): Promise<void> {
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(String(err), 'err');
+  } finally {
+    logSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -2314,7 +2338,10 @@ function openArtifactModal(defaultProject: string): void {
   });
 }
 
+let artifactSubmitting = false;
+
 async function submitArtifact(): Promise<void> {
+  if (artifactSubmitting) return;
   const text = ((document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
   const project = ((document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '').trim();
   const title = ((document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '').trim();
@@ -2323,10 +2350,15 @@ async function submitArtifact(): Promise<void> {
     toast('产物内容为空', 'err');
     return;
   }
+  if (rejectOversizeText(text)) return;
   if (!project) {
     toast('请选择归入的线程/项目', 'err');
     return;
   }
+  // 双击「存入档案」不能创建两份产物（产物保存后才可能触发状态预览确认）。
+  artifactSubmitting = true;
+  const submitButton = document.querySelector<HTMLButtonElement>('#artifact-form button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   try {
     const r = await mutation(() => api<{ ok: boolean; message: string; summary?: string }>('/api/threads/artifacts', {
       method: 'POST',
@@ -2365,6 +2397,9 @@ async function submitArtifact(): Promise<void> {
     toast(r.message + extra, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(String(err), 'err');
+  } finally {
+    artifactSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -2693,7 +2728,10 @@ function openRowEditModal(kind: 'task' | 'meeting', seed: Record<string, string>
 }
 
 /** 行内编辑提交：任务/会议 → PATCH 写回飞书 + 快照镜像 → 刷新「今日」。 */
+let rowEditSubmitting = false;
+
 async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void> {
+  if (rowEditSubmitting) return;
   if (!id) {
     toast('缺少目标 id', 'err');
     return;
@@ -2717,6 +2755,10 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
         start_at: (document.getElementById('row-edit-start') as HTMLInputElement | null)?.value ?? '',
         end_at: (document.getElementById('row-edit-end') as HTMLInputElement | null)?.value ?? '',
       };
+  // 双击「保存」不能对飞书本体发出两次 PATCH。
+  rowEditSubmitting = true;
+  const submitButton = document.querySelector<HTMLButtonElement>('#row-edit-form button[type="submit"]');
+  if (submitButton) submitButton.disabled = true;
   try {
     const r = await mutation(() => api<{ ok: boolean; message: string }>(url, {
       method: 'POST',
@@ -2728,6 +2770,9 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
     if (r.ok) void refreshState();
   } catch (err) {
     toast(String(err), 'err');
+  } finally {
+    rowEditSubmitting = false;
+    if (submitButton) submitButton.disabled = false;
   }
 }
 
@@ -2896,8 +2941,10 @@ async function refreshReview(): Promise<boolean> {
 }
 
 async function refreshExternalActions(): Promise<void> {
+  const requestId = ++latestExternalActionsRequest;
   try {
     const data = await api<{ ok: boolean; actions?: ExternalAction[] }>('/api/external-actions');
+    if (requestId !== latestExternalActionsRequest) return;
     if (data.ok) {
       externalActions = data.actions ?? [];
       externalActionsError = null;
@@ -2907,7 +2954,7 @@ async function refreshExternalActions(): Promise<void> {
     if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
   } catch (err) {
     // 外部状态查询失败不阻断审批页本身，但必须在页面上可见。
-    if (isStaleWorkspaceResponse(err)) return;
+    if (isStaleWorkspaceResponse(err) || requestId !== latestExternalActionsRequest) return;
     externalActionsError = String(err);
     if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
   }

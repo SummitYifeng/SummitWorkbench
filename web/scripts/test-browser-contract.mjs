@@ -148,6 +148,15 @@ assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsa
 assert.match(source, /window\.confirm[\s\S]{0,350}产物已保存[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
+// 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
+assert.match(source, /latestExternalActionsRequest/, 'external action reads carry a request sequence');
+assert.match(source, /requestId !== latestExternalActionsRequest/, 'stale external action reads are discarded');
+// 长文本提交（日志/产物/捕捉）与外部行内编辑都需要在途保护：双击不能重复保存或重复写回。
+assert.match(source, /MAX_TEXT_CHARS = 100_000/, 'client pins the backend long-text limit');
+assert.match(source, /超过 10 万字上限/, 'long-form submits explain the size limit before sending');
+assert.match(source, /let artifactSubmitting = false/, 'artifact save has a single in-flight guard');
+assert.match(source, /let logSubmitting = false/, 'work log save has a single in-flight guard');
+assert.match(source, /let rowEditSubmitting = false/, 'task/meeting edit has a single in-flight guard');
 assert.match(source, /importFiles/, 'today import accepts a batch of local files');
 assert.match(source, /status === 'partial'/, 'partial import results remain visually distinct');
 assert.match(read('src/features/today/render.ts'), /esc\(result\.message\)/, 'import receipts preserve the server idempotency message');

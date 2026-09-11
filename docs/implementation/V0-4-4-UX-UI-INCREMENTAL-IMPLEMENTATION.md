@@ -369,3 +369,65 @@
 ### 本轮修改文件
 
 `web/src/legacy-main.ts`、`web/src/features/settings/index.ts`、`web/src/features/review/render.ts`、`web/scripts/test-browser-contract.mjs`、`web/scripts/test-review-render.mjs`、新增 `web/scripts/test-settings-render.mjs`、`web/package.json`、重新构建的 `src/summit_workbench/webapp/static/*`（`build-meta.json`、`index.html`、`assets/index-*.js`）、`docs/product/WEB_WORKBENCH.md`、本文件与交接档案。无新增依赖。
+
+## 2026-09-11 第二轮：建议项续修（R09–R12）
+
+前置：第一轮 R01–R08 已提交并推送为 `ee561f5`（`a9bbc4a..ee561f5`）。本节继续实施上一节「记录但本轮不实施」中确认可安全落地的小步修复。
+
+**R09 · P3 · 外部写回状态读取缺少乱序保护**
+
+- 用户场景：`refreshReview` 与手动刷新/同步后刷新并发触发，两次 `/api/external-actions` 交错返回。
+- 现象与证据：`refreshExternalActions` 没有请求序号，较旧响应后到会覆盖较新的 `externalActions`，审批页「外部写回状态」可能显示上一次的旧列表。
+- 最小修复：新增 `latestExternalActionsRequest`；响应与异常路径都比对序号，过期直接丢弃。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 2 条断言（修复前失败）。
+- 回归风险：低。失败可见性语义不变。
+
+**R10 · P2 · 长文本提交被后端 422 拒绝时提示不可理解**
+
+- 用户场景：把一份较大的逐字稿/阶段总结粘贴或读入「存产物」「追加日志」，或把长文粘贴进快速捕捉。
+- 现象与证据：`CapturePayload.text`、`LogAppendPayload.text`、`ArtifactSavePayload.text` 的 Pydantic 上限都是 100,000 字符；超出时后端只返回笼统的「请求参数不符合接口约束 [validation_error]」，`normalizeApiError` 丢弃 `details`，用户不知道是长度问题、也不知道下一步。
+- 最小修复：`legacy-main.ts` 增加 `MAX_TEXT_CHARS = 100_000` 与 `rejectOversizeText()`，在捕捉/日志/产物提交前本地拦截并提示「内容超过 10 万字上限（当前 N 字），请拆分后重试」；`api/client.ts` 的 `normalizeApiError` 追加 envelope `details[0].msg`，让其余校验失败也可诊断。
+- 修改文件：`web/src/legacy-main.ts`、`web/src/api/client.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 2 条断言 + 新增 `web/scripts/test-api-error.mjs`（**真实单元测试**，断言 envelope/校验 detail/裸错误三种形态；修复前失败）。
+- 回归风险：低。仅提前拦截会被拒绝的请求并补充错误文案；未改后端上限或 API 契约。
+
+**R11 · P2 · 日志/产物/行内编辑可被双击重复提交**
+
+- 用户场景：双击「保存日志」「存入档案」「保存」（任务/会议行内编辑）。
+- 现象与证据：三个提交函数都没有在途标记，按钮也不禁用；双击会重复 `POST /api/threads/logs`、重复 `POST /api/threads/artifacts`（产生两份产物）、或对飞书任务/日历重复 `POST /api/tasks/update` / `/api/meetings/update`。
+- 最小修复：新增 `logSubmitting` / `artifactSubmitting` / `rowEditSubmitting`，入口拦截 + 提交期间禁用对应提交按钮，`finally` 复位并恢复按钮。`review/apply` 的保护见 R02。
+- 修改文件：`web/src/legacy-main.ts`。
+- 测试：`web/scripts/test-browser-contract.mjs` 3 条断言（修复前失败）。
+- 回归风险：低。失败时仍保留弹层与草稿；成功路径不变。
+
+**R12 · P3 · PRD 的 `updated`/`activity_at` 文档漂移（已修文档）**
+
+- 现象与证据：`docs/product/PRD.md` L51 与 3.1.5 节示例仍写「日志/产物入库自动刷新 frontmatter `updated`」，与已实现的 P1 语义拆分（`repositories/thread_notes.py::_touch_projects_activity` 只写 `activity_at`；`project_registry` 的建档/激活/归档与 `projects/rename`、`threads/state` 才写 `updated`）及 `WEB_WORKBENCH.md` 4.4 不一致。
+- 最小修复：按现行代码修正 PRD 的 L51 表述、frontmatter 示例（补 `activity_at` 注释）与 3.1.5 线程段落，明确 `updated` 只由实质状态变化刷新、>14 天停滞点名与周复盘以 `updated` 为唯一时钟。
+- 修改文件：`docs/product/PRD.md`。
+- 测试：文档一致性；由上述代码测试与 `rg` 核对写入路径支撑，无新增自动化断言。
+- 回归风险：无运行时风险。这是产品文档对齐既有 ADR/实现，不改变行为。
+
+### 本轮明确不改（保持契约冻结）
+
+- `/api/review/source` 仍只校验「vault 内 + `.md/.txt`」，不限制知识目录。按「不改变现有 API 契约」的边界，**本轮只记录、不改路由行为**；前端已使用 `/api/sources/read`（限制知识目录并拒绝非 Markdown）。
+- `/api/sources/read` 恒返回 `truncated: false`（>256 KiB 直接 413）。按「超大正文应拒绝」的既有验收口径保留拒绝行为，不改后端截断语义。
+
+### 第二轮验证结果
+
+| 项目 | 结果 |
+|---|---|
+| `uv run --no-sync pytest --cov=summit_workbench --cov-report=term-missing --cov-fail-under=80 -q` | 通过：`840 passed, 1 skipped, 5 warnings`，覆盖率 `81.12%` |
+| `uv run --no-sync pytest -q tests/contract/test_web_route_contract.py tests/unit/test_web_security.py` | 通过：`12 passed, 2 warnings` |
+| `npm --prefix web run test:frontend` | 通过：新增 `test-api-error.mjs` 真实单元测试，8 个脚本全部通过 |
+| `cd web && ./node_modules/.bin/tsc --noEmit` | 通过 |
+| `npm --prefix web run build` | 通过；静态产物身份 `v2026.09.11-ee561f5-a107073b` |
+| `node web/scripts/verify-build.mjs src/summit_workbench/webapp/static` | 通过 |
+| `ruff check` / `ruff format --check` / `mypy` / `git diff --check` | 全部通过（391 files formatted，307 source files） |
+| packaged App smoke | **跳过**（未设置 `WB_PACKAGED_APP`） |
+| 真实浏览器/CUA、200%/浅色/reduced-motion、真实外部服务与写回 | **未执行**，与前文相同 |
+
+### 第二轮修改文件
+
+`web/src/legacy-main.ts`、`web/src/api/client.ts`、新增 `web/scripts/test-api-error.mjs`、`web/scripts/test-browser-contract.mjs`、`web/package.json`、`docs/product/PRD.md`、重新构建的 `src/summit_workbench/webapp/static/*`、本文件与交接档案。无新增依赖，未改 Python 运行时代码或 API 契约。
