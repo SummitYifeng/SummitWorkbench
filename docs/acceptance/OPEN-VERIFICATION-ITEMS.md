@@ -35,10 +35,11 @@
 
 | # | 项 | 说明 |
 |---|---|---|
-| B1 | Chrome 原生 200% 缩放 | 现有证据只到 viewport override，不等同原生缩放 |
-| B2 | 浅色主题 | CUA 实际只跑过深色主题 |
-| B3 | 系统 `prefers-reduced-motion` | 未验证 |
 | B4 | packaged App / WKWebView 黑盒 | CI 的 packaged smoke 只覆盖打包后的 server 与构建身份，**不覆盖原生 UI** |
+
+> B1（Chrome 原生 200% 缩放）、B2（浅色主题）、B3（`prefers-reduced-motion`）已于 2026-09-11 由
+> 提示词 F 的实测关闭——见下方「已关闭」。验收在候选产物上进行，其 **`source_hash` 与合并后
+> main 的产物完全相同（`6e6e0c91…`）**，仅 `git_revision` 不同，故结论直接适用。
 
 ## C. 审批边界
 
@@ -218,4 +219,9 @@
 | `release.yml`（tag 触发）从未在组织下实跑 | 2026-09-11 | `v0.4.4-rc.1` 运行成功：签名 DMG + `update-feed.json` + SBOM + SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库；`latest` 仍为 `v0.4.2`，rc 未污染 stable 通道；证明最小权限 `contents: read` 与升级后的 action 在发布路径同样可用 |
 | 冲突恢复无法在 CI 中验证 | 2026-09-11 | `test_dual_device_divergence_recovery_converges_with_two_parent_merge` 随全量测试在 CI 运行 |
 | 依赖漏洞无人监控（CVE 可能静默存在） | 2026-09-11 | 开启 Dependabot **alerts** + **security updates**（`automated-security-fixes.enabled = true`）；依赖图 122 个包；扫描完成后报出 4 条告警，均为不可达 advisory，逐条评估见 §I |
+| 前端工具链 major 升级（Vite 8 / TS 7） | 2026-09-11 | 真实浏览器验收 A/B/C/F/G 全过后合并：`6ff10a6` + `2722aa9`（产物 `v2026.09.11-6ff10a6-6e6e0c91`）；详见 §J |
+| 前端脚本的幽灵依赖（`esbuild` 未声明） | 2026-09-11 | `f8b40c7` 显式声明 + 契约测试 `test_frontend_scripts_only_import_declared_packages` |
+| Chrome 原生 200% 缩放（B1） | 2026-09-11 | 提示词 F 在候选产物上人工确认正常 |
+| 浅色主题（B2） | 2026-09-11 | 提示词 F 人工确认文字对比度与状态徽标可读 |
+| 系统 `prefers-reduced-motion`（B3） | 2026-09-11 | 提示词 F 确认动画被抑制 |
 | `v0.4.4-rc.1` 测试产物遗留在公开渠道 | 2026-09-11 | 已删除 prerelease 与本地/远程 tag；`latest` 保持 `v0.4.2` |
