@@ -65,7 +65,7 @@
 - **提交纪律**：只在你被明确要求时提交/推送（本次任务已授权提交与推送）。源码改动与**静态产物**
   改动**分开提交**（仓库既有约定）。
 - **契约测试**：仓库里有一类**源码级契约测试**，会断言源码/文档里的具体字符串或装配关系，例如
-  `tests/unit/test_ci_contract.py`、`tests/unit/test_native_panel_contract.py`、
+  `tests/contract/test_ci_contract.py`、`tests/unit/test_native_panel_contract.py`、
   `web/scripts/test-browser-contract.mjs`。**删除代码或改写文档很可能打断它们**——这是正常的，
   正确做法是**同步更新断言并说明理由**，不是绕过或删测试。
 
