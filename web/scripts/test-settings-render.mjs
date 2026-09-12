@@ -11,7 +11,14 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.settings-render-test-tmp');
 const entry = `
-import { renderSettings } from './features/settings';
+import {
+  renderSettings,
+  mountSettings,
+  previewGitRemoteNormalization,
+  applyGitRemoteNormalization,
+  rollbackGitRemoteNormalization,
+  runAcceptancePreflight,
+} from './features/settings';
 
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 
@@ -62,7 +69,63 @@ function makeView() {
   return el;
 }
 
+const settingsView = makeView();
+const fields = {
+  'remote-candidate-url': { value: 'https://github.com/example/repo.git' },
+  'remote-github-username': { value: 'example' },
+  'remote-github-pat': { value: 'synthetic-pat' },
+  'view-settings': settingsView,
+};
+globalThis.document = { getElementById: (id) => fields[id] ?? null, querySelector: () => null };
+globalThis.window = {
+  confirm: () => true,
+  location: { search: '', pathname: '/', hash: '', href: '' },
+  history: { replaceState: () => {} },
+};
+
+// 设置页写动作仍必须逐字保留 POST + JSON 头（搬迁不得改变请求契约）。
+const writeCalls = [];
+const payloadFor = (url) => {
+  if (url.endsWith('/git/remote/preview')) {
+    return { old_url: 'git@github.com:example/repo.git', candidate_url: 'https://github.com/example/repo.git', branch: 'main', candidate_ahead: 0, candidate_behind: 0, plan_id: 'plan-1' };
+  }
+  if (url.endsWith('/git/remote/apply')) return { new_url: 'https://github.com/example/repo.git' };
+  if (url.endsWith('/git/remote/rollback')) return { restored_url: 'git@github.com:example/repo.git' };
+  return { ok: true, report: 'synthetic preflight' };
+};
+const recordingApi = (url, options) => {
+  if (url.startsWith('/api/settings/git/remote/') || url === '/api/settings/acceptance-preflight') {
+    writeCalls.push({ url, options });
+    return Promise.resolve(payloadFor(url));
+  }
+  return actions.api(url, options);
+};
+
+mountSettings({
+  api: recordingApi,
+  mutation: (work) => work(),
+  toast: () => {},
+  refresh: () => {},
+  workspaceId: () => 'ws-1',
+  clearDraftSnapshot: () => {},
+  disposeApiClient: () => {},
+  disposeWorkspaceStore: () => {},
+});
+
+await previewGitRemoteNormalization();
+await applyGitRemoteNormalization('plan-1');
+await rollbackGitRemoteNormalization();
+await runAcceptancePreflight();
+await new Promise((r) => setTimeout(r, 10));
+
+export const writeCallSummary = writeCalls.map((call) => ({
+  url: call.url,
+  method: call.options?.method,
+  contentType: call.options?.headers?.['Content-Type'],
+}));
+
 const view = makeView();
+profileCalls = 0;
 const firstRender = renderSettings(view, actions);
 const secondRender = renderSettings(view, actions);
 
@@ -92,6 +155,20 @@ try {
   const mod = await import(pathToFileURL(bundlePath).href + '?t=' + Date.now());
 
   assert.equal(mod.profileCalls, 2, 'both settings reads must actually start');
+  assert.deepEqual(
+    mod.writeCallSummary.map((call) => call.url),
+    [
+      '/api/settings/git/remote/preview',
+      '/api/settings/git/remote/apply',
+      '/api/settings/git/remote/rollback',
+      '/api/settings/acceptance-preflight',
+    ],
+    'each settings write action must issue exactly one request',
+  );
+  for (const call of mod.writeCallSummary) {
+    assert.equal(call.method, 'POST', call.url + ' must be POSTed');
+    assert.equal(call.contentType, 'application/json', call.url + ' must send a JSON body');
+  }
   assert.match(mod.finalHtml, /✓ 已配置/, 'the newer settings render must win');
   assert.doesNotMatch(mod.finalHtml, /未配置/, 'a stale settings response must not overwrite newer content');
   console.log('Settings render race tests passed');

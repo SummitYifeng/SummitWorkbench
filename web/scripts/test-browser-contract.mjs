@@ -86,7 +86,9 @@ const doesNotMatchNearby = (anchor, forbidden, description) =>
   });
 
 const reviewSource = fileFor('src/features/review/render.ts');
-const settingsSource = fileFor('src/features/settings/index.ts');
+// Settings is a feature directory (Step 8c): the placement guarantee is "inside the feature",
+// not "inside one file", so the whole feature is read and the move keeps the guard enforced.
+const settingsSource = filesMatching(/^src\/features\/settings\/.*\.ts$/);
 const styleSource = filesMatching(/\.css$/);
 
 assert.match(source, /window\.location\.href = '\/onboarding'/, 'onboarding remains reachable from the workbench');

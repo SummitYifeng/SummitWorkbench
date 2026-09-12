@@ -39,6 +39,6 @@ for (const feature of ['projects', 'review', 'settings', 'today']) {
 }
 assert.match(read('src/features/projects/index.ts'), /projectDetailHtml/);
 assert.match(read('src/features/review/index.ts'), /reviewHtml/);
-assert.match(read('src/features/settings/index.ts'), /profile/);
+assert.match(read('src/features/settings/render.ts'), /profile/);
 assert.match(read('src/features/today/index.ts'), /mountToday/);
 console.log('Frontend feature contract tests passed');
