@@ -214,9 +214,15 @@ export async function runSettingsDoctor(online = false): Promise<void> {
 /** data-action="profile-remove"：移除本机 profile（原派发器内联分支）。 */
 export function removeProfile(workspaceId: string): void {
   if (!workspaceId || !window.confirm('只移除本机 profile/runtime，不删除 vault、远端或 Keychain。确定继续？')) return;
-  void api('/api/settings/profile/remove', {
-    method: 'POST', body: JSON.stringify({ workspace_id: workspaceId, confirmed: true }),
-  }).then(() => { toast('本机 profile 已移除', 'ok'); void renderSettingsView(document.getElementById('view-settings') as HTMLElement); })
+  // 移除当前工作台时后端返回 restart_required：运行中的服务仍绑着它，必须重启才生效。
+  void api<{ ok: boolean; restart_required?: boolean }>('/api/settings/profile/remove', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace_id: workspaceId, confirmed: true }),
+  }).then((result) => {
+    toast(result.restart_required ? '本机 profile 已移除；重启工作台后生效' : '本机 profile 已移除', 'ok');
+    void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
+  })
     .catch((err: unknown) => toast(String(err), 'err'));
 }
 

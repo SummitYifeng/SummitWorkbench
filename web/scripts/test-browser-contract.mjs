@@ -136,6 +136,14 @@ assert.match(source, /batchDecide\(selected/, 'selected review actions reuse the
 // pass silently as soon as the code moved, which is a lost guard rather than a failing test.
 assert.doesNotMatch(source, /selected[^\n]*\/api\/review\/apply/, 'selected actions do not bypass review apply');
 assert.match(settingsSource, /data-action="profile-switch"/, 'profile switch remains wired');
+// The dispatcher branch for profile-remove survived for months with no rendered entry point
+// (cb1bd34 dropped the old settings section, the new page never grew one), so a local profile
+// could not be removed from the UI at all. Pin the entry point, not just the handler.
+assert.match(
+  settingsSource,
+  /data-action="profile-remove"/,
+  'removing a local profile is reachable from the settings page, not only dispatched',
+);
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');

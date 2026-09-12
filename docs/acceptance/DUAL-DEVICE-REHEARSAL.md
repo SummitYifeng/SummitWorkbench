@@ -138,12 +138,10 @@
 
 ## 收尾
 
-1. 两台机器都删掉 `~/Documents/Rehearsal`。
+1. 两台机器上删掉演练工作台：`设置 → 高级与维护 → 工作台切换`，在对应条目点
+   「**移除此 Mac 上的工作台**」（只删本机 profile/runtime/草稿，vault、远端与 Keychain 都不动）。
+   移除**当前**工作台后需要重启工作台才生效——按提示重启即可。随后删掉 `~/Documents/Rehearsal`。
 2. 删除 GitHub 上的演练仓库。
 3. 在 `OPEN-VERIFICATION-ITEMS.md` 里登记：**A7** 移入「已关闭」；**A6** 若只做了 §A6.1 抽查，
    把 A6 一行改写为"已在 build 29 完整验收 + 已在本 build 抽查通过"，并写明本 build 的
    `frontend_build`（`build-meta.json`）、日期与逐条证据；若走了 §A6.3 完整重跑，按完整口径关闭。
-
-> **已知缺口（本轮未做）**：设置页目前**没有**「移除本机 profile」的按钮
-> （`data-action="profile-remove"` 的派发分支存在，但没有渲染入口），所以演练工作区只能靠删目录 +
-> 手动确认不再是当前项来收尾。若这成为日常操作，需要单独排期。

@@ -111,9 +111,16 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       esc(profile.display_name) + '</strong><span class="badge">' + esc(profile.active ? '当前' : profile.workspace_short_code) + '</span></div><p class="meta">' +
       esc(profile.path) + '</p><p class="meta">同步：' + esc(profile.sync_summary.state) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
       badge('feishu', profile.provider_status.feishu, feishuReauth) + '</p>' +
-      (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到它</button>') + '</article>').join('');
+      (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到它</button>') +
+      // 移除此 Mac 上的 profile：只删本机 profile/runtime/草稿，vault、远端与 Keychain 不动。
+      // 当前工作台也能移除（后端返回 restart_required），否则没有第二台工作台时就永远删不掉。
+      '<button class="ghost" data-action="profile-remove" data-workspace="' + esc(profile.workspace_id) + '">移除此 Mac 上的工作台</button>' +
+      '</article>').join('');
+    const removeHint = response.profiles.some((profile) => profile.active)
+      ? '<p class="hint">移除只影响这台 Mac：vault、远端仓库和 Keychain 凭据都不动。移除当前工作台后，需要重启工作台才会生效。</p>'
+      : '';
     const advanced = '<details class="settings-advanced-block"><summary><span class="bf-chev">›</span>高级与维护（多工作台 · Git 同步 · 诊断）</summary>' +
-      '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + '</section>' +
+      '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + removeHint + '</section>' +
       '<section class="block"><h3 class="section-title">Git 同步</h3><p class="hint">需要多台设备同步时再使用。系统会先验证，不会把访问令牌写进 vault。</p>' +
       '<form id="remote-normalization-form"><div class="grid2"><label>HTTPS 仓库地址<input id="remote-candidate-url" value="' + esc(httpsCandidate(active?.remote_url)) + '"></label>' +
       '<label>GitHub 用户名<input id="remote-github-username"></label><label>访问令牌（仅本次使用）<input id="remote-github-pat" type="password"></label></div>' +
