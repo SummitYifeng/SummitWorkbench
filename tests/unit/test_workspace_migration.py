@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from summit_workbench import __version__
 from summit_workbench.domain.workspace import WorkspaceManifest
 from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import (
@@ -231,7 +232,10 @@ def test_migration_creates_checksum_backup_commits_and_pushes(tmp_path: Path) ->
     assert result.to_version == 2
     assert upgraded["schema_version"] == 2
     assert "workspace-v1-to-v2" in upgraded["migration_history"]
-    assert upgraded["min_writer_version"] == "0.4.4"
+    # 迁移会把写门提升到**执行迁移的那个 App 版本**（workspace_migration.py 的
+    # `current["min_writer_version"] = version`，version 缺省取 `__version__`）。
+    # 这里按真源断言，避免每次发版都要手改这个字面量。
+    assert upgraded["min_writer_version"] == __version__
     assert backend.commits == ["wb: migrate workspace v1 -> v2"]
     assert backend.push_count == 1
 
