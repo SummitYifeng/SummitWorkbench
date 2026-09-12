@@ -1,6 +1,7 @@
 import './style.css';
 
 import { createApiClient } from './api/client';
+import { MAX_TEXT_CHARS } from './core/text';
 import { workspaceScopedKey, workspaceStore } from './core/workspace-store';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
@@ -24,12 +25,35 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc, mdToHtml } from './md';
 import { type BriefData } from './brief-card';
+import type {
+  AskAnswer,
+  AskHistoryTurn,
+  AskMsg,
+  AskResponse,
+  AskThread,
+  SourceReadPayload,
+} from './features/ask';
 import { projectDetailHtml, projectDisplayName, projectsListHtml } from './features/projects';
 import type { ProjectListFilter, ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
 import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewPayload } from './features/review';
+import {
+  conflictDigestSummary,
+  conflictKindLabel,
+  conflictRevision,
+  conflictSelectionLabel,
+} from './features/sync';
+import type {
+  ConflictDetails,
+  ConflictSelection,
+  RecoveryPreparationSummary,
+  SyncConflictDetailsPayload,
+  SyncConflictRecoveryPayload,
+  SyncStatusPayload,
+} from './features/sync';
 import { renderSettings as renderSettingsFeature } from './features/settings';
-import { mountToday, type ImportReceipt } from './features/today';
+import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
+import type { UndoDiffPayload, UndoHistoryPayload } from './features/undo';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
 
@@ -79,79 +103,11 @@ interface StatePayload {
     server_instance: string;
   };
 }
-interface SyncStatusPayload {
-  ok: boolean;
-  workspace_id?: string;
-  state: string;
-  pending_commits?: number;
-  last_sync_at?: string | null;
-  ahead?: number;
-  behind?: number;
-  branch?: string | null;
-  remote_host?: string | null;
-  repo_states?: string[];
-  automation_primary_device_id?: string | null;
-  automation_primary_generation?: number | null;
-  detail?: string;
-  next_step?: string;
-}
+
 interface DiagnosticsPreviewPayload {
   ok: boolean;
   files: Array<{ name: string; description: string }>;
   snapshot: Record<string, unknown>;
-}
-
-type ConflictSelection = 'keep-local' | 'keep-remote' | 'preserve-both' | '';
-interface ConflictPathDetail {
-  path: string;
-  kind: string;
-  action: string;
-  automatic: boolean;
-  changed_on: string[];
-  local_sha256: string | null;
-  remote_sha256: string | null;
-  local_event?: Record<string, string> | null;
-  remote_event?: Record<string, string> | null;
-}
-interface ConflictDetails {
-  base_revision: string;
-  local: { revision: string; authored_at: string; changed_path_count: number };
-  remote: { revision: string; authored_at: string; changed_path_count: number };
-  automatic_path_count: number;
-  manual_path_count: number;
-  paths: ConflictPathDetail[];
-}
-interface SyncConflictDetailsPayload {
-  ok: boolean;
-  available: boolean;
-  state: string;
-  details?: ConflictDetails;
-  reason?: string;
-}
-interface RecoveryPreparationSummary {
-  status: string;
-  ok: boolean;
-  event_count: number;
-  aggregate_count: number;
-  generated_view_count: number;
-  rebuilt_view_count: number;
-  candidate_path_count: number;
-  staging_ready: boolean;
-  error_code: string | null;
-}
-interface SyncConflictRecoveryPayload {
-  ok: boolean;
-  available: boolean;
-  state: string;
-  preparation?: RecoveryPreparationSummary;
-  recovery?: {
-    status: string;
-    revision?: string | null;
-    error_code?: string | null;
-    audit?: { status: string; error_code?: string | null };
-  };
-  push?: { ok: boolean; state: string; detail?: string | null } | null;
-  reason?: string;
 }
 
 let state: StatePayload | null = null;
@@ -195,8 +151,6 @@ let latestReviewRequest = 0;
 let latestExternalActionsRequest = 0;
 /** 项目详情读取序号：离开/切换详情后，过期响应不得复活旧详情 */
 let latestProjectViewRequest = 0;
-/** 长文本提交上限（与后端 Pydantic max_length 一致）：超出时本地拦截并说明原因 */
-const MAX_TEXT_CHARS = 100_000;
 
 class StaleWorkspaceResponseError extends Error {
   constructor() {
@@ -222,64 +176,6 @@ let conflictMessage: string | null = null;
 let conflictBusy = false;
 
 // ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
-
-interface AskMsg {
-  role: 'user' | 'ai';
-  /** user：原文（追问时回传）；ai：服务端渲染的答案 HTML */
-  text: string;
-  ts: string;
-  /** ai 消息本次召回/引用的来源 id（追问时回传，让后端重新纳入候选） */
-  sources: string[];
-  /** ai 消息实际在事实/冲突中引用的来源；旧会话缺失时回退为空 */
-  citedSources?: string[];
-}
-interface AskThread {
-  id: string;
-  title: string;
-  createdAt: string;
-  messages: AskMsg[];
-}
-interface AskHistoryTurn {
-  question: string;
-  sources: string[];
-}
-interface AskResponse {
-  ok: boolean;
-  message?: string;
-  answer_html?: string;
-  source_ids?: string[];
-  cited_source_ids?: string[];
-  answer?: AskAnswer;
-}
-
-interface AskFact {
-  text: string;
-  source_id: string;
-}
-interface AskConflictSide {
-  position: string;
-  source_id: string;
-}
-interface AskConflict {
-  topic: string;
-  sides: AskConflictSide[];
-}
-interface AskAnswer {
-  summary: string;
-  facts: AskFact[];
-  suggestions: string[];
-  conflicts: AskConflict[];
-  unanswerable: boolean;
-}
-interface SourceReadPayload {
-  ok: boolean;
-  message?: string;
-  source_id?: string;
-  title?: string;
-  date?: string | null;
-  body?: string;
-  truncated?: boolean;
-}
 
 const ASK_MAX_THREADS = 10;
 /** 追问时最多回传的历史轮数（与后端 _MAX_HISTORY_TURNS 同口径） */
@@ -2577,27 +2473,6 @@ function backFromProjectDetail(): void {
 
 // ---------- 撤销系统改动（P0'） ----------
 
-interface WbCommitItem {
-  sha: string;
-  short_sha: string;
-  message: string;
-  time: string;
-  files: string[];
-}
-
-interface UndoHistoryPayload {
-  ok: boolean;
-  commits?: WbCommitItem[];
-  note?: string | null;
-  message?: string;
-}
-
-interface UndoDiffPayload {
-  ok: boolean;
-  diff?: string;
-  message?: string;
-}
-
 const UNDO_FLYNOTE =
   '还原只作用于 vault 文件；飞书侧已产生的副作用（已建任务/会议、已完成状态）不可撤销、不受本次还原影响。';
 
@@ -2724,26 +2599,6 @@ async function completeTask(btn: HTMLElement): Promise<void> {
     doneBtn.disabled = false;
     doneBtn.classList.remove('busy');
   }
-}
-
-/** unix 秒（字符串）→ 本地 datetime-local 输入值（YYYY-MM-DDTHH:MM）；无效返回空串。 */
-function tsToDatetimeLocal(ts: string | null | undefined): string {
-  const seconds = Number(ts);
-  if (!Number.isFinite(seconds) || seconds <= 0) return '';
-  const d = new Date(seconds * 1000);
-  const pad = (x: number): string => String(x).padStart(2, '0');
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
-    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-}
-
-/** unix 秒 + 分钟偏移 → datetime-local 输入值（结束时间缺省 = 开始 + 60 分钟）。 */
-function plusMinutesInput(ts: string | null | undefined, minutes: number): string {
-  const seconds = Number(ts);
-  if (!Number.isFinite(seconds) || seconds <= 0) return '';
-  const d = new Date((seconds + minutes * 60) * 1000);
-  const pad = (x: number): string => String(x).padStart(2, '0');
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
-    'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 /** 打开任务/会议的行内编辑弹窗（改动直接写回飞书本体）。 */
@@ -3012,46 +2867,6 @@ async function refreshExternalActions(): Promise<void> {
 async function refreshAll(): Promise<{ state: boolean; review: boolean }> {
   const [stateOk, reviewOk] = await Promise.all([refreshState(), refreshReview()]);
   return { state: stateOk, review: reviewOk };
-}
-
-function conflictKindLabel(kind: string): string {
-  const labels: Record<string, string> = {
-    'append-only-event': '活动事件（自动收集）',
-    'generated-view': '派生视图（重建）',
-    'unknown-generated-view': '未知派生视图（保留双方）',
-    'manual-markdown': 'Markdown（人工选择）',
-    'opaque-binary': '未知/二进制（保留双方）',
-  };
-  return labels[kind] ?? kind;
-}
-
-function conflictSelectionLabel(choice: ConflictSelection): string {
-  const labels: Record<string, string> = {
-    'keep-local': '保留本机',
-    'keep-remote': '采用远端',
-    'preserve-both': '保留双方副本',
-  };
-  return labels[choice] ?? '请选择处理方式';
-}
-
-function conflictRevision(revision: string): string {
-  return revision.length > 12 ? revision.slice(0, 12) + '…' : revision;
-}
-
-function conflictEventSummary(event: Record<string, string> | null | undefined): string {
-  if (!event || event.parse_status) return '';
-  return '设备 ' + (event.device_id ?? '—') + ' · 时间 ' + (event.occurred_at ?? '—') +
-    ' · 操作 ' + (event.causation_operation_id ?? '—');
-}
-
-function conflictDigestSummary(item: ConflictPathDetail): string {
-  if (item.kind === 'append-only-event') {
-    return [conflictEventSummary(item.local_event), conflictEventSummary(item.remote_event)].filter(Boolean).join(' / ');
-  }
-  if (item.local_sha256 || item.remote_sha256) {
-    return '摘要 本机 ' + conflictRevision(item.local_sha256 ?? '—') + ' · 远端 ' + conflictRevision(item.remote_sha256 ?? '—');
-  }
-  return '';
 }
 
 function conflictSelectionsPayload(): Record<string, string> {

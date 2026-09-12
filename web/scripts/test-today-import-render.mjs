@@ -9,7 +9,7 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.today-import-render-test-tmp');
 const entry = `
-import { todayHtml } from './features/today';
+import { plusMinutesInput, todayHtml, tsToDatetimeLocal } from './features/today';
 
 const state = {
   day: '2026-09-10', status: { pending_review: 0, backlog: { oldest_age_days: null } },
@@ -30,6 +30,16 @@ export const multi = todayHtml({ ...base, importing: true, importResults: [
 export const reopened = todayHtml({ ...base, importOpen: false, importResults: [
   { fileName: 'reopened.md', bytes: 100, status: 'success', message: '上次导入完成' },
 ] }, '');
+export const times = {
+  valid: tsToDatetimeLocal('1757000000'),
+  zero: tsToDatetimeLocal('0'),
+  negative: tsToDatetimeLocal('-1'),
+  nullish: tsToDatetimeLocal(null),
+  undefinedValue: tsToDatetimeLocal(undefined),
+  junk: tsToDatetimeLocal('abc'),
+  plus60: plusMinutesInput('1757000000', 60),
+  plusInvalid: plusMinutesInput(undefined, 60),
+};
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -52,6 +62,17 @@ try {
   assert.match(mod.multi, /正在归档并结构化/);
   assert.match(mod.reopened, /import-drawer[^>]+hidden/);
   assert.match(mod.reopened, /reopened\.md/);
+
+  // Pure time helpers used by the inline row editor (now features/today/time.ts).
+  // Asserted timezone-independently: only the value delta and the invalid cases.
+  assert.match(mod.times.valid, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  assert.equal(
+    new Date(mod.times.plus60).getTime() - new Date(mod.times.valid).getTime(),
+    60 * 60 * 1000,
+  );
+  for (const key of ['zero', 'negative', 'nullish', 'undefinedValue', 'junk', 'plusInvalid']) {
+    assert.equal(mod.times[key], '', key);
+  }
   console.log('Today import receipt render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

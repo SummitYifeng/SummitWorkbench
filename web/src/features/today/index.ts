@@ -74,3 +74,5 @@ export function mountToday(
 
 export { todayHtml } from './render';
 export type { ImportReceipt, TodayActions, TodayRenderOptions, TodayState } from './types';
+
+export { plusMinutesInput, tsToDatetimeLocal } from './time';
