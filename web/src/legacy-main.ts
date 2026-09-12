@@ -17,12 +17,12 @@ import {
   type ReviewDraftFields,
 } from './lifecycle/drafts';
 import {
-  canonicalPanelUrl,
   CLIENT_BUILD,
+  reloadToBuild,
+  setVersionStatus,
   shouldPreventReload,
   validateVersionPayload,
   type VersionPayload,
-  type VersionStatus,
 } from './lifecycle/version';
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
@@ -218,28 +218,6 @@ function healthTone(): { tone: string; label: string } {
   return { tone: 'ok', label: '一切正常' };
 }
 
-function versionStatusLabel(status: VersionStatus): string {
-  if (status === 'checking') return '正在检查版本';
-  if (status === 'synced') {
-    return remoteVersion
-      ? '界面 ' + CLIENT_BUILD + ' · 服务 ' + remoteVersion.server_version + ' · 已同步'
-      : '已同步';
-  }
-  if (status === 'update-pending') return '新版本已就绪';
-  if (status === 'reconnecting') return '正在重新连接';
-  return '更新未完成';
-}
-
-function setVersionStatus(status: VersionStatus): void {
-  const el = document.getElementById('version-status');
-  if (el) {
-    el.className = 'version-status ' + status;
-    el.textContent = versionStatusLabel(status);
-  }
-  const banner = document.getElementById('version-error-banner');
-  if (banner) banner.hidden = status !== 'failed';
-}
-
 function saveCurrentDraftSnapshot(): void {
   const reviewForms: Record<string, ReviewDraftFields> = {};
   const editForms = document.querySelectorAll<HTMLFormElement>('.edit-form');
@@ -303,17 +281,6 @@ function applyRestoredDraft(): void {
   restoredDraft = null;
 }
 
-function reloadToBuild(targetBuild: string): void {
-  try {
-    window.sessionStorage.setItem('wb.update.last-target', targetBuild);
-    window.sessionStorage.setItem('wb.update.last-attempt-at', new Date().toISOString());
-  } catch {
-    // sessionStorage 不可用时仍尝试导航；页面自身会通过 URL 继续握手。
-  }
-  setVersionStatus('update-pending');
-  window.location.assign(canonicalPanelUrl(window.location.href, targetBuild));
-}
-
 async function copyDiagnostics(): Promise<void> {
   const lines = [
     'App frontend client build: ' + CLIENT_BUILD,
@@ -368,7 +335,7 @@ async function exportDiagnostics(): Promise<void> {
 }
 
 async function doCheckVersion(reason: string): Promise<void> {
-  setVersionStatus('checking');
+  setVersionStatus('checking', remoteVersion);
   const response = await fetch('/api/version', { cache: 'no-store' });
   if (!response.ok) throw new Error('version HTTP ' + response.status + ' (' + reason + ')');
   const remote = validateVersionPayload(await response.json());
@@ -394,7 +361,7 @@ async function doCheckVersion(reason: string): Promise<void> {
     reloadAskStore();
   }
   if (remote.frontend_build === CLIENT_BUILD) {
-    setVersionStatus('synced');
+    setVersionStatus('synced', remoteVersion);
     notifyClientReady(CLIENT_BUILD, remote.server_instance);
     if (instanceChanged) await refreshAll();
     return;
@@ -402,21 +369,21 @@ async function doCheckVersion(reason: string): Promise<void> {
 
   saveCurrentDraftSnapshot();
   if (shouldPreventReload(window.sessionStorage, remote.frontend_build, Date.now())) {
-    setVersionStatus('failed');
+    setVersionStatus('failed', remoteVersion);
     return;
   }
   if (isMutationInFlight()) {
-    setVersionStatus('update-pending');
+    setVersionStatus('update-pending', remoteVersion);
     deferReloadUntilMutationsComplete(remote.frontend_build);
     return;
   }
-  reloadToBuild(remote.frontend_build);
+  reloadToBuild(remote.frontend_build, remote);
 }
 
 function checkVersion(reason: string): Promise<void> {
   if (versionCheckPromise) return versionCheckPromise;
   versionCheckPromise = doCheckVersion(reason)
-    .catch(() => setVersionStatus('reconnecting'))
+    .catch(() => setVersionStatus('reconnecting', remoteVersion))
     .finally(() => { versionCheckPromise = null; });
   return versionCheckPromise;
 }
@@ -478,7 +445,7 @@ document.addEventListener('click', (ev) => {
       // 存储不可用时仍允许再次尝试导航。
     }
     saveCurrentDraftSnapshot();
-    reloadToBuild(remoteVersion.frontend_build);
+    reloadToBuild(remoteVersion.frontend_build, remoteVersion);
     return;
   }
   if (action === 'source-open') {
@@ -967,7 +934,7 @@ export function mountLegacyWorkbench(): void {
   onConnectionRestored(() => { void checkVersion('connection-restored'); });
   setMutationIdleHandler(async (targetBuild) => {
     saveCurrentDraftSnapshot();
-    reloadToBuild(targetBuild);
+    reloadToBuild(targetBuild, remoteVersion);
   });
   window.addEventListener('focus', () => { void checkVersion('focus'); });
   document.addEventListener('visibilitychange', () => {

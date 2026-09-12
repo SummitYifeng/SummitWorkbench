@@ -635,7 +635,7 @@ uv run pytest tests/unit/test_webapi.py tests/unit/test_acceptance_preflight.py 
 # 类型门
 cd web && ./node_modules/.bin/tsc --noEmit
 
-# 前端全量（7 个脚本串行）
+# 前端全量（13 个脚本串行）
 npm --prefix web run test:frontend
 
 # 仅契约测试
@@ -651,3 +651,108 @@ uv run pytest tests/unit/test_webapi.py tests/unit/test_acceptance_preflight.py 
 # 构建身份单元测试
 npm --prefix web run test:build
 ```
+
+## 附录 C · 步骤 1–9 执行记录（2026-09-12）
+
+### C.1 结果
+
+每一步都是"源码一笔 + 产物一笔"两笔提交（产物提交紧跟在源码提交之后，让
+`build-meta.json` 的 `git_revision` 指向产出它的源码提交）。拆分期间所有提交都带
+`[skip ci]`：CI 只在阶段边界手动触发一次，见 C.5。
+
+| 步骤 | 源码提交 | `legacy-main.ts` |
+| --- | --- | --- |
+| 基线（后端拆分完成） | `be917d2` | 3395 |
+| 0 · 契约测试布局免疫 | `455a8c1` | 3346 |
+| 1 · 类型与纯函数外迁 | `631d118` | 3210 |
+| 2 · 弹层基座、DOM 根与 toast | `94b96e1` | 3153 |
+| 3 · 请求基座与应用外壳 | `c6c9d54` | 3014 |
+| 4 · 使用指南整页 | `37d5141` | 2906 |
+| 5 · 问答整页 | `c4a1b37` | 2494 |
+| 6 · 同步 + 撤销 | `0f25c43` | 2093 |
+| 7 · 线程日志/产物弹层 | `74128a1` | 1835 |
+| 8a · 项目详情导航 | `54522d0` | 1612 |
+| 8b · 审批动作 | `1a895dc` | 1395 |
+| 8c · 设置页动作 | `380fd0d` | 1188 |
+| 8d · 今日写回动作 | `858ecb7` | 997 |
+| 9 · 版本状态展示 + 收敛 | 本记录同批 | 964 |
+
+**3395 → 964 行（−71.6%）**，`main.ts` 仍是 6 行（上限 40 行，`test-build.mjs` 断言）。前端测试脚本从 7 个增至 13 个，
+全部文件布局无关（`test-browser-contract.mjs` 读取 73 个源文件并逐文件求值窗口断言）。
+
+### C.2 裁决 1（§7-2）：刷新编排走**方案 B**
+
+`refreshState` / `refreshReview` / `refreshExternalActions` / `refreshAll` 整段留在
+`legacy-main.ts`（L3）。理由：
+
+1. 方案 A 要求每个 feature 在自己的 `mount*()` 里注册 loader，于是"注册是否已发生"成了新的
+   时序不变量；而 `mount*()` 的调用顺序在组合根里已经很长（10 个）。
+2. 三个在途计数器（`latestStateRequest`/`latestReviewRequest`/`latestExternalActionsRequest`）
+   按 §4.2 必须与其守卫同模块，而守卫的**重置点**（workspace 切换）就在 `doCheckVersion` 里。
+   下沉会把计数器与重置点分开。
+3. 组合根为此多约 71 行，是 L3 合法的横向扇出。
+
+### C.3 偏差：§3.1 的 `src/lifecycle/{version,diagnostics,drafts}.ts` 只搬了版本展示
+
+§3.1 把簇 5 列在 `src/lifecycle/`，§5 从未给这一步排期。执行时逐函数核对依赖，结论是**该行的大
+部分在 §4.1 硬规则 4（L0 不得 import features）下不成立**：
+
+| 符号 | 阻挡依赖 |
+| --- | --- |
+| `applyRestoredDraft` | `setAskDraft()` —— 直接调用 `features/ask` 的写入口 |
+| `persistEntityDraft` / `saveCurrentDraftSnapshot` / `copyDiagnostics` / `previewDiagnostics` / `exportDiagnostics` | `toast()`（`features/shell`，L1）；快照还读写 `tab`/`reviewDrafts`/`restoredDraft` |
+| `doCheckVersion` / `checkVersion` | 要重置四个域的状态（ask/review/today/projects）并调用 `refreshAll()`，即 §4.2 明说属于 L3 的跨域编排 |
+
+把它们参数化（注入 `toast`、注入四个 reset）不会减少组合根的职责，只会多出一层注入面，
+因此保留在组合根。**可搬的部分已搬**：`versionStatusLabel`/`setVersionStatus`/`reloadToBuild`
+只依赖 `CLIENT_BUILD`、`VersionPayload` 与 DOM，已迁入 `src/lifecycle/version.ts`
+（`setVersionStatus`/`reloadToBuild` 增加 `remote` 入参以取代对组合根 `remoteVersion` 的闭包），
+并新增 `test-version-status.mjs` 直接断言五个状态的文案。
+
+### C.4 偏差：400–500 行目标未达成，实测下限约 750 行
+
+964 行的实测构成：
+
+| 区块 | 行数 |
+| --- | --- |
+| import 区 | 124 |
+| 簇 1 类型契约（`StatePayload` 等） | 52 |
+| 簇 2 跨域状态 | 22 |
+| 组合根胶水（草稿快照、诊断、版本握手） | 189 |
+| `render()` + `renderToday()` | 35 |
+| 全局 click/submit 派发（簇 15） | 340 |
+| `refresh*`（方案 B） | 71 |
+| `mountLegacyWorkbench()` | 125 |
+
+§4.4 明确要求派发器留在组合根，§5 步骤 9 也把簇 15 计入 400–500 的预算内；但派发器实测
+**340 行**（57 个分支，绝大多数已是"一行调用 + return"），加上"必须留下"的类型/状态/刷新/启动
+就已超过 700 行。即使把 C.3 的全部胶水（189 行）也搬走，下限仍在 **约 750 行**。
+结论：**400–500 是估算，实测不支持**；除非把派发器改成 `data-action` → handler 表（可省约 260 行），
+但那是一次覆盖 57 个分支、只有 grep 级契约测试兜底的行为重构，与本轮"行为保持"的纪律冲突，
+故不做，登记为后续可选事项。
+
+### C.5 验证
+
+每一步都跑了完整门禁，最后一次（步骤 9）：
+
+| 检查 | 结果 |
+| --- | --- |
+| `cd web && ./node_modules/.bin/tsc --noEmit` | 通过 |
+| `npm --prefix web run test:frontend` | 13 个脚本全绿（73 个源文件） |
+| `npm --prefix web run build` + `verify-build.mjs` | `Build verified` |
+| `.venv/bin/python -m pytest --cov -q` | 927 passed, 1 skipped，覆盖率 83.16% |
+| `ruff check` / `ruff format --check` / `mypy` / `secret_scan.py` | 全部通过 |
+| `git push`（pre-push 钩子） | `✓ 本地门禁全部通过` |
+
+CI 只在阶段边界手动触发：前端拆分全部落地后 `gh workflow run ci.yml` 一次，用于验证
+macOS 打包链路；其余提交一律 `[skip ci]`。
+
+### C.6 拆分期间修改的既有断言（3 处）
+
+只有这 3 处，都是为了跟随**布局**变化，语义未放宽：
+
+| 位置 | 改动 | 原因 |
+| --- | --- | --- |
+| `test-build.mjs` | 设置页内容锚点从 `features/settings/index.ts` 移到 `render.ts` | 设置页在 8c 拆成目录后，barrel 只剩 re-export |
+| `test-browser-contract.mjs` | `settingsSource` 从单文件改为 `filesMatching(/^src\/features\/settings\/.*\.ts$/)` | 设置契约现在分布在目录内多个文件；放置保证由"单文件"改为"feature 内" |
+| `python tests/contract/*` | 前端源码聚合读取（`5428267`），`test_native_panel_contract.py` 增加 `_web_sources()`/`_web_source_after()` 逐文件切片 | 同一符号搬进新模块后，原先"读单文件"的 Python 守卫会误报 |
