@@ -28,7 +28,7 @@ import {
   type VersionStatus,
 } from './lifecycle/version';
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
-import { esc, mdToHtml } from './md';
+import { esc } from './md';
 import { type BriefData } from './brief-card';
 import type {
   AskAnswer,
@@ -69,11 +69,10 @@ import {
   toast,
   viewElement,
 } from './features/shell';
+import { mountGuide } from './features/guide';
 import { renderSettings as renderSettingsFeature } from './features/settings';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
 import type { UndoDiffPayload, UndoHistoryPayload } from './features/undo';
-// 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
-import guideMd from './guide.md?raw';
 
 type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
 
@@ -466,7 +465,7 @@ function render(): void {
   } else if (tab === 'projects') {
     renderProjects(viewElement('projects') as HTMLElement);
   } else if (tab === 'guide') {
-    renderGuide(viewElement('guide') as HTMLElement);
+    mountGuide(viewElement('guide') as HTMLElement);
   } else if (tab === 'settings') {
     void renderSettings(viewElement('settings') as HTMLElement);
   } else {
@@ -1085,113 +1084,6 @@ function renderProjects(view: HTMLElement): void {
     projectListFilter = value;
     const el = document.getElementById('projects-list');
     if (el) el.innerHTML = projectsListHtml(projectListQuery, projects, today, true, projectListFilter);
-  });
-}
-
-// ---------- 使用指南（第 5 页签；内容构建时从 WEB_USAGE_GUIDE.md 同步内置） ----------
-
-function guideSummaryHtml(q: string): string {
-  // <summary> 只允许短语内容：转义后仅放行行内代码
-  const safe = esc(q);
-  return safe.replace(/`([^`]+?)`/g, '<code>$1</code>');
-}
-
-let guideCache: string | null = null;
-
-function guideBodyHtml(): string {
-  if (guideCache) return guideCache;
-  const lines = guideMd.split('\n');
-  const faqIdx = lines.findIndex((l) => /^#{1,4}\s*.*常见问题/.test(l));
-  let html = mdToHtml((faqIdx === -1 ? lines : lines.slice(0, faqIdx)).join('\n'));
-  if (faqIdx !== -1) {
-    const rest = lines.slice(faqIdx + 1);
-    const tailIdx = rest.findIndex((l) => /^#{1,4}\s/.test(l));
-    const qaLines = tailIdx === -1 ? rest : rest.slice(0, tailIdx);
-    const tail = tailIdx === -1 ? [] : rest.slice(tailIdx);
-    const items: { q: string; a: string[] }[] = [];
-    let cur: { q: string; a: string[] } | null = null;
-    for (const line of qaLines) {
-      const qm = line.match(/^\*\*Q[:：]\s*(.+?)\s*\*\*$/);
-      if (qm) {
-        cur = { q: qm[1].trim(), a: [] };
-        items.push(cur);
-        continue;
-      }
-      if (!cur || !line.trim()) continue;
-      cur.a.push(line);
-    }
-    const faqHtml = items
-      .map(
-        (it) =>
-          '<details class="faq-item"><summary>' + guideSummaryHtml(it.q) + '</summary>' +
-          (it.a.length ? '<div class="faq-answer">' + mdToHtml(it.a.join('\n')) + '</div>' : '') +
-          '</details>'
-      )
-      .join('');
-    html += '<h3>常见问题</h3>' + faqHtml;
-    if (tail.length) html += mdToHtml(tail.join('\n'));
-  }
-  guideCache = html;
-  return html;
-}
-
-function renderGuide(view: HTMLElement): void {
-  view.innerHTML =
-    '<div class="guide">' +
-    '<div class="guide-tools"><label for="guide-search">搜索指南</label>' +
-    '<input id="guide-search" type="search" placeholder="搜索本地指南…">' +
-    '<button class="ghost" type="button" id="guide-search-clear" hidden>清除</button></div>' +
-    '<nav class="guide-index" aria-label="指南目录"><strong>目录</strong><div id="guide-index-links"></div></nav>' +
-    '<p class="hint guide-no-results" id="guide-no-results" hidden>没有匹配内容，请清除搜索词。</p>' +
-    '<div id="guide-content">' + guideBodyHtml() + '</div></div>';
-  const content = document.getElementById('guide-content');
-  const index = document.getElementById('guide-index-links');
-  if (!content || !index) return;
-  const nodes = Array.from(content.children);
-  let section: HTMLElement | null = null;
-  let sectionIndex = 0;
-  for (const node of nodes) {
-    if (!section || node.tagName === 'H2' || node.tagName === 'H3') {
-      section = document.createElement('section');
-      section.className = 'guide-section';
-      sectionIndex += 1;
-      section.id = 'guide-section-' + sectionIndex;
-      content.appendChild(section);
-    }
-    section.appendChild(node);
-  }
-  const sections = Array.from(content.querySelectorAll<HTMLElement>('.guide-section'));
-  const headings = Array.from(content.querySelectorAll<HTMLElement>('h2, h3'));
-  index.innerHTML = headings.map((heading, headingIndex) => {
-    heading.id = 'guide-heading-' + headingIndex;
-    const sectionId = heading.closest<HTMLElement>('.guide-section')?.id ?? '';
-    return '<a href="#' + heading.id + '" class="guide-index-link level-' + heading.tagName.toLowerCase() + '" data-guide-section="' + esc(sectionId) + '">' +
-      esc(heading.textContent ?? '') + '</a>';
-  }).join('');
-  const search = document.getElementById('guide-search') as HTMLInputElement | null;
-  const clear = document.getElementById('guide-search-clear') as HTMLButtonElement | null;
-  const empty = document.getElementById('guide-no-results');
-  const applySearch = (): void => {
-    const query = search?.value.trim().toLocaleLowerCase() ?? '';
-    let visible = 0;
-    sections.forEach((item) => {
-      const match = !query || (item.textContent ?? '').toLocaleLowerCase().includes(query);
-      item.hidden = !match;
-      if (match) visible += 1;
-    });
-    index.querySelectorAll<HTMLAnchorElement>('.guide-index-link').forEach((link) => {
-      const sectionId = link.dataset.guideSection;
-      link.hidden = Boolean(sectionId && document.getElementById(sectionId)?.hidden);
-    });
-    if (clear) clear.hidden = !query;
-    if (empty) empty.hidden = visible > 0;
-  };
-  search?.addEventListener('input', applySearch);
-  clear?.addEventListener('click', () => {
-    if (!search) return;
-    search.value = '';
-    applySearch();
-    search.focus();
   });
 }
 
