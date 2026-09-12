@@ -35,7 +35,8 @@
 
 ## 0 · 前置与铁律
 
-- 两台 Mac：**Studio**（已有工作台）与 **Air**（第二台，装同一个 App）。
+- 两台 Mac：**Studio**（已有工作台）与 **Air**（第二台，装同一个 App）。**两台装同一个 DMG**
+  （必须是从当前源码新构建的，见 §0.1——历史 DMG 里没有「从另一台 Mac 克隆」这段代码）。
 - 一个**专用演练仓库**（GitHub 私有，例如 `summitworkbench-rehearsal`）+ 一个有 `repo` 权限的 PAT。
 - 铁律（来自 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md) §0）：
 
@@ -44,37 +45,90 @@
   2. **`HOME` 隔离会切断 Keychain**。⇒ 演练全程用真实 `HOME`，只把工作区目录指向 `~/Documents/Rehearsal`。
   3. 演练用的工作区是**新建的空工作台**，跑完删掉即可，真实 vault 全程不参与。
 
+### 0.1 为什么要"制造空安装"，以及怎么做
+
+「从另一台 Mac 克隆」和「新建我的工作台」都**只在空安装的向导里**：完整 app 里从设置页重开的
+向导会把步骤钉在「AI 模型」（`state.step = Math.max(fullApp ? 1 : 0, …)`），**没有选择/创建工作区
+那一步**。所以两台机器都要先把本机 profile 收起来，制造一次真正的空安装。
+
+做法（**改名，不要删** —— 这就是整场演练的还原路径）：
+
+```sh
+# 退出 App 后
+cd ~/Library/Application\ Support
+mv SummitWorkbench SummitWorkbench.real-bak     # 真实工作台注册表被"收起来"
+```
+
+App 是否进入空安装只取决于这个注册表（`resolve_workspace()` 只看 active profile；生产模式不允许
+`WORK_ROOT` 回退），所以改完名打开 App 就是连接向导。**真实 vault（如 `~/Documents/Work`）和
+Keychain 都不动。**
+
+收尾时按 §收尾 反向改回来即可，相当于整场演练可一键回滚。
+
+### 0.2 演练仓库与目录约定
+
+- 新建工作台时向导问的是 **Work 文件夹**（`work_root`），vault 会是 `<work_root>/_vault`。
+- 克隆时向导问的是**目标文件夹**，它要的就是 **vault 目录**本身。
+  ⇒ 两台机器统一用：Studio 建 `~/Documents/Rehearsal`（vault = `~/Documents/Rehearsal/_vault`），
+  Air 克隆目标填 `~/Documents/Rehearsal/_vault`（该路径在 Air 上必须**尚不存在**）。
+
 ## A7 · 第二台机器接入（向导「从另一台 Mac 克隆」）
 
-**在 Studio 上准备演练仓库**
+**在 Studio 上准备演练仓库**（先按 §0.1 把 Studio 造成空安装）
 
-1. 打开连接向导（设置页右上「重新打开连接向导」，或首次启动）。
-2. 选「**新建我的工作台**」，路径填 `~/Documents/Rehearsal`，走到完成并进入工作台。
-3. 新建一个空的 GitHub 私有仓库 `summitworkbench-rehearsal`。
+1. 装新 DMG → 打开 App → 应直接进**连接向导**第 1 步「选择工作区」。
+   确认四个选项都在：「新建我的工作台 / 连接已有工作台 / 升级这台 Mac 上的旧工作台 /
+   **从另一台 Mac 克隆**」（最后一个是本轮新加的，只有空安装才有）。
+2. 选「**新建我的工作台**」，路径填 `~/Documents/Rehearsal`，模型与飞书都点「跳过」，走到完成。
+3. 在 GitHub 新建一个**空**私有仓库 `summitworkbench-rehearsal`。
 4. 设置 → **高级与维护** → **Git 同步**：填 HTTPS 地址、GitHub 用户名、PAT →
    点「**预览 HTTPS 转换**」→ 通过后点「**确认并转换**」。
-5. 回到「今日」页随便捕捉一条内容（例如 `演练-A`），让它产生一次提交并推送。
+5. 回到「今日」页捕捉一条内容（例如 `演练-A`），让它产生一次提交并推送。
+6. 核对远端已就绪：`git -C ~/Documents/Rehearsal/_vault log --oneline -3` 有提交，
+   且远端有 workspace marker（`git -C ~/Documents/Rehearsal/_vault ls-files | grep ".summit-workbench/workspace.json"`）。
+7. **Studio 就停在演练工作台上**，先别还原真实 profile（A6.1 需要它作为另一侧）。
 
-**在 Air 上走新旅程（这就是 A7 的证据）**
+**在 Air 上走新旅程（这就是 A7 的证据）**（先按 §0.1 把 Air 造成空安装）
 
-6. 装包并首次打开 → 连接向导 → 选「**从另一台 Mac 克隆**」。
-7. 填四项并点「**连接并检查**」：
+8. 装**同一个** DMG → 打开 App → 连接向导 → 选「**从另一台 Mac 克隆**」。
+9. 填四项并点「**连接并检查**」：
    - 私有 HTTPS 仓库地址：`https://github.com/<you>/summitworkbench-rehearsal.git`
-   - 目标文件夹：`~/Documents/Rehearsal`（Air 上**必须还不存在**）
-   - GitHub 用户名、访问令牌（PAT）
-8. **期望**：短暂等待后出现确认块，显示 **工作区短码**、**兼容性**、**远端地址**。
-   此时 Air 上 `~/Documents/Rehearsal` **还没有**正式落盘（只有暂存目录）。
-9. 点「**确认并开始使用**」→ 继续连模型/飞书（可跳过）。
+   - 目标文件夹：`~/Documents/Rehearsal/_vault`（Air 上**必须还不存在**）
+   - GitHub 用户名、访问令牌（PAT）——**PAT 由本人粘贴，不进终端参数、截图、诊断包或聊天**
+10. **期望**：短暂等待后出现确认块，显示 **工作区短码**、**兼容性**（应为 ok）、**远端地址**。
+    此时 Air 上只有暂存目录（`~/Documents/Rehearsal/.summit-workbench-remote-*`），
+    **还没有** `_vault`。
+11. 点「**确认并开始使用**」→ 模型/飞书都跳过 → 进入工作台。
 
 **A7 通过标准（逐条留证）**
 
-- [ ] Air 的 `设置 → 高级与维护 → 工作台切换` 里出现该工作台，且 `设备角色` 为 **secondary**。
-- [ ] Air 的 vault 里能看到 Studio 第 5 步写的内容（克隆真的带过来了）。
-- [ ] Air 的 Keychain 里有 `com.summitworkbench.credentials.<workspace_id>` / `git:github.com:<user>` 条目，
-      且**值是那份 PAT**（钥匙串访问.app 里搜 `SummitWorkbench`）。
-- [ ] `~/Library/Application Support/SummitWorkbench/onboarding-draft.json` **不含** PAT
-      （向导完成时会清理该草稿；若还在，也必须是 `git_mode=remote` + `remote_url` + `git_username`，无 `pat`）。
-- [ ] 演练仓库的任意提交里**不含** PAT（`git log -p | grep -c github_pat_` 为 0）。
+> 注意：设置页的「工作台切换」**不显示设备角色**（只显示路径、同步状态与连接状态），
+> 所以角色要用下面第 1 条的命令从本机 profile 读，不要凭界面判断。
+
+1. Air 的本机 profile 是 **secondary**，且回填了远端与用户名（`profiles/<workspace_id>/config.toml`）：
+   ```sh
+   grep -E "workspace_id|device_role|git_username|git_remote_url" \
+     ~/Library/Application\ Support/SummitWorkbench/profiles/*/config.toml
+   ```
+   期望 `device_role = "secondary"`，`git_remote_url` 就是那个 HTTPS 仓库。
+   同时界面「工作台切换」里能看到该工作台、徽标为它的工作区短码。
+2. Air 的 vault 里能看到 Studio 第 5 步捕捉的内容（克隆真的带过来了）。
+3. Air 的 Keychain 里有该 workspace 的 Git 凭据，且**值是那份 PAT**：
+   ```sh
+   security find-generic-password \
+     -s com.summitworkbench.credentials.<workspace_id> \
+     -a git:github.com:<user> -w | head -c 12
+   ```
+   （或打开「钥匙串访问」搜 `SummitWorkbench`。）注意：这一步会**打印 PAT 前缀**，
+   不要把终端输出贴进任何记录。
+4. `onboarding-draft.json` 已清理，或其中**没有 `pat`**：
+   ```sh
+   ls ~/Library/Application\ Support/SummitWorkbench/onboarding-draft.json 2>/dev/null || echo "已清理（期望）"
+   ```
+5. 演练仓库的任意提交里**不含** PAT：
+   ```sh
+   git -C ~/Documents/Rehearsal/_vault log -p | grep -c github_pat_   # 期望 0
+   ```
 
 ## A6 · 双机分叉与冲突恢复
 
@@ -138,10 +192,19 @@
 
 ## 收尾
 
-1. 两台机器上删掉演练工作台：`设置 → 高级与维护 → 工作台切换`，在对应条目点
-   「**移除此 Mac 上的工作台**」（只删本机 profile/runtime/草稿，vault、远端与 Keychain 都不动）。
-   移除**当前**工作台后需要重启工作台才生效——按提示重启即可。随后删掉 `~/Documents/Rehearsal`。
-2. 删除 GitHub 上的演练仓库。
-3. 在 `OPEN-VERIFICATION-ITEMS.md` 里登记：**A7** 移入「已关闭」；**A6** 若只做了 §A6.1 抽查，
+因为两台机器都是按 §0.1 用"改名"制造的空安装，收尾也用改名法——**整场演练可一键回滚**：
+
+1. 两台机器都退出 App。
+2. 删掉演练产生的 Application Support 目录（现在名字就叫 `SummitWorkbench`），
+   把 `SummitWorkbench.real-bak` **改回** `SummitWorkbench`。
+3. 打开 App → 应回到你**真实**的工作台（工作台列表里是原来那些）。
+4. 两台都删掉 `~/Documents/Rehearsal`；删除 GitHub 上的演练仓库。
+
+> 如果演练中想让某台机器就地"下车"而不整体还原，也可以用新按钮：设置 →
+> 高级与维护 → 工作台切换 → 「**移除此 Mac 上的工作台**」（只删本机 profile/runtime/草稿，
+> vault、远端与 Keychain 都不动；移除当前工作台后需重启才生效）。
+
+5. 在 `OPEN-VERIFICATION-ITEMS.md` 里登记：**A7** 移入「已关闭」；**A6** 若只做了 §A6.1 抽查，
    把 A6 一行改写为"已在 build 29 完整验收 + 已在本 build 抽查通过"，并写明本 build 的
-   `frontend_build`（`build-meta.json`）、日期与逐条证据；若走了 §A6.3 完整重跑，按完整口径关闭。
+   `frontend_build`（`build-meta.json` 或设置页版本状态条）、日期与逐条证据；若走了 §A6.3
+   完整重跑，按完整口径关闭。
