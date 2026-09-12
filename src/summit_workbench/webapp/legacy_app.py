@@ -38,10 +38,8 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 
 if TYPE_CHECKING:
-    from summit_workbench.providers.llm.config import ModelConfig
     from summit_workbench.workflows.ask.ask import AskTurn
 
-from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
 from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
@@ -61,20 +59,13 @@ from summit_workbench.repositories.signal_snapshot import (
     mark_task_edited,
     snapshot_path,
 )
-from summit_workbench.repositories.thread_notes import (
-    append_work_log,
-    save_thread_artifact,
-)
 from summit_workbench.webapp.api import (
-    ArtifactSavePayload,
     AskPayload,
     CapturePayload,
-    LogAppendPayload,
     MeetingEditPayload,
     OnboardingCreatePayload,
     OnboardingPreflightPayload,
     OnboardingVaultPayload,
-    ProjectStatePayload,
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
@@ -97,6 +88,7 @@ from summit_workbench.webapp.knowledge_sources import (
 from summit_workbench.webapp.knowledge_sources import (
     _is_knowledge_source as _is_knowledge_source,
 )
+from summit_workbench.webapp.model_config import _load_model_config_for_context
 from summit_workbench.webapp.mutation_response import (
     _commit_note,
     _mutation_fields,
@@ -132,6 +124,10 @@ from summit_workbench.webapp.routers.review_apply import (
 from summit_workbench.webapp.routers.settings import register_settings_routes
 from summit_workbench.webapp.routers.state import register_state_routes
 from summit_workbench.webapp.routers.sync import register_sync_routes
+from summit_workbench.webapp.routers.threads import (
+    register_thread_document_routes,
+    register_thread_routes,
+)
 from summit_workbench.webapp.security import (
     allowed_hosts,
     error_payload,
@@ -142,11 +138,6 @@ from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
     run_local_mutation,
 )
-from summit_workbench.workflows.thread_activity_migration import (
-    ThreadActivityConsistencyReport,
-    ThreadActivityMigration,
-    ThreadActivityMigrationMode,
-)
 
 _create_restricted_app = create_restricted_app
 
@@ -156,32 +147,6 @@ _create_restricted_app = create_restricted_app
 # write vault content, create commits, or push.  Without this exemption the
 # migration gate requires HTTPS while the read-only gate prevents the only
 # operation that can establish HTTPS (a deadlock).
-
-
-def _load_model_config_for_context(ctx: WebContext, capability: str) -> ModelConfig:
-    """Load legacy test/development config without changing its monkeypatch contract."""
-    from summit_workbench.workflows.settings_connections import model_config
-
-    if ctx.workspace_id is None:
-        from summit_workbench.providers.llm import load_model_config
-
-        return load_model_config(capability)
-    return model_config(
-        capability=capability,
-        config_file=ctx.provider_config_file(),
-        workspace_id=ctx.workspace_id,
-    )
-
-
-def _thread_activity_migration(ctx: WebContext) -> ThreadActivityMigration | None:
-    """Create the P2-01B seam only for a frozen production workspace context."""
-    if ctx.active_workspace is None or not ctx.workspace_id or not ctx.active_workspace.device_id:
-        return None
-    return ThreadActivityMigration.from_environment(
-        ctx.vault_dir,
-        workspace_id=ctx.workspace_id,
-        device_id=ctx.active_workspace.device_id,
-    )
 
 
 def _undo_error_response(code: str, message: str, *, operation_id: str = "unknown") -> JSONResponse:
@@ -525,40 +490,10 @@ def create_app(
         feishu_clients=feishu_clients,
     )
 
-    @app.post("/api/threads/state")
-    def api_set_project_state(payload: ProjectStatePayload) -> dict[str, object]:
-        """把主档案「当前状态」区块替换为一段文本（产物摘要 → 状态草案，显式确认后写回）。"""
-        text = payload.text.strip()
-        if not text:
-            return {"ok": False, "message": "状态内容为空"}
-        registry = load_project_registry(ctx.vault_dir)
-        project = registry.resolve(payload.project.strip())
-        if project is None:
-            return {"ok": False, "message": f"项目未建档：{payload.project.strip()}"}
-
-        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            from summit_workbench.repositories.note_status import update_note_status
-            from summit_workbench.repositories.vault import load_note as _load_note
-            from summit_workbench.repositories.writeback import set_project_status
-
-            path, _written = set_project_status(ctx.vault_dir, project, text)
-            note = _load_note(path)
-            status = note.meta.get("status")
-            if isinstance(status, str):
-                update_note_status(ctx.vault_dir, path, status, extra={"updated": ctx.today()})
-            return LocalMutationOutcome(path, (path,))
-
-        try:
-            result = runtime.run("threads/state", mutate)
-        except ValueError as exc:
-            return {"ok": False, "message": f"更新失败：{exc}"}
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已更新 {project} 当前状态{git_note}",
-            "project": project,
-            **_mutation_fields(result),
-        }
+    register_thread_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
     from summit_workbench.webapp.routers.projects import register_project_read_routes
 
@@ -566,164 +501,10 @@ def create_app(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id)
     )
 
-    @app.get("/api/threads/activity-consistency")
-    def api_thread_activity_consistency() -> dict[str, object]:
-        """Return the deterministic old/new report for the P2-01B event slice."""
-        migration = _thread_activity_migration(ctx)
-        if migration is None:
-            report = ThreadActivityConsistencyReport(
-                mode=ThreadActivityMigrationMode.LEGACY,
-                status="disabled",
-            )
-        else:
-            report = migration.inspect()
-        return {"ok": report.ok, "thread_activity_consistency": report.as_dict()}
-
-    @app.post("/api/threads/logs")
-    def api_append_log(payload: LogAppendPayload) -> dict[str, object]:
-        """追加推进日志（可关联多线程）；AI 消化是加分项，任何失败只存原文。"""
-        text = payload.text.strip()
-        if not text:
-            return {"ok": False, "message": "日志内容为空"}
-        registry = load_project_registry(ctx.vault_dir)
-        resolved: list[str] = []
-        for name in payload.projects:
-            cid = registry.resolve(name) or name
-            if cid and cid in registry.canonical and cid not in resolved:
-                resolved.append(cid)
-        if not resolved:
-            return {"ok": False, "message": "没有可关联的项目/线程（先在「项目」页建档）"}
-
-        digest: LogDigest | None = None
-        enriched = False
-        try:
-            from summit_workbench.config.secrets import CredentialError, resolve_credential
-            from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError
-            from summit_workbench.workflows.threadnotes import digest_log
-
-            cfg = _load_model_config_for_context(ctx, "capture")
-            api_key = resolve_credential(cfg.api_key_ref)
-            prompt = load_prompt("log-digest")
-            digest = digest_log(cfg, api_key, prompt, text, project_hints=resolved)
-            enriched = True
-        except (LLMError, CredentialError, FileNotFoundError, ValueError):
-            digest = None
-
-        summary = digest.summary if digest else ""
-        involved = digest.involved if digest else []
-        tags = digest.tags if digest else []
-
-        archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
-        activity_migration = _thread_activity_migration(ctx)
-
-        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            path = append_work_log(
-                ctx.vault_dir,
-                projects=resolved,
-                text=text,
-                summary=summary,
-                involved=involved,
-                tags=tags,
-                next_step=digest.next_step if digest else None,
-                decision=digest.decision if digest else None,
-                causation_operation_id=_operation_id,
-                activity_migration=activity_migration,
-            )
-            report = activity_migration.last_report.as_dict() if activity_migration else None
-            changed_paths = (
-                path,
-                *archives,
-                *(activity_migration.last_write_paths if activity_migration else ()),
-            )
-            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
-
-        try:
-            result = runtime.run("threads/logs", mutate)
-        except ValueError as exc:
-            return {"ok": False, "message": f"保存失败：{exc}"}
-        path = result.business_return
-        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}{git_note}",
-            "path": str(path),
-            "summary": summary,
-            "enriched": enriched,
-            **_mutation_fields(result),
-        }
-
-    @app.post("/api/threads/artifacts")
-    def api_save_artifact(payload: ArtifactSavePayload) -> dict[str, object]:
-        """把 AI 产物（阶段总结/PRD/背景包等）存入线程档案并生成索引。"""
-        text = payload.text.strip()
-        if not text:
-            return {"ok": False, "message": "产物内容为空"}
-        registry = load_project_registry(ctx.vault_dir)
-        project = registry.resolve(payload.project.strip())
-        if project is None:
-            return {
-                "ok": False,
-                "message": f"项目未建档：{payload.project.strip()}（先在「项目」页建档再存产物）",
-            }
-        title_hint = (payload.title or "").strip()
-        index: ArtifactIndex | None = None
-        enriched = False
-        try:
-            from summit_workbench.config.secrets import CredentialError, resolve_credential
-            from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError
-            from summit_workbench.workflows.threadnotes import index_artifact
-
-            cfg = _load_model_config_for_context(ctx, "capture")
-            api_key = resolve_credential(cfg.api_key_ref)
-            prompt = load_prompt("artifact-index")
-            index = index_artifact(cfg, api_key, prompt, text, title_hint=title_hint)
-            enriched = True
-        except (LLMError, CredentialError, FileNotFoundError, ValueError):
-            index = None
-
-        title = (index.title if index and index.title else title_hint) or ""
-        summary = index.summary if index else ""
-        kind = index.kind if index else ArtifactKind.OTHER
-        activity_migration = _thread_activity_migration(ctx)
-
-        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            path = save_thread_artifact(
-                ctx.vault_dir,
-                project=project,
-                text=text,
-                title=title,
-                summary=summary,
-                kind=kind,
-                causation_operation_id=_operation_id,
-                activity_migration=activity_migration,
-            )
-            report = activity_migration.last_report.as_dict() if activity_migration else None
-            changed_paths = (
-                path,
-                ctx.vault_dir / "projects" / f"{project}.md",
-                *(activity_migration.last_write_paths if activity_migration else ()),
-            )
-            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
-
-        try:
-            result = runtime.run("threads/artifacts", mutate)
-        except ValueError as exc:
-            return {"ok": False, "message": f"保存失败：{exc}"}
-        path = result.business_return
-        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        git_note = _commit_note(result.commit_result)
-        return {
-            "ok": True,
-            "message": f"已存入 {project} 档案 · {tail}{git_note}",
-            "path": str(path),
-            "title": title,
-            "summary": summary,
-            "enriched": enriched,
-            **_mutation_fields(result),
-        }
+    register_thread_document_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
     @app.post("/api/capture", response_model=None)
     def api_capture(request: Request, payload: CapturePayload) -> dict[str, object] | JSONResponse:
