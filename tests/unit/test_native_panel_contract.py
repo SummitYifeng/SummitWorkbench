@@ -12,6 +12,33 @@ def _source(name: str) -> str:
     return (_NATIVE / name).read_text(encoding="utf-8")
 
 
+def _web_sources() -> str:
+    """Every frontend source file, concatenated.
+
+    The workbench is being split from ``legacy-main.ts`` into ``features/*`` (see
+    ``docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md``); these guards must not depend on which
+    module currently owns a string.
+    """
+    files = sorted(
+        path for path in (_ROOT / "web" / "src").rglob("*.ts") if not path.name.endswith(".d.ts")
+    )
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
+def _web_source_after(anchor: str) -> str:
+    """Text from ``anchor`` to the end of *the file that contains it*.
+
+    Deliberately per-file, like the browser contract test's windowed assertions: slicing a
+    concatenation would let an unrelated later file satisfy the guard.
+    """
+    for path in sorted((_ROOT / "web" / "src").rglob("*.ts")):
+        text = path.read_text(encoding="utf-8")
+        at = text.find(anchor)
+        if at >= 0:
+            return text[at:]
+    raise AssertionError(f"anchor not found in any frontend source: {anchor}")
+
+
 def test_production_native_shell_is_webkit_and_single_window() -> None:
     source = "\n".join(path.read_text(encoding="utf-8") for path in _NATIVE.glob("*.swift"))
     assert "import WebKit" in source
@@ -73,7 +100,7 @@ def test_build_script_compiles_native_sources_and_writes_manifest() -> None:
 
 def test_web_native_bridge_reports_ready_and_supports_native_quit() -> None:
     bridge = (_ROOT / "web" / "src" / "lifecycle" / "native-bridge.ts").read_text(encoding="utf-8")
-    main = (_ROOT / "web" / "src" / "legacy-main.ts").read_text(encoding="utf-8")
+    main = _web_sources()
     assert "clientReady" in bridge
     assert "postMessage" in bridge
     assert "notifyClientReady(CLIENT_BUILD, remote.server_instance)" in main
@@ -82,11 +109,10 @@ def test_web_native_bridge_reports_ready_and_supports_native_quit() -> None:
 
 def test_settings_doctor_declares_json_and_sync_export_supports_native_save() -> None:
     bridge = (_ROOT / "web" / "src" / "lifecycle" / "native-bridge.ts").read_text(encoding="utf-8")
-    main = (_ROOT / "web" / "src" / "legacy-main.ts").read_text(encoding="utf-8")
     native = _source("Models.swift") + "\n" + _source("LifecycleCoordinator.swift")
 
-    doctor = main[main.index("async function runSettingsDoctor") :]
-    export = main[main.index("async function exportSyncSnapshot") :]
+    doctor = _web_source_after("async function runSettingsDoctor")
+    export = _web_source_after("async function exportSyncSnapshot")
     assert "headers: { 'Content-Type': 'application/json' }" in doctor
     assert "saveTextFile" in bridge
     assert "sendNativeMessage({" in export

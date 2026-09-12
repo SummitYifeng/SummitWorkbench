@@ -5,6 +5,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _web_sources() -> str:
+    """Every frontend source file, concatenated.
+
+    The workbench is being split from ``legacy-main.ts`` into ``features/*`` (see
+    ``docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md``); these guards must not depend on which
+    module currently owns a string.
+    """
+    files = sorted(
+        path for path in (ROOT / "web" / "src").rglob("*.ts") if not path.name.endswith(".d.ts")
+    )
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
 def test_ci_has_reproducible_python_node_lock_and_secret_gates() -> None:
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     for required in (
@@ -62,7 +75,7 @@ def test_p107c_has_real_workflow_and_native_behavior_gates() -> None:
         encoding="utf-8"
     )
     bridge = (ROOT / "web/src/lifecycle/native-bridge.ts").read_text(encoding="utf-8")
-    main = (ROOT / "web/src/legacy-main.ts").read_text(encoding="utf-8")
+    main = _web_sources()
     assert "actionlint" in workflow_lint
     assert "UpdateNetworking" in update_source
     assert "UpdateFileSystem" in update_source
