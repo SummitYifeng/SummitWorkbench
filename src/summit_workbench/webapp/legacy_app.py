@@ -52,14 +52,9 @@ from summit_workbench.repositories.autocommit import (
     undo_error_code,
 )
 from summit_workbench.repositories.daily_note import read_brief_block
-from summit_workbench.repositories.external_action_outbox import (
-    latest_action,
-    latest_actions,
-)
 from summit_workbench.repositories.project_registry import (
     load_project_registry,
 )
-from summit_workbench.repositories.review_page import review_path
 from summit_workbench.repositories.signal_snapshot import (
     mark_meeting_edited,
     mark_task_completed,
@@ -74,7 +69,6 @@ from summit_workbench.webapp.api import (
     ArtifactSavePayload,
     AskPayload,
     CapturePayload,
-    ExternalActionReconcilePayload,
     LogAppendPayload,
     MeetingEditPayload,
     OnboardingCreatePayload,
@@ -84,7 +78,6 @@ from summit_workbench.webapp.api import (
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
-    external_action_payload,
 )
 from summit_workbench.webapp.build_info import (
     WebBuildInfo,
@@ -93,8 +86,6 @@ from summit_workbench.webapp.build_info import (
 )
 from summit_workbench.webapp.context import WebContext as WebContext
 from summit_workbench.webapp.feishu_pool import (
-    _build_meeting_creator,
-    _build_task_creator,
     _FeishuClientPool,
 )
 from summit_workbench.webapp.knowledge_sources import (
@@ -130,10 +121,13 @@ from summit_workbench.webapp.restricted_app import (
 from summit_workbench.webapp.restricted_app import (
     create_restricted_app,
 )
-from summit_workbench.webapp.review_view import _plan_text
 from summit_workbench.webapp.routers.review import (
     register_review_page_routes,
     register_review_routes,
+)
+from summit_workbench.webapp.routers.review_apply import (
+    register_review_apply_page_routes,
+    register_review_apply_routes,
 )
 from summit_workbench.webapp.routers.settings import register_settings_routes
 from summit_workbench.webapp.routers.state import register_state_routes
@@ -143,19 +137,10 @@ from summit_workbench.webapp.security import (
     error_payload,
     validate_bind_host,
 )
-from summit_workbench.webapp.views import render_dashboard, render_plan
-from summit_workbench.workflows.external_actions import (
-    authorize_retry,
-    reconcile_not_found,
-    reconcile_succeeded,
-    workspace_id_for_vault,
-)
+from summit_workbench.webapp.views import render_dashboard
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
     run_local_mutation,
-)
-from summit_workbench.workflows.review_apply import (
-    apply_meeting_review,
 )
 from summit_workbench.workflows.thread_activity_migration import (
     ThreadActivityConsistencyReport,
@@ -534,101 +519,11 @@ def create_app(
         runtime=runtime,
     )
 
-    @app.get("/api/external-actions")
-    def api_external_actions() -> dict[str, object]:
-        workspace_id = workspace_id_for_vault(ctx.vault_dir)
-        actions = latest_actions(ctx.vault_dir, workspace_id=workspace_id)
-        return {"ok": True, "actions": [external_action_payload(action) for action in actions]}
-
-    @app.post("/api/external-actions/{operation_id}/reconcile")
-    def api_reconcile_external_action(
-        operation_id: str, payload: ExternalActionReconcilePayload
-    ) -> dict[str, object]:
-        action = latest_action(ctx.vault_dir, operation_id)
-        if action is None or action.workspace_id != workspace_id_for_vault(ctx.vault_dir):
-            return {"ok": False, "message": "外部动作不存在或不属于当前工作区"}
-        current_action = action
-        try:
-            if payload.decision == "recheck":
-                return {
-                    "ok": True,
-                    "action": external_action_payload(action),
-                    "message": "当前适配器不支持可靠远端检索，请人工确认是否已创建",
-                }
-            if payload.decision == "succeeded":
-                result = runtime.run(
-                    "external-actions/reconcile",
-                    lambda _operation_id: LocalMutationOutcome(
-                        reconcile_succeeded(ctx.vault_dir, current_action, payload.remote_id or ""),
-                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
-                    ),
-                )
-                action = result.business_return
-            elif payload.decision == "not-found":
-                result = runtime.run(
-                    "external-actions/reconcile",
-                    lambda _operation_id: LocalMutationOutcome(
-                        reconcile_not_found(ctx.vault_dir, current_action),
-                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
-                    ),
-                )
-                action = result.business_return
-            elif payload.decision == "retry":
-                result = runtime.run(
-                    "external-actions/reconcile",
-                    lambda _operation_id: LocalMutationOutcome(
-                        authorize_retry(
-                            ctx.vault_dir, current_action, confirm=payload.confirm_retry
-                        ),
-                        (ctx.vault_dir / "_signals" / "external-actions" / "log.jsonl",),
-                    ),
-                )
-                action = result.business_return
-            else:
-                return {
-                    "ok": False,
-                    "message": ("decision 必须是 recheck、succeeded、not-found 或 retry"),
-                }
-        except ValueError as exc:
-            return {"ok": False, "message": str(exc)}
-        return {"ok": True, "action": external_action_payload(action)}
-
-    @app.post("/api/review/apply", response_model=None)
-    def api_apply(request: Request) -> dict[str, object] | JSONResponse:
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            report = apply_meeting_review(
-                ctx.vault_dir,
-                ctx.work_root,
-                apply=True,
-                task_creator=_build_task_creator(ctx, feishu_clients),
-                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
-            )
-        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
-            return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
-        # 自动留痕：写回目标文件 + 审批页 + 审计归档（P0' 埋点；库外文件自动跳过）
-        touched: list[Path | str] = [review_path(ctx.vault_dir)]
-        if report.archive_path is not None:
-            touched.append(report.archive_path)
-        touched.extend(
-            a.destination for a in report.actions if not a.destination.startswith("feishu-")
-        )
-        git_note = runtime.commit_suffix(touched, "审批应用写回")
-        external_actions = latest_actions(
-            ctx.vault_dir, workspace_id=workspace_id_for_vault(ctx.vault_dir)
-        )
-        return {
-            "ok": True,
-            "plan_text": _plan_text(report),
-            "executed": True,
-            "applied": report.applied,
-            "rejected": report.rejected,
-            "failed": report.failed,
-            "git_note": git_note,
-            "external_actions": [external_action_payload(action) for action in external_actions],
-        }
+    register_review_apply_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+        feishu_clients=feishu_clients,
+    )
 
     @app.post("/api/threads/state")
     def api_set_project_state(payload: ProjectStatePayload) -> dict[str, object]:
@@ -1337,23 +1232,11 @@ def create_app(
         runtime=runtime,
     )
 
-    @app.post("/review/apply", response_class=HTMLResponse, response_model=None)
-    def apply(request: Request) -> HTMLResponse | JSONResponse:
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            report = apply_meeting_review(
-                ctx.vault_dir,
-                ctx.work_root,
-                apply=True,
-                task_creator=_build_task_creator(ctx, feishu_clients),
-                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
-            )
-        except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
-            detail = f"应用失败：{type(exc).__name__}: {exc}"
-            return HTMLResponse(render_plan(detail, executed=True))
-        return HTMLResponse(render_plan(_plan_text(report), executed=True))
+    register_review_apply_page_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+        feishu_clients=feishu_clients,
+    )
 
     # ---- onboarding 服务 API（P0-08：服务 + API，无 UI） ----
 
