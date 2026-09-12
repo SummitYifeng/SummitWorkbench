@@ -708,7 +708,7 @@ def test_api_ask_preserves_structured_answer_and_citation_scope(
         "unanswerable": False,
     }
     monkeypatch.setattr(
-        "summit_workbench.webapp.legacy_app._ask_html",
+        "summit_workbench.webapp.routers.ask._ask_html",
         lambda *_args, **_kwargs: ("<p>旧版回答</p>", ["projects/P1", "projects/P2"], answer),
     )
     data = client.post("/api/ask", json={"question": "状态如何"}).json()

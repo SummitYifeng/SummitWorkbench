@@ -22,23 +22,21 @@ import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from html import escape
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
     JSONResponse,
-    RedirectResponse,
 )
 from fastapi.staticfiles import StaticFiles
 
 if TYPE_CHECKING:
-    from summit_workbench.workflows.ask.ask import AskTurn
+    pass
 
 from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
@@ -50,16 +48,13 @@ from summit_workbench.repositories.autocommit import (
     undo_error_code,
 )
 from summit_workbench.repositories.daily_note import read_brief_block
-from summit_workbench.repositories.project_registry import (
-    load_project_registry,
-)
 from summit_workbench.webapp.api import (
-    AskPayload,
     OnboardingCreatePayload,
     OnboardingPreflightPayload,
     OnboardingVaultPayload,
     UndoRevertPayload,
 )
+from summit_workbench.webapp.ask_view import _ask_html as _ask_html
 from summit_workbench.webapp.build_info import (
     WebBuildInfo,
     mode_from_environment,
@@ -98,6 +93,14 @@ from summit_workbench.webapp.restricted_app import (
 )
 from summit_workbench.webapp.restricted_app import (
     create_restricted_app,
+)
+from summit_workbench.webapp.routers.ask import (
+    register_ask_page_routes,
+    register_ask_routes,
+)
+from summit_workbench.webapp.routers.brief import (
+    register_brief_page_routes,
+    register_brief_routes,
 )
 from summit_workbench.webapp.routers.capture import register_capture_routes
 from summit_workbench.webapp.routers.review import (
@@ -147,79 +150,6 @@ def _undo_error_response(code: str, message: str, *, operation_id: str = "unknow
         status_code=status_code,
         content=error_payload(code=code, message=message, operation_id=operation_id),
     )
-
-
-def _cited_source_ids(answer: dict[str, object] | None) -> list[str]:
-    if not answer:
-        return []
-    cited: set[str] = set()
-    facts = answer.get("facts")
-    if isinstance(facts, list):
-        for fact in facts:
-            if isinstance(fact, dict) and isinstance(fact.get("source_id"), str):
-                cited.add(fact["source_id"])
-    conflicts = answer.get("conflicts")
-    if isinstance(conflicts, list):
-        for conflict in conflicts:
-            if not isinstance(conflict, dict):
-                continue
-            sides = conflict.get("sides")
-            if isinstance(sides, list):
-                for side in sides:
-                    if isinstance(side, dict) and isinstance(side.get("source_id"), str):
-                        cited.add(side["source_id"])
-    return sorted(cited)
-
-
-def _ask_html(
-    vault_dir: Path,
-    question: str,
-    history: tuple[AskTurn, ...] = (),
-    project: str | None = None,
-    *,
-    config_file: Path | None = None,
-    workspace_id: str | None = None,
-) -> tuple[str, list[str], dict[str, object] | None]:
-    """跑一次 wb ask（可带追问上下文与项目/线程范围）并渲染为 HTML。
-
-    模型不可用时返回可见错误；source_ids 供前端存进会话，追问时回传给后端。
-    """
-    from summit_workbench.config.secrets import CredentialError, resolve_credential
-    from summit_workbench.prompts import load_prompt
-    from summit_workbench.providers.llm import LLMError, load_model_config
-    from summit_workbench.workflows.ask.ask import answer_question
-
-    try:
-        if config_file is None and workspace_id is None:
-            cfg = load_model_config("qa")
-        else:
-            cfg = load_model_config("qa", config_file, workspace_id=workspace_id)
-        api_key = resolve_credential(cfg.api_key_ref)
-        prompt = load_prompt("qa-answer")
-        result = answer_question(
-            vault_dir, question, cfg, api_key, prompt=prompt, history=history, project=project
-        )
-    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', [], None
-
-    answer = result.answer
-    parts = [f"<p><strong>{escape(answer.summary)}</strong></p>"]
-    if answer.facts:
-        parts.append("<h4>事实（带来源）</h4><ul>")
-        parts += [
-            f"<li>{escape(f.text)} <span class='wikilink'>[[{escape(f.source_id)}]]</span></li>"
-            for f in answer.facts
-        ]
-        parts.append("</ul>")
-    if answer.suggestions:
-        parts.append("<h4>建议（模型推断）</h4><ul>")
-        parts += [f"<li>{escape(s)}</li>" for s in answer.suggestions]
-        parts.append("</ul>")
-    source_ids = [c.source_id for c in result.sources]
-    if result.sources:
-        srcs = "、".join(f"[[{escape(c.source_id)}]]" for c in result.sources)
-        parts.append(f'<p class="not-actionable">召回来源：{srcs}</p>')
-    return "\n".join(parts), source_ids, answer.model_dump(mode="json")
 
 
 def _run_web_import(
@@ -498,103 +428,14 @@ def create_app(
         feishu_clients=feishu_clients,
     )
 
-    @app.post("/api/run/brief", response_model=None)
-    def api_run_brief(request: Request) -> dict[str, object] | JSONResponse:
-        from summit_workbench.workflows.brief.runner import run_brief
+    register_brief_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
-        blocked = runtime.sync_blocked(request)
-        if blocked is not None:
-            return blocked
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            run = run_brief(
-                work_root=ctx.work_root,
-                vault_dir=ctx.vault_dir,
-                timezone=ctx.timezone,
-                day=ctx.today(),
-                write=True,
-                notify=False,
-                config_file=ctx.provider_config_file(),
-                workspace_id=ctx.workspace_id,
-            )
-            commit_note = runtime.commit_suffix(
-                run.persisted_paths,
-                f"brief {ctx.today()}",
-            )
-            return {
-                "ok": True,
-                "message": (
-                    f"已生成今日简报（健康度 {run.result.brief.health.level}）{commit_note}"
-                ),
-            }
-        except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
-            return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
-
-    @app.post("/api/run/weekly", response_model=None)
-    def api_run_weekly(request: Request) -> dict[str, object] | JSONResponse:
-        from summit_workbench.workflows.weekly.weekly import generate_weekly
-
-        blocked = runtime.sync_blocked(request)
-        if blocked is not None:
-            return blocked
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            result = generate_weekly(
-                ctx.work_root,
-                ctx.vault_dir,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
-                write=True,
-            )
-            return {"ok": True, "message": f"已生成周复盘 {result.review.week}"}
-        except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
-            return {"ok": False, "message": f"生成失败：{type(exc).__name__}: {exc}"}
-
-    @app.post("/api/ask", response_model=None)
-    def api_ask(request: Request, payload: AskPayload) -> dict[str, object] | JSONResponse:
-        question = payload.question.strip()
-        if not question:
-            return {"ok": False, "message": "请输入问题"}
-        from summit_workbench.workflows.ask.ask import AskTurn
-
-        history = tuple(
-            AskTurn(question=t.question.strip(), sources=tuple(t.sources))
-            for t in payload.history
-            if t.question.strip()
-        )
-        project = None
-        if payload.project:
-            project = load_project_registry(ctx.vault_dir).resolve(payload.project)
-        ask_result = _ask_html(
-            ctx.vault_dir,
-            question,
-            history=history,
-            project=project,
-            config_file=ctx.config_file,
-            workspace_id=ctx.workspace_id,
-        )
-        # 保留旧测试/扩展对二元返回值的兼容；新实现额外提供结构化答案。
-        html, source_ids = ask_result[0], ask_result[1]
-        answer = ask_result[2] if len(ask_result) > 2 else None
-        if html.startswith('<p class="not-actionable">问答不可用：'):
-            return JSONResponse(
-                status_code=503,
-                content=error_payload(
-                    code="ask_unavailable",
-                    message="问答服务暂不可用",
-                    operation_id=_operation_id(request),
-                ),
-            )
-        return {
-            "ok": True,
-            "answer_html": html,
-            "source_ids": source_ids,
-            "cited_source_ids": _cited_source_ids(answer),
-            "answer": answer,
-        }
+    register_ask_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+    )
 
     @app.post("/api/meetings/import")
     def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
@@ -722,64 +563,15 @@ def create_app(
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
-    @app.post("/run/brief", response_class=RedirectResponse, response_model=None)
-    def run_brief_endpoint(request: Request) -> RedirectResponse | JSONResponse:
-        from summit_workbench.workflows.brief.runner import run_brief
+    register_brief_page_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
-        blocked = runtime.sync_blocked(request)
-        if blocked is not None:
-            return blocked
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            run = run_brief(
-                work_root=ctx.work_root,
-                vault_dir=ctx.vault_dir,
-                timezone=ctx.timezone,
-                day=ctx.today(),
-                write=True,
-                notify=False,
-            )
-            msg = f"已生成今日简报（健康度 {run.result.brief.health.level}）"
-        except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
-            msg = f"生成失败：{type(exc).__name__}: {exc}"
-        return RedirectResponse(url=f"/?msg={msg}", status_code=303)
-
-    @app.post("/run/weekly", response_class=RedirectResponse, response_model=None)
-    def run_weekly_endpoint(request: Request) -> RedirectResponse | JSONResponse:
-        from summit_workbench.workflows.weekly.weekly import generate_weekly
-
-        blocked = runtime.sync_blocked(request)
-        if blocked is not None:
-            return blocked
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        try:
-            result = generate_weekly(
-                ctx.work_root,
-                ctx.vault_dir,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
-                write=True,
-            )
-            msg = f"已生成周复盘 {result.review.week}"
-        except Exception as exc:  # noqa: BLE001
-            msg = f"生成失败：{type(exc).__name__}: {exc}"
-        return RedirectResponse(url=f"/?msg={msg}", status_code=303)
-
-    @app.post("/ask", response_class=HTMLResponse)
-    def ask_endpoint(question: str = Form("", max_length=2_000)) -> HTMLResponse:
-        q = question.strip()
-        if not q:
-            return _dashboard(msg="请输入问题")
-        html, _source_ids, _answer = _ask_html(
-            ctx.vault_dir,
-            q,
-            config_file=ctx.config_file,
-            workspace_id=ctx.workspace_id,
-        )
-        return _dashboard(ask_q=q, ask_html=html)
+    register_ask_page_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        dashboard=_dashboard,
+    )
 
     register_review_page_routes(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
