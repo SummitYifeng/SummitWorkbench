@@ -30,9 +30,9 @@
 **推荐顺序：0 → 1 → 2 → 3 → 4 → 5 → 6 → 7。** 批次之间互不依赖（只因夹具不同而拆分），
 所以也**可以并行**；只有批次 0 是所有批次的前置。
 
-## 1.1 执行结果与**剩余待跑项**（截至第五轮）
+## 1.1 执行结果与**剩余待跑项**（截至第六轮）
 
-已跑过五轮（`frontend_build=v2026.09.11-6ff10a6-6e6e0c91`）。**不要重复已通过的项**。
+已跑过六轮（`frontend_build=v2026.09.11-6ff10a6-6e6e0c91`）。**不要重复已通过的项**。
 
 | 批次 | 已通过（不必重跑） | 剩余待跑 | 关键原因 |
 |---|---|---|---|
@@ -42,11 +42,11 @@
 | 3 | E1、E2、R06（**全通过**） | — | — |
 | 4 | **E3、R01（第三轮全通过）** | — | 夹具自证可滚动后一次通过；R01 靠自愈脚本跑通 |
 | 5 | **E4、R07（R07 第四轮通过）** | — | R07 第三轮曾是**误判**，按更正判据一次通过 |
-| 6 | R03、R04、R10、R11 | **R05 / R09** | R04 第五轮用**无凭据**配方通过；R09 改**页内「批准」**触发；R05 改 `visibilityState` 覆盖 + 5 秒探针 |
-| 7 | — | **B4 全部**（按 §9 更正后的配方：`HOME` + `WORK_ROOT` 都设，**按界面判断**） | 第五轮"未隔离"很可能是**判据选错**（argv 不作数） |
+| 6 | R03、R04、R05、R10、R11 | **R09** | R04 第五轮通过、R05 第六轮通过；R09 只差"放行旧响应**之后**再读一次列表" |
+| 7 | — | **B4 全部**（按 §9.1 更正后的配方：`HOME` + `WORK_ROOT` + **`WB_RUNTIME_RECORD`**） | 第六轮查明卡在启动页的根因是 runtime 记录路径两侧不一致，修法已实测 |
 
 > **下一轮请直接用 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)**
-> （现为 v5）：自包含、只含剩余 4 项。本文件的夹具配方作为背景保留。
+> （现为 v6）：自包含、只含剩余 3 项。本文件的夹具配方作为背景保留。
 
 ---
 
@@ -346,37 +346,49 @@ def wb_original(description, target_project, route, due_date):
 **唯一需要打包 App 的一批。** CI 里的 packaged smoke 只覆盖打包后的 server 与构建身份，
 **不覆盖原生 UI**，所以这一批必须在**已安装的 `.app`** 里做，不能用浏览器代替。
 
-### 9.1 隔离配方（**⚠ 本节早先写错过，下面是更正后的版本**）
+### 9.1 隔离配方（**⚠ 本节早先写错过两次，下面是更正后的版本**）
 
-> **更正记录（2026-09-11 第五轮）**：本节曾写「**不能用 `WORK_ROOT` 隔离**」——**这是错的**。
-> 原生层 `native/SummitWorkbench/Models.swift:124` 就是
+> **更正记录 1（第五轮）**：本节曾写「**不能用 `WORK_ROOT` 隔离**」——**这是错的**。
+> 原生层 `Models.swift:124` 就是
 > `let workRoot = environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`，
-> **它读 `WORK_ROOT`**。上一轮只设了 `HOME`，于是按 `NSHomeDirectory()` 回退到真实家目录，
-> 子进程参数里就出现了真实路径——而**那个参数随后会被服务端忽略**，所以它**不能**作为
-> "未隔离"的判据。
+> **它读 `WORK_ROOT`**。
+>
+> **更正记录 2（第六轮）**：只设 `HOME` + `WORK_ROOT` 还不够——App 会**永久卡在「正在启动…」**。
+> 根因是**就绪握手的两侧路径不一致**：App 用 `NSHomeDirectory()`（**不认 `$HOME`**）读
+> `<真实家目录>/…/SummitWorkbench/runtime.json`，而服务用 `Path.home()`（**认 `$HOME`**）写，
+> 于是设了临时 `HOME` 之后**服务写进临时家目录、App 去真实家目录找**，端口永远拿不到 →
+> `readiness_timeout` → 每 13 秒重启一次。**必须再显式传 `WB_RUNTIME_RECORD`。**
 
 直接 `open -a SummitWorkbench` 会绑定真实工作区，必须用**临时环境直接启动可执行文件**，
-并且 **`HOME` 与 `WORK_ROOT` 两个都要设**：
+并设**三个**变量：
 
 ```bash
 ISO=$(mktemp -d /tmp/swb-app-iso-XXXXXX)
 mkdir -p "$ISO/home/Library/Application Support" "$ISO/work"
-HOME="$ISO/home" WORK_ROOT="$ISO/work" \
+REAL_RECORD="$HOME/Library/Application Support/SummitWorkbench/runtime.json"
+HOME="$ISO/home" WORK_ROOT="$ISO/work" WB_RUNTIME_RECORD="$REAL_RECORD" \
   /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
 ```
 
-为什么两个都要设：
+**前置检查（必做）**：该记录会落在**真实** app-support 目录，所以先确认真实 App 未运行、
+且 `runtime.json` 本来就不存在；收尾时确认它已被清理。
+
+为什么三个都要设：
 
 - **`HOME`**：App 的本机状态从 `home_dir()`（= `Path.home()`）派生，
-  `config/app_support.py` 的 docstring 明确说「测试通过显式 `home` 参数或 **HOME env 隔离**」。
-  设了它，profile registry 指向
-  `$ISO/home/Library/Application Support/SummitWorkbench/registry.json`——**不存在**。
-- **`WORK_ROOT`**：原生层会把它传给子进程。**但即使不设也不会污染真实工作区**——
-  `webapp/server_entry.py:112` 是 `resolve_active_workspace(allow_env_fallback=False)`，
-  打包服务**根本不消费 `WORK_ROOT` 或 `--work-root`**，只从 registry 解析。
+  设了它，profile registry 指向临时目录下**不存在**的 `registry.json` → 空安装状态。
+- **`WORK_ROOT`**：原生层会读它并传给子进程。
+- **`WB_RUNTIME_RECORD`**：让服务把 runtime 记录写到你希望 App 去读的那个路径，
+  **补上 `NSHomeDirectory()` 与 `$HOME` 之间的落差**。服务端支持该变量
+  （`server_entry.py:88`），且子进程会继承 App 的环境（`ServiceSupervisor.swift:151`）。
 
-**判据是界面，不是进程参数**：打开设置页看工作区。只因为 argv 里出现真实路径就判"未隔离"，
-会把一个其实已经隔离的环境误判掉。
+> **注意**：即便如此，**判据仍是界面显示的工作区**，不是子进程 argv。打包服务用
+> `resolve_active_workspace(allow_env_fallback=False)`（`server_entry.py:112`），
+> **根本不消费 `--work-root`**，所以 argv 里出现真实路径**不能**作为"未隔离"的证据。
+
+**排障入口**：真实日志在 **`~/Library/Logs/summitworkbench-panel.log`**——这是一个**文件**，
+不是 `~/Library/Logs/SummitWorkbench/` 目录。看到 `service_ready` 才算就绪；
+若是 `service_exited reason="readiness_timeout"`，就是上面那个记录路径没对上。
 
 ### 9.2 动手前的**强制自检**（不通过就停）
 

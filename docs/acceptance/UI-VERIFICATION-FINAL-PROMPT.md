@@ -1,19 +1,17 @@
-# 收尾提示词 v5：剩余 4 项 UI 层验收（整段复制给 Codex）
+# 收尾提示词 v6：剩余 3 项 UI 层验收（整段复制给 Codex）
 
-> **v5 变更**
-> - ✅ **R04 已通过**（放行 #1 后页面仍显示 `work 【已更新】`），**不要重跑**。
-> - ❌ **B4 上一轮的结论"原生服务未隔离"很可能是误判**：你看到的
->   `--work-root /Users/…/Documents/Work` 是**原生层传的参数**，而打包服务
->   `server_entry.py` 第 112 行是 `resolve_active_workspace(allow_env_fallback=False)` ——
->   **它根本不消费 `--work-root`**。判断是否隔离要看**界面显示的工作区**，不是进程参数。
->   而且**要同时设 `WORK_ROOT`**：原生层 `Models.swift:124` 就是
->   `environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`。
-> - 🔧 **R09 的触发方式换了**：切页签可能让被扣住的请求被取消（你遇到的
->   `Invalid InterceptionId`）。改为在**审批页内点「批准」**触发第二次读取 ——
->   `decide/batchDecide` 会调 `refreshReview()` → `refreshExternalActions()`，
->   **不离开页面**（注意：dry-run 的「检查并写回」**不会**触发，别用它）。
-> - 🔧 **R05 不再需要真的切走浏览器**：用 `visibilityState` 覆盖 + 派发 `visibilitychange`
->   事件，并用 5 秒探针**证明定时器未被节流**，从而彻底消除"无法区分"的歧义。
+> **v6 变更**
+> - ✅ **R05 已通过**（`after.version - base.version = 1`、`sync` 同为 +1、`tick=14`）——**不要重跑**。
+> - 🔧 **B4 的「卡在启动页」根因已查明，并给了修法（已实测）**：App 用 `NSHomeDirectory()`
+>   找 runtime 记录，而服务用 `$HOME` 写 → 设了 `HOME` 之后两边**对不上**，端口永远拿不到，
+>   于是 `readiness_timeout` 循环。**补一个 `WB_RUNTIME_RECORD` 即可**。见任务 3。
+>   另外：真实日志在 **`~/Library/Logs/summitworkbench-panel.log`（是文件，不是目录）**，
+>   上一轮找错了位置。
+> - 🔧 **R09 的判据改成「放行 #1 之后再读一次列表」**：上一轮拿到了放行**前**的 2 条，
+>   但没人记录放行**后**的状态；脚本汇总行又没打出来。现在汇总行在正常/Ctrl-C/异常退出时
+>   都会打印，且第 6 步明确要求放行后再读一次。
+> - 环境准备里新增 `ISO`/`WORK_ROOT` 非空断言（上一轮有临时脚本因路径变量取空而把夹具
+>   种进了仓库目录）。
 > - **只有 C4 需要账号所有者介入。**
 
 ---
@@ -140,6 +138,12 @@ const release = async (requestId, label) => {
   }
 };
 
+// 汇总行必须「一定」出现：正常结束、Ctrl-C、异常退出都会打印。
+const summary = () => console.log(`\n=== 汇总：拦截 ${seen} 次，放行失败 ${cancelled} 次（0 = 乱序成立）===`);
+process.on('exit', summary);
+process.on('SIGINT', () => { summary(); process.exit(0); });
+process.on('uncaughtException', (err) => { console.log(`异常：${err.message}`); summary(); process.exit(1); });
+
 ws.addEventListener('message', async (ev) => {
   const msg = JSON.parse(ev.data);
   if (msg.id && pending.has(msg.id)) {
@@ -157,7 +161,7 @@ ws.addEventListener('message', async (ev) => {
     await waitForGate();
     console.log(`[${new Date().toISOString()}] #1 收到闸门 → 放行`);
     await release(requestId, '#1');
-    console.log(`\n取消计数：${cancelled}（0 = 乱序成立）`);
+    summary();
   } else {
     console.log(`[${new Date().toISOString()}] #${n} 到达 ${request.url} → 立即放行`);
     await release(requestId, `#${n}`);
@@ -249,12 +253,20 @@ EOF
    ```
 4. **就在审批页上点候选的「批准」**（只改标记，不写回）→ 触发读取 **#2**，立即放行，
    页面显示 **2 条**。确认脚本打印 `#2 到达 … 立即放行`。
+   **记录此刻列表里的两条文案**（记为「放行前状态」）。
 5. **`touch "$ISO/gate-r09"`** → 扣住的 #1（只有 1 条）此刻才放行。
-6. **通过标准**：外部写回列表**仍然是 2 条**。若被覆盖回 1 条 → 守卫失效（**真失败**）。
-7. 看脚本打印的**取消计数：必须是 0**。若是 1，说明 #1 又被取消了，本次**不成立**，
-   如实报「未验证」并附脚本输出。
+6. **稍等 2–3 秒（等旧响应真正被页面收下并重绘），再读一次列表。**
+7. **通过标准（这才是真正的断言）**：**放行 #1 之后**列表**仍然是 2 条**
+   （与第 4 步的「放行前状态」逐字一致）。若变成 1 条 → 守卫失效（**真失败**）。
+8. 脚本结束时会打印 `=== 汇总：拦截 N 次，放行失败 M 次 ===`。
+   **M 必须是 0**；若 M ≥ 1，说明 #1 被页面取消、**旧响应根本没返回**，本次**不成立** →
+   如实报「未验证」，不要拿第 4 步的状态当结论。
 
-**回报**：脚本全部输出（含时间戳与取消计数）；第 4 步与第 6 步列表里实际显示的条数与文案。
+**回报**：脚本全部输出（含时间戳与末尾汇总行）；**第 4 步与第 7 步两次列表的原文**（这是关键）。
+
+> 上一轮之所以只能判「未验证」：第 4 步的状态拿到了，但**没人记录第 7 步**（放行后的状态），
+> 而脚本汇总行又没打出来。这一轮把「放行后再读一次」明确成第 6 步，并把汇总行改成
+> 正常退出 / Ctrl-C / 异常退出都会打印。
 
 ### 任务 2 · R05：隐藏页暂停 + 回到前台补一次 —— **不用真的切走浏览器**
 
@@ -310,43 +322,75 @@ clearInterval(window.__probe);
 
 **回报**：③ 和 ④ 的原始对象（含 `tick` 与时间戳）。
 
-### 任务 3 · B4：原生 App 黑盒 —— **要同时设 `WORK_ROOT`，并按界面判断隔离**
+### 任务 3 · B4：原生 App 黑盒 —— **必须补一个 `WB_RUNTIME_RECORD`**
 
-**上一轮的结论很可能是误判，先读这段**：
+**上一轮为什么卡在「正在启动…」——根因已查明（不是产品缺陷）**
 
-- 你看到进程参数是 `--work-root /Users/…/Documents/Work`，据此判断"未隔离"。
-  但打包服务 `server_entry.py` 第 112 行是
-  `active_workspace = resolve_active_workspace(allow_env_fallback=False)` ——
-  **它根本不消费 `--work-root`，而是从 profile registry 解析**。
-  所以那个参数是**原生层传下来的、服务端会忽略**的，**不能作为隔离与否的判据**。
-- 而原生层**确实读环境变量**：`Models.swift:124`
-  `let workRoot = environment["WORK_ROOT"] ?? (NSHomeDirectory() + "/Documents/Work")`。
-  **上一轮只设了 `HOME`、没设 `WORK_ROOT`**，所以它回退到了真实家目录。
+App 判断服务"就绪"的方式是：用子进程 PID 去读一份 **runtime 记录**，从里面拿端口，再探测。
 
-**正确启动方式（两个都设）**：
+- 原生侧 `RuntimeRecord.swift:24` 从 **`NSHomeDirectory()`** 取路径
+  → `<真实家目录>/Library/Application Support/SummitWorkbench/runtime.json`
+  （`NSHomeDirectory()` **不认 `$HOME`**）。
+- 服务侧 `server_entry.py:149-153` 用
+  `active_workspace.runtime_dir or active_workspace.application_support`
+  → 这条链来自 **`Path.home()`（认 `$HOME`）**。
+
+于是设了 `HOME=<临时>` 之后：**服务把记录写进临时家目录，App 去真实家目录找** → 永远找不到
+端口 → 探测一直失败 → `readiness_timeout`，每 13 秒重启一次，指数退避，UI 永久停在启动页。
+真实日志（**这是文件，不是目录**）里能看到这个循环：
+
+```
+~/Library/Logs/summitworkbench-panel.log
+```
+
+> **顺带纠正上一轮的排查方向**：日志在这个**文件**里，不在
+> `~/Library/Logs/SummitWorkbench/` 目录下。上一轮说"两个日志目录都没有输出"，
+> 其实是**找错了位置**。
+
+**修法：显式指定 `WB_RUNTIME_RECORD`**，让服务把记录写到 App 会去找的那个路径。
+服务端支持这个环境变量（`server_entry.py:88`），且**子进程会继承 App 的环境**
+（`ServiceSupervisor.swift:151` 用 `ProcessInfo.processInfo.environment`），所以从启动命令传入即可。
+
+**启动前的强制前置检查**（写记录会落到**真实** app-support 目录，必须确认不冲突）：
+
+```bash
+pgrep -f "SummitWorkbenchServer" && echo "⚠ 有服务在跑，先退出" || echo "✅ 无服务在跑"
+ls "$HOME/Library/Application Support/SummitWorkbench/runtime.json" 2>/dev/null \
+  && echo "⚠ 已存在 runtime.json，先退出真实 App" || echo "✅ 无 runtime.json"
+```
+
+**启动方式**：
 
 ```bash
 ISO2=$(mktemp -d /tmp/swb-app-XXXXXX)
 mkdir -p "$ISO2/home/Library/Application Support" "$ISO2/work"
-HOME="$ISO2/home" WORK_ROOT="$ISO2/work" \
+REAL_RECORD="$HOME/Library/Application Support/SummitWorkbench/runtime.json"
+HOME="$ISO2/home" WORK_ROOT="$ISO2/work" WB_RUNTIME_RECORD="$REAL_RECORD" \
   /Applications/SummitWorkbench.app/Contents/MacOS/SummitWorkbench
 ```
 
-**判据是界面，不是进程参数**：等 App 加载完成（不要停在「正在启动…」），打开设置页看工作区。
+> 这个做法**已实测**：打包服务会把记录写到 `$REAL_RECORD`，临时 `HOME` 下**不写任何东西**，
+> 且记录里 `workspace_id: null`（证明确实是空安装、没有指向真实工作区）。
+
+**判据仍是界面**：App 应能真正加载完成（不再停在「正在启动…」）。打开设置页看工作区。
 
 - ✅ **通过**：显示 onboarding / 空工作区，**不出现** `/Users/<真实用户>/Documents/Work/_vault`
   → 隔离成立，继续下面的黑盒检查。
-- ❌ **失败**：确实显示了真实 vault 路径 → 隔离不成立，**立即退出**，把设置页文案原文贴回来，
-  作为 B4 的**阻塞结论**。
-- ⚠ 若 App 停在「正在启动 SummitWorkbench…」超过 60 秒：贴回原生层日志
-  （`$ISO2/home/Library/Logs/SummitWorkbench/` 与真实 `~/Library/Logs/SummitWorkbench/`
-  里最新的一份），并报「未验证：App 未能启动」。
+- ❌ **失败**：仍停在「正在启动…」→ 先看
+  `~/Library/Logs/summitworkbench-panel.log` 的最新几行：
+  `service_ready` 才算就绪；若是 `service_exited reason="readiness_timeout"`，
+  说明记录没对上，把日志贴回来。
+- ❌ 若设置页确实显示了真实 vault 路径 → 隔离不成立，**立即退出**并贴回文案。
+
+**收尾（必做）**：退出 App 后确认 `$REAL_RECORD` 已被清理（服务正常退出会 unlink）；
+若残留则删掉，并**核对它本来就不存在**。再删除 `$ISO2`。
 
 隔离成立后：确认设置页显示的 build identity 与实际产物一致；走一遍新建工作台（指向
 `$ISO2/work`）；跑六页签可达性；确认操作发生在 **WKWebView** 内；退出重启确认不出现
-crash loop、不误认旧服务；结束后删除 `$ISO2`。
+crash loop、不误认旧服务。
 
-**回报**：启动命令原文；设置页工作区文案原文；六页签结果；重启结果。
+**回报**：两个前置检查的输出；启动命令原文；设置页工作区文案原文；六页签结果；重启结果；
+收尾后 `$REAL_RECORD` 的状态。
 
 ### 任务 4 · C4：「新建会议（个人日程）」落点 —— **需要账号所有者介入**
 
@@ -381,11 +425,11 @@ crash loop、不误认旧服务；结束后删除 `$ISO2`。
 
 | 任务 | 覆盖 | 上一轮 | 本轮变化 |
 |---|---|---|---|
-| 1 | R09 | 未验证（旧请求被取消） | 改**页内「批准」**触发，脚本会报取消计数 |
-| 2 | R05 | 未验证（三轮都没做成） | 改 `visibilityState` 覆盖 + 5 秒探针，不用真隐藏 |
-| 3 | B4 | 未验证（判断依据有误） | 同时设 `WORK_ROOT`，**按界面判断** |
+| 1 | R09 | 未验证（只缺"放行后"的状态） | 判据改为**放行 #1 后再读一次**；汇总行改为任何退出方式都会打印 |
+| 2 | R05 | ✅ **已通过** | 不必重跑 |
+| 3 | B4 | 未验证（卡在启动页） | **补 `WB_RUNTIME_RECORD`**（已实测）；日志位置也纠正了 |
 | 4 | C4 | 未验证 | 需授权，**唯一需要账号所有者的一项** |
 
-**建议顺序：2 → 1 → 3 → 4。** 前三项都不需要账号所有者介入。
+**建议顺序：3 → 1 → 4。** 前两项都不需要账号所有者介入。
 
-**已关闭，不要重跑**：C1、C2、R01、R03、R04、R06、R07、R08、R10、R11、D2、D3、E1、E2、E3、E4。
+**已关闭，不要重跑**：C1、C2、R01、R03、R04、R05、R06、R07、R08、R10、R11、D2、D3、E1、E2、E3、E4。

@@ -38,7 +38,7 @@
 
 | # | 项 | 说明 |
 |---|---|---|
-| B4 | packaged App / WKWebView 黑盒 | CI 的 packaged smoke 只覆盖打包后的 server 与构建身份，**不覆盖原生 UI**。**隔离配方已查明且此前写错过一次**：原生层 `Models.swift:124` **读 `WORK_ROOT`**（回退 `NSHomeDirectory()/Documents/Work`），所以**要同时设 `HOME` 与 `WORK_ROOT`**；而打包服务 `server_entry.py:112` 用 `resolve_active_workspace(allow_env_fallback=False)`，**根本不消费 `--work-root`**——因此进程参数里的真实路径**不能**作为"未隔离"的判据，**判据是界面显示的工作区**。见提示词 v5 任务 3 |
+| B4 | packaged App / WKWebView 黑盒 | CI 的 packaged smoke 只覆盖打包后的 server 与构建身份，**不覆盖原生 UI**。**卡点根因已查明（见 §M 第六轮）**：App 用 `NSHomeDirectory()`（不认 `$HOME`）找 runtime 记录，服务用 `Path.home()`（认 `$HOME`）写，设了临时 `HOME` 后两边对不上 → 端口永远拿不到 → `readiness_timeout` 循环。**修法已实测**：显式传 `WB_RUNTIME_RECORD`。见提示词 v6 任务 3 |
 
 > B1（Chrome 原生 200% 缩放）、B2（浅色主题）、B3（`prefers-reduced-motion`）已于 2026-09-11 由
 > 提示词 F 的实测关闭——见下方「已关闭」。验收在候选产物上进行，其 **`source_hash` 与合并后
@@ -74,7 +74,7 @@
 | # | 项 | 说明 |
 |---|---|---|
 | E3 | 项目可移动滚动位置恢复 | ✅ **已于 2026-09-11 第三轮关闭** —— 见下方「已关闭」 |
-| E5 | R01–R14 交互断言在真实页面复验 | **剩余 2 条**：R05 / R09。R01、R04、R07 已关闭。R09 第五轮改**页内「批准」**触发（切页签会让被扣住的请求被取消）；R05 改 `visibilityState` 覆盖 + 5 秒探针（不再需要真隐藏，且能区分守卫与节流）。R02/R03/R06/R08/R10/R11/R12/R13/R14 已关闭 |
+| E5 | R01–R14 交互断言在真实页面复验 | **剩余 1 条**：R09（只差"放行旧响应**之后**再读一次列表"这一步）。R01、R04、R05、R07 已关闭。R02/R03/R06/R08/R10/R11/R12/R13/R14 已关闭 |
 
 > **E1 / E2 已于 2026-09-11 关闭**；**E4 已取得实测结果**（跨端口草稿丢失，与「不承诺迁移」的
 > 既定边界一致，非缺陷）——均见下方「已关闭」。
@@ -575,6 +575,51 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 > 也可能只是"参数被传了但会被忽略"。**判据必须落在真正决定行为的那一层**——这里是服务端的
 > `resolve_active_workspace`，以及界面上显示的工作区，而不是子进程的 argv。
 
+### 第六轮（2026-09-11）：关闭 R05；查明 B4 卡在启动页的根因
+
+同一套临时环境（端口 18931、`v2026.09.11-6ff10a6-6e6e0c91`、Chrome `152.0.7977.83`）。
+
+**关闭 1 项 —— R05**：`base={version:3,sync:3}` → `after={version:4,sync:4}`，**各恰好 +1**；
+`tick=14`（70 秒 ÷ 5 秒探针）证明**隐藏期间定时器确实在运行**，因此"没有发出请求"只能解释为
+可见性守卫生效，而不是浏览器节流。**连续三轮悬而未决后，用 `visibilityState` 覆盖 +
+派发 `visibilitychange` 的办法一次通过**——关键是它顺带消掉了归因歧义。
+
+**B4 卡在「正在启动 SummitWorkbench…」的根因（不是产品缺陷）**
+
+执行者按 v5 配方启动后，App 永久停在启动页，且报告"两个日志目录都没有输出"。查证后：
+
+1. **日志位置找错了**。真实日志在 **`~/Library/Logs/summitworkbench-panel.log`**——这是一个
+   **文件**（`ServiceSupervisor.swift:163` 用 `NSHomeDirectory()` 拼的），
+   不是 `~/Library/Logs/SummitWorkbench/` 目录。
+2. 日志显示稳定的失败循环：`service_spawned` → 13 秒后
+   `service_exited reason="readiness_timeout"` → 指数退避重启（1s/2s/4s/8s），周而复始。
+3. **根因是就绪握手的两侧路径不一致**：App 用 **`NSHomeDirectory()`**（不认 `$HOME`）读
+   `<真实家目录>/…/SummitWorkbench/runtime.json`；服务用
+   `active_workspace.runtime_dir or active_workspace.application_support`（来自
+   **`Path.home()`**，认 `$HOME`）写。设了临时 `HOME` 之后，**服务写进临时家目录、
+   App 去真实家目录找** → 端口永远拿不到。
+4. 直接运行打包服务可确认**服务本身完全正常**（进程存活、绑定端口、`/api/version` 返回 401
+   属缺令牌的正常行为）。
+
+**修法（已实测）**：显式传 `WB_RUNTIME_RECORD`。服务端支持该变量
+（`server_entry.py:88`），且子进程继承 App 的环境（`ServiceSupervisor.swift:151`）。
+实测结果：记录被写到 App 会读的那个真实路径，**临时 `HOME` 下不写任何东西**，
+且记录里 `workspace_id: null`——**证明确实是空安装、没有指向真实工作区**。
+
+**副作用与前置条件（已写进提示词）**：该记录会落在**真实** app-support 目录，所以必须先确认
+**真实 App 未运行**且 `runtime.json` **本来就不存在**；收尾时确认它已被清理。
+（本次核查时两者均满足，验证后已复原。）
+
+**R09 只差最后一步**：这一轮拿到了放行**前**的 2 条（`#1` 于 `23:32:18` 扣住、`#2` 于
+`23:32:52` 放行渲染 2 条、`#1` 于 `23:33:15` 放行），但**没人记录放行之后**列表的状态，
+而脚本汇总行也没打出来，所以只能判未验证。提示词已把"放行 #1 后再读一次列表"明确成独立步骤，
+并把汇总行改成**正常退出 / Ctrl-C / 异常退出都会打印**。
+
+**另修一处运行环境问题**：上一轮有临时夹具脚本被种进了**仓库目录**——原因是跨命令用
+`$(cat /tmp/xxx 2>&1)` 取临时路径，文件不存在时 `cat` 的**报错文本**变成了路径值，
+而脚本里的 `Path(...)` 是相对路径。已清理该目录，并在提示词里加了
+`ISO`/`WORK_ROOT` 非空断言与明确警告。
+
 ## 已关闭（保留证据指针）
 
 | 项 | 关闭日期 | 证据 |
@@ -619,3 +664,4 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 | R07 省略 `workspace_id` 时问答历史仍载入一次 | 2026-09-11 | 第四轮：剥离 `workspace_id` 后新建会话 `2/10`，**连续刷新两次仍是 `2/10`**，`localStorage` 为 `["wb.ask.threads.v1.unknown"]`——证明本地历史确实按回退键载入。第三轮曾误判为失败（见 §M 第三轮） |
 | D2 来源面板异常矩阵（浏览器层） | 2026-09-11 | 第四轮逐项经「来源」入口观察面板文案：非 UTF-8 →「来源暂时不可读 / 来源不是可读取的 Markdown 笔记」（**415，第一轮缺陷确认真实修复**）；`big.md` →「正文已截断」且 `pre.source-reader.textContent.length=100000`；`huge.md` → 413 文案；路径穿越 / 软链越界 / `_signals/` / `notes/` → 400 文案；缺失 → 404 文案。**双 workspace 隔离**：第一 workspace 读到 `# Demo Project`，第二 workspace 读到 `# Second Workspace Demo` + `SECOND-WORKSPACE-CONTENT`。详见 §M 第四轮 |
 | R04 设置页不被过期读取覆盖 | 2026-09-11 | 第五轮（改用**无凭据**配方，见 §M 第五轮）：`/api/settings/profiles` 的 #1 于 `23:14:46.314` 被扣住，#2 于 `23:15:18.711` 放行并渲染出新值 `work 【已更新】`，#1 于 `23:15:48.268` 才放行，**放行后页面仍显示 `work 【已更新】`** —— 证明 `settingsRenderSequence` 守卫生效 |
+| R05 隐藏页暂停 + 回到前台补一次 | 2026-09-11 | 第六轮：把 `visibilityState` 做成可控并派发 `visibilitychange`。`base={version:3,sync:3}` → `after={version:4,sync:4}`（**各恰好 +1**），且 `tick=14`（70 秒 ÷ 5 秒探针）**证明隐藏期间定时器确实在跑、未被节流** → "没有发出请求"只能是可见性守卫生效。详见 §M 第六轮 |
