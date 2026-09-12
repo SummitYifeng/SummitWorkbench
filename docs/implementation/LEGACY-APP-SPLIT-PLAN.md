@@ -354,7 +354,7 @@ WB_GATE_FAST=1 scripts/pre-push-gate.sh      # 完整版去掉 WB_GATE_FAST=1
 
 > ⚠️ **禁止**用 `scripts/update-web-route-contract.py` 重新生成快照来「修」①的失败。快照变化 = 行为变化 = 本步失败。
 
-### Step 0 · 基线冻结（不改代码）
+### Step 0 · 基线冻结（不改代码）  ✅ **已完成 2026-09-12**
 
 ```bash
 wc -l src/summit_workbench/webapp/legacy_app.py            # 期望 3457

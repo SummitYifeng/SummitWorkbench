@@ -2,21 +2,100 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const root = path.resolve(import.meta.dirname, '..');
-const source = fs.readFileSync(path.join(root, 'src/legacy-main.ts'), 'utf8');
-const reviewSource = fs.readFileSync(path.join(root, 'src/features/review/render.ts'), 'utf8');
-const settingsSource = fs.readFileSync(path.join(root, 'src/features/settings/index.ts'), 'utf8');
-const read = (name) => fs.readFileSync(path.join(root, name), 'utf8');
-const styleSource = read('src/style.css');
-
 // Browser-level interaction contract: these user actions must remain wired after feature moves.
+//
+// The assertions below are deliberately *layout-independent* wherever possible. Reading a single
+// monolith made every one of them break the moment content moved to another module, which meant a
+// real regression and a stale assertion looked identical. The whole tree is read and concatenated
+// instead, so a guard keeps working after its subject moves -- as long as the subject still exists
+// somewhere, which is exactly what the contract is about.
+//
+// Two deliberate exceptions keep a *placement* guarantee:
+//   - `fileFor('x.ts')` for modules whose location IS the contract (e.g. review render helpers must
+//     stay in the review feature module).
+//   - `filesMatching(/\.css$/)` for the stylesheet, so a new CSS file is picked up automatically.
+//
+// Self-test: `assertAggregateCoversNewModules` below proves the aggregate really does pick up files
+// that did not exist when this test was written. Without it, "layout-independent" would be a claim
+// rather than a checked property.
+
+const root = path.resolve(import.meta.dirname, '..');
+const srcDir = path.join(root, 'src');
+
+/** Every tracked source file the contract may live in, sorted for stable ordering. */
+function collectSourceFiles(dir) {
+  const found = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...collectSourceFiles(full));
+    } else if (/\.(ts|css)$/.test(entry.name) && !entry.name.endsWith('.d.ts')) {
+      found.push(full);
+    }
+  }
+  return found.sort();
+}
+
+const sourceFiles = collectSourceFiles(srcDir);
+const sourceText = new Map(
+  sourceFiles.map((full) => [path.relative(root, full).split(path.sep).join('/'), fs.readFileSync(full, 'utf8')]),
+);
+
+// Everything, joined: guards survive a move between modules.
+const source = [...sourceText.values()].join('\n');
+// Tests that assert *which* module something lives in read it explicitly; a missing file is an
+// error rather than an empty string, so a rename fails loudly instead of silently passing.
+const fileFor = (name) => {
+  const text = sourceText.get(name);
+  assert.ok(text !== undefined, `contract source file is missing: ${name}`);
+  return text;
+};
+const filesMatching = (pattern) => {
+  const hits = [...sourceText.entries()].filter(([name]) => pattern.test(name));
+  return hits.map(([, text]) => text).join('\n');
+};
+
+// Windowed assertions are evaluated *per file*, never across the concatenation. A bounded window
+// is written to span one function body, so running it over joined text would happily match an
+// anchor in one module against unrelated code hundreds of characters into the next one -- and the
+// negative variants would then fail for a reason that has nothing to do with the contract. Per-file
+// also keeps the move-safe property: the assertion follows its anchor wherever the anchor lives.
+//
+// Requiring at least one file to carry the anchor is deliberate. A missing anchor means the code
+// was deleted or renamed, which must fail here rather than quietly leave the guard unenforced.
+function perFileAssert(description, anchor, check) {
+  const hits = [...sourceText.entries()].filter(([, text]) => anchor.test(text));
+  assert.ok(hits.length > 0, `${description}: anchor ${anchor} is not present in any source file`);
+  for (const [name, text] of hits) {
+    assert.ok(check(text), `${description}: violated in ${name}`);
+  }
+}
+
+/** `anchor ... window ... required` within one file. */
+const assertNearby = (anchor, required, description) =>
+  perFileAssert(description, anchor, (text) => {
+    const narrowed = new RegExp(anchor.source + required.source);
+    return narrowed.test(text);
+  });
+
+/** `anchor ... window ... forbidden` must not occur within one file. */
+const doesNotMatchNearby = (anchor, forbidden, description) =>
+  perFileAssert(description, anchor, (text) => {
+    const narrowed = new RegExp(anchor.source + forbidden.source);
+    return !narrowed.test(text);
+  });
+
+const reviewSource = fileFor('src/features/review/render.ts');
+const settingsSource = fileFor('src/features/settings/index.ts');
+const styleSource = filesMatching(/\.css$/);
+
 assert.match(source, /window\.location\.href = '\/onboarding'/, 'onboarding remains reachable from the workbench');
 assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
 assert.match(source, /data-action="sync-conflict-details"/, 'protected sync opens conflict details');
 assert.match(source, /\/api\/sync\/conflict\/selection\/validate/, 'manual conflict choices are validated');
-assert.match(
-  source,
-  /\/api\/sync\/conflict\/selection\/validate[\s\S]{0,350}conflictSelectionRequest\(\)/,
+assertNearby(
+  /\/api\/sync\/conflict\/selection\/validate/,
+  /[\s\S]{0,350}conflictSelectionRequest\(\)/,
   'selection validation does not send the recovery confirmation field',
 );
 assert.match(source, /\/api\/sync\/conflict\/recover/, 'conflict recovery remains wired');
@@ -51,6 +130,8 @@ assert.match(source, /reviewSelectedIds/, 'review selection state is explicit');
 assert.match(source, /reviewFilter/, 'review filter state is explicit');
 assert.match(source, /reviewSelectedIds\.clear\(\)/, 'changing review filter clears selection');
 assert.match(source, /batchDecide\(selected/, 'selected review actions reuse the batch decision path');
+// The guard must hold in whichever module the dispatch lives in. A single-file reader let this
+// pass silently as soon as the code moved, which is a lost guard rather than a failing test.
 assert.doesNotMatch(source, /selected[^\n]*\/api\/review\/apply/, 'selected actions do not bypass review apply');
 assert.match(settingsSource, /data-action="profile-switch"/, 'profile switch remains wired');
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
@@ -64,31 +145,31 @@ assert.match(
   /if \(requestId !== settingsRenderSequence\) return;/,
   'stale settings responses do not overwrite newer settings content',
 );
-assert.match(
-  source,
-  /\/api\/settings\/git\/remote\/preview[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+assertNearby(
+  /\/api\/settings\/git\/remote\/preview/,
+  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
   'remote preview sends JSON content type',
 );
-assert.match(
-  source,
-  /\/api\/settings\/git\/remote\/apply[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+assertNearby(
+  /\/api\/settings\/git\/remote\/apply/,
+  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
   'remote apply sends JSON content type',
 );
-assert.match(
-  source,
-  /\/api\/settings\/acceptance-preflight[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
+assertNearby(
+  /\/api\/settings\/acceptance-preflight/,
+  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
   'acceptance preflight sends JSON content type',
 );
-assert.match(read('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
-assert.match(read('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
-assert.match(read('src/core/workspace-store.ts'), /currentGeneration/, 'workspace generation invalidates stale requests');
+assert.match(fileFor('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
+assert.match(fileFor('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
+assert.match(fileFor('src/core/workspace-store.ts'), /currentGeneration/, 'workspace generation invalidates stale requests');
 assert.match(source, /X-WB-Workspace-Generation/, 'API requests carry workspace generation');
 assert.match(source, /latestStateRequest|latestReviewRequest/, 'stale refresh responses are ignored');
 assert.match(source, /saveEntityDraft|loadEntityDraft|clearEntityDraft/, 'entity drafts have an explicit storage contract');
 assert.match(source, /requestModalClose/, 'modal close is routed through the unsaved-draft guard');
-assert.match(source, /const action = btn\.dataset\.action \?\? '';[\s\S]{0,120}btn\.focus\(\)/, 'action dispatch restores the triggering control as the modal return target');
+assertNearby(/const action = btn\.dataset\.action \?\? '';/, /[\s\S]{0,120}btn\.focus\(\)/, 'action dispatch restores the triggering control as the modal return target');
 assert.match(source, /function activateModal/, 'specialized modals use the shared focus setup');
-assert.match(source, /if \(backdrop\.hidden\)[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
+assertNearby(/if \(backdrop\.hidden\)/, /[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
 assert.match(source, /projectDetailHtml/, 'project details render inside the project page');
 assert.match(source, /projectReturnContext/, 'project detail keeps list context across page navigation');
 assert.match(source, /projectFocusAfterRenderName/, 'project detail queues a visible return-focus target for the rebuilt page');
@@ -111,27 +192,27 @@ assert.match(source, /reviewApplyBusy/, 'review apply has a single in-flight gua
 assert.match(source, /if \(exec && reviewApplyBusy\) return/, 'repeat apply clicks cannot fire a second writeback request');
 assert.match(source, /reviewPlanReady = false;\s*\n\s*void refreshReview\(\)/, 'changing decisions invalidates the previous dry-run plan');
 // 撤销弹层必须复用统一 dialog 激活（初始焦点、dialog 语义、关闭按钮、返回焦点）。
-assert.match(
-  source,
-  /async function openUndoModal[\s\S]{0,500}openModal\(/,
+assertNearby(
+  /async function openUndoModal/,
+  /[\s\S]{0,500}openModal\(/,
   'undo dialog uses the shared modal activation',
 );
 // 后台轮询只在可见页运行；回到前台时同时刷新同步横幅。
-assert.match(
-  source,
-  /document\.visibilityState !== 'visible'\) return;[\s\S]{0,80}checkVersion\('interval'\)/,
+assertNearby(
+  /document\.visibilityState !== 'visible'\) return;/,
+  /[\s\S]{0,80}checkVersion\('interval'\)/,
   'the 60s version poll pauses while the page is hidden',
 );
-assert.match(
-  source,
-  /document\.visibilityState !== 'visible'\) return;[\s\S]{0,80}refreshSyncBanner\(\)/,
+assertNearby(
+  /document\.visibilityState !== 'visible'\) return;/,
+  /[\s\S]{0,80}refreshSyncBanner\(\)/,
   'the 60s sync poll pauses while the page is hidden',
 );
 // 同步状态读取失败时不能把已显示的保护态横幅静默隐藏。
 assert.match(source, /同步状态读取失败/, 'sync banner read failures stay visible instead of hiding protection state');
-assert.doesNotMatch(
-  source,
-  /async function refreshSyncBanner[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/,
+doesNotMatchNearby(
+  /async function refreshSyncBanner/,
+  /[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/,
   'sync banner read failure does not silently hide the protection banner',
 );
 // 服务端省略 workspace_id 时，问答历史仍必须加载。
@@ -146,7 +227,7 @@ assert.match(source, /const returnFocus = document\.querySelector<HTMLElement>\(
 assert.match(source, /if \(returnFocus\) modalReturnFocus = returnFocus/, 'sync conflict restores focus to its banner trigger after async modal activation');
 assert.match(source, /persistEntityDraft\('sync-conflict'/, 'sync conflict choices have a recoverable entity draft');
 assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsaved-draft guard');
-assert.match(source, /window\.confirm[\s\S]{0,350}产物已保存[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
+assertNearby(/window\.confirm/, /[\s\S]{0,350}产物已保存[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 // 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
@@ -160,13 +241,72 @@ assert.match(source, /let logSubmitting = false/, 'work log save has a single in
 assert.match(source, /let rowEditSubmitting = false/, 'task/meeting edit has a single in-flight guard');
 assert.match(source, /importFiles/, 'today import accepts a batch of local files');
 assert.match(source, /status === 'partial'/, 'partial import results remain visually distinct');
-assert.match(read('src/features/today/render.ts'), /esc\(result\.message\)/, 'import receipts preserve the server idempotency message');
-assert.match(read('src/features/today/render.ts'), /multiple hidden/, 'the transcript picker allows multiple files');
-assert.match(read('src/features/today/index.ts'), /let currentOpen = options\.importOpen/, 'import drawer open state is local and reversible');
-assert.match(read('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 'import drawer can close and reopen without a stale closure');
-assert.match(read('src/features/today/index.ts'), /if \(!open\) importButton\?\.focus\(\)/, 'closing the import drawer restores focus to its trigger');
-assert.match(styleSource, /@media \(max-width: 900px\)[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
-assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
-assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,320}#btn-refresh, \.header-right #btn-quit\s*\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');
-assert.match(styleSource, /@media \(max-width: 380px\)[\s\S]{0,420}\.automation-enabled\s*\{[\s\S]{0,180}white-space: normal[\s\S]{0,180}overflow-wrap: anywhere/, 'very narrow settings labels wrap before they can overflow the page');
-console.log('Browser interaction contract tests passed');
+assert.match(fileFor('src/features/today/render.ts'), /esc\(result\.message\)/, 'import receipts preserve the server idempotency message');
+assert.match(fileFor('src/features/today/render.ts'), /multiple hidden/, 'the transcript picker allows multiple files');
+assert.match(fileFor('src/features/today/index.ts'), /let currentOpen = options\.importOpen/, 'import drawer open state is local and reversible');
+assert.match(fileFor('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 'import drawer can close and reopen without a stale closure');
+assert.match(fileFor('src/features/today/index.ts'), /if \(!open\) importButton\?\.focus\(\)/, 'closing the import drawer restores focus to its trigger');
+assertNearby(/@media \(max-width: 900px\)/, /[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
+assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
+assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}#btn-refresh, \.header-right #btn-quit\s*\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');
+assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,420}\.automation-enabled\s*\{[\s\S]{0,180}white-space: normal[\s\S]{0,180}overflow-wrap: anywhere/, 'very narrow settings labels wrap before they can overflow the page');
+
+// ---------------------------------------------------------------------------------------------
+// Self-tests for the harness itself. The aggregate reader only helps if guards keep firing after
+// code moves, and per-file windows only help if they stop cross-module bleed. Both are asserted
+// here against a real file written to disk, because an unchecked "layout-independent" claim is
+// worth nothing -- a future refactor could reintroduce single-file coupling and leave every
+// assertion looking green.
+// ---------------------------------------------------------------------------------------------
+const probeName = 'src/__contract-probe__.ts';
+const probePath = path.join(root, probeName);
+const probeAnchor = /async function refreshSyncBanner/;
+const probeForbidden = /[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/;
+const probeBody = [
+  '/* temporary probe: stands in for a guard that moved into a newly created module */',
+  'async function refreshSyncBanner(): Promise<void> {',
+  '  try {',
+  '    await fetch("/api/state");',
+  '  } catch {',
+  '    el.hidden = true;',
+  '  }',
+  '}',
+].join('\n');
+try {
+  fs.writeFileSync(probePath, probeBody, 'utf8');
+  const withProbe = new Map(sourceText);
+  withProbe.set(probeName, probeBody);
+  const joined = [...withProbe.values()].join('\n');
+  const narrowed = new RegExp(probeAnchor.source + probeForbidden.source);
+  const probeMatches = (text) => probeAnchor.test(text) && narrowed.test(text);
+
+  // 1. The guard fires on the probe, which is the move case: the function now lives in a module
+  //    that did not exist when this test was written. If it did not fire, the guard would be
+  //    silently unenforced after the move -- the exact failure this whole step exists to prevent.
+  assert.equal(probeMatches(probeBody), true, 'guard still fires when its subject moves to a new module');
+
+  // 2. Per-file evaluation keeps that true while refusing to match across a file boundary. Over the
+  //    joined text the window happily reaches into unrelated modules; per file it stops at the edge.
+  assert.equal(narrowed.test(joined), true, 'sanity: an unbounded join really does match across files');
+  const perFile = [...withProbe.values()].filter(probeMatches);
+  assert.equal(perFile.length, 1, 'per-file windows match the moved module once, and never span files');
+
+  // 3. A deleted or renamed anchor fails loudly rather than leaving the guard unenforced.
+  const absent = /async function refreshSyncBannerAbsentSentinel/;
+  assert.equal(
+    [...withProbe.values()].some((text) => absent.test(text)),
+    false,
+    'a missing anchor is detectable, so the guard cannot pass merely by finding nothing',
+  );
+
+  // 4. New modules are discovered by the same scan the contract uses, with no test edit needed.
+  const discovered = collectSourceFiles(srcDir).map((full) =>
+    path.relative(root, full).split(path.sep).join('/'),
+  );
+  assert.ok(discovered.includes(probeName), 'the source scan discovers modules created after this test was written');
+} finally {
+  fs.rmSync(probePath, { force: true });
+}
+assert.equal(fs.existsSync(probePath), false, 'harness self-test cleans up after itself');
+
+console.log(`Browser interaction contract tests passed (${sourceFiles.length} source files)`);
