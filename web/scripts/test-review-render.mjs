@@ -9,7 +9,7 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.review-render-test-tmp');
 const entry = `
-import { reviewHtml } from './features/review';
+import { approvableEntries, REVIEW_BATCH_LIMIT, reviewHtml } from './features/review';
 
 const baseEntry = {
   candidate_id: 'm1#decision-0',
@@ -43,6 +43,21 @@ const external = {
   error: null,
   retry_allowed: false,
 };
+
+const mk = (id: string, over: Record<string, unknown>) => ({
+  ...baseEntry, candidate_id: id, ...over,
+});
+
+export const batchLimit = REVIEW_BATCH_LIMIT;
+export const approvable = approvableEntries([
+  mk('ok', { actionable: true, route: 'project-main' }),
+  mk('no-route', { actionable: true, route: null }),
+  mk('not-actionable', { actionable: false, route: 'project-main' }),
+  mk('both', { actionable: true, route: 'feishu-task' }),
+]).map((e) => e.candidate_id);
+export const approvableNone = approvableEntries([
+  mk('a', { actionable: false, route: null }),
+]).map((e) => e.candidate_id);
 
 export const cases = {
   empty: reviewHtml({ groups: [], errors: [] }, 0, '2026-09-01', [], []),
@@ -142,6 +157,11 @@ try {
   // 「一键拒绝过期项」必须先显示自身范围，且没有过期项时不可点。
   assert.match(mod.cases.pending, /一键拒绝过期项（1）/);
   assert.match(mod.cases.empty, /data-action="reject-expired"[^>]*disabled[^>]*>一键拒绝过期项（0）</);
+  // 批量上限是产品约束（后端与派发器同口径），断言它没有被静默改大/改小。
+  assert.equal(mod.batchLimit, 100);
+  // 批准只纳入"有依据且已定落点"的条目；拒绝不受该限制。
+  assert.deepEqual(mod.approvable, ['ok', 'both']);
+  assert.deepEqual(mod.approvableNone, []);
   console.log('Review pure render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

@@ -28,8 +28,7 @@ import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge'
 import { esc } from './md';
 import { type BriefData } from './brief-card';
 import type { ProjectState } from './features/projects';
-import { reviewHtml } from './features/review';
-import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewPayload } from './features/review';
+import type { ExternalAction, ReviewPayload } from './features/review';
 import {
   applyTabChrome,
   closeModal,
@@ -81,6 +80,21 @@ import {
   setProjectState,
   showProjectView,
 } from './features/projects';
+import {
+  batchSelectedReview,
+  confirmExternalCreated,
+  confirmExternalNotFound,
+  decide,
+  decideGroup,
+  mountReview,
+  planApply,
+  reconcileExternalAction,
+  rejectExpired,
+  renderReviewView,
+  resetReviewForWorkspace,
+  retryExternalAction,
+  selectAllReview,
+} from './features/review';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
 
 type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
@@ -148,11 +162,6 @@ let importResults: ImportReceipt[] = [];
 let stateLoadError: string | null = null;
 let reviewLoadError: string | null = null;
 let externalActionsError: string | null = null;
-let reviewPlanReady = false;
-/** apply（写回）在途保护：双击/重复点击不能发出第二次 /api/review/apply */
-let reviewApplyBusy = false;
-let reviewFilter: ReviewFilter = 'all';
-let reviewSelectedIds = new Set<string>();
 let lastStateReadAt: string | null = null;
 let lastReviewReadAt: string | null = null;
 let reviewDrafts: Record<string, ReviewDraftFields> = {};
@@ -354,11 +363,7 @@ async function doCheckVersion(reason: string): Promise<void> {
     lastStateReadAt = null;
     lastReviewReadAt = null;
     resetAskForWorkspace();
-    reviewFilter = 'all';
-    reviewSelectedIds.clear();
-    // 旧工作区的预演/在途写回标记不得带入新工作区。
-    reviewPlanReady = false;
-    reviewApplyBusy = false;
+    resetReviewForWorkspace();
     reviewDrafts = {};
     restoredDraft = null;
     importResults = [];
@@ -402,7 +407,7 @@ function render(): void {
   if (tab === 'today') {
     renderToday(viewElement('today') as HTMLElement);
   } else if (tab === 'review') {
-    renderReview(viewElement('review') as HTMLElement);
+    renderReviewView();
   } else if (tab === 'projects') {
     renderProjects(viewElement('projects') as HTMLElement, state);
   } else if (tab === 'guide') {
@@ -515,63 +520,6 @@ function renderToday(view: HTMLElement): void {
   });
   revealQueuedProjectFocus();
 }
-
-function renderReview(view: HTMLElement): void {
-  if (!review) {
-    view.innerHTML = reviewLoadError
-      ? '<div class="empty load-error"><p>审批数据读取失败：' + esc(reviewLoadError) + '</p><button class="primary" data-action="retry-review">重试读取</button></div>'
-      : '<div class="loading">加载审批页…</div>';
-    return;
-  }
-  const readNotice = reviewLoadError
-    ? '<div class="msg err">本次审批读取失败，保留上次成功数据' +
-      (lastReviewReadAt ? ' · 最近成功读取于 ' + esc(lastReviewReadAt) : '') + '。可稍后重试。</div>'
-    : '';
-  view.innerHTML = readNotice + reviewHtml(
-    review,
-    state?.status.pending_review ?? 0,
-    state?.day ?? '',
-    state?.projects ?? [],
-    externalActions,
-    externalActionsError,
-    { filter: reviewFilter, selectedIds: reviewSelectedIds },
-  );
-  view.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
-    const candidateId = String(new FormData(form).get('candidate_id') ?? '');
-    const fields = reviewDrafts[candidateId];
-    if (!fields) return;
-    for (const [name, value] of Object.entries(fields)) {
-      const input = form.elements.namedItem(name);
-      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
-        input.value = value;
-      }
-    }
-  });
-  view.oninput = () => saveCurrentDraftSnapshot();
-  view.onchange = () => saveCurrentDraftSnapshot();
-  const filter = view.querySelector<HTMLSelectElement>('#review-status-filter');
-  filter?.addEventListener('change', () => {
-    const next = filter.value;
-    if (next !== 'all' && next !== 'pending' && next !== 'approved' && next !== 'rejected') return;
-    reviewFilter = next;
-    reviewSelectedIds.clear();
-    renderReview(view);
-    view.querySelector<HTMLSelectElement>('#review-status-filter')?.focus();
-  });
-  view.querySelectorAll<HTMLInputElement>('[data-review-select]').forEach((checkbox) => {
-    checkbox.addEventListener('change', () => {
-      const id = checkbox.dataset.reviewSelect ?? '';
-      if (!id) return;
-      if (checkbox.checked) reviewSelectedIds.add(id);
-      else reviewSelectedIds.delete(id);
-      renderReview(view);
-      const next = Array.from(view.querySelectorAll<HTMLInputElement>('[data-review-select]'))
-        .find((candidate) => candidate.dataset.reviewSelect === id);
-      next?.focus();
-    });
-  });
-}
-
 
 interface RemoteNormalizationPreviewPayload {
   plan_id: string;
@@ -795,45 +743,6 @@ async function runSettingsDoctor(online = false): Promise<void> {
 }
 
 
-async function reconcileExternalAction(operationId: string, decision: string, remoteId?: string): Promise<void> {
-  try {
-    const r = await mutation(() => api<{ ok: boolean; message?: string }>(
-      '/api/external-actions/' + encodeURIComponent(operationId) + '/reconcile',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ decision, remote_id: remoteId, confirm_retry: decision === 'retry' }),
-      },
-    ));
-    toast(r.ok ? '外部写回状态已更新' : (r.message ?? '核对失败'), r.ok ? 'ok' : 'err');
-    if (r.ok) await refreshExternalActions();
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-}
-
-function selectedReviewEntries(): ReviewEntry[] {
-  const byId = new Map((review?.groups ?? []).flatMap((group) => group.entries).map((entry) => [entry.candidate_id, entry]));
-  return Array.from(reviewSelectedIds)
-    .map((id) => byId.get(id))
-    .filter((entry): entry is ReviewEntry => Boolean(entry && entry.decision === 'pending'));
-}
-
-function batchSelectedReview(decision: 'approved' | 'rejected'): void {
-  const picked = selectedReviewEntries();
-  const selected = picked.filter((entry) =>
-    decision === 'rejected' || (entry.actionable && !!entry.route),
-  );
-  if (decision === 'approved' && selected.length === 0) {
-    toast('选中的候选缺少依据或落点，未批准', 'info');
-    return;
-  }
-  const blocked = decision === 'approved' ? picked.length - selected.length : 0;
-  const note = blocked > 0 ? blocked + ' 条因依据或落点不完整未纳入批准' : '';
-  reviewSelectedIds.clear();
-  void batchDecide(selected.map((entry) => entry.candidate_id), decision, note);
-}
-
 // ---------- 全局事件（审批页操作） ----------
 
 document.addEventListener('click', (ev) => {
@@ -1041,16 +950,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'review-select-all') {
-    const selectable = (review?.groups ?? [])
-      .flatMap((group) => group.entries)
-      .filter((entry) => entry.decision === 'pending' && (reviewFilter === 'all' || reviewFilter === 'pending'))
-      .map((entry) => entry.candidate_id);
-    const allSelected = selectable.length > 0 && selectable.every((id) => reviewSelectedIds.has(id));
-    selectable.forEach((id) => {
-      if (allSelected) reviewSelectedIds.delete(id);
-      else reviewSelectedIds.add(id);
-    });
-    renderReview(document.getElementById('view-review') as HTMLElement);
+    selectAllReview();
     return;
   }
   if (action === 'review-batch') {
@@ -1075,20 +975,15 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'external-confirm-created') {
-    const remoteId = window.prompt('请输入飞书侧已创建对象的 ID：');
-    if (remoteId?.trim()) void reconcileExternalAction(btn.dataset.operation ?? '', 'succeeded', remoteId.trim());
+    confirmExternalCreated(btn.dataset.operation ?? '');
     return;
   }
   if (action === 'external-confirm-not-found') {
-    if (window.confirm('确认飞书侧没有创建该对象？确认后仍需再次点击“确认后重试”才能重新创建。')) {
-      void reconcileExternalAction(btn.dataset.operation ?? '', 'not-found');
-    }
+    confirmExternalNotFound(btn.dataset.operation ?? '');
     return;
   }
   if (action === 'external-retry') {
-    if (window.confirm('再次确认飞书侧未创建，并允许重新创建？')) {
-      void reconcileExternalAction(btn.dataset.operation ?? '', 'retry');
-    }
+    retryExternalAction(btn.dataset.operation ?? '');
     return;
   }
   if (action === 'decide') {
@@ -1098,28 +993,11 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'group-decide') {
-    const gi = Number(btn.dataset.group ?? '-1');
-    const group = review?.groups[gi];
-    if (!group) return;
-    const decision = btn.dataset.decision ?? 'pending';
-    const pendingEntries = group.entries.filter((e) => e.decision === 'pending');
-    const entries = decision === 'approved'
-      ? pendingEntries.filter((e) => e.actionable && !!e.route)
-      : pendingEntries;
-    const blocked = decision === 'approved' ? pendingEntries.length - entries.length : 0;
-    const note = blocked > 0 ? blocked + ' 条因依据或落点不完整未纳入批准' : '';
-    const ids = entries
-      .map((e) => e.candidate_id);
-    void batchDecide(ids, decision, note);
+    decideGroup(Number(btn.dataset.group ?? '-1'), btn.dataset.decision ?? 'pending');
     return;
   }
   if (action === 'reject-expired') {
-    const today = state?.day ?? '';
-    const ids = (review?.groups ?? [])
-      .flatMap((g) => g.entries)
-      .filter((e) => e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today)
-      .map((e) => e.candidate_id);
-    void batchDecide(ids, 'rejected');
+    rejectExpired();
     return;
   }
   if (action === 'ask-new') {
@@ -1215,61 +1093,6 @@ document.addEventListener('submit', (ev) => {
     void refreshState();
   }).catch((err: unknown) => toast(String(err), 'err'));
 });
-
-async function decide(candidateId: string, decision: string): Promise<void> {
-  try {
-    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/review/decide', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidate_id: candidateId, decision }),
-    }));
-    if (r.ok) {
-      const verb = decision === 'approved' ? '已批准' : decision === 'rejected' ? '已拒绝' : '已改回待确认';
-      const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
-      toast('✓ ' + verb + tip, 'ok');
-    } else {
-      toast(r.message, 'err');
-    }
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-  // 决定变化后旧预演失效：必须重新「检查并写回」才能应用。
-  reviewPlanReady = false;
-  void refreshReview();
-  void refreshState();
-}
-
-async function batchDecide(candidateIds: string[], decision: string, note = ''): Promise<void> {
-  if (candidateIds.length === 0) {
-    toast('没有可操作的条目', 'info');
-    return;
-  }
-  const REVIEW_BATCH_LIMIT = 100;
-  if (candidateIds.length > REVIEW_BATCH_LIMIT) {
-    toast('本次批量操作包含 ' + candidateIds.length + ' 条，超过单批上限 100 条，未执行；请缩小范围后重试', 'err');
-    return;
-  }
-  try {
-    const r = await mutation(() => api<{ ok: boolean; message: string; updated?: number }>('/api/review/batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidate_ids: candidateIds, decision }),
-    }));
-    if (r.ok) {
-      const verb = decision === 'approved' ? '批准' : decision === 'rejected' ? '拒绝' : '改回待确认';
-      const tip = decision === 'approved' ? '—— 仅标记，点「应用（写回）」才真正写回/建任务' : '';
-      toast('✓ 已批量' + verb + ' ' + (r.updated ?? '') + ' 条' + (note ? ' · ' + note : '') + tip, 'ok');
-    } else {
-      toast(r.message, 'err');
-    }
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-  // 批量决定同样使旧预演失效。
-  reviewPlanReady = false;
-  void refreshReview();
-  void refreshState();
-}
 
 async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
@@ -1389,65 +1212,6 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
   }
 }
 
-async function planApply(exec: boolean): Promise<void> {
-  if (exec && reviewApplyBusy) return;
-  if (exec && !reviewPlanReady) {
-    toast('请先查看最新预演，再确认写回', 'info');
-    return;
-  }
-  if (exec) {
-    reviewApplyBusy = true;
-    document.querySelectorAll<HTMLButtonElement>('#modal [data-action="apply"]').forEach((button) => {
-      button.disabled = true;
-    });
-  }
-  const planResult = document.getElementById('plan-result');
-  try {
-    const r = await mutation(() => api<{
-      ok: boolean;
-      message?: string;
-      plan_text?: string;
-      executed?: boolean;
-      applied?: number;
-      rejected?: number;
-      failed?: number;
-      external_actions?: ExternalAction[];
-    }>(
-      exec ? '/api/review/apply' : '/api/review/plan',
-      { method: 'POST' },
-    ));
-    if (!r.ok) {
-      reviewPlanReady = false;
-      toast(r.message ?? '操作失败', 'err');
-      return;
-    }
-    const text = r.plan_text ?? '';
-    const title = exec
-      ? (typeof r.failed === 'number' && r.failed > 0 ? '部分完成：仍有条目需处理' : '完成：已应用')
-      : '预演计划（未写入）';
-    openModal(
-      '<h3>' + title + '</h3><pre>' + esc(text) + '</pre>' +
-      (exec
-        ? '<p class="hint">已应用 ' + String(r.applied ?? 0) + ' 条 · 已拒绝 ' + String(r.rejected ?? 0) +
-          ' 条 · 失败 ' + String(r.failed ?? 0) + ' 条。失败项和未知外部结果请在审批页继续处理。</p>'
-        : '<div class="row"><button class="primary" data-action="apply">确认应用（写回项目/建任务/归档）</button></div>')
-    );
-    reviewPlanReady = !exec;
-    if (exec) {
-      reviewPlanReady = false;
-      if (r.external_actions) externalActions = r.external_actions;
-      toast(typeof r.failed === 'number' && r.failed > 0 ? '应用部分完成，请查看失败项' : '应用完成', r.failed ? 'info' : 'ok');
-      void refreshReview();
-      void refreshState();
-    }
-  } catch (err) {
-    toast(String(err), 'err');
-    if (planResult) planResult.innerHTML = '<div class="msg err">' + esc(String(err)) + '</div>';
-  } finally {
-    if (exec) reviewApplyBusy = false;
-  }
-}
-
 
 // ---------- 数据 ----------
 
@@ -1488,11 +1252,11 @@ async function refreshReview(): Promise<boolean> {
   } catch (err) {
     if (isStaleWorkspaceResponse(err)) return false;
     reviewLoadError = String(err);
-    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+    if (tab === 'review') renderReviewView();
     return false;
   }
   await refreshExternalActions();
-  if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+  if (tab === 'review') renderReviewView();
   return true;
 }
 
@@ -1507,12 +1271,12 @@ async function refreshExternalActions(): Promise<void> {
     } else {
       externalActionsError = '服务端没有返回可用状态';
     }
-    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+    if (tab === 'review') renderReviewView();
   } catch (err) {
     // 外部状态查询失败不阻断审批页本身，但必须在页面上可见。
     if (isStaleWorkspaceResponse(err) || requestId !== latestExternalActionsRequest) return;
     externalActionsError = String(err);
-    if (tab === 'review') renderReview(document.getElementById('view-review') as HTMLElement);
+    if (tab === 'review') renderReviewView();
   }
 }
 
@@ -1556,6 +1320,25 @@ export function mountLegacyWorkbench(): void {
     },
   });
   mountUndo({ refreshAll });
+  mountReview({
+    assemble: () => ({
+      review,
+      loadError: reviewLoadError,
+      lastReadAt: lastReviewReadAt,
+      pendingReview: state?.status.pending_review ?? 0,
+      day: state?.day ?? '',
+      projects: state?.projects ?? [],
+      externalActions,
+      externalActionsError,
+      drafts: reviewDrafts,
+    }),
+    setReview: (payload) => { review = payload; },
+    setExternalActions: (actions) => { externalActions = actions; },
+    saveDraftSnapshot: saveCurrentDraftSnapshot,
+    render: () => render(),
+    refreshState,
+    refreshReview,
+  });
   mountProjects({
     currentTab: () => tab,
     setTab: (next) => { tab = next; },

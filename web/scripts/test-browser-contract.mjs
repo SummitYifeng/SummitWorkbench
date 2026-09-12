@@ -126,9 +126,9 @@ assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to 
 assert.match(reviewSource, /data-review-filter=/, 'review exposes a status filter');
 assert.match(reviewSource, /data-review-select=/, 'review entries expose safe selection controls');
 assert.match(reviewSource, /当前筛选：/, 'review explains the current selection scope');
-assert.match(source, /reviewSelectedIds/, 'review selection state is explicit');
-assert.match(source, /reviewFilter/, 'review filter state is explicit');
-assert.match(source, /reviewSelectedIds\.clear\(\)/, 'changing review filter clears selection');
+assert.match(source, /reviewUi\.selected/, 'review selection state is explicit');
+assert.match(source, /reviewUi\.filter/, 'review filter state is explicit');
+assert.match(source, /reviewUi\.selected\.clear\(\)/, 'changing review filter clears selection');
 assert.match(source, /batchDecide\(selected/, 'selected review actions reuse the batch decision path');
 // The guard must hold in whichever module the dispatch lives in. A single-file reader let this
 // pass silently as soon as the code moved, which is a lost guard rather than a failing test.
@@ -200,9 +200,9 @@ assert.match(
   'stale project detail responses are discarded before touching shared state',
 );
 // 写回前置的 apply 必须有单次在途保护，双击不能发出第二次 /api/review/apply。
-assert.match(source, /reviewApplyBusy/, 'review apply has a single in-flight guard');
-assert.match(source, /if \(exec && reviewApplyBusy\) return/, 'repeat apply clicks cannot fire a second writeback request');
-assert.match(source, /reviewPlanReady = false;\s*\n\s*void refreshReview\(\)/, 'changing decisions invalidates the previous dry-run plan');
+assert.match(source, /reviewUi\.applyBusy/, 'review apply has a single in-flight guard');
+assert.match(source, /if \(exec && reviewUi\.applyBusy\) return/, 'repeat apply clicks cannot fire a second writeback request');
+assert.match(source, /reviewUi\.planReady = false;\s*\n\s*void getReviewDeps\(\)\?\.refreshReview\(\)/, 'changing decisions invalidates the previous dry-run plan');
 // 撤销弹层必须复用统一 dialog 激活（初始焦点、dialog 语义、关闭按钮、返回焦点）。
 assertNearby(
   /async function openUndoModal/,
