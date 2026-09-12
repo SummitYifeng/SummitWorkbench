@@ -480,6 +480,41 @@ git diff --stat docs/contracts/web-route-contract.json   # 必须无输出
 
 **对策**：① handler 函数体**逐字搬运**，不改字符串、不抽 code；② 不引入任何 handler 包装层；③ 每步先跑契约测试，失败即回滚；④ **禁止**用 `scripts/update-web-route-contract.py` 刷新快照掩盖差异。
 
+**R1 补充实测（2026-09-12，做前端步骤 0 时一并核实）**
+
+把"搬迁风险"量化为可验证的数字，并排除一个看起来显然、实际错误的修法：
+
+| 事实 | 实测值 |
+|---|---|
+| 快照中带 `error_codes` 的 route | **12 / 82** |
+| 快照中不同的 error code | **13** |
+| **只被一个 route 记录的 code** | **11 / 13**（列于下） |
+| 源码里出现、但快照**没有**的 code | **9** 个：`host_not_allowed`、`origin_not_allowed`、`internal_error`、`validation_error`、`staging_missing`、`sync_diverged`、`onboarding_draft_failed`、`onboarding_rejected`、`workspace_read_only_upgrade_required` |
+
+"只被一个 route 记录"的 11 个：`acceptance_preflight_failed`、`ask_unavailable`、
+`authentication_required`、`confirmation_required`、`feishu_authorization_failed`、
+`feishu_authorization_unavailable`、`feishu_callback_unavailable`、`feishu_state_expired`、
+`feishu_state_invalid`、`invalid_build_manifest`、`normalization_plan_missing`。
+**这 11 个是真正的暴露面**：每个只由一条 route 的源码文本承载，抽成共用 helper 就会从快照消失，
+而其余断言完全不受影响——即该变化**只体现为快照 diff**，不会以其它方式报警。
+
+那 9 个"在源码里但不在快照里"的 code 并非遗漏，而是**按构造就抽不到**：它们写在
+**中间件与 `@app.exception_handler`** 里（例如 `_validation_error`(1161) 的
+`code="validation_error"`、`_restricted_validation_error`(707) 的 `host_not_allowed` /
+`origin_not_allowed`），而 `route_contract.py` 只对 `route.endpoint` 调 `getsource`。
+与 R1 已有的 `_undo_error_response` 反例同一成因。
+
+**⚠️ 一个错误但很诱人的修法，不要采用**：让 `route_contract` 顺带收集 helper 体内的 code
+（递归跟随本地调用）。实测这会把 `/api/ask` 的 `error_codes` 从 **1 个**膨胀到 **17 个**——
+handler 会调用中间件/工具函数，而那些函数里的 code 与这条 route 是否真会返回它毫无关系。
+那不是"更完整的契约"，而是**换了一份语义不同的快照**，并把 82 条里 12 条的字段整体改写。
+属性名不变、含义改变，比"快照变小"更危险。
+
+**结论**：R1 的既有对策不变，**无需为它新增步骤 0 工作**（后端步骤 0 就是基线冻结，已在本轮完成）。
+真正欠缺的是一道**完整性护栏**——当某个 code 从所有 route 的源码里消失时应当报警，而不是静默变空。
+这是 R1 的加固项，应在**开始迁移路由之前**单独设计并实现（它改的是契约测试的判据，必须独立成
+一笔可回滚的提交），**不要**与任何搬迁步骤混在一起。
+
 ### R2 · `request_model` 依赖 `get_type_hints` 的模块 globals
 
 **证据**：`route_contract.py:31` `hints = get_type_hints(route.endpoint, include_extras=True)`，异常被吞成 `hints = {}`；`_request_model` 随后回退到 `parameters.get(field.name)` 的**裸注解**，若该注解是字符串化/未解析形式则拿不到 `__name__` → `request_model` 变 `None`。快照里 **38 个 route 带请求体模型**，任何一个变 `None` 都会 break。
