@@ -13,13 +13,17 @@
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
 - 最近更新：2026-09-12
-- 当前基线：`v0.4.7`（分发版；本地预发布构建为 build 21，正式发布 build 由 CI `run_number` 决定；
-  前端见随后重建并提交的 `build-meta.json`），远端 CI 全绿。
+- 当前基线：`v0.4.7`（分发版；**已发布**为 build 21，见
+  <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.7>；前端见
+  `build-meta.json`），远端 CI 全绿。
   本轮为**分发给同事**而做：把飞书 app_id / app_secret 作为默认值在构建时内置进包
   （`Contents/Resources/feishu-defaults.json`），并让配置与凭据按「显式配置/Keychain > 内置默认」
   回退，使同事装完点一下「授权飞书」即可，无需任何本机预置。**产品行为与数据格式未改动**；
-  安全取舍与构建契约见 [`../RELEASING.md`](../RELEASING.md)「内置飞书凭据」，验证证据见
-  [`CHANGELOG.md`](../../CHANGELOG.md) 的 `[0.4.7]` 条目。
+  安全取舍与构建契约见 [`../RELEASING.md`](../RELEASING.md)「内置飞书凭据」，发布与双机验收证据见
+  [`CHANGELOG.md`](../../CHANGELOG.md) 的 `[0.4.7]` 条目「发布」一节。
+- **A6（真实双设备冲突恢复）仍开放**，但本轮新增了一条独立证据：在一台**从未安装过**的 Mac 上
+  完成「装包 → 跳转飞书授权成功 → 配置 DeepSeek API 成功 → 生成简报成功」（由使用者本人执行，
+  非自动化复现）。
 - **当前开放项：2 项，且均不阻塞交付** —— A6（需第二台机器现场复跑；代码路径已有端到端自动化 +
   变异测试覆盖）、F1（**非缺陷**，明确超出 `INTERNAL-DEV` 交付范围）。
   **UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**

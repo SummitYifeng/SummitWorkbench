@@ -74,6 +74,24 @@
 - 飞书开放平台侧仍需管理员保证：应用「可用范围」包含每位同事、`offline_access` 等 scope
   已开通、重定向 URL 已登记 `http://localhost:8765/callback`。
 
+### 发布
+
+- tag `v0.4.7` → release run
+  [#34670529202](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34670529202)（success，
+  2m20s；含 secret scan、打包集成测试、P1-07D 双机验收门与发布步骤），产物发布在
+  <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.7>，`latest` 已指向
+  `v0.4.7`（公开 `update-feed.json`：version 0.4.7 / build 21 / arm64）。
+- DMG SHA256：`ea9651182f4baaa38556068dbdb5d3ef7d69a8051d5a4bc65e3184791108e930`
+  （49,431,182 字节）。构建号为 **21**，由 CI 的 `github.run_number` 决定。
+- 发布构建需要仓库 `release` environment 下的 variable `WB_FEISHU_APP_ID` 与 secret
+  `WB_FEISHU_APP_SECRET`；stable 通道还要求 `UPDATE_DOWNLOAD_URL` 指向当前版本的 DMG
+  （本次已从 `v0.4.6` 更新到 `v0.4.7`），否则 `release.yml` 按设计直接失败。
+- **双机现场验收（发布后）**：在一台**从未安装过**的 Mac 上完成——直接跳转飞书授权并成功、
+  配置 DeepSeek API 成功、进入界面后生成简报成功。这一条同时反证了 CI 产物内内置凭据正确
+  （发布前只能核验 feed/metadata 与本地同源构建，无法字节级核验 CI 产物）。
+- 本机（该 workspace 的原机器）另有本地预发布构建 build 25，仅用于开发期验证；对外的可分发
+  产物是上面这个 build 21。
+
 ## [0.4.6] - 2026-09-12
 
 > 补丁版：修掉 `v0.4.5` 留下的、指南首页那行版本标记的显示瑕疵。**产品行为同样未改动**——
