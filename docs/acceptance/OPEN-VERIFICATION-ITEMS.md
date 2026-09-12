@@ -39,8 +39,8 @@
 
 | # | 项 | 说明 |
 |---|---|---|
-| A6 | 真实双设备上的冲突恢复提交 | 需要第二台机器（MacBook Air） |
-| A7 | 第二台机器上的「从另一台 Mac 克隆」向导旅程 | 需要第二台机器（MacBook Air）；装包 → 克隆 → 确认 → 本机为 secondary → 模型/飞书 |
+| A6 | 真实双设备上的冲突恢复提交 | 需要第二台机器（MacBook Air）；步骤见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
+| A7 | 第二台机器上的「从另一台 Mac 克隆」向导旅程 | 需要第二台机器（MacBook Air）；装包 → 克隆 → 确认 → 本机为 secondary → 模型/飞书；步骤同见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
 
 > **A1–A5 已于 2026-09-11 在真实凭据 / 真实飞书 / 真实远端上复验通过**，当时用真实 vault 与真实
 > 模型（未用隔离副本，保护手段是 git 基线与事后回退）。逐项结果、证据与两个修复见 §L，并已登记到
