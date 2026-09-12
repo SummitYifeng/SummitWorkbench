@@ -14,33 +14,24 @@ review_edit、应用用 apply_meeting_review；看板状态用 build_status、�
 from __future__ import annotations
 
 import os
-import threading
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING
 
-from fastapi import Body, FastAPI, Header, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
-    JSONResponse,
 )
 from fastapi.staticfiles import StaticFiles
 
 if TYPE_CHECKING:
     pass
 
-from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.daily_note import read_brief_block
-from summit_workbench.webapp.api import (
-    OnboardingCreatePayload,
-    OnboardingPreflightPayload,
-    OnboardingVaultPayload,
-)
 from summit_workbench.webapp.ask_view import _ask_html as _ask_html
 from summit_workbench.webapp.build_info import (
     WebBuildInfo,
@@ -91,6 +82,7 @@ from summit_workbench.webapp.routers.brief import (
 )
 from summit_workbench.webapp.routers.capture import register_capture_routes
 from summit_workbench.webapp.routers.meetings import register_meetings_routes
+from summit_workbench.webapp.routers.onboarding import register_onboarding_routes
 from summit_workbench.webapp.routers.review import (
     register_review_page_routes,
     register_review_routes,
@@ -109,7 +101,6 @@ from summit_workbench.webapp.routers.threads import (
 from summit_workbench.webapp.routers.undo import register_undo_routes
 from summit_workbench.webapp.security import (
     allowed_hosts,
-    error_payload,
     validate_bind_host,
 )
 from summit_workbench.webapp.views import render_dashboard
@@ -241,7 +232,10 @@ def create_app(
     # ---- JSON API（SPA 工作台） ----
 
     from summit_workbench.webapp.dependencies import RouteDependencies
-    from summit_workbench.webapp.routers.system import register_system_routes
+    from summit_workbench.webapp.routers.system import (
+        register_shutdown_route,
+        register_system_routes,
+    )
 
     register_system_routes(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
@@ -307,25 +301,9 @@ def create_app(
         runtime=runtime,
     )
 
-    @app.post("/api/shutdown")
-    def api_shutdown(
-        x_wb_shutdown: Annotated[str | None, Header()] = None,
-    ) -> dict[str, object]:
-        """关闭本地面板（网页「退出」按钮调用）。
-
-        只允许面板页面自身触发：自定义头 ``X-WB-Shutdown`` 会强制浏览器先发 CORS
-        预检，而本应用未开启跨域，外部网页无法直发——杜绝任意网页把本地服务关掉。
-        收到请求后延迟片刻让响应先返回，再从独立线程退出进程。
-        """
-        if x_wb_shutdown != "1":
-            return {"ok": False, "message": "缺少关闭令牌"}
-
-        def _stop() -> None:
-            time.sleep(0.3)
-            os._exit(0)
-
-        threading.Thread(target=_stop, daemon=True).start()
-        return {"ok": True, "message": "工作台正在关闭…"}
+    register_shutdown_route(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+    )
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
@@ -350,111 +328,9 @@ def create_app(
         feishu_clients=feishu_clients,
     )
 
-    # ---- onboarding 服务 API（P0-08：服务 + API，无 UI） ----
-
-    from summit_workbench.domain.onboarding import OnboardingFlow
-    from summit_workbench.workflows import onboarding as onboarding_service
-
-    def _onboarding_rejected(
-        request: Request, exc: onboarding_service.OnboardingError
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=409,
-            content=error_payload(
-                code="onboarding_rejected",
-                message=str(exc),
-                operation_id=_operation_id(request),
-                details={"reasons": exc.reasons},
-            ),
-        )
-
-    @app.get("/api/onboarding/status", response_model=None)
-    def api_onboarding_status() -> dict[str, object]:
-        """当前 workspace 解析状态：active / env-compat / onboarding-required。"""
-        from summit_workbench.config.profiles import resolve_workspace
-
-        resolution = resolve_workspace()
-        return {
-            "ok": True,
-            "state": resolution.state.value,
-            "workspace_id": resolution.profile.workspace_id if resolution.profile else None,
-            "reason": resolution.reason,
-        }
-
-    @app.post("/api/onboarding/preflight", response_model=None)
-    def api_onboarding_preflight(
-        request: Request, payload: Annotated[OnboardingPreflightPayload, Body()]
-    ) -> dict[str, object] | JSONResponse:
-        """只读预演：返回结构化预检报告（不写任何文件）。"""
-        try:
-            report = onboarding_service.preflight(
-                OnboardingFlow(payload.flow),
-                Path(payload.path).expanduser(),
-                templates_dir=onboarding_service.default_vault_templates_dir(),
-                home=ctx.active_workspace.home if ctx.active_workspace else None,
-            )
-        except onboarding_service.OnboardingError as exc:
-            return _onboarding_rejected(request, exc)
-        return {"ok": True, "report": report.model_dump(mode="json")}
-
-    @app.post("/api/onboarding/create", response_model=None)
-    def api_onboarding_create(
-        request: Request, payload: Annotated[OnboardingCreatePayload, Body()]
-    ) -> dict[str, object] | JSONResponse:
-        """create-new：全新工作区（staging + 原子改名 + marker + profile，失败回滚）。"""
-        try:
-            result = onboarding_service.create_workspace(
-                Path(payload.work_root).expanduser(),
-                display_name=payload.display_name,
-                device_name=payload.device_name,
-                device_role=DeviceRole(payload.device_role),
-                templates_dir=onboarding_service.default_vault_templates_dir(),
-                home=ctx.active_workspace.home if ctx.active_workspace else None,
-            )
-        except onboarding_service.OnboardingError as exc:
-            return _onboarding_rejected(request, exc)
-        from summit_workbench.repositories.onboarding_draft import clear_onboarding_draft
-
-        clear_onboarding_draft(home=ctx.active_workspace.home if ctx.active_workspace else None)
-        return {"ok": True, **result.model_dump(mode="json")}
-
-    @app.post("/api/onboarding/upgrade", response_model=None)
-    def api_onboarding_upgrade(
-        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
-    ) -> dict[str, object] | JSONResponse:
-        """upgrade-existing：旧 vault 升级（备份 + marker + profile，内容不动）。"""
-        try:
-            result = onboarding_service.upgrade_workspace(
-                Path(payload.vault_dir).expanduser(),
-                device_name=payload.device_name,
-                device_role=DeviceRole(payload.device_role),
-                home=ctx.active_workspace.home if ctx.active_workspace else None,
-            )
-        except onboarding_service.OnboardingError as exc:
-            return _onboarding_rejected(request, exc)
-        from summit_workbench.repositories.onboarding_draft import clear_onboarding_draft
-
-        clear_onboarding_draft(home=ctx.active_workspace.home if ctx.active_workspace else None)
-        return {"ok": True, **result.model_dump(mode="json")}
-
-    @app.post("/api/onboarding/connect", response_model=None)
-    def api_onboarding_connect(
-        request: Request, payload: Annotated[OnboardingVaultPayload, Body()]
-    ) -> dict[str, object] | JSONResponse:
-        """connect-local：连接已 clone/拷贝的带 marker vault（建档 + 置 active）。"""
-        try:
-            result = onboarding_service.connect_workspace(
-                Path(payload.vault_dir).expanduser(),
-                display_name=payload.display_name,
-                device_name=payload.device_name,
-                home=ctx.active_workspace.home if ctx.active_workspace else None,
-            )
-        except onboarding_service.OnboardingError as exc:
-            return _onboarding_rejected(request, exc)
-        from summit_workbench.repositories.onboarding_draft import clear_onboarding_draft
-
-        clear_onboarding_draft(home=ctx.active_workspace.home if ctx.active_workspace else None)
-        return {"ok": True, **result.model_dump(mode="json")}
+    register_onboarding_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+    )
 
     # ---- workspace schema migration（P1-02；P1-03 router 接线）----
 
