@@ -239,11 +239,12 @@ assert.match(source, /const returnFocus = document\.querySelector<HTMLElement>\(
 assert.match(source, /if \(returnFocus\) modalReturnFocus = returnFocus/, 'sync conflict restores focus to its banner trigger after async modal activation');
 assert.match(source, /persistEntityDraft\('sync-conflict'/, 'sync conflict choices have a recoverable entity draft');
 assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsaved-draft guard');
-// Anchored on the artifact-specific confirmation text, not on `window.confirm` itself: the split
-// places confirms in several domain modules, and a per-file window would then demand the artifact
-// follow-up inside every one of them.
+// Anchored on the artifact-specific confirmation call, not on `window.confirm` itself (the split
+// places confirms in several domain modules) and not on the确认 copy (that now lives in the pure
+// `artifactStateConfirmText`, asserted in test-threads-render.mjs). What this guard is about is
+// the *ordering*: the state write-back must sit behind the final confirmation.
 assert.match(source, /const confirmed = window\.confirm\(/, 'artifact state sync asks for a final confirmation');
-assertNearby(/产物已保存/, /[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
+assertNearby(/const confirmed = window\.confirm\(/, /[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 // 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
