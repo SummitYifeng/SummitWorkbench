@@ -9,8 +9,9 @@ from uuid import uuid4
 from pydantic import SecretStr
 
 from summit_workbench import __version__
-from summit_workbench.config.app_support import runtime_dir
+from summit_workbench.config.app_support import app_support_dir, runtime_dir
 from summit_workbench.config.git_credentials import strip_credentials
+from summit_workbench.config.locking import workspace_lock
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import (
     CredentialError,
@@ -178,7 +179,36 @@ def remove_local_profile(*, home: Path, workspace_id: str, confirmed: bool) -> d
     }
 
 
+def _provider_settings_lock_root(home: Path, workspace_id: str) -> Path:
+    """provider 设置读-改-写的锁根：每 workspace 一把，独立于 vault 锁。
+
+    刻意不放在 profile 目录里：``workspace_lock`` 会创建锁文件所在目录，放在 profile 下
+    会让「工作台不存在」的失败顺带造出一个空 profile 目录。
+    """
+    return app_support_dir(home) / "locks" / workspace_id
+
+
 def update_provider_settings(
+    *, home: Path, workspace_id: str, provider: str, settings: dict[str, object], secret: str | None
+) -> dict[str, object]:
+    """保存某 provider 的设置；整段读-改-写持有 per-workspace 锁。
+
+    provider 段是**读-改-写**，而向导会先后写模型段与飞书段（模型验证与授权回调可能几乎
+    同时到达）。没有互斥时后写者会基于自己读到的旧快照落盘，静默丢掉另一段——现象就是
+    「授权明明成功，设置页却显示未连接」。这里把 load→改→save 整段串行化；锁在**线程内
+    可重入**，同线程嵌套调用不会自锁。
+    """
+    with workspace_lock(_provider_settings_lock_root(home, workspace_id)):
+        return _apply_provider_settings(
+            home=home,
+            workspace_id=workspace_id,
+            provider=provider,
+            settings=settings,
+            secret=secret,
+        )
+
+
+def _apply_provider_settings(
     *, home: Path, workspace_id: str, provider: str, settings: dict[str, object], secret: str | None
 ) -> dict[str, object]:
     """Persist non-secret provider settings and write an optional secret once to scoped Keychain."""

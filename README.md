@@ -124,7 +124,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。定时任务安装见 [deploy/launchd/README.md](deploy/launchd/README.md)，桌面 App 打包见 [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)。
 
-质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.7` 的本地门禁已通过：**922 passed / 1 skipped、覆盖率 82.68%**，ruff、ruff format、mypy strict、`npm run build`（含 `verify-build.mjs` 与前端契约测试）全部通过，`scripts/release-macos.sh` 完整跑通并产出 DMG。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
+质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.7` 的本地门禁已通过：**925 passed / 1 skipped、覆盖率 82.77%**，ruff、ruff format、mypy strict、`npm run build`（含 `verify-build.mjs` 与前端契约测试）全部通过，`scripts/release-macos.sh` 完整跑通并产出 DMG。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
 
 建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
 

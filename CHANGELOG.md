@@ -33,19 +33,31 @@
   三条守卫并做过变异验证（把取回原因的端点改坏即报出对应断言）。**拿不到会话 cookie 的静态
   回退页同样说明原因**（`_panel_redirect`：没有 state / 状态失效 / 已记录失败 / 用户取消各有
   对应文案），该页会把未信任的 `error` 参数拼进 HTML，因此做了转义并有专门断言。
+- **修复 provider 设置的丢段竞态（现场发现）**：`update_provider_settings` 原本是无锁的
+  读-改-写，而向导会先后写「模型」段与「飞书」段（模型验证与授权回调可能几乎同时到达）。
+  并发时后写者会基于自己读到的旧快照落盘，**静默丢掉另一段**——现场表现正是「授权成功、
+  Keychain 有可用 refresh_token，但设置页显示未连接」。现在整段 load→改→save 持有
+  per-workspace 锁（锁根在 `Application Support` 下的 `locks/<workspace_id>`，刻意不放在
+  profile 目录里，避免失败路径造出空 profile）；并补了**确定性并发交错测试**：无锁时该测试
+  必然报出「模型段被并发写入覆盖」（已做变异验证）。
 - **测试**：新增 `tests/unit/test_feishu_bundled.py`（15 例）、
   `tests/unit/test_feishu_authorization_reason.py`（14 例，含「被拒绝 → 向导显示原因」的
-  端到端用例与静态回退页的注入转义用例）与
+  端到端用例与静态回退页的注入转义用例）、
+  `tests/unit/test_profile_settings_concurrency.py`（3 例，含并发丢段回归）与
   `tests/unit/test_feishu_session.py` 的 3 例，覆盖回退链两个方向、显式配置优先、
   显式配置缺字段仍报错、内置文件损坏、无内置时保持原有报错文案，以及**打包运行时契约**：
   按 `WB_STATIC_DIR` 与 server 可执行文件相对路径两条查找路径都能命中内置凭据文件、
-  显式覆盖优先、空串覆盖＝显式关闭。该组路径测试已做**变异验证**（删掉 `WB_STATIC_DIR`
-  分支、让空串覆盖不再禁用探测，两种情况都会被测试抓住），确认不是空转。
-- **端到端验证**：在**清空 Application Support + 移走 `~/.config/.../config.toml` +
-  Keychain 无凭据**的干净机器上，从新 DMG 安装 0.4.7 后连接工作区并调用授权端点，
-  返回真实飞书授权 URL（`client_id=cli_…`、`redirect_uri`、`scope` 齐全）；
-  抓取令牌请求体确认 `client_secret` 来自包内资源；直连飞书端点返回 HTTP 400
-  （占位 secret），即请求确实带着凭据发出，而不是本地「未在 Keychain 找到 app_secret」。
+  显式覆盖优先、空串覆盖＝显式关闭。这些测试都做过**变异验证**（删掉 `WB_STATIC_DIR`
+  分支、让空串覆盖不再禁用探测、去掉 provider 设置的互斥，都会被对应测试抓住），确认不是空转。
+- **端到端验证（真实凭据，2026-09-12 现场）**：在**清空 Application Support + 移走
+  `~/.config/.../config.toml` + Keychain 无任何凭据**的干净机器上，从 DMG 安装 0.4.7 后由
+  使用者本人走完向导三步：连接已有 `_vault` → 粘贴 DeepSeek API Key（现场验证成功）→
+  点「授权飞书」并在浏览器同意。结果：workspace 作用域 Keychain 出现真实 refresh_token
+  （1771 字符），用它可以成功刷新出 access_token（1703 字符）——**零预置、点一下即可完成
+  授权**这一目标达成；Keychain 中没有 app_secret 副本，证明用的是包内内置值且只读。
+  另外用包内 secret 换 `tenant_access_token` 成功，证明凭据在飞书侧有效。
+  此前的占位 secret 构建则用于验证：授权 URL 取自包内 app_id、真实飞书失败会翻成可执行提示、
+  静态回退页与状态端点都会带上原因。
 
 ### 为什么必须内置 app_secret
 
