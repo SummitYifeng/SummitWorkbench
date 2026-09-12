@@ -127,7 +127,11 @@ def stage_remote_clone(
     safe_url = validate_remote_url(url)
     if not username.strip() or len(username) > 200:
         raise RemoteCloneError("git_username_invalid", "Git 用户名不能为空或过长")
-    if backend_factory is None and not workspace_id:
+    if backend_factory is None and credential_resolver is None and not workspace_id:
+        # 只有需要**从 Keychain 读取 workspace 作用域凭据**时才要求预期 id。空安装向导手里
+        # 没有这个 id（它由远端 marker 决定），而它总是显式带上本次要用的 PAT
+        # （credential_resolver），此时没有任何按作用域查找凭据的动作；下方的
+        # ``workspace_id or ""`` 与 ``manifest.workspace_id`` 回填也早已支持 None。
         raise RemoteCloneError(
             "workspace_id_required",
             "私有 remote clone 需要预期 workspace id 才能读取作用域凭据",

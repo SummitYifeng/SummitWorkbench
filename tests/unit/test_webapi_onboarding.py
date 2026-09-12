@@ -210,11 +210,19 @@ def test_onboarding_draft_rejects_pat_and_keeps_non_secret_remote_facts(
 
 
 def test_remote_clone_stage_and_confirm_over_http(tmp_path, monkeypatch) -> None:
-    from types import SimpleNamespace
+    """走空安装向导真正发出的那份 payload。
+
+    这里**不 stub `stage_remote_clone`**：早期版本 stub 掉了它，于是"私有 clone 缺少
+    expected_workspace_id"这条守卫永远走不到，真人一跑就炸（2026-09-13 实测）。
+    现在只把网络 clone 换成假 backend，其余（守卫、marker 读取、兼容性、确认落盘）全是真的。
+    """
+    from datetime import UTC, datetime
     from uuid import uuid4
 
     from summit_workbench.config import secrets as secrets_mod
-    from summit_workbench.domain.onboarding import OnboardingFlow, OnboardingResult
+    from summit_workbench.domain.workspace import WorkspaceManifest
+    from summit_workbench.repositories.profile_registry import load_profile
+    from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
     from summit_workbench.workflows import remote_onboarding
 
     client = _restricted_client(tmp_path, monkeypatch)
@@ -234,39 +242,34 @@ def test_remote_clone_stage_and_confirm_over_http(tmp_path, monkeypatch) -> None
     )
 
     workspace_id = str(uuid4())
+    manifest = WorkspaceManifest(
+        schema_version=2,
+        workspace_id=workspace_id,
+        display_name="Remote workspace",
+        created_at=datetime(2026, 9, 5, tzinfo=UTC),
+        min_reader_version="0.1.0",
+        min_writer_version="0.1.0",
+    )
+
+    class _FakeBackend:
+        def __init__(self, path, **_kwargs) -> None:
+            self.path = path
+
+        def clone(self, url, destination) -> None:
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / "README.md").write_text("remote\n", encoding="utf-8")
+            write_workspace_manifest(destination, manifest)
+
+    monkeypatch.setattr(
+        remote_onboarding,
+        "_default_backend_factory",
+        lambda path, **kwargs: _FakeBackend(path, **kwargs),
+    )
+
     target = tmp_path / "work" / "_vault"
     target.parent.mkdir(parents=True, exist_ok=True)
-    staged = SimpleNamespace(
-        remote_url="https://github.com/acme/private.git",
-        username="alice",
-        workspace_id=workspace_id,
-        compatibility=SimpleNamespace(value="ok"),
-    )
-    seen: dict[str, object] = {}
 
-    def fake_stage(url, destination, *, workspace_id, username, **kwargs):
-        seen["url"] = url
-        seen["username"] = username
-        resolver = kwargs.get("credential_resolver")
-        assert resolver is not None, "PAT 必须以 credential_resolver 形式进入 clone"
-        seen["pat"] = resolver(workspace_id, "github.com", username).password.get_secret_value()
-        return staged
-
-    def fake_confirm(staged_arg, *, home=None, display_name=None, device_name=None, **kwargs):
-        seen["confirmed"] = True
-        return OnboardingResult(
-            flow=OnboardingFlow.CONNECT_REMOTE,
-            workspace_id=workspace_id,
-            work_root=str(target.parent),
-            vault_dir=str(target),
-            device_id="device-1",
-            display_name=display_name or "Remote",
-            created_at="2026-09-12T00:00:00Z",
-        )
-
-    monkeypatch.setattr(remote_onboarding, "stage_remote_clone", fake_stage)
-    monkeypatch.setattr(remote_onboarding, "confirm_remote_clone", fake_confirm)
-
+    # 向导实际发出的字段：没有 expected_workspace_id（空安装根本不知道它）。
     response = client.post(
         "/api/onboarding/remote/stage",
         json={
@@ -276,22 +279,24 @@ def test_remote_clone_stage_and_confirm_over_http(tmp_path, monkeypatch) -> None
             "pat": "canary-pat",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     body = response.json()
     assert body["ok"] is True
-    assert body["workspace_id"] == workspace_id
+    assert body["workspace_id"] == workspace_id, "workspace id 必须来自远端 marker"
     assert "canary-pat" not in response.text
-    assert seen["pat"] == "canary-pat"
-    assert seen["url"] == "https://github.com/acme/private.git"
+    assert not target.exists(), "确认前不得落盘"
 
     confirmed = client.post(
         "/api/onboarding/remote/confirm",
         json={"stage_id": body["stage_id"], "pat": "canary-pat"},
     )
-    assert confirmed.status_code == 200
+    assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["workspace_id"] == workspace_id
     assert "canary-pat" not in confirmed.text
-    assert seen["confirmed"] is True
+    assert target.is_dir(), "确认后 staging 被原子移动到目标"
+    profile = load_profile(workspace_id, home=_tmp_home(client))
+    assert profile is not None
+    assert profile.device_role.value == "secondary"
     # PAT 只落到 workspace 作用域 Keychain 命名下。
     assert stored == {
         ("com.summitworkbench.credentials." + workspace_id, "git:github.com:alice"): "canary-pat",
