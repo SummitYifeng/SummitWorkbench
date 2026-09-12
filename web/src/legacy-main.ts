@@ -6,14 +6,11 @@ import {
   isStaleWorkspaceResponse,
   onConnectionRestored,
 } from './api/request';
-import { MAX_TEXT_CHARS } from './core/text';
 import { workspaceStore } from './core/workspace-store';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
   clearDraftSnapshot,
-  clearEntityDraft,
   loadDraftSnapshot,
-  loadEntityDraft,
   saveDraftSnapshot as persistDraftSnapshot,
   saveEntityDraft,
   type DraftSnapshot,
@@ -30,7 +27,7 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
 import { type BriefData } from './brief-card';
-import { projectDetailHtml, projectDisplayName, projectsListHtml } from './features/projects';
+import { projectDetailHtml, projectsListHtml } from './features/projects';
 import type { ProjectListFilter, ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
 import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewPayload } from './features/review';
@@ -40,6 +37,7 @@ import {
   focusVisibleProjectLink,
   mountShell,
   openModal,
+  rejectOversizeText,
   requestModalClose,
   toast,
   viewElement,
@@ -70,6 +68,11 @@ import {
 import { mountUndo, openUndoModal } from './features/undo';
 import { mountGuide } from './features/guide';
 import { renderSettings as renderSettingsFeature } from './features/settings';
+import {
+  mountThreads,
+  openArtifactModal,
+  openLogModal,
+} from './features/threads';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
 
 type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
@@ -178,16 +181,6 @@ function persistEntityDraft<T>(entity: string, value: T): void {
     draftStorageWarningShown = true;
     toast('浏览器暂时无法保存草稿；请先完成当前编辑再切页', 'err');
   }
-}
-
-/**
- * 长文本提交前拦截：后端对捕捉/日志/产物正文设了 100,000 字符上限，
- * 直接发送只会得到笼统的 422。这里提前说明原因与当前长度，避免用户以为"保存失败"。
- */
-function rejectOversizeText(text: string): boolean {
-  if (text.length <= MAX_TEXT_CHARS) return false;
-  toast('内容超过 10 万字上限（当前 ' + text.length + ' 字），请拆分后重试', 'err');
-  return true;
 }
 
 function healthTone(): { tone: string; label: string } {
@@ -1385,262 +1378,6 @@ async function setProjectState(action: 'activate' | 'archive', name: string): Pr
   void refreshAll();
 }
 
-/** 追加推进日志弹窗：多选关联线程/项目 + 粘贴文本 → AI 消化入各线程。 */
-interface LogDraft {
-  projects: string[];
-  text: string;
-}
-
-function openLogModal(defaultProject: string): void {
-  const registered = (state?.projects ?? []).filter((p) => p.registered);
-  const saved = loadEntityDraft<LogDraft>('log:' + defaultProject, Date.now(), remoteVersion?.workspace_id);
-  const selectedProjects = saved?.projects ?? (defaultProject ? [defaultProject] : []);
-  const boxes = registered
-    .map((p) =>
-      '<label class="log-proj"><input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
-      (selectedProjects.includes(p.name) ? ' checked' : '') + '>' + esc(projectDisplayName(p)) +
-      (projectDisplayName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
-      (p.is_thread ? ' <span class="hint">(线程)</span>' : '') + '</label>'
-    )
-    .join('');
-  openModal(
-    '<h3>追加推进日志</h3>' +
-    '<p class="hint">粘贴一段推进/沟通摘录/跟进（文本即可，语音请先自行转写）。可勾选多个关联的线程或项目；' +
-    'AI 会整理摘要并归入各线程。模型不可用时只存原文，绝不丢。</p>' +
-    '<form id="log-form">' +
-    '<div class="log-projs">' + (boxes || '<span class="hint">还没有已建档的项目，先在「项目」页建档。</span>') + '</div>' +
-    '<textarea id="log-text" rows="8" required placeholder="今天和木子/冯老师沟通了什么、定了什么、下一步做什么…">' +
-    esc(saved?.text ?? '') + '</textarea>' +
-    '<div class="row"><button class="primary" type="submit">保存日志</button>' +
-    '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
-    '</form>'
-  );
-  const modal = document.getElementById('modal') as HTMLElement | null;
-  if (modal) {
-    modal.dataset.draftEntity = 'log:' + defaultProject;
-    modal.dataset.draftDirty = saved ? '1' : '0';
-  }
-  const persistLogDraft = (): void => {
-    const text = (document.getElementById('log-text') as HTMLTextAreaElement | null)?.value ?? '';
-    const projects = Array.from(document.querySelectorAll<HTMLInputElement>('#log-form input[name="log-proj"]:checked')).map((i) => i.value);
-    persistEntityDraft('log:' + defaultProject, { projects, text });
-  };
-  document.getElementById('log-form')?.addEventListener('input', persistLogDraft);
-  document.getElementById('log-form')?.addEventListener('change', persistLogDraft);
-  document.getElementById('log-form')?.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    void submitLog();
-  });
-}
-
-let logSubmitting = false;
-
-async function submitLog(): Promise<void> {
-  if (logSubmitting) return;
-  const text = ((document.getElementById('log-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
-  const projects = Array.from(
-    document.querySelectorAll<HTMLInputElement>('#log-form input[name="log-proj"]:checked')
-  ).map((i) => i.value);
-  if (!text) {
-    toast('日志内容为空', 'err');
-    return;
-  }
-  if (rejectOversizeText(text)) return;
-  if (projects.length === 0) {
-    toast('至少勾选一个线程/项目', 'err');
-    return;
-  }
-  logSubmitting = true;
-  const submitButton = document.querySelector<HTMLButtonElement>('#log-form button[type="submit"]');
-  if (submitButton) submitButton.disabled = true;
-  try {
-    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/logs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects, text }),
-    }));
-    if (r.ok) {
-      const entity = document.getElementById('modal')?.dataset.draftEntity;
-      if (entity) clearEntityDraft(entity, remoteVersion?.workspace_id);
-      closeModal();
-    }
-    toast(r.message, r.ok ? 'ok' : 'err');
-  } catch (err) {
-    toast(String(err), 'err');
-  } finally {
-    logSubmitting = false;
-    if (submitButton) submitButton.disabled = false;
-  }
-}
-
-/** AI 产物入库弹窗：选线程 + 粘贴阶段总结/PRD/背景包全文 → 自动命名与摘要索引。 */
-interface ArtifactDraft {
-  project: string;
-  title: string;
-  text: string;
-  syncState: boolean;
-}
-
-function openArtifactModal(defaultProject: string): void {
-  const registered = (state?.projects ?? []).filter((p) => p.registered);
-  const saved = loadEntityDraft<ArtifactDraft>('artifact:' + defaultProject, Date.now(), remoteVersion?.workspace_id);
-  const options = registered
-    .map((p) =>
-      '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') + '>' +
-      esc(projectDisplayName(p)) + (projectDisplayName(p) !== p.name ? '（' + esc(p.name) + '）' : '') + '</option>'
-    )
-    .join('');
-  openModal(
-    '<h3>存入 AI 产物 / 导入文档</h3>' +
-    '<p class="hint">粘贴和 AI 长对话产出的阶段总结 / 背景包 / PRD / 时间线全文，<strong>或直接选择本地 .md/.txt 文件</strong>；' +
-    '系统自动命名、生成摘要索引并归入所选线程档案。<strong>也可以直接把文件从访达拖进本窗口</strong>。</p>' +
-    '<form id="artifact-form">' +
-    '<div class="form-row"><label>归入线程/项目</label>' +
-    '<select id="artifact-project">' + (options || '<option value="">（无已建档项目）</option>') + '</select></div>' +
-    '<input id="artifact-title" placeholder="标题（可选；留空则 AI 自动起）">' +
-    '<div class="form-row artifact-file-row"><label class="ghost artifact-pick" for="artifact-file">📄 选择本地文件' +
-    '<input id="artifact-file" type="file" accept=".md,.txt" class="visually-hidden"></label>' +
-    '<span class="hint" id="artifact-file-name"></span></div>' +
-    '<textarea id="artifact-text" rows="10" required placeholder="把整份文档粘贴在这里，或点上方按钮读入本地文件…"></textarea>' +
-    '<label class="hint artifact-to-state"><input type="checkbox" id="artifact-to-state"> ' +
-    '保存后先预览并确认把本文档摘要同步为主档案「当前状态」（会覆盖原内容，旧版可在 vault git 找回）</label>' +
-    '<div class="row"><button class="primary" type="submit">存入档案</button>' +
-    '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
-    '</form>'
-  );
-  document.getElementById('artifact-form')?.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    void submitArtifact();
-  });
-  const savedProject = saved?.project || defaultProject;
-  const projectInput = document.getElementById('artifact-project') as HTMLSelectElement | null;
-  const titleInput = document.getElementById('artifact-title') as HTMLInputElement | null;
-  const textArea = document.getElementById('artifact-text') as HTMLTextAreaElement | null;
-  const stateInput = document.getElementById('artifact-to-state') as HTMLInputElement | null;
-  if (projectInput && savedProject) projectInput.value = savedProject;
-  if (titleInput) titleInput.value = saved?.title ?? '';
-  if (textArea) textArea.value = saved?.text ?? '';
-  if (stateInput) stateInput.checked = saved?.syncState ?? false;
-  const modal = document.getElementById('modal') as HTMLElement | null;
-  if (modal) {
-    modal.dataset.draftEntity = 'artifact:' + defaultProject;
-    modal.dataset.draftDirty = saved ? '1' : '0';
-  }
-  const persistArtifactDraft = (): void => {
-    persistEntityDraft('artifact:' + defaultProject, {
-      project: (document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '',
-      title: (document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '',
-      text: (document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '',
-      syncState: !!(document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked,
-    });
-  };
-  document.getElementById('artifact-form')?.addEventListener('input', persistArtifactDraft);
-  document.getElementById('artifact-form')?.addEventListener('change', persistArtifactDraft);
-  const readArtifactFile = (file: File): void => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const content = String(reader.result ?? '');
-      const titleInput = document.getElementById('artifact-title') as HTMLInputElement | null;
-      const textArea = document.getElementById('artifact-text') as HTMLTextAreaElement | null;
-      if (titleInput && !titleInput.value.trim()) {
-        titleInput.value = file.name.replace(/\.(md|txt)$/i, '');
-      }
-      if (textArea) textArea.value = content;
-      const nameEl = document.getElementById('artifact-file-name');
-      if (nameEl) nameEl.textContent = '已读入：' + file.name + '（' + content.length + ' 字符）';
-      persistArtifactDraft();
-    };
-    reader.onerror = () => toast('读取文件失败', 'err');
-    reader.readAsText(file, 'utf-8');
-  };
-  const fileInput = document.getElementById('artifact-file') as HTMLInputElement | null;
-  fileInput?.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (file) readArtifactFile(file);
-  });
-  // 拖放读入（绕过系统文件选择框：WKWebView 对 picker 的兼容问题）
-  const dropTarget = document.getElementById('artifact-form') as HTMLElement | null;
-  dropTarget?.addEventListener('dragover', (ev) => {
-    ev.preventDefault();
-    dropTarget.classList.add('artifact-drop');
-  });
-  dropTarget?.addEventListener('dragleave', () => dropTarget.classList.remove('artifact-drop'));
-  dropTarget?.addEventListener('drop', (ev) => {
-    ev.preventDefault();
-    dropTarget.classList.remove('artifact-drop');
-    const file = ev.dataTransfer?.files?.[0];
-    if (file) {
-      readArtifactFile(file);
-      toast('已读取文件：' + file.name, 'ok');
-    }
-  });
-}
-
-let artifactSubmitting = false;
-
-async function submitArtifact(): Promise<void> {
-  if (artifactSubmitting) return;
-  const text = ((document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
-  const project = ((document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '').trim();
-  const title = ((document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '').trim();
-  const syncState = !!((document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked);
-  if (!text) {
-    toast('产物内容为空', 'err');
-    return;
-  }
-  if (rejectOversizeText(text)) return;
-  if (!project) {
-    toast('请选择归入的线程/项目', 'err');
-    return;
-  }
-  // 双击「存入档案」不能创建两份产物（产物保存后才可能触发状态预览确认）。
-  artifactSubmitting = true;
-  const submitButton = document.querySelector<HTMLButtonElement>('#artifact-form button[type="submit"]');
-  if (submitButton) submitButton.disabled = true;
-  try {
-    const r = await mutation(() => api<{ ok: boolean; message: string; summary?: string }>('/api/threads/artifacts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, text, title: title || null }),
-    }));
-    if (!r.ok) {
-      toast(r.message, 'err');
-      return;
-    }
-    let extra = '';
-    if (syncState) {
-      const stateText = r.summary || title || text.slice(0, 80).replace(/\s+/g, ' ');
-      const preview = stateText.length > 1200 ? stateText.slice(0, 1200) + '\n…（预览已截断）' : stateText;
-      const confirmed = window.confirm(
-        '产物已保存。\n\n即将把以下内容写入主档案「当前状态」：\n\n' + preview + '\n\n确认继续？',
-      );
-      if (confirmed) {
-        const s = await mutation(() => api<{ ok: boolean; message: string }>('/api/threads/state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project, text: stateText }),
-        }));
-        extra = s.ok ? ' · 已同步当前状态' : '（当前状态同步失败：' + s.message + '）';
-      } else {
-        extra = ' · 已保存产物，未修改当前状态';
-      }
-    }
-    const modal = document.getElementById('modal') as HTMLElement | null;
-    const draftEntity = modal?.dataset.draftEntity;
-    if (draftEntity) clearEntityDraft(draftEntity, remoteVersion?.workspace_id);
-    if (draftEntity !== 'artifact:' + project) {
-      clearEntityDraft('artifact:' + project, remoteVersion?.workspace_id);
-    }
-    closeModal();
-    toast(r.message + extra, r.ok ? 'ok' : 'err');
-  } catch (err) {
-    toast(String(err), 'err');
-  } finally {
-    artifactSubmitting = false;
-    if (submitButton) submitButton.disabled = false;
-  }
-}
-
 function bindProjectDetail(container: HTMLElement, current: ProjectView): void {
   container.querySelector('[data-action="pv-refresh"]')?.addEventListener('click', () => { void showProjectView(current.name); });
   container.querySelector('[data-action="pv-log"]')?.addEventListener('click', () => openLogModal(current.name));
@@ -2049,6 +1786,11 @@ export function mountLegacyWorkbench(): void {
     },
   });
   mountUndo({ refreshAll });
+  mountThreads({
+    projects: () => state?.projects ?? [],
+    workspaceId: () => remoteVersion?.workspace_id,
+    persistEntityDraft,
+  });
   mountSyncBanner({
     refreshState,
     workspaceId: () => remoteVersion?.workspace_id,
