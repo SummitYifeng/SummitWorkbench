@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -8,6 +8,13 @@ const scriptPath = fileURLToPath(import.meta.url);
 const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.guide-render-test-tmp');
+
+// guide.md is a gitignored build artifact produced by `npm run sync-guide` (which the build runs).
+// This test must survive its absence: CI runs `test:frontend` before the build, so a fresh checkout
+// has no guide.md at all. The FAQ logic is therefore exercised on synthetic markdown, and the
+// generated-guide assertions only run when the file happens to be present.
+const guidePath = join(srcDir, 'guide.md');
+const hasGuide = existsSync(guidePath);
 
 // features/guide/render.ts imports the generated guide through Vite's `?raw` suffix; esbuild has
 // no such loader, so implement the same contract here (the file contents as a default export).
@@ -19,7 +26,9 @@ const rawPlugin = {
       namespace: 'vite-raw',
     }));
     pluginBuild.onLoad({ filter: /.*/, namespace: 'vite-raw' }, (args) => ({
-      contents: `export default ${JSON.stringify(readFileSync(args.path, 'utf8'))};`,
+      contents: `export default ${JSON.stringify(
+        existsSync(args.path) ? readFileSync(args.path, 'utf8') : '',
+      )};`,
       loader: 'js',
     }));
   },
@@ -63,6 +72,7 @@ export const cases = {
   codeWithMarkup: guideSummaryHtml('\`a<b>\`'),
   faq: guideBodyFrom(synthetic),
   noFaq: guideBodyFrom('# 只有标题\\n\\n内容'),
+  hasGuide: __HAS_GUIDE__,
   real: (() => { resetGuideCache(); return guideBodyHtml(); })(),
   cached: (() => { const first = guideBodyHtml(); resetGuideCache(); return first === guideBodyHtml(); })(),
   page: guideHtml(),
@@ -75,6 +85,7 @@ try {
     stdin: { contents: entry, resolveDir: srcDir, sourcefile: 'guide-render-test.ts', loader: 'ts' },
     bundle: true, write: false, format: 'esm', platform: 'node', target: 'node18', logLevel: 'error',
     plugins: [rawPlugin],
+    define: { __HAS_GUIDE__: String(hasGuide) },
   });
   const bundlePath = join(tmpDir, 'guide-render-test.mjs');
   writeFileSync(bundlePath, result.outputFiles[0].text);
@@ -95,16 +106,20 @@ try {
   assert.match(cases.faq, /附录/);
   assert.ok(!cases.noFaq.includes('<h3>常见问题</h3>'), 'no FAQ heading without a FAQ section');
 
-  // The real (generated) guide still groups its FAQ, and the cache is resettable.
-  assert.ok(cases.real.length > 0, 'real guide renders');
-  assert.match(cases.real, /<h3>常见问题<\/h3>/);
+  // The generated guide (when present) still groups its FAQ, and the cache is resettable either way.
+  if (cases.hasGuide) {
+    assert.ok(cases.real.length > 0, 'real guide renders');
+    assert.match(cases.real, /<h3>常见问题<\/h3>/);
+  } else {
+    console.log('  note: web/src/guide.md absent, skipping the generated-guide assertions');
+  }
   assert.equal(cases.cached, true, 'resetGuideCache invalidates the module cache cleanly');
 
   // Page skeleton keeps the search box, directory container and empty hint.
   assert.match(cases.page, /id="guide-search"/);
   assert.match(cases.page, /id="guide-index-links"/);
   assert.match(cases.page, /id="guide-no-results"/);
-  assert.match(cases.page, /<h3>常见问题<\/h3>/);
+  if (cases.hasGuide) assert.match(cases.page, /<h3>常见问题<\/h3>/);
 
   console.log('Guide pure render tests passed');
 } finally {
