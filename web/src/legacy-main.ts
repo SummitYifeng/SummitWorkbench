@@ -1,6 +1,11 @@
 import './style.css';
 
-import { createApiClient } from './api/client';
+import {
+  api,
+  disposeApiClient,
+  isStaleWorkspaceResponse,
+  onConnectionRestored,
+} from './api/request';
 import { MAX_TEXT_CHARS } from './core/text';
 import { workspaceScopedKey, workspaceStore } from './core/workspace-store';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
@@ -51,18 +56,21 @@ import type {
   SyncConflictRecoveryPayload,
   SyncStatusPayload,
 } from './features/sync';
-import { renderSettings as renderSettingsFeature } from './features/settings';
-import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
 import {
   activateModal,
-  appRoot,
+  applyTabChrome,
   closeModal,
+  focusVisibleProjectLink,
+  mountShell,
   openModal,
   registerModalCloseHook,
   requestModalClose,
   setModalReturnFocus,
   toast,
+  viewElement,
 } from './features/shell';
+import { renderSettings as renderSettingsFeature } from './features/settings';
+import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
 import type { UndoDiffPayload, UndoHistoryPayload } from './features/undo';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
@@ -154,27 +162,15 @@ let projectFocusAfterRenderName: string | null = null;
 let lastStateReadAt: string | null = null;
 let lastReviewReadAt: string | null = null;
 let reviewDrafts: Record<string, ReviewDraftFields> = {};
-let apiRequestSequence = 0;
 let latestStateRequest = 0;
 let latestReviewRequest = 0;
 let latestExternalActionsRequest = 0;
 /** 项目详情读取序号：离开/切换详情后，过期响应不得复活旧详情 */
 let latestProjectViewRequest = 0;
 
-class StaleWorkspaceResponseError extends Error {
-  constructor() {
-    super('工作区已切换，忽略旧请求结果');
-    this.name = 'StaleWorkspaceResponseError';
-  }
-}
-
-function isStaleWorkspaceResponse(error: unknown): boolean {
-  return error instanceof StaleWorkspaceResponseError;
-}
 let remoteVersion: VersionPayload | null = null;
 let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
-let connectionHadFailure = false;
 let restoredDraft: DraftSnapshot | null = null;
 // null = 尚未按任何 workspace 载入过；服务端省略 workspace_id 时回退为 'unknown'，也必须载入一次。
 let loadedAskWorkspace: string | null = null;
@@ -206,27 +202,6 @@ function askStorageKey(): string {
 
 function askDraftEntity(threadId: string): string {
   return 'ask:' + threadId;
-}
-
-const apiClient = createApiClient({
-  onFailure: () => { connectionHadFailure = true; },
-  onSuccess: (url) => {
-    if (connectionHadFailure && url !== '/api/version') {
-      connectionHadFailure = false;
-      void checkVersion('connection-restored');
-    }
-  },
-});
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const generation = workspaceStore.generation;
-  const requestSequence = ++apiRequestSequence;
-  const headers = new Headers(init?.headers);
-  headers.set('X-WB-Workspace-Generation', String(generation));
-  headers.set('X-WB-Request-Sequence', String(requestSequence));
-  const result = await apiClient.request<T>(url, { ...init, headers });
-  if (generation !== workspaceStore.generation) throw new StaleWorkspaceResponseError();
-  return result;
 }
 
 function persistEntityDraft<T>(entity: string, value: T): void {
@@ -483,167 +458,21 @@ function checkVersion(reason: string): Promise<void> {
 // ---------- 渲染 ----------
 
 function render(): void {
-  document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
-    const active = b.dataset.tab === tab;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-selected', active ? 'true' : 'false');
-    b.setAttribute('tabindex', active ? '0' : '-1');
-  });
-  const todayView = document.getElementById('view-today') as HTMLElement;
-  const reviewView = document.getElementById('view-review') as HTMLElement;
-  const askView = document.getElementById('view-ask') as HTMLElement;
-  const projectsView = document.getElementById('view-projects') as HTMLElement;
-  const guideView = document.getElementById('view-guide') as HTMLElement;
-  const settingsView = document.getElementById('view-settings') as HTMLElement;
-  todayView.style.display = tab === 'today' ? '' : 'none';
-  reviewView.style.display = tab === 'review' ? '' : 'none';
-  askView.style.display = tab === 'ask' ? '' : 'none';
-  projectsView.style.display = tab === 'projects' ? '' : 'none';
-  guideView.style.display = tab === 'guide' ? '' : 'none';
-  settingsView.style.display = tab === 'settings' ? '' : 'none';
-  [todayView, reviewView, askView, projectsView, guideView, settingsView].forEach((view) => {
-    view.setAttribute('aria-hidden', view.style.display === 'none' ? 'true' : 'false');
-  });
+  applyTabChrome(tab);
   if (tab === 'today') {
-    renderToday(todayView);
+    renderToday(viewElement('today') as HTMLElement);
   } else if (tab === 'review') {
-    renderReview(reviewView);
+    renderReview(viewElement('review') as HTMLElement);
   } else if (tab === 'projects') {
-    renderProjects(projectsView);
+    renderProjects(viewElement('projects') as HTMLElement);
   } else if (tab === 'guide') {
-    renderGuide(guideView);
+    renderGuide(viewElement('guide') as HTMLElement);
   } else if (tab === 'settings') {
-    void renderSettings(settingsView);
+    void renderSettings(viewElement('settings') as HTMLElement);
   } else {
-    renderAsk(askView);
+    renderAsk(viewElement('ask') as HTMLElement);
   }
   applyRestoredDraft();
-}
-
-function renderShell(): void {
-  appRoot().innerHTML =
-    '<a class="skip-link" href="#main-content">跳到主内容</a>' +
-    '<div class="nav-shell"><header class="topbar">' +
-    '<div class="brand"><span class="logo">SW</span><div><h1>SummitWorkbench</h1>' +
-    '<p class="tagline">外置执行管理层 · 第二大脑</p></div></div>' +
-    '<div class="header-right">' +
-    '<span class="version-status checking" id="version-status">正在检查版本</span>' +
-    '<span class="day-pill" id="day-pill">—</span>' +
-    '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
-    '<button class="ghost" id="btn-check-updates" title="检查更新">检查更新</button>' +
-    '<button class="ghost" id="btn-undo" title="撤销系统改动（只作用于 vault 文件）">↩ 撤销</button>' +
-    '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
-    '</div></header>' +
-    '<div class="sync-banner" id="sync-banner" hidden></div>' +
-    '<div class="version-error-banner" id="version-error-banner" hidden>' +
-    '<span>工作台更新未完成。你的草稿已保留。</span>' +
-    '<button class="ghost" data-action="retry-update">重试更新</button>' +
-    '<button class="ghost" data-action="copy-diagnostics">复制诊断信息</button>' +
-    '</div>' +
-    '<nav class="tabs" role="tablist" aria-label="工作台页面">' +
-    '<button class="tab" id="tab-today" data-tab="today" aria-controls="view-today" role="tab">今日</button>' +
-    '<button class="tab" id="tab-review" data-tab="review" aria-controls="view-review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
-    '<button class="tab" id="tab-ask" data-tab="ask" aria-controls="view-ask" role="tab">第二大脑</button>' +
-    '<button class="tab" id="tab-projects" data-tab="projects" aria-controls="view-projects" role="tab">项目</button>' +
-    '<button class="tab" id="tab-guide" data-tab="guide" aria-controls="view-guide" role="tab">指南</button>' +
-    '<button class="tab" id="tab-settings" data-tab="settings" aria-controls="view-settings" role="tab">设置</button>' +
-    '</nav></div>' +
-    '<main id="main-content" tabindex="-1">' +
-    '<section id="view-today" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-review" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-ask" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-projects" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-guide" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-settings" class="view" role="tabpanel" tabindex="0"></section>' +
-    '</main>' +
-    '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
-
-  document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
-    b.addEventListener('click', () => {
-      const next = b.dataset.tab;
-      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' || next === 'settings' ? next : 'today';
-      render();
-      b.focus();
-    });
-    b.addEventListener('keydown', (event) => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>('.tab'));
-      const index = tabs.indexOf(b);
-      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
-        (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-      const nextButton = tabs[nextIndex];
-      const next = nextButton?.dataset.tab;
-      tab = next === 'review' || next === 'ask' || next === 'projects' || next === 'guide' || next === 'settings' ? next : 'today';
-      render();
-      nextButton?.focus();
-    });
-  });
-  (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
-    void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
-      toast(result.state && result.review ? '已刷新' : '刷新未完成：保留了可用的旧数据', result.state && result.review ? 'ok' : 'err');
-    });
-  });
-  (document.getElementById('btn-check-updates') as HTMLButtonElement).addEventListener('click', () => {
-    if (sendNativeMessage({ type: 'checkForUpdates' })) {
-      toast('正在检查更新', 'info');
-    } else {
-      toast('更新检查仅支持已安装的 macOS App', 'info');
-    }
-  });
-  (document.getElementById('btn-undo') as HTMLButtonElement)?.addEventListener('click', () => {
-    void openUndoModal();
-  });
-  (document.getElementById('btn-quit') as HTMLButtonElement).addEventListener('click', () => {
-    if (!window.confirm('确定退出工作台并停止本地服务？')) return;
-    if (sendNativeMessage({ type: 'quit' })) return;
-    void api<{ ok: boolean; message: string }>('/api/shutdown', {
-      method: 'POST',
-      headers: { 'X-WB-Shutdown': '1' },
-    }).then((r) => {
-      toast(r.message, r.ok ? 'ok' : 'err');
-      window.setTimeout(() => window.close(), 800);
-    }).catch((err: unknown) => {
-      // 服务已关闭时请求可能直接失败；仍尝试关窗
-      toast(String(err), 'err');
-      window.setTimeout(() => window.close(), 800);
-    });
-  });
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
-  backdrop.addEventListener('click', (ev) => {
-    if (ev.target === backdrop) requestModalClose();
-  });
-  document.addEventListener('keydown', (event) => {
-    if (backdrop.hidden) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      requestModalClose();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const focusable = Array.from(backdrop.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex="0"]',
-    ));
-    if (!focusable.length) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  });
-}
-
-function focusVisibleProjectLink(name: string): boolean {
-  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-action="open-view"]'))
-    .find((el) => el.dataset.name === name && getComputedStyle(el).display !== 'none' &&
-      getComputedStyle(el).visibility !== 'hidden' && el.getClientRects().length > 0);
-  if (!target) return false;
-  target.focus();
-  return document.activeElement === target;
 }
 
 function renderToday(view: HTMLElement): void {
@@ -1553,7 +1382,7 @@ async function switchProfile(workspaceId: string): Promise<void> {
   });
   clearDraftSnapshot(remoteVersion?.workspace_id);
   workspaceStore.dispose();
-  apiClient.dispose();
+  disposeApiClient();
   if (committed.restart_required && sendNativeMessage({ type: 'quit' })) return;
   window.location.reload();
 }
@@ -3118,7 +2947,39 @@ async function exportSyncConflictPackage(): Promise<void> {
 // ---------- 启动（由 main.ts composition root 调用） ----------
 
 export function mountLegacyWorkbench(): void {
-  renderShell();
+  mountShell({
+    onSelectTab: (next) => { tab = next; render(); },
+    onRefresh: () => {
+      void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
+        toast(result.state && result.review ? '已刷新' : '刷新未完成：保留了可用的旧数据', result.state && result.review ? 'ok' : 'err');
+      });
+    },
+    onCheckUpdates: () => {
+      if (sendNativeMessage({ type: 'checkForUpdates' })) {
+        toast('正在检查更新', 'info');
+      } else {
+        toast('更新检查仅支持已安装的 macOS App', 'info');
+      }
+    },
+    onUndo: () => { void openUndoModal(); },
+    onQuit: () => {
+      if (!window.confirm('确定退出工作台并停止本地服务？')) return;
+      if (sendNativeMessage({ type: 'quit' })) return;
+      void api<{ ok: boolean; message: string }>('/api/shutdown', {
+        method: 'POST',
+        headers: { 'X-WB-Shutdown': '1' },
+      }).then((r) => {
+        toast(r.message, r.ok ? 'ok' : 'err');
+        window.setTimeout(() => window.close(), 800);
+      }).catch((err: unknown) => {
+        // 服务已关闭时请求可能直接失败；仍尝试关窗
+        toast(String(err), 'err');
+        window.setTimeout(() => window.close(), 800);
+      });
+    },
+  });
+  // 连接恢复后重查一次版本（原 apiClient 的 onSuccess 回调，§4.5）。
+  onConnectionRestored(() => { void checkVersion('connection-restored'); });
   // 弹层关闭时作废 ask 域在途的来源读取（原 closeModal 内的直接赋值，§4.4）。
   registerModalCloseHook(() => { sourceReadSequence += 1; });
   setMutationIdleHandler(async (targetBuild) => {

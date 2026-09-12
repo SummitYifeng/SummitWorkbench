@@ -11,6 +11,9 @@ export {
   viewElement,
 } from './dom';
 export { toast } from './toast';
+export { focusVisibleProjectLink } from './focus';
+export { applyTabChrome, normalizeTab, TAB_IDS, type ShellTab } from './tabs';
+export { mountShell, type ShellActions } from './shell';
 export {
   activateModal,
   closeModal,
