@@ -61,10 +61,6 @@ from summit_workbench.repositories.external_action_outbox import (
 from summit_workbench.repositories.project_registry import (
     load_project_registry,
 )
-from summit_workbench.repositories.project_scan import (
-    count_inbox_pending,
-    scan_all_projects,
-)
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -76,7 +72,6 @@ from summit_workbench.repositories.signal_snapshot import (
     mark_meeting_edited,
     mark_task_completed,
     mark_task_edited,
-    read_snapshot,
     snapshot_path,
 )
 from summit_workbench.repositories.thread_notes import (
@@ -101,12 +96,10 @@ from summit_workbench.webapp.api import (
     TaskCompletePayload,
     TaskEditPayload,
     UndoRevertPayload,
-    brief_payload,
     external_action_payload,
     review_payload,
 )
 from summit_workbench.webapp.build_info import (
-    BuildInfoError,
     WebBuildInfo,
     mode_from_environment,
     new_server_instance,
@@ -149,6 +142,7 @@ from summit_workbench.webapp.restricted_app import (
     create_restricted_app,
 )
 from summit_workbench.webapp.routers.settings import register_settings_routes
+from summit_workbench.webapp.routers.state import register_state_routes
 from summit_workbench.webapp.routers.sync import register_sync_routes
 from summit_workbench.webapp.security import (
     allowed_hosts,
@@ -564,71 +558,6 @@ def create_app(
         workspace_id=workspace_id,
         device_id=device_id,
         build_info=_build_info,
-    )
-
-    @app.get("/api/state")
-    def api_state() -> dict[str, object]:
-        """看板数据：日期、状态速览、今日简报、inbox 积压。"""
-        day = ctx.today()
-        status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
-        sync_state = runtime.snapshot().state.value
-        brief_md = read_brief_block(ctx.vault_dir, day)
-        inbox_path = ctx.vault_dir / "inbox.md"
-        inbox_pending = (
-            count_inbox_pending(inbox_path.read_text(encoding="utf-8"))
-            if inbox_path.is_file()
-            else 0
-        )
-        projects = [
-            {
-                "name": p.name,
-                "dirty": p.dirty,
-                "ahead": p.ahead,
-                "behind": p.behind,
-                "has_upstream": p.has_upstream,
-                "inbox_pending": p.inbox_pending,
-                "next_step": p.next_step,
-                "git_error": p.git_error,
-                "registered": p.registered,
-                "status": p.status,
-                "is_thread": p.is_thread,
-                "updated": p.updated,
-                "activity_at": p.activity_at,
-                "title": p.title,
-            }
-            for p in scan_all_projects(ctx.work_root, ctx.vault_dir)
-        ]
-        payload: dict[str, object] = {
-            "day": day,
-            "status": status.as_dict(),
-            "brief_md": brief_md,
-            "brief_generated": brief_md is not None,
-            "brief": brief_payload(read_snapshot(ctx.vault_dir, day)),
-            "inbox_pending": inbox_pending,
-            "projects": projects,
-            "sync_state": sync_state,
-        }
-        try:
-            info = _build_info()
-        except BuildInfoError:
-            info = None
-        if info is not None:
-            payload["runtime"] = {
-                "frontend_build": info.frontend_build,
-                "server_version": info.version_payload(
-                    server_instance=server_instance,
-                    started_at=started_at,
-                    mode=panel_mode,
-                )["server_version"],
-                "server_instance": server_instance,
-            }
-        return payload
-
-    from summit_workbench.webapp.routers.projects import register_project_write_routes
-
-    register_project_write_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        run_mutation=lambda action, mutation: runtime.run(action, mutation),
     )
 
     @app.get("/api/review")
@@ -1783,6 +1712,21 @@ def create_app(
     # ---- workspace schema migration（P1-02；P1-03 router 接线）----
 
     from summit_workbench.webapp.routers.workspace import register_workspace_routes
+
+    register_state_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+        build_info=_build_info,
+        server_instance=server_instance,
+        started_at=started_at,
+        panel_mode=panel_mode,
+    )
+    from summit_workbench.webapp.routers.projects import register_project_write_routes
+
+    register_project_write_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        run_mutation=lambda action, mutation: runtime.run(action, mutation),
+    )
 
     register_settings_routes(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
