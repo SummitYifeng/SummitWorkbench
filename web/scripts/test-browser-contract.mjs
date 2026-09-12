@@ -178,7 +178,10 @@ assert.match(source, /saveEntityDraft|loadEntityDraft|clearEntityDraft/, 'entity
 assert.match(source, /requestModalClose/, 'modal close is routed through the unsaved-draft guard');
 assertNearby(/const action = btn\.dataset\.action \?\? '';/, /[\s\S]{0,120}btn\.focus\(\)/, 'action dispatch restores the triggering control as the modal return target');
 assert.match(source, /function activateModal/, 'specialized modals use the shared focus setup');
-assertNearby(/if \(backdrop\.hidden\)/, /[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
+// The anchor needs its opening brace: `if (backdrop.hidden) return;` is the unrelated keydown
+// guard in the shell, and once the modal base moves to its own module that bare anchor would make
+// this guard fail in a file that legitimately contains no `modalReturnFocus`.
+assertNearby(/if \(backdrop\.hidden\) \{/, /[\s\S]{0,180}modalReturnFocus/, 'nested modal content preserves the original return focus');
 assert.match(source, /projectDetailHtml/, 'project details render inside the project page');
 assert.match(source, /projectReturnContext/, 'project detail keeps list context across page navigation');
 assert.match(source, /projectFocusAfterRenderName/, 'project detail queues a visible return-focus target for the rebuilt page');
@@ -236,7 +239,11 @@ assert.match(source, /const returnFocus = document\.querySelector<HTMLElement>\(
 assert.match(source, /if \(returnFocus\) modalReturnFocus = returnFocus/, 'sync conflict restores focus to its banner trigger after async modal activation');
 assert.match(source, /persistEntityDraft\('sync-conflict'/, 'sync conflict choices have a recoverable entity draft');
 assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsaved-draft guard');
-assertNearby(/window\.confirm/, /[\s\S]{0,350}产物已保存[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
+// Anchored on the artifact-specific confirmation text, not on `window.confirm` itself: the split
+// places confirms in several domain modules, and a per-file window would then demand the artifact
+// follow-up inside every one of them.
+assert.match(source, /const confirmed = window\.confirm\(/, 'artifact state sync asks for a final confirmation');
+assertNearby(/产物已保存/, /[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
 assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
 assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 // 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
