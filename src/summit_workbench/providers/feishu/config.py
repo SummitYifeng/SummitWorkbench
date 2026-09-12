@@ -16,6 +16,7 @@ from summit_workbench.config.secrets import (
     workspace_credential_ref,
 )
 from summit_workbench.config.settings import default_config_file
+from summit_workbench.providers.feishu.bundled import load_bundled_defaults
 from summit_workbench.providers.feishu.errors import FeishuConfigError
 
 # 主机（授权走 accounts 域，其余 OpenAPI 走 open 域）。
@@ -94,21 +95,39 @@ class FeishuConfig:
 def load_feishu_config(
     config_file: Path | None = None, *, workspace_id: str | None = None
 ) -> FeishuConfig:
-    """从本机配置文件的 ``[feishu]`` 表加载配置。
+    """加载飞书配置：显式 ``[feishu]`` 表优先，缺失时回退包内内置默认值。
 
-    必填 ``app_id`` 与 ``redirect_uri``；缺失即抛 :class:`FeishuConfigError`
-    （明确失败，不用占位值蒙混）。凭据不在此处，运行时按引用从 Keychain 读取。
+    优先级：
+
+    1. 配置文件里**存在** ``[feishu]`` 表 → 严格校验（缺 ``app_id``/``redirect_uri``
+       即抛 :class:`FeishuConfigError`，不用占位值蒙混）；
+    2. 没有配置文件、或文件里没有 ``[feishu]`` 表 → 使用分发包内置的默认值
+       （:func:`~summit_workbench.providers.feishu.bundled.load_bundled_defaults`），
+       让同事装完即可点一下「授权飞书」；
+    3. 两者都没有 → 抛 :class:`FeishuConfigError`。
+
+    秘密（app_secret / refresh_token）从不在此处解析，运行时按引用从 Keychain 或内置
+    默认值读取（见 :class:`~summit_workbench.providers.feishu.session.FeishuSession`）。
     """
     path = config_file or default_config_file()
-    if not path.is_file():
-        raise FeishuConfigError(
-            f"配置文件不存在：{path}（需在 [feishu] 表填 app_id / redirect_uri）"
-        )
+    section: object = None
+    if path.is_file():
+        with path.open("rb") as fh:
+            data = tomllib.load(fh)
+        section = data.get("feishu")
 
-    with path.open("rb") as fh:
-        data = tomllib.load(fh)
-    section = data.get("feishu")
     if not isinstance(section, dict):
+        bundled = load_bundled_defaults()
+        if bundled is not None:
+            return FeishuConfig(
+                app_id=bundled.app_id,
+                redirect_uri=bundled.redirect_uri,
+                workspace_id=workspace_id,
+            )
+        if not path.is_file():
+            raise FeishuConfigError(
+                f"配置文件不存在：{path}（需在 [feishu] 表填 app_id / redirect_uri）"
+            )
         raise FeishuConfigError(f"配置文件缺少 [feishu] 表：{path}")
 
     app_id = section.get("app_id")

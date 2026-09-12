@@ -13,10 +13,13 @@
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
 - 最近更新：2026-09-12
-- 当前基线：`v0.4.6` build 20（前端见随后重建并提交的 `build-meta.json`），远端 CI 全绿。
-  本轮为交付前清理（删空目录 / 更新现状文档 / 指南重写为任务导向 / 补齐两份单体文件拆分方案），
-  **产品行为未改动**；清理判定与证据见
-  [`../implementation/DELIVERY-CLEANUP-REPORT.md`](../implementation/DELIVERY-CLEANUP-REPORT.md)。
+- 当前基线：`v0.4.7`（分发版；本地预发布构建为 build 21，正式发布 build 由 CI `run_number` 决定；
+  前端见随后重建并提交的 `build-meta.json`），远端 CI 全绿。
+  本轮为**分发给同事**而做：把飞书 app_id / app_secret 作为默认值在构建时内置进包
+  （`Contents/Resources/feishu-defaults.json`），并让配置与凭据按「显式配置/Keychain > 内置默认」
+  回退，使同事装完点一下「授权飞书」即可，无需任何本机预置。**产品行为与数据格式未改动**；
+  安全取舍与构建契约见 [`../RELEASING.md`](../RELEASING.md)「内置飞书凭据」，验证证据见
+  [`CHANGELOG.md`](../../CHANGELOG.md) 的 `[0.4.7]` 条目。
 - **当前开放项：2 项，且均不阻塞交付** —— A6（需第二台机器现场复跑；代码路径已有端到端自动化 +
   变异测试覆盖）、F1（**非缺陷**，明确超出 `INTERNAL-DEV` 交付范围）。
   **UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**

@@ -43,9 +43,46 @@ SHA-256：`d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`
 脚本会执行临时目录构建、ad-hoc 签名、DMG、checksum、SBOM、动态端口离线 smoke 和
 完整性验证，不会访问飞书或 Apple 网络服务。
 
+## 内置飞书凭据（分发给同事的构建必读）
+
+分发给同事的 DMG 必须**内置飞书默认凭据**，否则同事装完点「授权飞书」会失败：飞书
+`authen/v2/oauth/token` 强制要求 `client_secret`（PKCE 的 `code_verifier` 只是可选增强，
+不能替代它），而分发包没有可代持秘密的后端。构建方式：
+
+```bash
+REQUIRE_BUNDLED_FEISHU=true \
+WB_FEISHU_APP_ID=cli_xxxxxxxxxxxxxxxx \
+WB_FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
+BUILD_NUMBER=456 ARCH=arm64 \
+scripts/release-macos.sh
+```
+
+- `scripts/build-macos-app.sh` 在**签名之前**把这三个值写成
+  `Contents/Resources/feishu-defaults.json`（0600）。写在签名之后会破坏 ad-hoc 签名。
+- 只给 `WB_FEISHU_APP_ID` 或只给 `WB_FEISHU_APP_SECRET` 会直接构建失败；`REQUIRE_BUNDLED_FEISHU=true`
+  时两者缺一即失败（避免发布出「同事无法授权」的包）。
+- `WB_FEISHU_REDIRECT_URI` 可选，默认 `http://localhost:8765/callback`，须与飞书开放平台
+  「安全设置 → 重定向 URL」登记的完全一致。
+- 远端发布走 `.github/workflows/release.yml`：`WB_FEISHU_APP_ID` 取自仓库 **variable**
+  `WB_FEISHU_APP_ID`（非秘密），`WB_FEISHU_APP_SECRET` 取自 **secret**
+  `WB_FEISHU_APP_SECRET`（发布 environment 下），二者缺失会让构建步骤失败。
+- 密钥永不进版本库：`build/`、`dist/` 均在 `.gitignore` 中，仓库内不存在
+  `feishu-defaults.json`；`scripts/secret_scan.py` 与 `verify-macos-release.sh` 的通用扫描
+  覆盖其他所有包内文本文件，只有这一个文件被**显式**列为例外并改为结构化校验
+  （只校验非空字段，不打印值）。
+
+**这是一处明示的安全取舍**：拿到 DMG 的人都能提取该 app_secret（应用级凭证），可据此以应用
+身份调用飞书 API、读取该应用已授权范围内的数据。仅在「内部自建应用 + 信任圈子」前提下可接受。
+若要消除，需要把令牌换取搬到管理员自建的后端代理（app_secret 只留在服务端）。
+
+未内置凭据的构建（开发/CI 质量门）仍可用 `~/.config/summit_workbench/config.toml` 的
+`[feishu]` 表 + Keychain 手工配置；运行时优先级始终是「显式配置/Keychain > 内置默认值」。
+
 ## 用户安装与卸载
 
 把对应架构的 DMG 拖入 `/Applications`，首次启动后按图形化向导新建或连接 workspace。
+同事的完整首次流程只有三步：**新建/连接工作区 → 粘贴 DeepSeek API Key → 点「授权飞书」**
+（前提是管理员已在飞书开放平台把该同事加入应用「可用范围」）。
 升级替换 App 不删除 profile、vault 或 Keychain；删除 App 也不会删除用户数据。若要
 清理本机数据，须在 App 外另行备份并明确删除 `~/Library/Application Support/
 SummitWorkbench`、日志目录和用户选择的 vault，不能把卸载 App 当成数据删除操作。

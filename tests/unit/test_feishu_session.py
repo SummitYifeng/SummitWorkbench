@@ -9,7 +9,7 @@ from pydantic import SecretStr
 from summit_workbench.config.secrets import CredentialError, CredentialRef
 from summit_workbench.providers.feishu import session as session_mod
 from summit_workbench.providers.feishu.config import FeishuConfig
-from summit_workbench.providers.feishu.errors import FeishuAuthError
+from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConfigError
 from summit_workbench.providers.feishu.session import FeishuSession
 
 CFG = FeishuConfig(app_id="app1", redirect_uri="http://localhost/cb")
@@ -117,3 +117,49 @@ def test_workspace_session_migrates_legacy_app_secret_before_authorization(tmp_p
 
     assert stored[(cfg.app_secret_ref.service, cfg.app_secret_ref.account)] == "legacy-app-secret"
     assert stored[(cfg.refresh_token_ref.service, cfg.refresh_token_ref.account)] == "first-rt"
+
+
+# ---- 内置默认 app_secret（分发包零预置授权）----
+
+
+def _raise_missing(ref: CredentialRef) -> SecretStr:
+    raise CredentialError("not found")
+
+
+def test_app_secret_falls_back_to_bundled_when_keychain_empty(tmp_path, monkeypatch):
+    """同事干净机器：Keychain 没有 app_secret，用包内内置默认值完成换取。"""
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    bundled = tmp_path / "feishu-defaults.json"
+    bundled.write_text(
+        '{"app_id": "cli_bundled", "app_secret": "bundled-secret"}', encoding="utf-8"
+    )
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(bundled))
+    monkeypatch.setattr(session_mod, "resolve_credential", _raise_missing)
+    monkeypatch.setattr(session_mod, "resolve_legacy_credential_for_migration", _raise_missing)
+
+    assert FeishuSession(CFG)._app_secret().get_secret_value() == "bundled-secret"
+
+
+def test_keychain_app_secret_wins_over_bundled(tmp_path, monkeypatch):
+    """用户/管理员自己存的 Keychain 条目始终优先于内置默认值。"""
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    bundled = tmp_path / "feishu-defaults.json"
+    bundled.write_text(
+        '{"app_id": "cli_bundled", "app_secret": "bundled-secret"}', encoding="utf-8"
+    )
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(bundled))
+    monkeypatch.setattr(session_mod, "resolve_credential", lambda ref: SecretStr("keychain-secret"))
+
+    assert FeishuSession(CFG)._app_secret().get_secret_value() == "keychain-secret"
+
+
+def test_app_secret_missing_everywhere_raises_config_error(tmp_path, monkeypatch):
+    """没有内置默认值且 Keychain 为空时，保持原有的显式报错。"""
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(tmp_path / "absent.json"))
+    monkeypatch.setattr(session_mod, "resolve_credential", _raise_missing)
+    monkeypatch.setattr(session_mod, "resolve_legacy_credential_for_migration", _raise_missing)
+
+    with pytest.raises(FeishuConfigError) as excinfo:
+        FeishuSession(CFG)._app_secret()
+    assert "security add-generic-password" in str(excinfo.value)

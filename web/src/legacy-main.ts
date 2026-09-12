@@ -1570,6 +1570,50 @@ async function runAcceptancePreflight(): Promise<void> {
   }
 }
 
+const FEISHU_STATE_KEY = 'wb.feishu.state';
+
+/**
+ * 飞书授权回跳后的结果提示。
+ *
+ * 分发包内置了应用凭据，同事本机没有可改的配置：授权失败时必须把「找谁、做什么」
+ * 显示出来（最常见的失败是管理员还没把他加入应用「可用范围」），而不是静默回到设置页。
+ */
+async function reportFeishuCallbackResult(view: HTMLElement): Promise<void> {
+  const outcome = new URLSearchParams(window.location.search).get('feishu');
+  if (outcome !== 'failed' && outcome !== 'connected') return;
+  const target = view.querySelector('#feishu-result');
+  const state = sessionStorage.getItem(FEISHU_STATE_KEY) ?? '';
+  sessionStorage.removeItem(FEISHU_STATE_KEY);
+  let message: string;
+  let kind: 'ok' | 'err';
+  if (outcome === 'connected') {
+    message = '飞书已连接 ✓';
+    kind = 'ok';
+  } else {
+    message = '飞书授权未完成，请重新点击「授权飞书」';
+    kind = 'err';
+    if (state) {
+      try {
+        const status = await api<{ status: string; reason?: string | null }>(
+          '/api/settings/feishu/status?state=' + encodeURIComponent(state),
+        );
+        if (status.reason) message = status.reason;
+      } catch (_) {
+        // 状态已过期：退回兜底文案，不阻断设置页
+      }
+    }
+  }
+  if (target) {
+    const box = document.createElement('p');
+    box.className = kind === 'ok' ? 'hint' : 'error';
+    box.textContent = message;
+    target.replaceChildren(box);
+  }
+  toast(message, kind);
+  // 清掉查询串：刷新或切换页签时不重复提示
+  window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+}
+
 async function renderSettings(view: HTMLElement): Promise<void> {
   await renderSettingsFeature(view, {
     api,
@@ -1577,6 +1621,7 @@ async function renderSettings(view: HTMLElement): Promise<void> {
     toast,
     refresh: () => { void renderSettings(view); },
   });
+  await reportFeishuCallbackResult(view);
 }
 
 async function runAutomationJob(job: string): Promise<void> {
@@ -1832,8 +1877,12 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'feishu-reauth') {
-    void api<{ authorize_url: string }>('/api/settings/feishu/authorize-url', { method: 'POST' })
-      .then((result) => { window.location.href = result.authorize_url; })
+    void api<{ authorize_url: string; state?: string }>('/api/settings/feishu/authorize-url', { method: 'POST' })
+      .then((result) => {
+        // 记住 state，才能在回跳失败时取回具体原因（见 reportFeishuCallbackResult）
+        if (result.state) sessionStorage.setItem(FEISHU_STATE_KEY, result.state);
+        window.location.href = result.authorize_url;
+      })
       .catch((err: unknown) => toast(String(err), 'err'));
     return;
   }

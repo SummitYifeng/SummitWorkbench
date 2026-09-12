@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import html
 import json
 import secrets
 import time
@@ -52,6 +53,9 @@ class _PendingAuthorization:
     workspace_id: str
     created_at: float
     status: Literal["pending", "connected", "failed"] = "pending"
+    #: 失败原因（面向用户的白话，已脱敏）——分发包内置凭据后同事本机无可改配置，
+    #: 唯一能自救的方式就是界面把原因说清楚。
+    reason: str | None = None
 
 
 class _AuthorizationStates:
@@ -85,6 +89,7 @@ class _AuthorizationStates:
         *,
         workspace_id: str,
         status: Literal["connected", "failed"],
+        reason: str | None = None,
     ) -> bool:
         self._purge()
         item = self._items.get(state)
@@ -94,6 +99,7 @@ class _AuthorizationStates:
             workspace_id=item.workspace_id,
             created_at=item.created_at,
             status=status,
+            reason=reason if status == "failed" else None,
         )
         self._persist()
         return True
@@ -126,8 +132,12 @@ class _AuthorizationStates:
                     and isinstance(created_at, (int, float))
                     and status in {"pending", "connected", "failed"}
                 ):
+                    reason = item.get("reason")
                     self._items[state] = _PendingAuthorization(
-                        workspace_id, float(created_at), status
+                        workspace_id,
+                        float(created_at),
+                        status,
+                        reason if isinstance(reason, str) and reason else None,
                     )
             self._purge()
         except (OSError, ValueError, TypeError):
@@ -145,6 +155,7 @@ class _AuthorizationStates:
                     "workspace_id": item.workspace_id,
                     "created_at": item.created_at,
                     "status": item.status,
+                    **({"reason": item.reason} if item.reason else {}),
                 }
                 for state, item in self._items.items()
             },
@@ -159,6 +170,15 @@ class _AuthorizationStates:
 
 def _authorization_state_file(home: Path | None) -> Path | None:
     return app_support_dir(home) / "feishu-auth-state.json" if home is not None else None
+
+
+def _denied_reason(error: str | None) -> str:
+    """飞书侧直接拒绝、或回调没带授权码时的原因文案（面向用户，可执行）。"""
+    if error == "access_denied":
+        return "你取消了授权；需要时可以重新点一次「授权飞书」"
+    if error:
+        return f"飞书返回了授权错误（{error}）：请重新点一次「授权飞书」"
+    return "没有收到授权码：请重新点一次「授权飞书」"
 
 
 def _failure(
@@ -179,16 +199,24 @@ def _failure(
     )
 
 
-def _panel_redirect(request: Request, suffix: str) -> HTMLResponse | RedirectResponse:
-    """回到随机主面板端口，而不是停留在固定 OAuth 回调端口。"""
+def _panel_redirect(
+    request: Request, suffix: str, *, reason: str | None = None
+) -> HTMLResponse | RedirectResponse:
+    """回到随机主面板端口，而不是停留在固定 OAuth 回调端口。
+
+    ``reason`` 只在「拿不到 wb_session cookie」这条分支用到：此时无法把用户带回面板
+    （例如授权是在外部浏览器里完成的），返回的静态页必须自己说明失败原因，
+    否则又是「只说失败」。文案做了 HTML 转义——它会拼进页面。
+    """
     port = getattr(request.app.state, "bound_port", None)
     base = f"http://127.0.0.1:{port}" if isinstance(port, int) and port > 0 else ""
     if not request.cookies.get("wb_session"):
         status = "授权已完成" if "connected" in suffix else "授权未完成"
+        detail = f"<p>{html.escape(reason)}</p>" if reason else ""
         return HTMLResponse(
             "<!doctype html><meta charset='utf-8'><title>SummitWorkbench</title>"
             f"<main style='font:16px -apple-system,sans-serif;max-width:520px;margin:15vh auto'>"
-            f"<h1>{status}</h1><p>请返回 SummitWorkbench 窗口继续操作。</p></main>"
+            f"<h1>{status}</h1>{detail}<p>请返回 SummitWorkbench 窗口继续操作。</p></main>"
         )
     return RedirectResponse(url=f"{base}/?{suffix}", status_code=303)
 
@@ -330,7 +358,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 code="feishu_state_expired",
                 message="授权状态已失效，请重新点击授权",
             )
-        return {"ok": True, "status": item.status}
+        return {"ok": True, "status": item.status, "reason": item.reason}
 
     @app.post("/api/settings/feishu/complete", response_model=None)
     def settings_feishu_complete(
@@ -381,18 +409,23 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
         error: str | None = None,
     ) -> HTMLResponse | RedirectResponse:
         if not state:
-            return _panel_redirect(request, "feishu=failed#settings")
+            return _panel_redirect(
+                request, "feishu=failed#settings", reason="没有收到授权状态：请重新点击「授权飞书」"
+            )
         item = states.lookup(state)
         if item is None or context.workspace_id != item.workspace_id:
-            return _panel_redirect(request, "feishu=failed#settings")
+            return _panel_redirect(
+                request, "feishu=failed#settings", reason="授权链接已失效：请重新点击「授权飞书」"
+            )
         if item.status == "connected":
             return _panel_redirect(request, "feishu=connected#settings")
         if item.status == "failed":
-            return _panel_redirect(request, "feishu=failed#settings")
+            return _panel_redirect(request, "feishu=failed#settings", reason=item.reason)
         workspace_id = item.workspace_id
         if error or not code:
-            states.finish(state, workspace_id=workspace_id, status="failed")
-            return _panel_redirect(request, "feishu=failed#settings")
+            reason = _denied_reason(error)
+            states.finish(state, workspace_id=workspace_id, status="failed", reason=reason)
+            return _panel_redirect(request, "feishu=failed#settings", reason=reason)
         try:
             complete_feishu_authorization(
                 config_file=context.provider_config_file(),
@@ -401,9 +434,10 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 code=code,
                 home=context.active_workspace.home if context.active_workspace else None,
             )
-        except Exception:
-            states.finish(state, workspace_id=workspace_id, status="failed")
-            return _panel_redirect(request, "feishu=failed#settings")
+        except Exception as exc:
+            reason = _plain_provider_error(exc)
+            states.finish(state, workspace_id=workspace_id, status="failed", reason=reason)
+            return _panel_redirect(request, "feishu=failed#settings", reason=reason)
         states.finish(state, workspace_id=workspace_id, status="connected")
         _invalidate_feishu_client(app)
         return _panel_redirect(request, "feishu=connected#settings")
@@ -555,7 +589,12 @@ def register_restricted_connection_routes(
                     operation_id=operation_id(request),
                 ),
             )
-        return {"ok": True, "status": item.status, "workspace_id": item.workspace_id}
+        return {
+            "ok": True,
+            "status": item.status,
+            "workspace_id": item.workspace_id,
+            "reason": item.reason,
+        }
 
     @application.post("/api/onboarding/feishu/complete", response_model=None)
     def onboarding_feishu_complete(
@@ -610,22 +649,28 @@ def register_restricted_connection_routes(
         error: str | None = None,
     ) -> HTMLResponse | RedirectResponse:
         if not state:
-            return _panel_redirect(request, "feishu=failed")
+            return _panel_redirect(
+                request, "feishu=failed", reason="没有收到授权状态：请重新点击「授权飞书」"
+            )
         item = states.lookup(state)
         if item is None:
-            return _panel_redirect(request, "feishu=failed")
+            return _panel_redirect(
+                request, "feishu=failed", reason="授权链接已失效：请重新点击「授权飞书」"
+            )
         if item.status == "connected":
             return _panel_redirect(request, "feishu=connected")
         if item.status == "failed":
-            return _panel_redirect(request, "feishu=failed")
+            return _panel_redirect(request, "feishu=failed", reason=item.reason)
         workspace_id = item.workspace_id
         if error or not code:
-            states.finish(state, workspace_id=workspace_id, status="failed")
-            return _panel_redirect(request, "feishu=failed")
+            reason = _denied_reason(error)
+            states.finish(state, workspace_id=workspace_id, status="failed", reason=reason)
+            return _panel_redirect(request, "feishu=failed", reason=reason)
         inputs = _workspace_connection_inputs(active_workspace, workspace_id)
         if inputs is None:
-            states.finish(state, workspace_id=workspace_id, status="failed")
-            return _panel_redirect(request, "feishu=failed")
+            reason = "工作区还没有准备好：请先回到第一步选择或创建工作区，再重新授权"
+            states.finish(state, workspace_id=workspace_id, status="failed", reason=reason)
+            return _panel_redirect(request, "feishu=failed", reason=reason)
         config_file, lock_root = inputs
         try:
             complete_feishu_authorization(
@@ -635,9 +680,10 @@ def register_restricted_connection_routes(
                 code=code,
                 home=active_workspace.home,
             )
-        except Exception:
-            states.finish(state, workspace_id=workspace_id, status="failed")
-            return _panel_redirect(request, "feishu=failed")
+        except Exception as exc:
+            reason = _plain_provider_error(exc)
+            states.finish(state, workspace_id=workspace_id, status="failed", reason=reason)
+            return _panel_redirect(request, "feishu=failed", reason=reason)
         states.finish(state, workspace_id=workspace_id, status="connected")
         return _panel_redirect(request, "feishu=connected")
 

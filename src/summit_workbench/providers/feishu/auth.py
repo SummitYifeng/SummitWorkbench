@@ -104,6 +104,48 @@ def _post_json(
     )
 
 
+# 令牌端点失败码 → 面向用户的可执行提示。
+#
+# 分发包内置了应用凭据，同事本机没有任何可改的配置，因此失败时必须由这句话给出
+# 「去找谁、做什么」；最常见的真实失败是管理员还没把该同事加入应用「可用范围」。
+# 键既覆盖 OAuth 风格字符串错误（invalid_grant 等），也覆盖飞书数字码。
+_TOKEN_FAILURE_HINTS: dict[str, str] = {
+    "invalid_client": "内置的应用凭据无效（可能已轮换）：请联系管理员重新发布安装包",
+    "20002": "内置的应用凭据无效（可能已轮换）：请联系管理员重新发布安装包",
+    "invalid_grant": "授权码无效或已过期（只能用一次、有效期 5 分钟）：请重新点一次「授权飞书」",
+    "20003": "授权码无效或已过期（只能用一次、有效期 5 分钟）：请重新点一次「授权飞书」",
+    "20004": "授权码已过期：请重新点一次「授权飞书」",
+    "20065": "授权码已被使用过：请重新点一次「授权飞书」",
+    "20010": "你的账号还没有这个应用的使用权限：请联系管理员把你加入应用「可用范围」",
+    "20009": "应用尚未在你们的飞书里安装：请联系管理员在开放平台启用应用",
+    "20069": "应用未启用：请联系管理员在飞书开放平台启用应用",
+    "20048": "应用不存在：请联系管理员核对应用状态",
+    "20024": "授权码与本应用不匹配：请联系管理员核对应用凭据",
+    "20071": "回调地址与发起授权时不一致：请联系管理员核对开放平台的「重定向 URL」",
+    "20049": "PKCE 校验失败（本产品未启用 PKCE）：请联系管理员",
+}
+
+# 这些失败都表示「当前 grant 已不可用」，重新授权是唯一正确的用户动作。
+_REAUTHORIZE_ERRORS = frozenset({"invalid_grant", "invalid_request", "20003", "20004", "20065"})
+
+
+def token_failure_message(*, error: object, code: object, status: int) -> str:
+    """把令牌端点的失败信封翻成一句可执行的中文提示，并保留原始错误码。
+
+    绝不回显请求或响应中可能的敏感字段（凭据、授权码）。
+    """
+    if error not in (None, ""):
+        raw = str(error)
+    elif code not in (None, ""):
+        raw = str(code)
+    else:
+        raw = "unknown"
+    hint = _TOKEN_FAILURE_HINTS.get(str(code)) or _TOKEN_FAILURE_HINTS.get(str(error))
+    if hint:
+        return f"令牌端点失败（HTTP {status}，错误码 {raw}）：{hint}"
+    return f"令牌端点失败（HTTP {status}，错误码 {raw}）"
+
+
 def _post_token(
     cfg: FeishuConfig,
     payload: dict[str, str],
@@ -137,11 +179,14 @@ def _post_token(
             scope=data.get("scope"),
         )
 
-    # 失败：飞书返回 error/error_description 或 code/msg。不回显响应中的敏感字段。
+    # 失败：飞书返回 error/error_description 或 code/msg。不回显响应中的敏感字段，
+    # 但把失败码翻成一句可执行提示（同事本机没有可改的配置，只能靠这句话自救）。
     err = str(data.get("error") or data.get("code") or "unknown")
-    needs_reauth = on_invalid_grant_reauthorize and err in {"invalid_grant", "invalid_request"}
+    needs_reauth = on_invalid_grant_reauthorize and err in _REAUTHORIZE_ERRORS
     raise FeishuAuthError(
-        f"令牌端点失败（HTTP {resp.status_code}，error={err}）",
+        token_failure_message(
+            error=data.get("error"), code=data.get("code"), status=resp.status_code
+        ),
         needs_reauthorize=needs_reauth,
     )
 

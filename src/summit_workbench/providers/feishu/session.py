@@ -26,6 +26,7 @@ from summit_workbench.config.secrets import (
     store_credential,
 )
 from summit_workbench.providers.feishu import auth
+from summit_workbench.providers.feishu.bundled import load_bundled_defaults
 from summit_workbench.providers.feishu.config import FeishuConfig
 from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConfigError
 
@@ -43,12 +44,21 @@ class FeishuSession:
         self._access_token_expires_at = 0.0
 
     def _app_secret(self) -> SecretStr:
+        """解析 app_secret：Keychain（工作区作用域 → 旧命名）优先，其次包内内置默认值。
+
+        内置默认值来自分发包资源（见
+        :mod:`~summit_workbench.providers.feishu.bundled`），只为让同事零预置即可授权；
+        它**只读不写**——不会把厂商秘密复制进用户 Keychain，用户自己存的条目始终优先。
+        """
         try:
             return self._resolve_credential(
                 self.cfg.app_secret_ref,
                 self.cfg.legacy_app_secret_ref,
             )
         except CredentialError as exc:
+            bundled = load_bundled_defaults()
+            if bundled is not None and bundled.app_secret is not None:
+                return bundled.app_secret
             raise FeishuConfigError(
                 f"未在 Keychain 找到 app_secret（{self.cfg.app_secret_ref}）；"
                 "请先用 security add-generic-password 存入"

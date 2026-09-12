@@ -94,6 +94,38 @@ cp -R "$STATIC_DIR/." "$APP/Contents/Resources/web/static/"
 cp -R "$REPO_ROOT/prompts/." "$APP/Contents/Resources/prompts/"
 cp -R "$REPO_ROOT/templates/." "$APP/Contents/Resources/templates/"
 
+# 内置飞书默认凭据：让同事装完点一下「授权飞书」即可，无需任何本机预置。
+# 飞书 v2 令牌端点强制要求 client_secret（PKCE 不能替代），分发包又没有可代持秘密的
+# 后端，因此这里把 app_id / app_secret 写进包内资源；必须写在**签名之前**（见下方 sign）。
+# 密钥只从环境变量取，绝不进仓库（repo 内不存在该文件，见 .gitignore 的 build/ 与 dist/）。
+FEISHU_DEFAULTS="$APP/Contents/Resources/feishu-defaults.json"
+if [[ -n "${WB_FEISHU_APP_ID:-}" || -n "${WB_FEISHU_APP_SECRET:-}" ]]; then
+  [[ -n "${WB_FEISHU_APP_ID:-}" && -n "${WB_FEISHU_APP_SECRET:-}" ]] || {
+    echo "✗ WB_FEISHU_APP_ID 与 WB_FEISHU_APP_SECRET 必须同时提供（只给其一无法授权）" >&2
+    exit 1
+  }
+  (
+    umask 077
+    WB_FEISHU_REDIRECT_URI="${WB_FEISHU_REDIRECT_URI:-http://localhost:8765/callback}" \
+      "$PYTHON" -c '
+import json, os, sys
+sys.stdout.write(json.dumps({
+    "app_id": os.environ["WB_FEISHU_APP_ID"],
+    "app_secret": os.environ["WB_FEISHU_APP_SECRET"],
+    "redirect_uri": os.environ["WB_FEISHU_REDIRECT_URI"],
+}, ensure_ascii=False, indent=2) + "\n")
+' > "$FEISHU_DEFAULTS"
+  )
+  chmod 600 "$FEISHU_DEFAULTS"
+  echo "✓ 已内置飞书默认凭据：app_id=${WB_FEISHU_APP_ID} redirect_uri=${WB_FEISHU_REDIRECT_URI:-http://localhost:8765/callback}"
+elif [[ "${REQUIRE_BUNDLED_FEISHU:-false}" == "true" ]]; then
+  echo "✗ REQUIRE_BUNDLED_FEISHU=true 但缺少 WB_FEISHU_APP_ID / WB_FEISHU_APP_SECRET：" >&2
+  echo "  发布包必须内置飞书默认凭据，否则同事无法完成授权。" >&2
+  exit 1
+else
+  echo "⚠ 未提供 WB_FEISHU_APP_ID / WB_FEISHU_APP_SECRET：本次构建不含内置飞书凭据（仅开发用）"
+fi
+
 # 图标：使用系统自带 sips + iconutil 生成 AppIcon.icns。
 ICON_KEY=""
 SRC_ICON="$REPO_ROOT/assets/icon-1024.png"

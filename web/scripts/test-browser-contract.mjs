@@ -139,6 +139,15 @@ assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains w
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
 assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');
 assert.match(settingsSource, /needs_reauthorize/, 'settings exposes Feishu reauthorization state');
+// 授权失败必须被用户看见：回跳后要把原因取回来显示，而不是静默回到设置页。
+// 分发包内置凭据，同事本机没有可改的配置，界面不说原因就只能反复点。
+assert.match(source, /reportFeishuCallbackResult/, 'Feishu callback outcome is surfaced, not silently dropped');
+assert.match(
+  source,
+  /\/api\/settings\/feishu\/status\?state=/,
+  'Feishu callback outcome is explained by the authorization state reason',
+);
+assert.match(source, /FEISHU_STATE_KEY/, 'the authorization state is remembered across the OAuth redirect');
 assert.match(settingsSource, /settingsRenderSequence/, 'settings renders carry a request sequence');
 assert.match(
   settingsSource,

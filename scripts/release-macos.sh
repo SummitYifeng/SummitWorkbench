@@ -83,9 +83,14 @@ APP="$RELEASE_TMP/package/SummitWorkbench.app"
 ARCH="$ARCH" BUILD_NUMBER="$BUILD_NUMBER" RELEASE_BUILD=true \
   UPDATE_FEED_URL="$UPDATE_FEED_URL" UPDATE_PUBLIC_KEY="${UPDATE_PUBLIC_KEY:-}" \
   OUTPUT_APP="$APP" SIGNING_IDENTITY="$SIGN_IDENTITY" \
+  REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-false}" \
+  WB_FEISHU_APP_ID="${WB_FEISHU_APP_ID:-}" \
+  WB_FEISHU_APP_SECRET="${WB_FEISHU_APP_SECRET:-}" \
+  WB_FEISHU_REDIRECT_URI="${WB_FEISHU_REDIRECT_URI:-}" \
   "$REPO_ROOT/scripts/build-macos-app.sh"
 # 内部 ad-hoc 包只执行本地 bundle/离线验证，不访问 Apple 在线发布服务。
-SKIP_APPLE_ONLINE=true "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP"
+REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-false}" \
+  SKIP_APPLE_ONLINE=true "$REPO_ROOT/scripts/verify-macos-release.sh" "$APP"
 WB_PACKAGED_APP="$APP" "$PYTEST" "$REPO_ROOT/tests/integration/test_packaged_app.py" -m integration -q
 
 DMG_STAGE="$RELEASE_TMP/dmg-stage"

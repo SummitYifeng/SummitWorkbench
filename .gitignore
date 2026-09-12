@@ -19,6 +19,10 @@ dist/
 .DS_Store
 config.local.toml
 
+# 构建期内置的飞书默认凭据（由 scripts/build-macos-app.sh 从环境变量生成）：
+# 任何位置出现都必须忽略，杜绝把 app_secret 提交进仓库。
+**/feishu-defaults.json
+
 # 真实会议逐字稿/材料禁止入库（NFR-4：不得含未去敏真实会议内容）
 # 冒烟用的真实逐字稿放这个被忽略的目录，或用仓库外路径传给 wb model smoke
 /transcripts-local/

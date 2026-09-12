@@ -44,10 +44,42 @@ find "$APP" -type f -print | sort > "$FILE_LIST"
 [[ -s "$FILE_LIST" ]] || { echo "✗ bundle 文件清单为空" >&2; exit 1; }
 
 # 只扫描可读文本元数据，避免把编译后的第三方二进制误判成源码路径；这是发布 secret scan。
+# 显式例外：Contents/Resources/feishu-defaults.json 是**有意**内置的飞书应用级凭据——
+# 飞书令牌端点强制要求 client_secret，分发包没有可代持秘密的后端，而同事必须零预置就能
+# 授权（见 docs/RELEASING.md「内置飞书凭据」）。该文件从通用扫描中排除，改由下方结构化
+# 校验负责；校验只检查结构，绝不打印凭据值。
 if find "$APP/Contents" -type f \( -name '*.json' -o -name '*.plist' -o -name '*.md' -o -name '*.txt' \) \
+  -not -name 'feishu-defaults.json' \
   -exec grep -HnE '/Users/[^/]+/|/home/[^/]+/|BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|api[_-]?key[=:]|refresh[_-]?token[=:]|password[=:]' {} +; then
   echo "✗ bundle 元数据命中开发路径或秘密特征" >&2
   exit 1
+fi
+
+# 内置飞书凭据：发布构建必须带上，否则同事拿到 DMG 也无法完成授权。
+FEISHU_DEFAULTS="$APP/Contents/Resources/feishu-defaults.json"
+if [[ "${REQUIRE_BUNDLED_FEISHU:-false}" == "true" && ! -f "$FEISHU_DEFAULTS" ]]; then
+  echo "✗ REQUIRE_BUNDLED_FEISHU=true 但包内缺少 feishu-defaults.json" >&2
+  exit 1
+fi
+if [[ -f "$FEISHU_DEFAULTS" ]]; then
+  if ! python3 - "$FEISHU_DEFAULTS" <<'PY'
+import json
+import sys
+
+payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+missing = [
+    key
+    for key in ("app_id", "app_secret", "redirect_uri")
+    if not isinstance(payload.get(key), str) or not payload[key].strip()
+]
+if missing:
+    sys.exit(f"missing or empty keys: {', '.join(missing)}")
+PY
+  then
+    echo "✗ 内置飞书凭据结构不正确（需非空 app_id / app_secret / redirect_uri）" >&2
+    exit 1
+  fi
+  echo "✓ 内置飞书凭据结构正确（值不打印）"
 fi
 
 TOKEN="offline-release-smoke-token"

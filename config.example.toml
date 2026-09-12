@@ -16,7 +16,11 @@ monthly_soft_limit = 20.0   # 当月估算费用超过此值时，wb status --no
 currency = "CNY"
 
 [feishu]
-# 飞书自建应用的 App ID（非敏感，可放这里）
+# 飞书自建应用的 App ID（非敏感，可放这里）。
+# 注意：分发给同事的安装包已内置默认 app_id / app_secret（见 docs/RELEASING.md），
+# 因此这一节**可以整段省略**——省略时运行时用包内内置默认值。
+# 一旦写了 [feishu] 表，就必须填全 app_id 与 redirect_uri（缺字段会显式报错，
+# 不会被内置默认值掩盖）；显式配置始终优先于内置默认值。
 app_id = "cli_xxxxxxxxxxxxxxxx"
 # OAuth 回调地址：需与飞书开放平台「安全设置 → 重定向 URL」里登记的一致
 redirect_uri = "http://localhost:8765/callback"

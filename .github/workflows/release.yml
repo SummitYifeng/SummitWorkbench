@@ -135,6 +135,11 @@ jobs:
           BUILD_NUMBER: ${{ github.run_number }}
           RELEASE_OUTPUT_DIR: dist/ci-release
           REQUIRE_SIGNED_UPDATE: "true"
+          # 发布包必须内置飞书默认凭据（app_id 非秘密用 var，app_secret 用 secret），
+          # 否则同事拿到 DMG 也无法完成「授权飞书」。缺任一即构建失败。
+          REQUIRE_BUNDLED_FEISHU: "true"
+          WB_FEISHU_APP_ID: ${{ vars.WB_FEISHU_APP_ID }}
+          WB_FEISHU_APP_SECRET: ${{ secrets.WB_FEISHU_APP_SECRET }}
         run: scripts/release-macos.sh
 
       - name: Run packaged integration tests

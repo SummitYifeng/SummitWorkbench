@@ -1,3 +1,67 @@
+## [0.4.7] - 2026-09-12
+
+> 分发版：让**同事拿到 DMG 装完就能用**——飞书授权从「需要管理员在每台机器上预置
+> config.toml 与 Keychain」变成「点一下『授权飞书』」。做法是把飞书 app_id 与
+> app_secret 作为**默认值**在构建时写进包内资源（`Contents/Resources/feishu-defaults.json`），
+> 并在运行时按「显式配置/Keychain > 内置默认」的顺序回退。产品行为与数据格式未改动。
+
+### 新增
+
+- **内置飞书默认凭据（分发包）**：新增
+  `providers/feishu/bundled.py`，从包内 `feishu-defaults.json` 读取 app_id / app_secret /
+  redirect_uri；文件由 `scripts/build-macos-app.sh` 在**签名之前**从环境变量
+  `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET` 生成，仓库内不存在该文件（`build/`、`dist/`
+  均被 git 忽略），因此密钥永不进版本库。
+- **配置回退链**：`load_feishu_config()` 现在按「配置文件里的 `[feishu]` 表 → 包内内置默认值 →
+  显式报错」解析。显式写了 `[feishu]` 却漏字段时仍**严格报错**，不会被内置默认值掩盖。
+- **凭据回退链**：`FeishuSession._app_secret()` 按「workspace 作用域 Keychain → 旧命名
+  Keychain（一次性迁移）→ 包内内置默认值」解析；内置值**只读不写**，不会把厂商秘密复制进
+  用户 Keychain，用户自己存的条目始终优先。
+- **发布门禁**：`REQUIRE_BUNDLED_FEISHU=true` 时，构建缺少内置凭据即失败；
+  `verify-macos-release.sh` 对包内凭据文件做结构化校验，并在通用 secret scan 中把它列为
+  **显式例外**（该文件是唯一有意内置的秘密，见 `docs/RELEASING.md`）。
+- **授权失败不再「只说失败」**：分发包内置凭据后同事本机没有任何可改的配置，失败时必须由
+  界面告诉他找谁、做什么。现在令牌端点的失败码会被翻成可执行提示（`20010` → 「你的账号还没有
+  这个应用的使用权限：请联系管理员把你加入应用『可用范围』」、`20002` → 「内置的应用凭据无效
+  （可能已轮换）：请联系管理员重新发布安装包」、`20003/20004/20065` → 重新授权），并透传到
+  向导界面（此前只显示「飞书授权未完成，请重新点击授权」，同事只能反复点）。用户点「拒绝」时
+  也区分文案。原始错误码保留在消息里便于审计，**凭据与授权码绝不回显**（有专门测试断言）。
+  授权状态（`feishu-auth-state.json`）新增可选 `reason` 字段；查询状态不消费原因，App 重启后
+  仍能看到解释。**设置页的「重新授权」回跳也补上了提示**：此前 `?feishu=failed` 完全没被处理，
+  失败后静默回到设置页（而指南恰恰让用户用这条路径从令牌失效中恢复），现在会取回原因并按
+  `textContent` 安全显示（不引入转义风险），查询串随即清掉以免重复提示；前端契约测试新增
+  三条守卫并做过变异验证（把取回原因的端点改坏即报出对应断言）。**拿不到会话 cookie 的静态
+  回退页同样说明原因**（`_panel_redirect`：没有 state / 状态失效 / 已记录失败 / 用户取消各有
+  对应文案），该页会把未信任的 `error` 参数拼进 HTML，因此做了转义并有专门断言。
+- **测试**：新增 `tests/unit/test_feishu_bundled.py`（15 例）、
+  `tests/unit/test_feishu_authorization_reason.py`（14 例，含「被拒绝 → 向导显示原因」的
+  端到端用例与静态回退页的注入转义用例）与
+  `tests/unit/test_feishu_session.py` 的 3 例，覆盖回退链两个方向、显式配置优先、
+  显式配置缺字段仍报错、内置文件损坏、无内置时保持原有报错文案，以及**打包运行时契约**：
+  按 `WB_STATIC_DIR` 与 server 可执行文件相对路径两条查找路径都能命中内置凭据文件、
+  显式覆盖优先、空串覆盖＝显式关闭。该组路径测试已做**变异验证**（删掉 `WB_STATIC_DIR`
+  分支、让空串覆盖不再禁用探测，两种情况都会被测试抓住），确认不是空转。
+- **端到端验证**：在**清空 Application Support + 移走 `~/.config/.../config.toml` +
+  Keychain 无凭据**的干净机器上，从新 DMG 安装 0.4.7 后连接工作区并调用授权端点，
+  返回真实飞书授权 URL（`client_id=cli_…`、`redirect_uri`、`scope` 齐全）；
+  抓取令牌请求体确认 `client_secret` 来自包内资源；直连飞书端点返回 HTTP 400
+  （占位 secret），即请求确实带着凭据发出，而不是本地「未在 Keychain 找到 app_secret」。
+
+### 为什么必须内置 app_secret
+
+飞书 `authen/v2/oauth/token` 的 `client_secret` 是**必填**，`code_verifier`（PKCE）只是可选的
+额外保护，**不能替代** client_secret（官方文档：<https://open.feishu.cn/document/authentication-management/access-token/get-user-access-token>）。
+分发包里没有可代持秘密的后端，所以「零预置 + 点一下就能授权」与「秘密不进客户端」二者不可兼得。
+
+### 已知代价（明示，不做隐瞒）
+
+- 拿到 DMG 的人都能提取出这个 app_secret（它是**应用级**凭证），可据此以应用身份调用飞书
+  API、读取该应用已授权范围内的数据。这只在「内部自建应用 + 信任圈子」前提下可接受。
+- 若要消除该风险，需要把令牌换取搬到管理员自建的后端代理（app_secret 只留在服务端），
+  属于后续可选改动，本版不做。
+- 飞书开放平台侧仍需管理员保证：应用「可用范围」包含每位同事、`offline_access` 等 scope
+  已开通、重定向 URL 已登记 `http://localhost:8765/callback`。
+
 ## [0.4.6] - 2026-09-12
 
 > 补丁版：修掉 `v0.4.5` 留下的、指南首页那行版本标记的显示瑕疵。**产品行为同样未改动**——
