@@ -35,6 +35,23 @@
   生产路径已改用 `list_events_between`）、4 个空的 `web/src/features/` 子目录
   （ADR 0036 明确保留为空入口边界）、`docs/contracts/`（仍是当前生效的 web 路由契约）。
 
+### 发布
+
+- tag `v0.4.5` → release run
+  [#34664646655](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34664646655)（success），
+  产物发布在 <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.5>。
+- **`latest` 已正确指向 v0.4.5**（此前停在 `v0.4.2`；历史 rc 均为 prerelease，stable 通道未被污染）。
+- DMG SHA256：`79a64f36871cd0d8a2ac187d7028d21c653970d10e77702b049172f126852d80`
+  （49413832 字节；与 `update-feed.json`、`SHA256SUMS`、`release-metadata.json` 四处一致）。
+- 构建号为 **19**——由 CI 的 `github.run_number` 决定（`release.yml` 传
+  `BUILD_NUMBER: ${{ github.run_number }}`），不是手工 bump 的值。
+- 本机从 DMG 安装并启动验证：`CFBundleShortVersionString 0.4.5` / `CFBundleVersion 19`，
+  `/api/version` 返回 `server_version 0.4.5 / build 19 / git_revision 749eeef`，六页签可达，
+  无 crash loop（本次启动仅 1 条生命周期事件、0 条 error/warning）。
+- 已知显示瑕疵（不影响行为）：已发布 DMG 内的指南首页版本标记写作 `build 13`（发布前按
+  "build 12 顺延"误估），仓库文档已统一更正为 `build 19`；为避免已发布产物与仓库静态产物漂移，
+  未为此重建前端。详见 `docs/implementation/DELIVERY-CLEANUP-REPORT.md` §5.2。
+
 ## [Unreleased] - 2026-09-11
 
 > 远端 CI、前端工具链与交付门禁补强，并产出 build 11 内部包。build 9 的历史产物身份不变。

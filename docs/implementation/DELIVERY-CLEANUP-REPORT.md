@@ -11,7 +11,7 @@
 > **三者都判定为无引用才允许删**；任一存疑 → 保留并记录理由。
 
 - 基线：`v0.4.4` build 12（前端 `v2026.09.11-e8ed6f7-6e6e0c91`）
-- 本轮目标版本：`v0.4.5` build 13
+- 本轮目标版本：`v0.4.5` build 19
 - 基线质量门：890 passed / 1 skipped，覆盖率 **82.33%**
 
 ---
@@ -193,18 +193,88 @@ macOS-only arm64 与纯客户端用法下均不可达；升级经实测是**一�
 
 ## 四、验证与门禁
 
+本地 `scripts/pre-push-gate.sh`（完整档，含前端）与远端 CI 均全绿：
+
 | 项 | 结果 |
 |---|---|
 | `ruff check .` | 通过（`All checks passed!`） |
-| `ruff format --check` | 通过（对 `docs/` 亦执行 `ruff format`，输出 `68 files left unchanged`） |
-| `mypy`（strict） | 见最终报告 |
-| `pytest` | 890 passed / 1 skipped，覆盖率 **82.33%**（与基线一致，未下降） |
-| 前端 `tsc --noEmit` + `test:frontend` | 见最终报告 |
+| `ruff format --check` | 通过（400 files already formatted） |
+| `mypy`（strict） | 通过（`Success: no issues found in 308 source files`） |
+| `pytest` | **890 passed / 1 skipped**，覆盖率 **82.33%**（与基线一致，未下降） |
+| 前端 `tsc --noEmit` + `test:frontend` | 通过（7 个脚本全绿：build identity / feature contract / project render / review render / today import / settings race / api error / browser contract） |
+| 前端生产构建 + `verify-build.mjs` | 通过，`Build verified: v2026.09.12-ec27776-0bc00d2c` |
+| 远端 CI | 全绿：[run 34664463181](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34664463181)（quality-gate + macOS arm64 contract + macOS x86_64 contract + workflow lint 四个 job 全 success） |
 | 门禁**未放宽** | 覆盖率门槛、mypy strict、契约测试一律未改动；**未修改任何测试以使其通过** |
+
+### 4.1 本轮唯一一次测试改动（按 §8.2 说明理由）
+
+`tests/unit/test_workspace_migration.py` 断言迁移后的 `min_writer_version` 等于字面量 `"0.4.4"`。
+版本 bump 到 0.4.5 后该断言失败。**这不是"改测试让门禁变绿"**：
+
+- 被测语义：`workspace_migration.py:396` 有意把写门提升为**执行迁移的那个 App 版本**
+  （`current["min_writer_version"] = version`，`version` 缺省取 `__version__`）。
+- 该字面量在写下时是正确的，只是**被版本 bump 变成过期常量**——属于发版必踩的维护性失败。
+- 改法：断言改为对 `__version__`（真源）取值，而不是改成新的字面量，从而不再每次发版都要手改。
+- **变异检查**（§8.2 要求）：把 `workspace_migration.py` 的写入值改成 `"0.0.0-sentinel"`，
+  断言**确实失败**；恢复后 `git diff` 为空（逐字节还原）。故该断言不是"怎么都通过"的假测试。
 
 ---
 
-## 五、需要需求方裁决的事项
+## 五、发布结果（完整链路）
+
+- **tag**：`v0.4.5`（指向 `749eeef`；`pyproject.toml` 版本 = `0.4.5`，release.yml 的 tag ↔ version 校验通过）
+- **release run**：<https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34664646655>（success）
+- **产物 release**：<https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.5>
+  —— **`latest` 已正确指向 v0.4.5**（`prerelease=false`、`draft=false`）。此前 latest 停在 `v0.4.2`，
+  历史 rc 均为 prerelease，**未污染 stable 通道**，符合 §7.3 要求。
+- **DMG SHA256**：`79a64f36871cd0d8a2ac187d7028d21c653970d10e77702b049172f126852d80`
+  （本地下载后 `shasum -a 256` 实测，与 `update-feed.json`、`SHA256SUMS`、`release-metadata.json`
+  四处一致；大小 49413832 字节）
+- **update-feed.json 的 `latest` 指向**：`artifacts[0].version = 0.4.5`、`build = 19`、
+  `architecture = arm64`、`download_url` 指向 v0.4.5 的 DMG；`workspace_schema` 为
+  `schema_version 2 / min_reader 0.4.5 / min_writer 0.4.5`；带 Ed25519 `signature` 与 `public_key`，
+  与 App 内 `build-manifest.json` 的 `update_public_key` 一致。
+- **本机安装与启动证据**：从 DMG 安装到 `/Applications/SummitWorkbench.app`，实测
+  - `CFBundleShortVersionString = 0.4.5`、`CFBundleVersion = 19`；
+  - 服务进程存活并监听动态端口，`/api/version` 返回
+    `server_version 0.4.5 / build 19 / git_revision 749eeef / frontend_build v2026.09.12-749eeef-0bc00d2c`；
+  - 六页签（today / review / ask / projects / guide / settings）全部存在于**已安装 App 实际服务出的**
+    bundle 中；重写后的指南正文（「我想记一件事」「我想撤销一次改动」等）也在其中；
+  - `/static/` 下 JS/CSS 均 HTTP 200；
+  - **无 crash loop**：本次启动只有 1 条生命周期事件（`service_spawned`），当前运行段
+    **0 条 error/warning**（日志里历史上那些 error 行属于此前会话，不是本次）。
+
+### 5.1 发布过程中修正的一处配置（非代码问题）
+
+首次 tag run **失败**在 `Prepare protected update configuration`：该步骤要求
+`vars.UPDATE_DOWNLOAD_URL` 与
+`https://github.com/<更新仓>/releases/download/<本次 tag>/<本次 DMG 名>` **逐字相等**，
+而 `release` environment 里的该变量仍停留在上一次正式版 `v0.4.2` 的值
+（`.../download/v0.4.2/SummitWorkbench-0.4.2-arm64-INTERNAL-DEV.dmg`）。
+
+这**不是"为让检查变绿而放宽门槛"**，而是发布流程要求的版本化配置刷新：该变量的语义就是
+"当前 stable 版 DMG 的精确下载地址"，每次正式发版都必须随之更新（rc 通道由 tag 派生、不读它，
+所以历史上最后一次成功的是 rc 时，它就一直没被更新）。把 `UPDATE_DOWNLOAD_URL` 更新为 v0.4.5 的
+地址后 `gh run rerun --failed`，全链路通过。**未修改任何工作流、脚本或门禁。**
+
+### 5.2 一处诚实的遗留瑕疵（不影响已发布产物）
+
+`docs/product/WEB_USAGE_GUIDE.md` 顶部的适用版本标记在**已发布的 DMG 内**显示为
+`v0.4.5 build 13`，正确值应为 `build 19`。
+
+原因：我在发起发布前先写了这个标记，当时假设 build 号是 13（承接 `v0.4.4` build 12 顺延）；
+但按仓库现有规则，**build 号由 CI 的 `github.run_number` 决定**
+（`release.yml` 传 `BUILD_NUMBER: ${{ github.run_number }}`，本次 release run 号为 19）。
+真正的 build 是 **19**。
+
+处理：仓库内**所有文档已更正为 build 19**；但为修正这一行而重建前端会改变 `source_hash`
+与产物身份，并使已发布的 DMG 与仓库静态产物不一致——那正是 §3 与产物清单都明确要避免的漂移。
+两害相权，选择**保留已发布产物不动、把仓库文档改对**，并在此明确记录。
+该差异纯属版本字符串显示，**不涉及任何行为**；下次任何发版重建会自然消除它。
+
+---
+
+## 六、需要需求方裁决的事项
 
 1. **§2.1 `list_events`**：这个"按原始事件查询"的能力是否仍属于支持面？留还是删？
 2. **§2.2 两个归档 HTML**：你选择了删除，但证据显示它们被 `README.md` 链接、
