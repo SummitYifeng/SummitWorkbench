@@ -1,112 +1,55 @@
-# 收尾提示词 v7：只剩 1 项（C4，需要飞书授权）
+# 收尾提示词：**已无待跑项**（UI 层开放项已清零）
 
-> **v7 变更**：**R09、R05、B4 全部通过**。`OPEN-VERIFICATION-ITEMS.md` 中的 UI 层开放项
-> **已清零**——除本项外只剩 A6（需第二台机器）与 F1（明确超出交付范围）。
+> **状态：本文件不再有需要执行的提示词。**
 >
-> 本文件现在只描述 **C4：「新建会议（个人日程）」落点**。它是唯一需要账号所有者介入的一项。
+> - **C4「新建会议（个人日程）」落点已于 2026-09-12 关闭** —— 见
+>   `OPEN-VERIFICATION-ITEMS.md` §M 第八轮。
+> - B/C/D/E 各组开放项已全部关闭。
+>
+> 仍在清单上的只剩 **A6**（需第二台机器现场复跑；代码路径已有端到端自动化 + 变异测试覆盖）
+> 与 **F1**（**非缺陷**，明确超出 `INTERNAL-DEV` 交付范围）。两者都不需要 computer use 提示词。
 
 ---
 
-## 复制区（从这里开始）
+## 如果要重跑真实外部服务的写回类验收，先读这三条
 
-你要验证一项会**在真实飞书日历创建事件**的功能。
+第八轮在真实飞书上跑通 C4 时，查明了几条**对所有"真实写回"验收都适用**的机制。
+它们不是产品缺陷，但会决定验收环境怎么搭——踩错会把测试数据永久留在真实远端。
 
-### 铁律
+### 1. Web 写操作会自动 commit **并 push**
 
-1. 这一项**必须在真实飞书上做**，因此**开始前必须先向账号所有者取得明确授权**。
-   没有授权就回报「未验证：无飞书授权」并停止，**不要**自行尝试。
-2. **开始前确认屏幕上没有钥匙串弹窗**：飞书令牌是从**登录钥匙串**读的
-   （`com.summitworkbench.credentials.<workspace_id>` / `feishu:<app_id>:refresh_token`）。
-   模态弹窗会让读取阻塞，产出一个**与产品无关的失败**。
-3. **只创建一个事件，回读校验后立即删除，不留残留。**
-4. 每个断言都要有原始证据（event id、回读字段、删除结果、界面文案）。
+`legacy_app.py` 的 `_run_web_mutation` 是**所有** web 写操作的公共入口，它**总是**传
+`push_after_commit`。所以在**带远端的真实 vault** 上做写回，提交会被推送到真实远端；而
+**远端历史无法用本地 `reset` 收回**（产品设计上绝不 force-push）。
 
-### 环境
+⇒ **任何会产生真实写回的验收，都必须在"无远端的隔离 vault"上做。**
 
-用**临时环境**，不要碰真实工作区：
+### 2. `HOME` 隔离会**同时切断 Keychain 访问**
 
-```bash
-ISO=$(mktemp -d /tmp/swb-c4-XXXXXX)
-mkdir -p "$ISO/home" "$ISO/work"
-export HOME="$ISO/home" WORK_ROOT="$ISO/work"
-cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
-.venv/bin/wb web --host 127.0.0.1 --port 18931 &
-```
+`security` CLI 按 `$HOME` 解析钥匙串。临时 `HOME` 下没有 `login.keychain-db`，于是 workspace
+凭据一律"找不到"（`未在 Keychain 找到 refresh_token`）。**这与 runtime 记录路径问题（第六轮）
+同源**——都是"以为 `HOME` 能隔离一切"。
 
-按向导新建工作区。**模型可以选「跳过」**；**飞书必须真的授权**（这是本项的前提）。
-授权完成后回报设置页 / 授权页显示的状态原文。
+⇒ 要在隔离环境里用**真实凭据**，必须**保留真实 `HOME`**，只把 `vault_dir` 指到临时 vault。
 
-### 夹具
+### 3. 于是，正确的形态是「真实 `HOME` + 隔离 vault + 无远端 + 真实凭据」
 
-在 `_vault/review/meetings.md` 造一条落点为**新建日历会议**的候选：
+本轮 C4 的可复现做法（**已验证**，全程不改真实 vault、不推送、事后逐字节复原）：
 
-```markdown
----
-date: '2026-09-12'
-type: approval-page
-status: active
-project: global
----
+1. 记下真实 vault 的 `HEAD` 与相关文件哈希；备份要改的 profile `config.toml`。
+2. 造一个临时 vault，其 `.summit-workbench/workspace.json` **沿用真实 `workspace_id`**
+   （凭据按这个 id 解析，因此复用真实 Keychain 项、**无需复制秘密**，也不会有
+   refresh_token 轮换导致真实 App 失效的风险）。
+3. `git init` + 一次初始提交（工作树干净 ⇒ 不触发 `dirty-protected` 写保护），**不设 remote**
+   （同步状态为 `unconfigured` ⇒ `push_after_commit` 是空操作）。
+4. 用项目自己的 API 把真实 profile **临时**指向该临时 vault（`load_profile` → `model_copy` →
+   `save_profile`），`HOME` 保持真实；结束后按备份复原。
+5. 起服务，用 `frontend_build`、`workspace_id`、`sync state` 三项自证环境对。
+6. 跑 UI 流程；**预演必须先确认零写入**（另查一次日历确认为空），再确认写回。
+7. 回读事件字段并核对 `start`/`end` 与候选一致；**按 `event_id` 精确删除**
+   ——不要遍历列表删除：列表里可能有别人的事件（飞书会以 `no permission` 拒绝）；
+   删除成功的判定是 **`status == cancelled`**，而**不是**它从原始列表消失。
+8. 逐字节复原 profile 与 vault，删除临时目录，确认无残留进程。
 
-# 会议提取待确认
-
-## 2026-09-12 合成会议  [[meetings/notes/2026-09-12-synthetic]]
-
-- [ ] `id: local:fixture#action-item-c4` [action-item] 合成：与飞书日历联调（验证后删除）
-  - target_project: unresolved
-  - route: feishu-meeting
-  - due_date:
-  - start_at: 2026-09-15T10:00
-  - end_at: 2026-09-15T11:00
-  - evidence: 说话人 甲 00:00:01
-  - actionable: yes
-  - historical: no
-  - note: [[meetings/notes/2026-09-12-synthetic]]
-  - transcript: [[meetings/transcripts/2026-09-12-synthetic]]
-  - error:
-  <!-- wb-original: <base64url(JSON: description,target_project,route,due_date)> -->
-```
-
-- `route: feishu-meeting` 是**新建日历会议**落点；它**不需要**已解析项目
-  （`is_actionable()` 对 `global-inbox` 与 `feishu-meeting` 豁免目标项目检查），
-  所以 `target_project: unresolved` 也应可勾选——**这本身就是一条要验的资格逻辑**。
-- `start_at` / `end_at` 是**本地 naive** `YYYY-MM-DDTHH:MM`，请用**未来时间**。
-- `wb-original` 的编码：`base64url(json.dumps({"description":…,"target_project":…,"route":…,"due_date":…}, ensure_ascii=False, separators=(",",":")))`。
-
-### 步骤与通过标准
-
-1. **资格**：打开审批页，确认这条 `feishu-meeting` 候选**可选中、可批准**，
-   且「批准」按钮**未被禁用**。回报界面文案原文。
-   （可选对照：把 `evidence` 清空后应变为不可批准、title 说明原因。）
-2. **预演**：点「检查并写回」→ 确认是 **DRY-RUN、零写入**（此时日历里**不应**出现新事件）。
-   回报预演输出原文。
-3. **写回**：点「确认应用（写回）」→ 只创建**一个**事件。
-4. **回读校验**：确认日历里确实出现了该事件，且标题 / 开始 / 结束与候选一致。
-   **回报事件的 `event_id` 与回读到的字段**。
-5. **删除**：删除该事件，确认删除成功，并再次回读确认**查不到**它。
-6. **不留残留**：确认没有多余事件被创建（只此一个）；临时工作区可随后删除。
-
-**通过标准**：候选可批准 → 预演零写入 → 写回恰好创建一个事件 → 回读字段一致 → 删除后查不到。
-
-### 回报格式
-
-```
-任务：C4 新建会议（个人日程）落点
-环境：临时 HOME/WORK_ROOT；端口；frontend_build；飞书授权状态
-结论：通过 / 失败 / 未验证
-证据：候选可批准的界面文案；预演输出原文；event_id；回读字段；删除结果
-```
-
-## 复制区结束
-
----
-
-## 附：当前开放项全貌
-
-| 项 | 状态 | 说明 |
-|---|---|---|
-| C4 新建会议落点 | **待授权** | 本文件；唯一需要账号所有者介入的项 |
-| A6 真实双设备冲突恢复 | 待第二台机器 | 代码路径已有端到端自动化 + 变异测试覆盖，缺的只是现场复跑 |
-| F1 Developer ID / 公证 / Intel / Windows | **非缺陷** | 明确超出 `INTERNAL-DEV` 交付范围 |
-
-**已关闭**：A1–A5、B1–B4、C1–C3、D1–D3、E1–E5、F2，以及 R01–R14 全部。
+> 另注：`wb feishu calendar --date` 按日期过滤，是核对"当天有没有事件"的**权威**入口；
+> 直接 `GET .../events` **不传时间参数时不会过滤**，会返回大量历史/已取消事件，容易被误读。
