@@ -132,6 +132,13 @@ Keychain 都不动。**
 > factory 也没有显式 resolver 时才要求 id），对应产物为 **build 27**。教训记一笔：原来的
 > HTTP 测试把 `stage_remote_clone` 整个 stub 掉了，于是守卫/marker/兼容性/确认落盘全都没走到；
 > 现在只假造网络 clone，其余走真实代码，并在变异验证下能复现那个 409。
+>
+> **同一意图的第二层（build 28）**：b27 之后重试，报的是兜底句「远端 clone 失败，请检查凭据、
+> 网络或 TLS」。真因在更下面一层——`DulwichGitBackend.transport_kwargs()` 无条件要求非空
+> `workspace_id`，早于它检查注入进来的 `credential_resolver`，于是向导的每次 clone 都抛
+> `GitCredentialsUnavailable`；而 `stage_remote_clone()` 没有映射这一类，它落进兜底、原因消失。
+> 已在 `2b534e0` 修（只在没有注入 resolver 时才要求作用域 id），并加了稳定码与
+> `details.reasons` 透传。**要跑这条旅程请用 build 28 或更高。** 详见文末 D4。
 
 **A7 通过标准（逐条留证）**
 
@@ -284,3 +291,22 @@ Keychain 都不动。**
 - **修法**：每个失败类别给一个稳定错误码 + 脱敏原因，写进 `sync-state.json`、banner 的 `detail` 与
   结构化日志；`GitCredentialsUnavailable` 至少要有独立码（如 `credentials-missing`）。
 - **代价**：D2 的排查因为这一条多花了好几轮——三个缺陷叠在一起时，"没有错误信息"本身就是最大的缺陷。
+
+### D4 · 私有 clone 的失败原因被兜底吞掉（本轮因它多花数轮）
+
+- **本层根因（b27 之后暴露）**：`DulwichGitBackend.transport_kwargs()` 在 HTTPS 下**无条件**
+  要求非空 `workspace_id`（`if not self._workspace_id or not self._username: raise
+  GitCredentialsUnavailable(...)`），而这行在它使用注入的 `credential_resolver` **之前**。空安装
+  向导按设计没有 workspace id（由远端 marker 决定），于是每次 clone 都抛
+  `GitCredentialsUnavailable`；`stage_remote_clone()` 的映射表里既没有它、也没有 `GitProxyError`，
+  两者都落进 `except Exception` 的兜底句「远端 clone 失败，请检查凭据、网络或 TLS」。
+- **真机表现**：Air 上 `git ls-remote`（含 PAT）成功、`curl` 直连与**走 127.0.0.1:7890 代理**都通
+  （`github` 404 / `api` 200），唯独 App 只给三选一的猜测——因为 curl/git 不读 macOS 系统代理，
+  而 App 一定走它（`config/network_proxy.py`），故障域与提示完全对不上。
+- **已修**（`2b534e0` / build 28）：`transport_kwargs()` 只在**没有注入 resolver** 时才要求
+  作用域 id；`stage_remote_clone()` 为凭据与代理各加稳定码
+  （`remote_credentials_unavailable` / `remote_proxy_failed`），兜底也带异常类名；
+  向导现在把 `details.reasons` 一并显示。
+- **教训**：b27 与 b28 是**同一意图在两层各写了一次检查**，第一次只修了上层（`stage_remote_clone`），
+  下层（`transport_kwargs`）把上层放行的情况又拦了一次。功能测试覆盖不到这种"两层同名守卫"，
+  所以这次补的是**针对该层**的单元测试 + 变异验证（恢复旧守卫能复现真机异常原文）。
