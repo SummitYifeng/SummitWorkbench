@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from summit_workbench.webapp import app_factory
 from summit_workbench.webapp.app_factory import AppContext, WebContext
 from summit_workbench.webapp.ask_view import _ask_html
-from summit_workbench.webapp.legacy_app import _run_web_import
+from summit_workbench.webapp.meeting_import import _run_web_import
 
 
 def create_app(
@@ -27,11 +27,11 @@ def create_app(
     server_instance: str | None = None,
 ) -> FastAPI:
     """旧导入路径兼容层；新代码应从 app_factory 导入。"""
-    import summit_workbench.webapp.legacy_app as legacy_app
     import summit_workbench.webapp.routers.ask as ask_routes
+    import summit_workbench.webapp.routers.meetings as meetings_routes
 
     ask_routes._ask_html = _ask_html
-    legacy_app._run_web_import = _run_web_import
+    meetings_routes._run_web_import = _run_web_import
     return app_factory.create_app(
         context,
         static_dir=static_dir,

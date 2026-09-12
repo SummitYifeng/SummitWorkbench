@@ -13,21 +13,16 @@ review_edit、应用用 apply_meeting_review；看板状态用 build_status、�
 
 from __future__ import annotations
 
-import inspect
 import os
-import shutil
-import tempfile
 import threading
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
-from zoneinfo import ZoneInfo
 
-from fastapi import Body, FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, Header, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -40,19 +35,11 @@ if TYPE_CHECKING:
 
 from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
-from summit_workbench.repositories.autocommit import (
-    CommitStatus,
-    commit_diff_text,
-    list_wb_commits,
-    revert_commit,
-    undo_error_code,
-)
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.webapp.api import (
     OnboardingCreatePayload,
     OnboardingPreflightPayload,
     OnboardingVaultPayload,
-    UndoRevertPayload,
 )
 from summit_workbench.webapp.ask_view import _ask_html as _ask_html
 from summit_workbench.webapp.build_info import (
@@ -73,7 +60,7 @@ from summit_workbench.webapp.knowledge_sources import (
 from summit_workbench.webapp.knowledge_sources import (
     _is_knowledge_source as _is_knowledge_source,
 )
-from summit_workbench.webapp.model_config import _load_model_config_for_context
+from summit_workbench.webapp.meeting_import import _run_web_import as _run_web_import
 from summit_workbench.webapp.mutation_runtime import (
     MutationRuntime,
 )
@@ -103,6 +90,7 @@ from summit_workbench.webapp.routers.brief import (
     register_brief_routes,
 )
 from summit_workbench.webapp.routers.capture import register_capture_routes
+from summit_workbench.webapp.routers.meetings import register_meetings_routes
 from summit_workbench.webapp.routers.review import (
     register_review_page_routes,
     register_review_routes,
@@ -118,15 +106,13 @@ from summit_workbench.webapp.routers.threads import (
     register_thread_document_routes,
     register_thread_routes,
 )
+from summit_workbench.webapp.routers.undo import register_undo_routes
 from summit_workbench.webapp.security import (
     allowed_hosts,
     error_payload,
     validate_bind_host,
 )
 from summit_workbench.webapp.views import render_dashboard
-from summit_workbench.workflows.local_mutation import (
-    run_local_mutation,
-)
 
 _create_restricted_app = create_restricted_app
 
@@ -136,132 +122,6 @@ _create_restricted_app = create_restricted_app
 # write vault content, create commits, or push.  Without this exemption the
 # migration gate requires HTTPS while the read-only gate prevents the only
 # operation that can establish HTTPS (a deadlock).
-
-
-def _undo_error_response(code: str, message: str, *, operation_id: str = "unknown") -> JSONResponse:
-    """返回撤销 API 的稳定 4xx 错误 envelope。"""
-    status_code = {
-        "undo_invalid_commit": 422,
-        "undo_target_dirty": 409,
-        "undo_not_git": 409,
-        "undo_busy": 423,
-    }.get(code, 409)
-    return JSONResponse(
-        status_code=status_code,
-        content=error_payload(code=code, message=message, operation_id=operation_id),
-    )
-
-
-def _run_web_import(
-    ctx: WebContext,
-    transcript_path: Path,
-    *,
-    local_mutation: Callable[..., object] | None = None,
-) -> dict[str, object]:
-    """把一份本地逐字稿全自动归档 + 结构化 + 生成审批候选（复用 backfill 链路）。
-
-    与 wb meeting import 同一套幂等逻辑；Web 侧按产品约定走全自动（不二次确认），
-    软预算只报告不阻断（PRD：预算是提醒线，不是停机线）。
-    """
-    from summit_workbench.config.secrets import CredentialError, resolve_credential
-    from summit_workbench.observability.status import load_budget_settings
-    from summit_workbench.prompts import load_prompt
-    from summit_workbench.providers.llm import LLMError
-    from summit_workbench.repositories.usage_ledger import monthly_totals
-    from summit_workbench.workflows.meetings.backfill import (
-        plan_backfill,
-        run_backfill,
-        scan_for_import,
-    )
-
-    items = scan_for_import(ctx.vault_dir, transcript_path)
-    if not items:
-        return {"ok": False, "message": "未识别为可导入的逐字稿（需要 .md/.txt 且内容非空）"}
-
-    # 先检查幂等账本：重复导入已经完成的逐字稿不应因为当前模型凭据不可用而
-    # 被误报为“模型未配置”，也不应再次调用模型或写入归档。
-    if all(item.done for item in items):
-        skipped = len(items)
-        lines = [f"处理 0、跳过 {skipped}、失败 0、生成候选 0"]
-        return {
-            "ok": True,
-            "status": "success",
-            "message": "导入完成：" + "；".join(lines) + "（幂等，未重复调用模型）",
-            "details": lines,
-            "operation_ids": [],
-            "estimate": {
-                "pending": 0,
-                "already_done": skipped,
-                "est_input_tokens": 0,
-                "est_output_tokens": 0,
-                "est_cost": 0,
-                "currency": "—",
-                "projected_month_cost": 0,
-                "soft_limit": None,
-                "crosses_soft_budget": False,
-            },
-        }
-
-    try:
-        cfg = _load_model_config_for_context(ctx, "meeting")
-        api_key = resolve_credential(cfg.api_key_ref)
-        prompt = load_prompt("meeting-processor")
-        merger_prompt = load_prompt("meeting-merger")
-    except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
-        return {"ok": False, "status": "failed", "message": f"导入未启动（模型未配置？）：{exc}"}
-
-    month = datetime.now(ZoneInfo(ctx.timezone)).strftime("%Y-%m")
-    month_spent = monthly_totals(ctx.vault_dir, month).estimated_cost
-    soft_limit, _currency = load_budget_settings(ctx.provider_config_file())
-    est = plan_backfill(items, cfg, month_spent=month_spent, soft_limit=soft_limit)
-
-    report = run_backfill(
-        ctx.vault_dir,
-        items,
-        cfg,
-        api_key,
-        prompt=prompt,
-        merger_prompt=merger_prompt,
-        include_actions=True,
-        local_mutation=local_mutation or run_local_mutation,
-    )
-    lines = [
-        f"处理 {report.processed}、跳过 {report.skipped}、失败 {report.failed}、"
-        f"生成候选 {report.candidates}"
-    ]
-    for result in report.results:
-        if result.action == "failed":
-            lines.append(f"✗ {result.item.date} {result.item.title}：{result.reason}")
-    operation_ids = list(report.operation_ids)
-    operation_note = f" · operation_id：{operation_ids[-1]}" if operation_ids else ""
-    status = (
-        "success"
-        if report.failed == 0
-        else ("partial" if report.processed or report.skipped else "failed")
-    )
-    message_prefix = {
-        "success": "导入完成：",
-        "partial": "导入部分完成：",
-        "failed": "导入失败：",
-    }[status]
-    return {
-        "ok": report.failed == 0,
-        "status": status,
-        "message": message_prefix + "；".join(lines) + operation_note,
-        "details": lines,
-        "operation_ids": operation_ids,
-        "estimate": {
-            "pending": est.pending,
-            "already_done": est.already_done,
-            "est_input_tokens": est.est_input_tokens,
-            "est_output_tokens": est.est_output_tokens,
-            "est_cost": est.est_cost,
-            "currency": est.currency,
-            "projected_month_cost": est.projected_month_cost,
-            "soft_limit": soft_limit,
-            "crosses_soft_budget": est.crosses_soft_budget,
-        },
-    }
 
 
 # Step 1（LEGACY-APP-SPLIT-PLAN）：知识来源白名单与正文展示预算已抽到
@@ -437,109 +297,15 @@ def create_app(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
     )
 
-    @app.post("/api/meetings/import")
-    def api_meetings_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
-        """拖拽上传逐字稿 → 全自动归档 + 结构化 + 生成审批候选。"""
-        from summit_workbench.workflows.meetings.backfill import MAX_TRANSCRIPT_BYTES
+    register_meetings_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
-        max_upload_bytes = MAX_TRANSCRIPT_BYTES
-        chunk_size = 64 * 1024
-        name = (file.filename or "transcript.txt")[:200]
-        if not name.lower().endswith((".md", ".txt")):
-            return {"ok": False, "message": "仅支持 .md / .txt 逐字稿文件"}
-        buffer = BytesIO()
-        total = 0
-        while True:
-            chunk = file.file.read(chunk_size)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_upload_bytes:
-                raise HTTPException(
-                    status_code=413,
-                    detail={
-                        "code": "upload_too_large",
-                        "message": "逐字稿文件不能超过 10 MiB",
-                    },
-                )
-            buffer.write(chunk)
-        data = buffer.getvalue()
-        text = data.decode("utf-8", errors="replace")
-        if not text.strip():
-            return {"ok": False, "message": "文件内容为空"}
-        tmp_dir = Path(tempfile.mkdtemp(prefix="wb-web-import-"))
-        try:
-            target = tmp_dir / Path(name).name
-            target.write_text(text, encoding="utf-8")
-            if "local_mutation" in inspect.signature(_run_web_import).parameters:
-                return _run_web_import(ctx, target, local_mutation=runtime.run)
-            # 保持旧版/测试注入器的二参数兼容性；正式实现始终走集中式写入门。
-            return _run_web_import(ctx, target)
-        finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-
-    # ---- 撤销系统自动提交（P0'） ----
-
-    @app.get("/api/undo/history")
-    def api_undo_history() -> dict[str, object]:
-        """最近 ``wb:`` 自动提交列表（含每提交触碰文件与仓库状态）。"""
-        commits, error = list_wb_commits(ctx.vault_dir, limit=20)
-        if error == "not-git":
-            return {
-                "ok": True,
-                "commits": [],
-                "note": "vault 不是 git 仓库：系统写回不会自动留痕，也无法撤销",
-            }
-        if error is not None:
-            return {"ok": False, "message": f"读取提交历史失败：{error}"}
-        return {"ok": True, "commits": [c.as_dict() for c in commits], "note": None}
-
-    @app.get("/api/undo/diff", response_model=None)
-    def api_undo_diff(request: Request, sha: str) -> dict[str, object] | JSONResponse:
-        """某次 wb 提交的 before/after 差异（git show 输出），供撤销前预览。"""
-        text, error = commit_diff_text(ctx.vault_dir, sha)
-        if error is not None:
-            code = undo_error_code(error)
-            return _undo_error_response(
-                code, f"无法读取差异：{error}", operation_id=_operation_id(request)
-            )
-        return {"ok": True, "diff": text}
-
-    @app.post("/api/undo/revert", response_model=None)
-    def api_undo_revert(
-        request: Request, payload: UndoRevertPayload
-    ) -> dict[str, object] | JSONResponse:
-        """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
-        blocked = runtime.mutation_blocked(request)
-        if blocked is not None:
-            return blocked
-        sha = payload.sha.strip()
-        if not sha:
-            return _undo_error_response(
-                "undo_invalid_commit", "缺少提交 sha", operation_id=_operation_id(request)
-            )
-        result = revert_commit(ctx.vault_dir, sha)
-        if result.status is CommitStatus.REVERTED:
-            # 明示边界：飞书侧副作用（已建任务/会议、已完成状态）不可撤销。
-            return {
-                "ok": True,
-                "message": "已还原 vault 文件。注意：飞书侧已产生的副作用（已建任务/会议、"
-                "已完成状态）不可撤销、不受本次还原影响。" + (result.detail or ""),
-            }
-        if result.status is CommitStatus.NOT_GIT:
-            return _undo_error_response(
-                "undo_not_git", "vault 不是 git 仓库，无法撤销", operation_id=_operation_id(request)
-            )
-        code = {
-            "invalid-wb-commit": "undo_invalid_commit",
-            "undo-target-dirty": "undo_target_dirty",
-            "workspace-locked": "undo_busy",
-        }.get(result.error_code or "", "undo_failed")
-        return _undo_error_response(
-            code,
-            f"还原失败：{result.detail or result.status.value}",
-            operation_id=_operation_id(request),
-        )
+    register_undo_routes(
+        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        runtime=runtime,
+    )
 
     @app.post("/api/shutdown")
     def api_shutdown(
