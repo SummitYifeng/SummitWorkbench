@@ -7,7 +7,7 @@ import {
   onConnectionRestored,
 } from './api/request';
 import { MAX_TEXT_CHARS } from './core/text';
-import { workspaceScopedKey, workspaceStore } from './core/workspace-store';
+import { workspaceStore } from './core/workspace-store';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
   clearDraftSnapshot,
@@ -30,14 +30,6 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
 import { type BriefData } from './brief-card';
-import type {
-  AskAnswer,
-  AskHistoryTurn,
-  AskMsg,
-  AskResponse,
-  AskThread,
-  SourceReadPayload,
-} from './features/ask';
 import { projectDetailHtml, projectDisplayName, projectsListHtml } from './features/projects';
 import type { ProjectListFilter, ProjectState, ProjectView } from './features/projects';
 import { reviewHtml } from './features/review';
@@ -63,12 +55,24 @@ import {
   focusVisibleProjectLink,
   mountShell,
   openModal,
-  registerModalCloseHook,
   requestModalClose,
   setModalReturnFocus,
   toast,
   viewElement,
 } from './features/shell';
+import {
+  askNewThread,
+  askOpenThread,
+  beginAskRename,
+  deleteAskThread,
+  getAskDraft,
+  mountAsk,
+  openSource,
+  reloadAskStore,
+  renderAsk,
+  resetAskForWorkspace,
+  setAskDraft,
+} from './features/ask';
 import { mountGuide } from './features/guide';
 import { renderSettings as renderSettingsFeature } from './features/settings';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
@@ -179,30 +183,6 @@ let conflictPreparation: RecoveryPreparationSummary | null = null;
 let conflictMessage: string | null = null;
 let conflictBusy = false;
 
-// ---------- 第二大脑（对话式问答，localStorage 持久化） ----------
-
-const ASK_MAX_THREADS = 10;
-/** 追问时最多回传的历史轮数（与后端 _MAX_HISTORY_TURNS 同口径） */
-const ASK_MAX_HISTORY = 6;
-let askThreads: AskThread[] = [];
-let askActiveId: string | null = null;
-let askBusy = false;
-/** 正在请求的会话 id（切换会话时「思考中…」只出现在真正等待的那个会话） */
-let askBusyThreadId: string | null = null;
-/** 输入框草稿：renderAskChat 会整体重建输入区，等待期间打的新问题不能丢 */
-let askDraft = '';
-let askErrors: Record<string, string> = {};
-/** 问答检索范围：''=全部；否则为项目/线程名（后端按 registry 解析） */
-let askScope = '';
-
-function askStorageKey(): string {
-  return workspaceScopedKey('wb.ask.threads.v1', workspaceStore.workspaceId);
-}
-
-function askDraftEntity(threadId: string): string {
-  return 'ask:' + threadId;
-}
-
 function persistEntityDraft<T>(entity: string, value: T): void {
   if (saveEntityDraft(entity, value, remoteVersion?.workspace_id)) return;
   if (!draftStorageWarningShown) {
@@ -275,7 +255,7 @@ function saveCurrentDraftSnapshot(): void {
   const persistedReviewForms = editForms.length > 0 ? reviewForms : reviewDrafts;
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
   const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (ask) askDraft = ask.value;
+  if (ask) setAskDraft(ask.value);
   const saved = persistDraftSnapshot({
     schema: 1,
     saved_at: new Date().toISOString(),
@@ -283,7 +263,7 @@ function saveCurrentDraftSnapshot(): void {
     tab,
     scroll_y: window.scrollY,
     capture_text: capture?.value ?? '',
-    ask_draft: askDraft,
+    ask_draft: getAskDraft(),
     review_forms: persistedReviewForms,
   }, remoteVersion?.workspace_id);
   if (!saved && !draftStorageWarningShown) {
@@ -297,7 +277,7 @@ function applyRestoredDraft(): void {
   if (!draft) return;
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
   if (capture) capture.value = draft.capture_text;
-  askDraft = draft.ask_draft;
+  setAskDraft(draft.ask_draft);
   reviewDrafts = draft.review_forms;
   const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
   if (ask) ask.value = draft.ask_draft;
@@ -399,12 +379,7 @@ async function doCheckVersion(reason: string): Promise<void> {
     reviewLoadError = null;
     lastStateReadAt = null;
     lastReviewReadAt = null;
-    askThreads = [];
-    askActiveId = null;
-    askDraft = '';
-    askErrors = {};
-    askBusy = false;
-    askBusyThreadId = null;
+    resetAskForWorkspace();
     reviewFilter = 'all';
     reviewSelectedIds.clear();
     // 旧工作区的预演/在途写回标记不得带入新工作区。
@@ -424,7 +399,7 @@ async function doCheckVersion(reason: string): Promise<void> {
     projectListFilter = 'all';
     projectReturnContext = null;
     loadedAskWorkspace = workspaceId;
-    loadAskStore();
+    reloadAskStore();
   }
   if (remote.frontend_build === CLIENT_BUILD) {
     setVersionStatus('synced');
@@ -576,389 +551,6 @@ function renderToday(view: HTMLElement): void {
     projectFocusAfterRenderName = null;
   }
 }
-
-// ---------- 第二大脑：会话存储（localStorage，上限 10） ----------
-
-function loadAskStore(): void {
-  try {
-    const raw = window.localStorage.getItem(askStorageKey());
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as { threads?: AskThread[]; activeId?: string | null };
-    if (Array.isArray(parsed.threads)) askThreads = parsed.threads.slice(0, ASK_MAX_THREADS);
-    if (typeof parsed.activeId === 'string') askActiveId = parsed.activeId;
-    if (!askThreads.some((t) => t.id === askActiveId)) askActiveId = askThreads[0]?.id ?? null;
-  } catch {
-    /* localStorage 数据损坏时按空会话处理，不阻断使用 */
-  }
-}
-
-function saveAskStore(): void {
-  try {
-    window.localStorage.setItem(
-      askStorageKey(),
-      JSON.stringify({ threads: askThreads, activeId: askActiveId }),
-    );
-  } catch {
-    /* 配额满/隐私模式等：静默失败，仅本次不持久化 */
-  }
-}
-
-function activeAskThread(): AskThread | null {
-  return askThreads.find((t) => t.id === askActiveId) ?? null;
-}
-
-function makeThreadTitle(q: string): string {
-  const one = q.replace(/\s+/g, ' ').trim();
-  if (!one) return '新会话';
-  return one.length > 12 ? one.slice(0, 12) + '…' : one;
-}
-
-function newAskThread(): AskThread | null {
-  if (askThreads.length >= ASK_MAX_THREADS) {
-    toast('已达 ' + ASK_MAX_THREADS + ' 个会话上限，请先删除或清空一个', 'err');
-    return null;
-  }
-  const thread: AskThread = {
-    id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
-    title: '新会话',
-    createdAt: new Date().toISOString(),
-    messages: [],
-  };
-  askThreads.push(thread);
-  askActiveId = thread.id;
-  saveAskStore();
-  return thread;
-}
-
-function deleteAskThread(threadId: string): void {
-  const idx = askThreads.findIndex((t) => t.id === threadId);
-  if (idx < 0) return;
-  if (!window.confirm('删除会话「' + askThreads[idx].title + '」？其中的问答记录会一并删除。')) return;
-  askThreads.splice(idx, 1);
-  if (askActiveId === threadId) {
-    askActiveId = askThreads[0]?.id ?? null;
-    askDraft = '';
-  }
-  saveAskStore();
-  renderAsk(document.getElementById('view-ask') as HTMLElement);
-}
-
-function askHistoryOf(thread: AskThread): AskHistoryTurn[] {
-  const turns: AskHistoryTurn[] = [];
-  for (let i = 0; i + 1 < thread.messages.length; i += 2) {
-    const userMsg = thread.messages[i];
-    const aiMsg = thread.messages[i + 1];
-    if (userMsg.role === 'user' && aiMsg?.role === 'ai') {
-      turns.push({ question: userMsg.text, sources: aiMsg.sources });
-    }
-  }
-  return turns.slice(-ASK_MAX_HISTORY);
-}
-
-function askView(): HTMLElement {
-  return document.getElementById('view-ask') as HTMLElement;
-}
-
-function renderAsk(view: HTMLElement): void {
-  const full = askThreads.length >= ASK_MAX_THREADS;
-  const threadOptions = askThreads.map((thread) =>
-    '<option value="' + esc(thread.id) + '"' + (thread.id === askActiveId ? ' selected' : '') + '>' +
-    esc(thread.title) + '</option>'
-  ).join('');
-  view.innerHTML =
-    '<div class="ask-layout">' +
-    '<aside class="ask-side">' +
-    '<div class="ask-side-head">' +
-    '<button class="primary ask-new-btn" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限，请先删除或清空一个"' : '') + '>＋ 新会话</button>' +
-    '<span class="ask-side-count">' + askThreads.length + '/' + ASK_MAX_THREADS + '</span>' +
-    '</div>' +
-    '<label class="ask-mobile-select">当前会话<select id="ask-thread-select"><option value="">选择会话</option>' + threadOptions + '</select></label>' +
-    '<div class="ask-side-list" id="ask-side-list"></div>' +
-    '</aside>' +
-    '<div class="ask-main" id="ask-main"></div>' +
-    '</div>';
-  renderAskSide();
-  renderAskChat();
-  const selector = document.getElementById('ask-thread-select') as HTMLSelectElement | null;
-  selector?.addEventListener('change', () => {
-    if (!selector.value || selector.value === askActiveId) return;
-    askActiveId = selector.value;
-    askDraft = '';
-    renderAsk(view);
-  });
-}
-
-function renderAskSide(): void {
-  const listEl = document.getElementById('ask-side-list');
-  if (!listEl) return;
-  if (askThreads.length === 0) {
-    listEl.innerHTML = '<p class="hint">还没有会话。点「＋ 新会话」开始提问。</p>';
-    return;
-  }
-  listEl.innerHTML = askThreads.map((t) => {
-    const active = t.id === askActiveId;
-    return '<div class="ask-item' + (active ? ' active' : '') + '" data-thread="' + t.id + '">' +
-      '<button class="ask-item-main" data-action="ask-open" data-thread="' + t.id + '" title="' + esc(t.title) + '">' + esc(t.title) + '</button>' +
-      '<button class="ask-item-op" data-action="ask-rename" data-thread="' + t.id + '" title="重命名会话">✎</button>' +
-      '<button class="ask-item-op danger" data-action="ask-del" data-thread="' + t.id + '" title="删除会话">✕</button>' +
-      '</div>';
-  }).join('');
-}
-
-function askSourceButton(sourceId: string, label = sourceId): string {
-  return '<button type="button" class="link source-link" data-action="source-open" data-source-id="' +
-    esc(sourceId) + '" title="打开只读来源">' + esc(label) + '</button>';
-}
-
-function renderAskAnswer(answer: AskAnswer, citedSources: string[], recalledSources: string[]): string {
-  const cited = new Set(citedSources);
-  const parts = [
-    '<p class="answer-summary"><strong>' + esc(answer.summary) + '</strong></p>',
-  ];
-  if (answer.unanswerable) {
-    parts.push('<p class="msg info">当前来源不足以回答，下面内容不会被当作确定事实。</p>');
-  }
-  if (answer.facts.length) {
-    parts.push('<section class="answer-facts"><h4>事实（实际引用）</h4><ul>');
-    parts.push(...answer.facts.map((fact) =>
-      '<li>' + esc(fact.text) + ' · ' + askSourceButton(fact.source_id, fact.source_id) + '</li>'
-    ));
-    parts.push('</ul></section>');
-  }
-  if (answer.conflicts.length) {
-    parts.push('<section class="answer-conflicts"><h4>证据冲突（并列保留）</h4>');
-    parts.push(...answer.conflicts.map((conflict) =>
-      '<div class="answer-conflict"><strong>' + esc(conflict.topic) + '</strong><ul>' +
-      conflict.sides.map((side) => '<li>' + esc(side.position) + ' · ' + askSourceButton(side.source_id, side.source_id) + '</li>').join('') +
-      '</ul></div>'
-    ));
-    parts.push('</section>');
-  }
-  if (answer.suggestions.length) {
-    parts.push('<section class="answer-suggestions"><h4>建议（模型推断）</h4><ul>');
-    parts.push(...answer.suggestions.map((suggestion) => '<li>' + esc(suggestion) + '</li>'));
-    parts.push('</ul></section>');
-  }
-  const recalledOnly = recalledSources.filter((sourceId) => !cited.has(sourceId));
-  if (recalledOnly.length) {
-    parts.push('<p class="hint answer-recalled">仅召回、未在回答中引用的材料：' +
-      recalledOnly.map((sourceId) => askSourceButton(sourceId, sourceId)).join(' · ') + '</p>');
-  }
-  return parts.join('');
-}
-
-let sourceReadSequence = 0;
-
-async function openSource(sourceId: string): Promise<void> {
-  const id = sourceId.trim();
-  if (!id) return;
-  const requestId = ++sourceReadSequence;
-  openModal('<h3>正在读取来源…</h3><p class="hint">只读请求，不会修改工作区。</p>');
-  try {
-    const result = await api<SourceReadPayload>('/api/sources/read?source_id=' + encodeURIComponent(id));
-    const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
-    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
-    if (!result.ok || result.body === undefined) {
-      openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(result.message ?? '来源不存在或已失效') +
-        '</p><p class="hint">请刷新审批/问答后重试；系统不会用猜测内容替代来源。</p>');
-      return;
-    }
-    openModal(
-      '<h3>' + esc(result.title ?? id) + '</h3>' +
-      '<p class="hint">来源：' + esc(result.source_id ?? id) + ' · 日期：' + esc(result.date ?? '未知') + '</p>' +
-      (result.truncated ? '<p class="hint">正文已截断，以下内容仅供核查。</p>' : '') +
-      '<pre class="source-reader">' + esc(result.body) + '</pre>'
-    );
-  } catch (err) {
-    const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
-    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
-    openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(String(err)) + '</p>');
-  }
-}
-
-function renderAskChat(): void {
-  const main = document.getElementById('ask-main');
-  if (!main) return;
-  const existing = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (existing && askActiveId) {
-    askDraft = existing.value;
-    persistEntityDraft(askDraftEntity(askActiveId), askDraft);
-  }
-  const scopeEl = document.getElementById('ask-scope') as HTMLSelectElement | null;
-  if (scopeEl) askScope = scopeEl.value;
-  const full = askThreads.length >= ASK_MAX_THREADS;
-  const thread = activeAskThread();
-  if (!thread) {
-    main.innerHTML =
-      '<div class="ask-welcome"><h3>问第二大脑</h3>' +
-      '<p>基于工作 vault 召回<strong>带来源</strong>的事实回答：做过什么、为什么这样决定、接下来最该做什么。</p>' +
-      '<p class="hint">例如：「网课项目最近的决策是什么？」 · 追问如：「那后来呢？」</p>' +
-      '<button class="primary" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限"' : '') + '>＋ 开始新对话</button>' +
-      '</div>';
-    return;
-  }
-  askDraft = loadEntityDraft<string>(askDraftEntity(thread.id), Date.now(), remoteVersion?.workspace_id) ?? '';
-  const bubbles = thread.messages.map((m) =>
-    m.role === 'user'
-      ? '<div class="chat-msg user"><div class="bubble">' + esc(m.text).replace(/\n/g, '<br>') + '</div></div>'
-      : '<div class="chat-msg ai"><div class="bubble">' + m.text + '</div></div>'
-  ).join('');
-  const showTyping = askBusy && thread.id === askBusyThreadId;
-  const typing = showTyping ? '<div class="chat-msg ai"><div class="bubble typing">思考中…</div></div>' : '';
-  const errorBubble = askErrors[thread.id]
-    ? '<div class="chat-msg ai"><div class="bubble"><p class="err-text">' + esc(askErrors[thread.id]) + '</p><p class="hint">问题未加入下一轮上下文，可以直接重试。</p></div></div>'
-    : '';
-  const scopeOptions = (state?.projects ?? [])
-    .filter((p) => p.registered)
-    .map((p) =>
-      '<option value="' + esc(p.name) + '"' + (askScope === p.name ? ' selected' : '') + '>' +
-      esc(projectDisplayName(p)) + (p.is_thread ? '（线程）' : '') +
-      (projectDisplayName(p) !== p.name ? ' · ' + esc(p.name) : '') + '</option>'
-    )
-    .join('');
-  main.innerHTML =
-    '<div class="ask-chat" id="ask-chat">' + bubbles + errorBubble + typing + '</div>' +
-    '<div class="ask-inputbar">' +
-    '<form class="ask" id="ask-form" autocomplete="off">' +
-    '<div class="ask-scope-row"><label class="hint">检索范围</label>' +
-    '<select id="ask-scope"><option value="">全部（整个第二大脑）</option>' + scopeOptions + '</select></div>' +
-    '<textarea id="ask-input" rows="2" placeholder="问第二大脑…（Enter 提问，Shift+Enter 换行）"></textarea>' +
-    '<div class="form-row"><span class="hint ask-keyhint">Enter 提问 · Shift+Enter 换行</span>' +
-    '<button class="primary" type="submit"' + (askBusy ? ' disabled' : '') + '>提问</button></div>' +
-    '</form></div>';
-  bindAskInput();
-  const inputEl = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (inputEl) inputEl.value = askDraft;
-  const scopeSet = document.getElementById('ask-scope') as HTMLSelectElement | null;
-  if (scopeSet) scopeSet.value = askScope;
-  const chat = document.getElementById('ask-chat');
-  if (chat?.lastElementChild) chat.lastElementChild.scrollIntoView({ block: 'nearest' });
-}
-
-function bindAskInput(): void {
-  const form = document.getElementById('ask-form') as HTMLFormElement | null;
-  if (form) form.addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    void askSubmit();
-  });
-  const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (!input) return;
-  input.addEventListener('input', () => {
-    askDraft = input.value;
-    if (askActiveId) persistEntityDraft(askDraftEntity(askActiveId), askDraft);
-  });
-  // Enter 提问（中文输入法组词时的回车不触发）；Shift+Enter 换行。
-  input.addEventListener('keydown', (ev) => {
-    if (ev.key !== 'Enter' || ev.shiftKey) return;
-    if (ev.isComposing || ev.keyCode === 229) return;
-    ev.preventDefault();
-    void askSubmit();
-  });
-}
-
-async function askSubmit(): Promise<void> {
-  const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (!input || askBusy) return;
-  const q = input.value.trim();
-  if (!q) return;
-  let thread = activeAskThread();
-  if (!thread) {
-    thread = newAskThread();
-    if (!thread) return;
-  }
-  if (thread.messages.length === 0) thread.title = makeThreadTitle(q);
-  const history = askHistoryOf(thread);
-  const scopeInput = document.getElementById('ask-scope') as HTMLSelectElement | null;
-  if (scopeInput) askScope = scopeInput.value;
-  const pendingMessage: AskMsg = { role: 'user', text: q, ts: new Date().toISOString(), sources: [] };
-  thread.messages.push(pendingMessage);
-  input.value = '';
-  askDraft = '';
-  clearEntityDraft(askDraftEntity(thread.id), remoteVersion?.workspace_id);
-  delete askErrors[thread.id];
-  askBusy = true;
-  askBusyThreadId = thread.id;
-  saveAskStore();
-  renderAskSide();
-  renderAskChat();
-  let staleCompletion = false;
-  const restoreFailedQuestion = (message: string): void => {
-    const pendingIndex = thread.messages.lastIndexOf(pendingMessage);
-    if (pendingIndex >= 0) thread.messages.splice(pendingIndex, 1);
-    askDraft = q;
-    persistEntityDraft(askDraftEntity(thread.id), askDraft);
-    askErrors[thread.id] = message;
-  };
-  try {
-    const r = await mutation(() => api<AskResponse>('/api/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: q, history, project: askScope || null }),
-    }));
-    if (!r.ok || !r.answer_html) {
-      restoreFailedQuestion(r.message ?? '提问失败');
-      return;
-    }
-    const html = r.answer
-      ? renderAskAnswer(r.answer, r.cited_source_ids ?? [], r.source_ids ?? [])
-      : r.answer_html;
-    if (!html) {
-      restoreFailedQuestion('问答没有返回可显示内容');
-      return;
-    }
-    thread.messages.push({
-      role: 'ai',
-      text: html,
-      ts: new Date().toISOString(),
-      sources: r.source_ids ?? [],
-      citedSources: r.cited_source_ids ?? [],
-    });
-  } catch (err) {
-    if (isStaleWorkspaceResponse(err)) {
-      staleCompletion = true;
-    } else {
-      restoreFailedQuestion(String(err));
-    }
-  } finally {
-    askBusy = false;
-    askBusyThreadId = null;
-    if (!staleCompletion) {
-      saveAskStore();
-      renderAskSide();
-      renderAskChat();
-    }
-  }
-}
-
-function beginAskRename(threadId: string): void {
-  const item = document.querySelector<HTMLElement>('.ask-item[data-thread="' + threadId + '"]');
-  const thread = askThreads.find((t) => t.id === threadId);
-  if (!item || !thread) return;
-  const input = document.createElement('input');
-  input.className = 'ask-rename-input';
-  input.value = thread.title;
-  input.maxLength = 40;
-  item.innerHTML = '';
-  item.appendChild(input);
-  input.focus();
-  input.select();
-  const commit = (): void => {
-    const value = input.value.trim();
-    if (value) thread.title = value;
-    saveAskStore();
-    renderAskSide();
-  };
-  input.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      commit();
-    } else if (ev.key === 'Escape') {
-      renderAskSide();
-    }
-  });
-  input.addEventListener('blur', commit);
-}
-
 
 function renderReview(view: HTMLElement): void {
   if (!review) {
@@ -1641,18 +1233,11 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'ask-new') {
-    askDraft = '';
-    const thread = newAskThread();
-    renderAsk(askView());
-    const input = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-    if (thread && input) input.focus();
+    askNewThread();
     return;
   }
   if (action === 'ask-open') {
-    askDraft = '';
-    askActiveId = btn.dataset.thread ?? null;
-    saveAskStore();
-    renderAsk(askView());
+    askOpenThread(btn.dataset.thread ?? null);
     return;
   }
   if (action === 'ask-del') {
@@ -2870,10 +2455,13 @@ export function mountLegacyWorkbench(): void {
       });
     },
   });
+  mountAsk({
+    projects: () => state?.projects ?? [],
+    workspaceId: () => remoteVersion?.workspace_id,
+    persistEntityDraft,
+  });
   // 连接恢复后重查一次版本（原 apiClient 的 onSuccess 回调，§4.5）。
   onConnectionRestored(() => { void checkVersion('connection-restored'); });
-  // 弹层关闭时作废 ask 域在途的来源读取（原 closeModal 内的直接赋值，§4.4）。
-  registerModalCloseHook(() => { sourceReadSequence += 1; });
   setMutationIdleHandler(async (targetBuild) => {
     saveCurrentDraftSnapshot();
     reloadToBuild(targetBuild);

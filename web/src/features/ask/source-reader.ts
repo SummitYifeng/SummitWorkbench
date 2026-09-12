@@ -1,0 +1,40 @@
+import { api } from '../../api/request';
+import { esc } from '../../md';
+import { modalBackdrop, openModal } from '../shell';
+import type { SourceReadPayload } from './types';
+
+/** 只读来源弹层；在途序号与守卫必须同模块（§4.2 不变量）。 */
+
+let sourceReadSequence = 0;
+
+/** 弹层关闭时作废在途来源读取。经 shell 的关闭钩子注册，避免 shell ← ask 反向依赖（§4.4）。 */
+export function invalidateSourceReads(): void {
+  sourceReadSequence += 1;
+}
+
+export async function openSource(sourceId: string): Promise<void> {
+  const id = sourceId.trim();
+  if (!id) return;
+  const requestId = ++sourceReadSequence;
+  openModal('<h3>正在读取来源…</h3><p class="hint">只读请求，不会修改工作区。</p>');
+  try {
+    const result = await api<SourceReadPayload>('/api/sources/read?source_id=' + encodeURIComponent(id));
+    const backdrop = modalBackdrop();
+    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
+    if (!result.ok || result.body === undefined) {
+      openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(result.message ?? '来源不存在或已失效') +
+        '</p><p class="hint">请刷新审批/问答后重试；系统不会用猜测内容替代来源。</p>');
+      return;
+    }
+    openModal(
+      '<h3>' + esc(result.title ?? id) + '</h3>' +
+      '<p class="hint">来源：' + esc(result.source_id ?? id) + ' · 日期：' + esc(result.date ?? '未知') + '</p>' +
+      (result.truncated ? '<p class="hint">正文已截断，以下内容仅供核查。</p>' : '') +
+      '<pre class="source-reader">' + esc(result.body) + '</pre>'
+    );
+  } catch (err) {
+    const backdrop = modalBackdrop();
+    if (requestId !== sourceReadSequence || backdrop?.hidden) return;
+    openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(String(err)) + '</p>');
+  }
+}
