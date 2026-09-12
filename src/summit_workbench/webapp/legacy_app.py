@@ -1,13 +1,12 @@
-"""本地面板的 FastAPI 应用（只绑定回环地址，服务端渲染 + JSON API）。
+"""面板应用装配 facade（LEGACY-APP-SPLIT-PLAN Step 16）。
 
-领域逻辑全部复用 repositories/workflows：审批读页用 parse_review_page、改条目用
-review_edit、应用用 apply_meeting_review；看板状态用 build_status、简报/复盘/问答用
-各自 runner。Web 层只做路由与 HTML/JSON。
+只绑定回环地址。领域路由全部由 ``webapp/routers/*`` 的 ``register_*`` 提供；本模块负责
+构造 ``FeishuClientPool`` / ``MutationRuntime`` / lifespan，并**按固定顺序**调用各注册
+函数——顺序即 ``app.routes`` 顺序，也就是 HTTP 行为（§6-R6 / §6-R7）。
 
-两种前端形态（同一套 API）：
-- 构建了 webapp/static/index.html（npm run build 产物）时，/ 服务 SPA 工作台，
-  交互走 /api/* JSON 端点；
-- 未构建时回退为服务端渲染看板（views.render_dashboard），保证 wb web 永远可用。
+历史导入路径与兼容再导出集中保留在下方，**不得删除**（§7-7）：``WebContext``、
+``_ask_html``、``_run_web_import``、``_commit_suffix``、``KNOWLEDGE_SOURCE_ROOTS``、
+``SOURCE_BODY_DISPLAY_CHARS``。
 """
 # ruff: noqa: E501
 
@@ -18,23 +17,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-)
-from fastapi.staticfiles import StaticFiles
 
-if TYPE_CHECKING:
-    pass
-
-from summit_workbench.observability.status import build_status
-from summit_workbench.repositories.daily_note import read_brief_block
+from summit_workbench.webapp.app_shell import install_app_shell
 from summit_workbench.webapp.ask_view import _ask_html as _ask_html
 from summit_workbench.webapp.build_info import (
-    WebBuildInfo,
     mode_from_environment,
     new_server_instance,
 )
@@ -103,20 +91,13 @@ from summit_workbench.webapp.security import (
     allowed_hosts,
     validate_bind_host,
 )
-from summit_workbench.webapp.views import render_dashboard
 
 _create_restricted_app = create_restricted_app
 
-# Remote normalization is the controlled escape hatch that lets an old-schema
-# workspace become migratable.  It only changes the local origin/profile and
-# workspace-scoped credential after a temporary-clone validation; it does not
-# write vault content, create commits, or push.  Without this exemption the
-# migration gate requires HTTPS while the read-only gate prevents the only
-# operation that can establish HTTPS (a deadlock).
-
-
-# Step 1（LEGACY-APP-SPLIT-PLAN）：知识来源白名单与正文展示预算已抽到
-# ``webapp/knowledge_sources.py``，并在文件顶部再导出（见那里的注释）。
+# 兼容再导出：``_SCHEMA_UPGRADE_WRITE_EXEMPTIONS`` 是只读升级态的写豁免白名单。远程
+# 规范化需要它——它只改本地 origin/profile 与工作区凭据，不写 vault、不提交、不推送；
+# 没有该豁免，迁移门要求 HTTPS，而只读门又挡住唯一能建立 HTTPS 的操作，形成死锁。
+# ``KNOWLEDGE_SOURCE_ROOTS`` / ``SOURCE_BODY_DISPLAY_CHARS`` 见 ``webapp/knowledge_sources.py``。
 
 
 def create_app(
@@ -192,42 +173,9 @@ def create_app(
         session_token=session_token,
     )
 
-    def _build_info() -> WebBuildInfo:
-        return WebBuildInfo.from_static_dir(spa_dir)
-
     install_cache_policy(app)
 
-    def _dashboard(
-        msg: str | None = None, ask_q: str = "", ask_html: str | None = None
-    ) -> HTMLResponse:
-        day = ctx.today()
-        status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
-        brief_md = read_brief_block(ctx.vault_dir, day)
-        return HTMLResponse(
-            render_dashboard(
-                status,
-                day,
-                brief_md,
-                ask_question=ask_q,
-                ask_answer_html=ask_html,
-                message=msg,
-            )
-        )
-
-    # ---- 首页：SPA（已构建）或 SSR 回退 ----
-    spa_index = spa_dir / "index.html"
-    if spa_index.is_file():
-        app.mount("/static", StaticFiles(directory=str(spa_dir)), name="static")
-
-        @app.get("/", response_class=FileResponse, include_in_schema=False)
-        def spa_home() -> FileResponse:
-            return FileResponse(spa_index)
-
-    else:
-
-        @app.get("/", response_class=HTMLResponse)
-        def home(msg: str | None = None) -> HTMLResponse:
-            return _dashboard(msg=msg)
+    shell = install_app_shell(app, ctx, spa_dir)
 
     # ---- JSON API（SPA 工作台） ----
 
@@ -237,8 +185,10 @@ def create_app(
         register_system_routes,
     )
 
+    dependencies = RouteDependencies(app=app, context=ctx, operation_id=_operation_id)
+
     register_system_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        dependencies,
         static_dir=spa_dir,
         server_instance=server_instance,
         started_at=started_at,
@@ -246,123 +196,55 @@ def create_app(
         session_token=session_token,
         workspace_id=workspace_id,
         device_id=device_id,
-        build_info=_build_info,
+        build_info=shell.build_info,
     )
 
-    register_review_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_review_apply_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-        feishu_clients=feishu_clients,
-    )
-
-    register_thread_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
+    register_review_routes(dependencies, runtime=runtime)
+    register_review_apply_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
+    register_thread_routes(dependencies, runtime=runtime)
 
     from summit_workbench.webapp.routers.projects import register_project_read_routes
 
-    register_project_read_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id)
-    )
-
-    register_thread_document_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_capture_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-        feishu_clients=feishu_clients,
-    )
-
-    register_brief_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_ask_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-    )
-
-    register_meetings_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_undo_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_shutdown_route(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-    )
+    register_project_read_routes(dependencies)
+    register_thread_document_routes(dependencies, runtime=runtime)
+    register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
+    register_brief_routes(dependencies, runtime=runtime)
+    register_ask_routes(dependencies)
+    register_meetings_routes(dependencies, runtime=runtime)
+    register_undo_routes(dependencies, runtime=runtime)
+    register_shutdown_route(dependencies)
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
-    register_brief_page_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_ask_page_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        dashboard=_dashboard,
-    )
-
-    register_review_page_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
-
-    register_review_apply_page_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-        feishu_clients=feishu_clients,
-    )
-
-    register_onboarding_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-    )
+    register_brief_page_routes(dependencies, runtime=runtime)
+    register_ask_page_routes(dependencies, dashboard=shell.dashboard)
+    register_review_page_routes(dependencies, runtime=runtime)
+    register_review_apply_page_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
+    register_onboarding_routes(dependencies)
 
     # ---- workspace schema migration（P1-02；P1-03 router 接线）----
 
+    from summit_workbench.webapp.routers.projects import register_project_write_routes
     from summit_workbench.webapp.routers.workspace import register_workspace_routes
 
     register_state_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        dependencies,
         runtime=runtime,
-        build_info=_build_info,
+        build_info=shell.build_info,
         server_instance=server_instance,
         started_at=started_at,
         panel_mode=panel_mode,
     )
-    from summit_workbench.webapp.routers.projects import register_project_write_routes
-
     register_project_write_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
+        dependencies,
         run_mutation=lambda action, mutation: runtime.run(action, mutation),
     )
-
-    register_settings_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-        build_info=_build_info,
-    )
-    register_workspace_routes(RouteDependencies(app=app, context=ctx, operation_id=_operation_id))
+    register_settings_routes(dependencies, runtime=runtime, build_info=shell.build_info)
+    register_workspace_routes(dependencies)
 
     # ---- 多设备同步（P0-10）----
 
-    register_sync_routes(
-        RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        runtime=runtime,
-    )
+    register_sync_routes(dependencies, runtime=runtime)
 
+    return app
     return app
