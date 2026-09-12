@@ -89,6 +89,42 @@ def test_dulwich_https_transport_callback_is_workspace_scoped(monkeypatch, tmp_p
     assert "canary-secret" not in repr(backend)
 
 
+def test_dulwich_https_transport_allows_injected_resolver_without_workspace_id(tmp_path) -> None:
+    """空安装向导的 clone：没有 workspace id，但显式带本次的 PAT。
+
+    `transport_kwargs` 曾经无条件要求 `workspace_id`，于是向导的私有远端 clone 抛
+    `GitCredentialsUnavailable`，再被上层兜底成"请检查凭据、网络或 TLS"——2026-09-13 在
+    Air 上真机复现，排查成本极高。带显式 resolver 时不存在按作用域查 Keychain 的动作。
+    """
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    calls: list[tuple[str, str, str]] = []
+
+    def resolve(workspace_id: str, host: str, username: str) -> GitCredentials:
+        calls.append((workspace_id, host, username))
+        return GitCredentials(workspace_id, host, username, SecretStr("canary-secret"))
+
+    backend = DulwichGitBackend(
+        tmp_path / "repo",
+        workspace_id=None,
+        username="alice",
+        credential_resolver=resolve,
+    )
+    kwargs = backend.transport_kwargs("https://github.com/acme/private.git", operation="clone")
+    assert kwargs["username"] == "alice"
+    assert kwargs["password"] == "canary-secret"
+    assert calls == [("", "github.com", "alice")]
+
+
+def test_dulwich_https_transport_still_requires_scope_without_resolver(tmp_path) -> None:
+    """没有显式 resolver 时必须保留原来的作用域检查（Keychain 查找需要 workspace id）。"""
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    backend = DulwichGitBackend(tmp_path / "repo", workspace_id=None, username="alice")
+    with pytest.raises(GitCredentialsUnavailable):
+        backend.transport_kwargs("https://github.com/acme/private.git", operation="fetch")
+
+
 def test_dulwich_credential_callback_errors_are_sanitized(tmp_path) -> None:
     from summit_workbench.repositories.dulwich_git import DulwichGitBackend
 

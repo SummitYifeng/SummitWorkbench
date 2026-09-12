@@ -509,15 +509,20 @@ class DulwichGitBackend:
             return {}
         if parsed.username is not None or parsed.password is not None:
             raise GitAuthError("HTTPS remote 不允许把凭据写入 URL")
-        if not self._workspace_id or not self._username:
-            raise GitCredentialsUnavailable("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
+        # workspace_id 只在**需要从 Keychain 按作用域查找**时才必需。空安装向导克隆
+        # 私有远端时手里没有这个 id（它由远端 marker 决定），于是显式注入本次要用的
+        # resolver；此时 workspace_id 为空是正常的（2026-09-13 实测：此前的强制检查
+        # 让向导的 clone 抛 GitCredentialsUnavailable，又被上层兜底成"请检查凭据、
+        # 网络或 TLS"，真因完全不可见）。
         resolver = self._credential_resolver
+        if not self._username or (resolver is None and not self._workspace_id):
+            raise GitCredentialsUnavailable("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
         if resolver is None:
             from summit_workbench.config.git_credentials import resolve_git_credentials
 
             resolver = resolve_git_credentials
         try:
-            credentials = resolver(self._workspace_id, parsed.hostname or "", self._username)
+            credentials = resolver(self._workspace_id or "", parsed.hostname or "", self._username)
         except GitError:
             raise
         except Exception as exc:  # noqa: BLE001 - Keychain errors must be sanitized

@@ -27,7 +27,9 @@ from summit_workbench.domain.workspace import (
 from summit_workbench.repositories.git_backend import (
     GitAuthError,
     GitBackend,
+    GitCredentialsUnavailable,
     GitInvalidRevision,
+    GitProxyError,
     GitRemoteUnavailable,
     GitTlsError,
 )
@@ -192,13 +194,29 @@ def stage_remote_clone(
     except GitRemoteUnavailable as exc:
         _clean_stage(stage)
         raise RemoteCloneError("remote_unavailable", "远端不可达或仓库不存在") from exc
+    except GitCredentialsUnavailable as exc:
+        # 本机没有可用的 workspace 凭据，且调用方没有显式提供（空安装向导永远显式提供）。
+        _clean_stage(stage)
+        raise RemoteCloneError(
+            "remote_credentials_unavailable", "远端凭据不可用：本机没有该工作区的 Git 凭据"
+        ) from exc
+    except GitProxyError as exc:
+        # 系统代理这条链路不通。curl/git 不读 macOS 系统代理，只有 App 会走它，
+        # 因此这类故障最容易被误判成"凭据或网络问题"。
+        _clean_stage(stage)
+        raise RemoteCloneError(
+            "remote_proxy_failed", "本机代理无法连接远端；可临时关闭系统代理后重试"
+        ) from exc
     except GitInvalidRevision as exc:
         _clean_stage(stage)
         raise RemoteCloneError("remote_branch_invalid", "远端没有可连接的有效分支") from exc
     except Exception as exc:  # noqa: BLE001 - service boundary must be stable and sanitized
         _clean_stage(stage)
+        # 兜底也要留下可判定的线索：只带异常类名（不含 URL、路径或任何值）。
         raise RemoteCloneError(
-            "remote_clone_failed", "远端 clone 失败，请检查凭据、网络或 TLS"
+            "remote_clone_failed",
+            "远端 clone 失败，请检查凭据、网络或 TLS",
+            reasons=[type(exc).__name__],
         ) from exc
 
 
