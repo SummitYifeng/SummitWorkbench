@@ -1,3 +1,40 @@
+## [0.4.5] - 2026-09-12
+
+> 交付前最后一轮审查与清理版。**首要目标是不改变行为**——v0.4.4 的验收刚刚结束，本轮所有改动
+> 都属于删除无引用内容、文档更正与文案重写，**未触碰任何产品行为逻辑**（路由、写回边界、锁语义、
+> outbox、schema/迁移一律未动）。基线为 `v0.4.4` build 12。
+
+### 变更
+
+- **「指南」页重写为任务导向**：`docs/product/WEB_USAGE_GUIDE.md` 从按页签/架构组织改为按
+  「我想做什么」组织（记一件事 / 处理今天待办 / 处理审批 / 导入会议 / 看项目进展 / 问第二大脑 /
+  多设备同步 / 撤销 / 排障），默认只显示步骤，原理与边界条件收进引用块，面向不读代码、不开终端
+  的账号所有者。渲染器未改动，指南渲染契约测试（本地搜索、目录、H2/H3 分组、筛选跟随）原样通过。
+- 更新现状类文档：`README.md`、`PROJECTDESC.md`、`docs/product/WEB_WORKBENCH.md` 的版本/构建号与
+  质量门数字由过期的 build 9 更正为当前基线（890 passed / 1 skipped、覆盖率 82.33%）。
+- `docs/archive/` 增加归档标注（历史记录、结论可能过期、当前状态以
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` 为准），**归档正文未改动**。
+
+### 移除
+
+- 删除 4 个完全空的目录：`docs/architecture/`、`docs/background/`、`docs/design/`、`docs/plans/`
+  （`ls -A` 确认连隐藏文件也没有，且均未被 git 跟踪）。目录本身为空，不涉及任何文件。
+- 更正一处失效路径引用：`tests/unit/test_ci_contract.py` 实际位于 `tests/contract/test_ci_contract.py`。
+
+### 说明
+
+- **本轮未删除任何 Python/TypeScript/Swift 代码。** 死代码判定执行「三重证据」标准
+  （① 静态引用扫描 ② 测试与构建产物引用 ③ 运行时可达性），vulture / ruff 的全部高置信度候选
+  经逐条核对后**均为误报**（Typer 装饰器命令、Pydantic 模型与校验器、FastAPI 路由、
+  `settings_customise_sources` 签名参数等）。逐条判定见
+  `docs/implementation/DELIVERY-CLEANUP-REPORT.md`。
+- 新增两份拆分方案（**只写方案，未改代码**）：`docs/implementation/LEGACY-APP-SPLIT-PLAN.md`
+  （`webapp/legacy_app.py`）与 `docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md`
+  （`web/src/legacy-main.ts`）。
+- 保留未删（证据不足）：`providers/feishu/calendar.py:list_events`（有契约测试引用，
+  生产路径已改用 `list_events_between`）、4 个空的 `web/src/features/` 子目录
+  （ADR 0036 明确保留为空入口边界）、`docs/contracts/`（仍是当前生效的 web 路由契约）。
+
 ## [Unreleased] - 2026-09-11
 
 > 远端 CI、前端工具链与交付门禁补强，并产出 build 11 内部包。build 9 的历史产物身份不变。

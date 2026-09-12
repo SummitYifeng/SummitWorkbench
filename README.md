@@ -2,7 +2,7 @@
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> **当前状态：`v0.4.4` 内部实际使用维护版。** UI/UX 优化、workspace-scoped 凭据与授权可见性、原生 App 生命周期加固、网页简报提交闭环均已落地；最新本地 arm64 内部包为 build 9（`v2026.09.10-df4ba1f-1cb9c2eb`）。P1-07D、P2-01B 与 P2-02 已完成，M3 与 P2-03 不实施；仓库不含凭据或真实会议内容。仓库已迁移到 `SummitYifeng/SummitWorkbench` 组织，远端 CI 质量门全绿。
+> **当前状态：`v0.4.5` 内部实际使用版（build 13）。** 在 `v0.4.4` build 12 的验收基线上做了交付前最后一轮审查与清理：删除无引用代码与空目录、把「指南」页改写成任务导向的「怎么做」、补齐两份单体文件（`webapp/legacy_app.py`、`web/src/legacy-main.ts`）的拆分方案；**产品行为未改动**。UI/UX 优化、workspace-scoped 凭据与授权可见性、原生 App 生命周期加固、网页简报提交闭环均已落地。P1-07D、P2-01B 与 P2-02 已完成，M3 与 P2-03 不实施；仓库不含凭据或真实会议内容。仓库已迁移到 `SummitYifeng/SummitWorkbench` 组织，远端 CI 质量门全绿。
 
 ## 产品解决的问题
 
@@ -124,7 +124,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。定时任务安装见 [deploy/launchd/README.md](deploy/launchd/README.md)，桌面 App 打包见 [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)。
 
-质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。v0.4.4 build 9 的本地门禁已通过；远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）已在 `SummitYifeng/SummitWorkbench` 上全绿。
+质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.5` build 13 的本地门禁已通过：**890 passed / 1 skipped、覆盖率 82.33%**，ruff、mypy strict、`tsc --noEmit`、前端契约测试全部通过。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
 
 建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
 
@@ -132,4 +132,4 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 ## 版本
 
-`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版，build 9）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。
+`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版）→ `v0.4.5`（交付前清理 + 指南重写，build 13）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。
