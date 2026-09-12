@@ -80,25 +80,50 @@ Keychain 都不动。**
    确认四个选项都在：「新建我的工作台 / 连接已有工作台 / 升级这台 Mac 上的旧工作台 /
    **从另一台 Mac 克隆**」（最后一个是本轮新加的，只有空安装才有）。
 2. 选「**新建我的工作台**」，路径填 `~/Documents/Rehearsal`，模型与飞书都点「跳过」，走到完成。
-3. 在 GitHub 新建一个**空**私有仓库 `summitworkbench-rehearsal`。
-4. 设置 → **高级与维护** → **Git 同步**：填 HTTPS 地址、GitHub 用户名、PAT →
-   点「**预览 HTTPS 转换**」→ 通过后点「**确认并转换**」。
-5. 回到「今日」页捕捉一条内容（例如 `演练-A`），让它产生一次提交并推送。
-6. 核对远端已就绪：`git -C ~/Documents/Rehearsal/_vault log --oneline -3` 有提交，
+3. 在 GitHub 新建一个**空**私有仓库 `summitworkbench-rehearsal`（保持空，第一次 push 由本地完成）。
+4. **先手工把 vault 变成 git 仓库并推一次**（**必需**，原因见本节末尾的「已知缺口」）：
+   ```sh
+   cd ~/Documents/Rehearsal/_vault
+   git init -b main
+   git add -A && git commit -m "演练：初始提交"
+   git remote add origin https://github.com/<you>/summitworkbench-rehearsal.git
+   git -c credential.helper= push -u origin main
+   ```
+   `-c credential.helper=` 只对这一次命令关闭钥匙串助手：git 会**在终端提示符里**问用户名与密码，
+   用户名填 GitHub 登录名、密码粘 PAT。这样 PAT 不进命令行、不进 shell 历史，也**不会覆盖**你日常
+   推送在用的那个 `github.com` 钥匙串条目（它可能是限定仓库的令牌）。
+5. 现在 origin 与 upstream 都有了，回到 App：设置 → **高级与维护** → **Git 同步** →
+   填**同一个** HTTPS 地址 + GitHub 用户名 + PAT → 点「**预览 HTTPS 转换**」→ 通过后点
+   「**确认并转换**」。这一步才会把 **workspace 级**凭据写进 Keychain，App 之后才能自己 fetch/push。
+6. 回到「今日」页捕捉 `演练-A` —— 现在它才会真的产生 `wb:` 提交并由 App 推送。
+7. 核对：`git -C ~/Documents/Rehearsal/_vault log --oneline -3` 有提交，
    且远端有 workspace marker（`git -C ~/Documents/Rehearsal/_vault ls-files | grep ".summit-workbench/workspace.json"`）。
-7. **Studio 就停在演练工作台上**，先别还原真实 profile（A6.1 需要它作为另一侧）。
+8. **Studio 就停在演练工作台上**，先别还原真实 profile（A6.1 需要它作为另一侧）。
+
+> **已知缺口（2026-09-13 实测发现，待排期）**：「新建我的工作台」**不会 `git init`**
+> （`workflows/onboarding.py` 明确写着"全程不运行系统 git、不 `git init`"），而
+> `preview_remote_normalization()` 一上来就 `GitRepo(vault_dir)` 并要求已有
+> `origin` + `upstream`。两者合起来的效果是：**新工作台无法只靠界面接上远端**——新建后直接点
+> 「预览 HTTPS 转换」会得到 `ApiError: 服务内部错误 [internal_error]`，日志里是
+> `GitError: 不是 git 仓库：…/_vault`。上面第 4 步就是绕开它的手工引导。
+>
+> 同一根因还有第二个可见后果：在新工作台里「系统写回自动 git 留痕」在成为 git 仓库之前是
+> **静默不生效**的（`commit_paths()` 返回 `NOT_GIT`，界面不报错）。⇒ 需要两处修：
+> create-new 初始化仓库（或明确提示"本工作台尚未纳入版本管理"），以及预览失败时返回稳定错误码
+> 而不是 500。另注：该预览在 `upstream` 缺失时会返回 `upstream_missing`，即它本质上是
+> **同一仓库的 SSH→HTTPS 规范化**，不是"把新工作台发布到新远端"。
 
 **在 Air 上走新旅程（这就是 A7 的证据）**（先按 §0.1 把 Air 造成空安装）
 
-8. 装**同一个** DMG → 打开 App → 连接向导 → 选「**从另一台 Mac 克隆**」。
-9. 填四项并点「**连接并检查**」：
+9. 装**同一个** DMG → 打开 App → 连接向导 → 选「**从另一台 Mac 克隆**」。
+10. 填四项并点「**连接并检查**」：
    - 私有 HTTPS 仓库地址：`https://github.com/<you>/summitworkbench-rehearsal.git`
    - 目标文件夹：`~/Documents/Rehearsal/_vault`（Air 上**必须还不存在**）
    - GitHub 用户名、访问令牌（PAT）——**PAT 由本人粘贴，不进终端参数、截图、诊断包或聊天**
-10. **期望**：短暂等待后出现确认块，显示 **工作区短码**、**兼容性**（应为 ok）、**远端地址**。
+11. **期望**：短暂等待后出现确认块，显示 **工作区短码**、**兼容性**（应为 ok）、**远端地址**。
     此时 Air 上只有暂存目录（`~/Documents/Rehearsal/.summit-workbench-remote-*`），
     **还没有** `_vault`。
-11. 点「**确认并开始使用**」→ 模型/飞书都跳过 → 进入工作台。
+12. 点「**确认并开始使用**」→ 模型/飞书都跳过 → 进入工作台。
 
 **A7 通过标准（逐条留证）**
 
