@@ -7,10 +7,12 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from summit_workbench.webapp.app import WebContext, create_app
 
@@ -142,3 +144,180 @@ def test_missing_marker_connect_via_api_hints_upgrade(tmp_path, monkeypatch, cli
     resp = client.post("/api/onboarding/connect", json={"vault_dir": str(plain)})
     assert resp.status_code == 409
     assert "marker" in resp.json()["message"].lower() or "升级" in resp.json()["message"]
+
+
+# ---- P1-07D 第二台机器：空安装向导的私有 HTTPS 克隆旅程 ----
+# 后端 remote clone（staging/confirm/cancel）此前只有 workflow 级测试，HTTP 层无覆盖；
+# 这些用例把「向导暴露的入口」与「PAT 不落盘」一起锁住。
+
+
+def _restricted_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """空安装（受限）app：与 wizard 测试同一入口，remote clone 路由只在这里注册。"""
+    monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
+    monkeypatch.delenv("WORK_ROOT", raising=False)
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    return TestClient(create_app(None, static_dir=tmp_path / "no-static"))
+
+
+def test_empty_install_wizard_offers_private_https_clone(tmp_path, monkeypatch) -> None:
+    client = _restricted_client(tmp_path, monkeypatch)
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "从另一台 Mac 克隆" in page.text
+    assert 'data-flow="connect-remote"' in page.text
+    assert "/api/onboarding/remote/stage" in page.text
+    assert "/api/onboarding/remote/confirm" in page.text
+    # PAT 输入是遮挡字段，且不回声任何已有值。
+    assert 'id="remote-pat" type="password" autocomplete="off"' in page.text
+    assert not re.search(r'id="remote-pat"[^>]*value=', page.text)
+    # 完整 app 里重开向导时不得出现这个入口（受限端点在那里也不存在）。
+    assert "(fullApp ? '' : '<button class=\"choice '+(state.flow === 'connect-remote'" in page.text
+
+
+def test_onboarding_draft_rejects_pat_and_keeps_non_secret_remote_facts(
+    tmp_path, monkeypatch
+) -> None:
+    client = _restricted_client(tmp_path, monkeypatch)
+    rejected = client.put(
+        "/api/onboarding/draft",
+        json={
+            "flow": "connect-existing",
+            "step": "welcome",
+            "git_mode": "remote",
+            "remote_url": "https://github.com/acme/private.git",
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert rejected.status_code == 422
+    assert "canary-pat" not in rejected.text
+    accepted = client.put(
+        "/api/onboarding/draft",
+        json={
+            "flow": "connect-existing",
+            "step": "welcome",
+            "git_mode": "remote",
+            "remote_url": "https://github.com/acme/private.git",
+            "git_username": "alice",
+        },
+    )
+    assert accepted.status_code == 200
+    draft = client.get("/api/onboarding/draft").json()["draft"]
+    assert draft["git_mode"] == "remote"
+    assert draft["remote_url"] == "https://github.com/acme/private.git"
+    assert draft["git_username"] == "alice"
+    assert draft["workspace_id"] is None
+
+
+def test_remote_clone_stage_and_confirm_over_http(tmp_path, monkeypatch) -> None:
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from summit_workbench.config import secrets as secrets_mod
+    from summit_workbench.domain.onboarding import OnboardingFlow, OnboardingResult
+    from summit_workbench.workflows import remote_onboarding
+
+    client = _restricted_client(tmp_path, monkeypatch)
+    stored: dict[tuple[str, str], str] = {}
+
+    def fake_resolve(ref: secrets_mod.CredentialRef):
+        try:
+            return SecretStr(stored[(ref.service, ref.account)])
+        except KeyError as exc:  # pragma: no cover - 只在用例写坏时触发
+            raise secrets_mod.CredentialError("missing") from exc
+
+    monkeypatch.setattr(secrets_mod, "resolve_credential", fake_resolve)
+    monkeypatch.setattr(
+        secrets_mod,
+        "store_credential",
+        lambda ref, value: stored.__setitem__((ref.service, ref.account), value.get_secret_value()),
+    )
+
+    workspace_id = str(uuid4())
+    target = tmp_path / "work" / "_vault"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staged = SimpleNamespace(
+        remote_url="https://github.com/acme/private.git",
+        username="alice",
+        workspace_id=workspace_id,
+        compatibility=SimpleNamespace(value="ok"),
+    )
+    seen: dict[str, object] = {}
+
+    def fake_stage(url, destination, *, workspace_id, username, **kwargs):
+        seen["url"] = url
+        seen["username"] = username
+        resolver = kwargs.get("credential_resolver")
+        assert resolver is not None, "PAT 必须以 credential_resolver 形式进入 clone"
+        seen["pat"] = resolver(workspace_id, "github.com", username).password.get_secret_value()
+        return staged
+
+    def fake_confirm(staged_arg, *, home=None, display_name=None, device_name=None, **kwargs):
+        seen["confirmed"] = True
+        return OnboardingResult(
+            flow=OnboardingFlow.CONNECT_REMOTE,
+            workspace_id=workspace_id,
+            work_root=str(target.parent),
+            vault_dir=str(target),
+            device_id="device-1",
+            display_name=display_name or "Remote",
+            created_at="2026-09-12T00:00:00Z",
+        )
+
+    monkeypatch.setattr(remote_onboarding, "stage_remote_clone", fake_stage)
+    monkeypatch.setattr(remote_onboarding, "confirm_remote_clone", fake_confirm)
+
+    response = client.post(
+        "/api/onboarding/remote/stage",
+        json={
+            "remote_url": "https://github.com/acme/private.git",
+            "target_vault": str(target),
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["workspace_id"] == workspace_id
+    assert "canary-pat" not in response.text
+    assert seen["pat"] == "canary-pat"
+    assert seen["url"] == "https://github.com/acme/private.git"
+
+    confirmed = client.post(
+        "/api/onboarding/remote/confirm",
+        json={"stage_id": body["stage_id"], "pat": "canary-pat"},
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["workspace_id"] == workspace_id
+    assert "canary-pat" not in confirmed.text
+    assert seen["confirmed"] is True
+    # PAT 只落到 workspace 作用域 Keychain 命名下。
+    assert stored == {
+        ("com.summitworkbench.credentials." + workspace_id, "git:github.com:alice"): "canary-pat",
+    }
+
+
+def test_remote_clone_failure_is_coded_and_never_leaks_pat(tmp_path, monkeypatch) -> None:
+    from summit_workbench.workflows import remote_onboarding
+
+    client = _restricted_client(tmp_path, monkeypatch)
+
+    def boom(*args, **kwargs):
+        raise remote_onboarding.RemoteCloneError(
+            "remote_missing_marker", "远端没有 workspace marker"
+        )
+
+    monkeypatch.setattr(remote_onboarding, "stage_remote_clone", boom)
+    response = client.post(
+        "/api/onboarding/remote/stage",
+        json={
+            "remote_url": "https://github.com/acme/private.git",
+            "target_vault": str(tmp_path / "work" / "_vault"),
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "remote_missing_marker"
+    assert "canary-pat" not in response.text
