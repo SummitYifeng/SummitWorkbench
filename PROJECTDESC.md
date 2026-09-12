@@ -6,7 +6,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑 |
-| 当前阶段 | `v0.4.5` 内部实际使用版 build 19 / P1-07D、P2-01B、P2-02、UI/UX 交付稳定性维护均已完成，并已做过交付前最后一轮清理（无行为改动）；M3 与 P2-03 均不实施。 |
+| 当前阶段 | `v0.4.6` 内部实际使用版 build 20 / P1-07D、P2-01B、P2-02、UI/UX 交付稳定性维护均已完成，并已做过交付前最后一轮清理（无行为改动）；M3 与 P2-03 均不实施。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -83,9 +83,9 @@
 
 不得从 `docs/archive/background/THINKING_DOC.md` 或当前旧版 `docs/archive/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.5 build 19）
+## 当前交付边界（v0.4.6 build 20）
 
-已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02、v0.4.4 UI/UX 维护和 v0.4.5 交付前清理均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02、v0.4.4 UI/UX 维护和 v0.4.5 交付前清理、v0.4.6 指南版本标记修正均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
 
 - **v0.4.3 产品化基线 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。候选包 build 23 已在 Mac Studio 与 MacBook Air 安装同一 DMG 并完成完整双机闭环，build 24 已完成双机增量冒烟，P1-07D 正式通过。
 
@@ -109,4 +109,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.5 build 19 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。
+P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.6 build 20 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。

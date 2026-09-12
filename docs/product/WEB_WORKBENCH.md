@@ -1,6 +1,6 @@
 # Web 工作台（wb web）设计说明
 
-> 状态：v0.4.5 build 19 已交付（其前置为 v0.4.4 的 UI/UX 优化、workspace-scoped 连接状态、原生生命周期与网页简报提交闭环，ADR 0024/0027/0045）· 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
+> 状态：v0.4.6 build 20 已交付（其前置为 v0.4.4 的 UI/UX 优化、workspace-scoped 连接状态、原生生命周期与网页简报提交闭环，ADR 0024/0027/0045）· 配套 PRD L45–L52 与 3.2.7 节 · 操作指南见 [WEB_USAGE_GUIDE.md](WEB_USAGE_GUIDE.md)
 >
 > 本文回答「为什么这样设计」：形态、信息架构、边界与技术取舍。
 
@@ -165,6 +165,6 @@ v0.1 的 `wb web` 是服务端渲染的审批面板：状态数字 + 表单 + �
 - 纯本地 `127.0.0.1`、按需启动；不引入服务端、常驻守护进程、向量库或 RAG。
 - 会议内容上云边界（L33）、写回需确认（L13）、软预算提醒线（L42）全部不变。
 - 质量门：ruff + format + mypy strict + `pytest tests/unit`、route contract、前端契约测试和生产构建。
-  v0.4.5 build 19 本地验证为 **890 passed / 1 skipped、覆盖率 82.33%**，ruff、mypy strict、
+  v0.4.6 本地验证为 **890 passed / 1 skipped、覆盖率 82.33%**，ruff、mypy strict、
   route contract、frontend test 与生产构建全部通过；远端 GitHub Actions 质量门在
   `SummitYifeng/SummitWorkbench` 上全绿（含 macOS arm64 构建矩阵与 packaged App smoke）。

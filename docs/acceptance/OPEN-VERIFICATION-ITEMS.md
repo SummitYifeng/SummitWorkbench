@@ -13,7 +13,7 @@
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
 - 最近更新：2026-09-12
-- 当前基线：`v0.4.5` build 19（前端 `v2026.09.12-ec27776-0bc00d2c`），远端 CI 全绿。
+- 当前基线：`v0.4.6` build 20（前端见随后重建并提交的 `build-meta.json`），远端 CI 全绿。
   本轮为交付前清理（删空目录 / 更新现状文档 / 指南重写为任务导向 / 补齐两份单体文件拆分方案），
   **产品行为未改动**；清理判定与证据见
   [`../implementation/DELIVERY-CLEANUP-REPORT.md`](../implementation/DELIVERY-CLEANUP-REPORT.md)。
@@ -104,7 +104,7 @@
 
 ## G. 测试覆盖洼地（代码有、测试未走到）
 
-总体覆盖率 82.33%（`v0.4.5` build 19 实测；此前记录的 82.36% 为 build 12 期间的值，测试集变化导致
+总体覆盖率 82.33%（`v0.4.6` 实测；此前记录的 82.36% 为 build 12 期间的值，测试集变化导致
 微小差异，两次均高于 80% 门槛）。以下是仍然偏低的模块；多为薄封装或需要真实外部服务，风险等级不同。
 
 | 模块 | 覆盖率 | 备注 |
@@ -232,7 +232,7 @@
 
 **尚未重建的交付物（本节为 §J 升级当时的状态）**：当时只更新了仓库内的前端产物；已安装的 build 9
 App 与历史 DMG 仍带旧前端。**该状态已于 v0.4.5 消除**：build 19 的 DMG 已重新打包、发布并装机，
-装机器件（`/Applications/SummitWorkbench.app`）现在带的是 build 19 的前端
+装机器件（`/Applications/SummitWorkbench.app`）现在带的是新前端
 （`v2026.09.12-749eeef-0bc00d2c`）。历史 build 9 的产物身份不变。
 
 ## K. D/E 真实写回验收（2026-09-11）
