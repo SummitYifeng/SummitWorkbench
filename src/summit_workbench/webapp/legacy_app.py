@@ -19,7 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape
@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Annotated, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -50,7 +49,7 @@ from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
 from summit_workbench.domain.sync_conflict import explain_conflict, plan_conflict_recovery
 from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
-from summit_workbench.domain.workspace import Compatibility, DeviceRole
+from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
     CommitStatus,
@@ -159,12 +158,20 @@ from summit_workbench.webapp.mutation_runtime import (
 from summit_workbench.webapp.mutation_runtime import (
     _commit_suffix as _commit_suffix,
 )
+from summit_workbench.webapp.request_boundary import (
+    _SCHEMA_UPGRADE_WRITE_EXEMPTIONS as _SCHEMA_UPGRADE_WRITE_EXEMPTIONS,
+)
+from summit_workbench.webapp.request_boundary import (
+    install_cache_policy,
+    install_exception_handlers,
+    install_restricted_boundary,
+    install_security_boundary,
+    install_validation_handler,
+)
 from summit_workbench.webapp.security import (
     SESSION_COOKIE,
-    SESSION_HEADER,
     allowed_hosts,
     error_payload,
-    origin_matches,
     session_token_matches,
     validate_bind_host,
 )
@@ -178,7 +185,6 @@ from summit_workbench.workflows.external_actions import (
 )
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
-    MutationBlocked,
     run_local_mutation,
 )
 from summit_workbench.workflows.profile_settings import (
@@ -215,14 +221,6 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 # write vault content, create commits, or push.  Without this exemption the
 # migration gate requires HTTPS while the read-only gate prevents the only
 # operation that can establish HTTPS (a deadlock).
-_SCHEMA_UPGRADE_WRITE_EXEMPTIONS = frozenset(
-    {
-        "/api/settings/git/remote/preview",
-        "/api/settings/git/remote/apply",
-        "/api/settings/git/remote/rollback",
-        "/api/settings/acceptance-preflight",
-    }
-)
 
 
 def _load_model_config_for_context(ctx: WebContext, capability: str) -> ModelConfig:
@@ -501,77 +499,19 @@ def _create_restricted_app(
     app.state.active_workspace_context = active_workspace
     remote_stages: dict[str, object] = {}
 
-    @app.exception_handler(RequestValidationError)
-    async def _restricted_validation_error(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
-        details = [
-            {"loc": list(error.get("loc", ())), "msg": str(error.get("msg", "输入无效"))}
-            for error in exc.errors()
-        ]
-        return JSONResponse(
-            status_code=422,
-            content=error_payload(
-                code="validation_error",
-                message="请求参数不符合接口约束",
-                operation_id=request.headers.get("x-wb-operation-id", "unknown"),
-                details=details,
-            ),
-        )
+    install_validation_handler(
+        app,
+        operation_id=lambda request: request.headers.get("x-wb-operation-id", "unknown"),
+    )
 
-    @app.middleware("http")
-    async def _restricted_boundary(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        from uuid import uuid4
-
-        operation_id = str(uuid4())
-        host = request.headers.get("host", "").lower()
-        dynamic_loopback_host = (
-            port == 0
-            and (host.startswith("127.0.0.1:") or host.startswith("localhost:"))
-            and host.rsplit(":", 1)[-1].isdigit()
-        )
-        if host not in host_allowlist and not dynamic_loopback_host:
-            return JSONResponse(
-                status_code=403,
-                content=error_payload(
-                    code="host_not_allowed",
-                    message="请求 Host 不属于当前本地服务",
-                    operation_id=operation_id,
-                ),
-            )
-        session_required = panel_mode == "production" or external_bind or session_token is not None
-        expected_token = session_token or os.environ.get("WB_SESSION_TOKEN")
-        supplied_token = request.cookies.get(SESSION_COOKIE) or request.headers.get(SESSION_HEADER)
-        if request.method in {"POST", "PATCH", "DELETE"} or (
-            request.url.path.startswith("/api/")
-            and session_required
-            and request.url.path != "/api/session/bootstrap"
-        ):
-            origin = request.headers.get("origin")
-            origin_hosts = {host} if dynamic_loopback_host else host_allowlist
-            if origin is not None and not origin_matches(origin, request.url.scheme, origin_hosts):
-                return JSONResponse(
-                    status_code=403,
-                    content=error_payload(
-                        code="origin_not_allowed",
-                        message="请求来源不是当前服务同源地址",
-                        operation_id=operation_id,
-                    ),
-                )
-            if session_required and not session_token_matches(supplied_token, expected_token):
-                return JSONResponse(
-                    status_code=401,
-                    content=error_payload(
-                        code="authentication_required",
-                        message="写请求需要本地会话令牌",
-                        operation_id=operation_id,
-                    ),
-                )
-        response = await call_next(request)
-        response.headers["X-WB-Operation-ID"] = operation_id
-        return response
+    install_restricted_boundary(
+        app,
+        port=port,
+        host_allowlist=host_allowlist,
+        panel_mode=panel_mode,
+        external_bind=external_bind,
+        session_token=session_token,
+    )
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def restricted_home() -> HTMLResponse:
@@ -956,167 +896,22 @@ def create_app(
 
     runtime = MutationRuntime(ctx, operation_id=_operation_id)
 
-    @app.exception_handler(RequestValidationError)
-    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
-        details = [
-            {"loc": list(error.get("loc", ())), "msg": str(error.get("msg", "输入无效"))}
-            for error in exc.errors()
-        ]
-        return JSONResponse(
-            status_code=422,
-            content=error_payload(
-                code="validation_error",
-                message="请求参数不符合接口约束",
-                operation_id=_operation_id(request),
-                details=details,
-            ),
-        )
+    install_exception_handlers(app, operation_id=_operation_id)
 
-    @app.exception_handler(HTTPException)
-    async def _http_error(request: Request, exc: HTTPException) -> JSONResponse:
-        detail = exc.detail
-        code = "http_error"
-        message = str(detail)
-        details: object | None = None
-        if isinstance(detail, dict):
-            code = str(detail.get("code", code))
-            message = str(detail.get("message", message))
-            details = detail.get("details")
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=error_payload(
-                code=code,
-                message=message,
-                operation_id=_operation_id(request),
-                details=details,
-            ),
-        )
-
-    @app.exception_handler(MutationBlocked)
-    async def _mutation_blocked_error(request: Request, exc: MutationBlocked) -> JSONResponse:
-        return JSONResponse(
-            status_code=409,
-            content=error_payload(
-                code="sync_diverged",
-                message=str(exc),
-                operation_id=_operation_id(request),
-            ),
-        )
-
-    @app.exception_handler(Exception)
-    async def _unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content=error_payload(
-                code="internal_error",
-                message="服务内部错误，请稍后重试",
-                operation_id=_operation_id(request),
-            ),
-        )
-
-    @app.middleware("http")
-    async def _security_boundary(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        from uuid import uuid4
-
-        operation_id = str(uuid4())
-        request.state.operation_id = operation_id
-        host = request.headers.get("host", "").lower()
-        dynamic_loopback_host = (
-            port == 0
-            and (host.startswith("127.0.0.1:") or host.startswith("localhost:"))
-            and host.rsplit(":", 1)[-1].isdigit()
-        )
-        if host not in host_allowlist and not dynamic_loopback_host:
-            return JSONResponse(
-                status_code=403,
-                content=error_payload(
-                    code="host_not_allowed",
-                    message="请求 Host 不属于当前本地服务",
-                    operation_id=operation_id,
-                ),
-            )
-        session_required = panel_mode == "production" or external_bind or session_token is not None
-        expected_token = session_token or os.environ.get("WB_SESSION_TOKEN")
-        supplied_token = request.cookies.get(SESSION_COOKIE) or request.headers.get(SESSION_HEADER)
-        if request.method in {"POST", "PATCH", "DELETE"} or (
-            request.url.path.startswith("/api/")
-            and session_required
-            and request.url.path != "/api/session/bootstrap"
-        ):
-            if (
-                request.method in {"POST", "PATCH", "DELETE"}
-                and ctx.compatibility is Compatibility.CANNOT_OPEN
-                and not request.url.path.startswith("/api/onboarding")
-                and request.url.path != "/api/workspace/migration"
-            ):
-                return JSONResponse(
-                    status_code=409,
-                    content=error_payload(
-                        code="workspace_not_found",
-                        message="当前工作区无法打开，请升级或重新连接工作区",
-                        operation_id=operation_id,
-                    ),
-                )
-            if (
-                request.method in {"POST", "PATCH", "DELETE"}
-                and ctx.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
-                and not request.url.path.startswith("/api/onboarding")
-                and request.url.path != "/api/workspace/migration"
-                and request.url.path not in _SCHEMA_UPGRADE_WRITE_EXEMPTIONS
-            ):
-                return JSONResponse(
-                    status_code=409,
-                    content=error_payload(
-                        code="workspace_read_only_upgrade_required",
-                        message="当前工作区需要升级后才能写入",
-                        operation_id=operation_id,
-                    ),
-                )
-            origin = request.headers.get("origin")
-            origin_hosts = {host} if dynamic_loopback_host else host_allowlist
-            if origin is not None and not origin_matches(origin, request.url.scheme, origin_hosts):
-                return JSONResponse(
-                    status_code=403,
-                    content=error_payload(
-                        code="origin_not_allowed",
-                        message="请求来源不是当前服务同源地址",
-                        operation_id=operation_id,
-                    ),
-                )
-            if session_required:
-                if not session_token_matches(supplied_token, expected_token):
-                    return JSONResponse(
-                        status_code=401,
-                        content=error_payload(
-                            code="authentication_required",
-                            message="写请求需要本地会话令牌",
-                            operation_id=operation_id,
-                        ),
-                    )
-        response = await call_next(request)
-        response.headers["X-WB-Operation-ID"] = operation_id
-        return response
+    install_security_boundary(
+        app,
+        ctx=ctx,
+        port=port,
+        host_allowlist=host_allowlist,
+        panel_mode=panel_mode,
+        external_bind=external_bind,
+        session_token=session_token,
+    )
 
     def _build_info() -> WebBuildInfo:
         return WebBuildInfo.from_static_dir(spa_dir)
 
-    @app.middleware("http")
-    async def _cache_policy(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        response = await call_next(request)
-        path = request.url.path
-        if path == "/api/version":
-            response.headers["Cache-Control"] = "no-store, max-age=0"
-            response.headers["Pragma"] = "no-cache"
-        elif path == "/" or path == "/static/build-meta.json":
-            response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-        elif path.startswith("/static/assets/"):
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        return response
+    install_cache_policy(app)
 
     def _dashboard(
         msg: str | None = None, ask_q: str = "", ask_html: str | None = None
