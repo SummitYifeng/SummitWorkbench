@@ -19,7 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from html import escape
@@ -45,7 +45,6 @@ if TYPE_CHECKING:
     from summit_workbench.workflows.ask.ask import AskTurn
 
 from summit_workbench import __version__
-from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.review import CandidateDecision, ReviewEntry, RouteTarget
@@ -56,7 +55,6 @@ from summit_workbench.observability.status import build_status
 from summit_workbench.repositories.autocommit import (
     CommitStatus,
     commit_diff_text,
-    commit_paths,
     list_wb_commits,
     revert_commit,
     undo_error_code,
@@ -155,6 +153,12 @@ from summit_workbench.webapp.mutation_response import (
     _commit_note,
     _mutation_fields,
 )
+from summit_workbench.webapp.mutation_runtime import (
+    MutationRuntime,
+)
+from summit_workbench.webapp.mutation_runtime import (
+    _commit_suffix as _commit_suffix,
+)
 from summit_workbench.webapp.security import (
     SESSION_COOKIE,
     SESSION_HEADER,
@@ -174,7 +178,6 @@ from summit_workbench.workflows.external_actions import (
 )
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
-    LocalMutationResult,
     MutationBlocked,
     run_local_mutation,
 )
@@ -259,36 +262,6 @@ def _plan_text(report: ApplyReport) -> str:
     if report.archive_path is not None:
         lines.append(f"审计：{report.archive_path}")
     return "\n".join(lines)
-
-
-def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -> str:
-    """系统写回成功后自动留痕（消息带 ``wb:`` 前缀，P0'）。
-
-    返回需要追加进响应 ``message`` 的可见说明：非 git 仓库 / 内容未变是正常态（静默，
-    撤销面板会提示 not-git）；commit 失败或锁忙返回说明，但绝不阻断业务写回。
-    """
-    result = commit_paths(
-        ctx.vault_dir,
-        [Path(p) for p in paths if p],
-        message=f"wb: {summary}",
-        backend_kind=ctx.git_backend_kind,
-        author=(
-            profile_identity(ctx.active_workspace.profile)
-            if ctx.active_workspace is not None and ctx.active_workspace.profile is not None
-            else None
-        ),
-    )
-    if result.status is CommitStatus.COMMITTED and ctx.active_workspace is not None:
-        from summit_workbench.workflows import sync_coordinator
-
-        sync_coordinator.push_after_commit(
-            ctx.vault_dir,
-            home=ctx.active_workspace.home,
-            workspace_id=ctx.workspace_id,
-            backend_kind=ctx.git_backend_kind,
-            context=ctx.active_workspace,
-        )
-    return _commit_note(result)
 
 
 def _thread_activity_migration(ctx: WebContext) -> ThreadActivityMigration | None:
@@ -976,11 +949,12 @@ def create_app(
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     switch_plans: dict[str, object] = {}
     remote_normalization_plans: dict[str, RemoteNormalizationPlan] = {}
-    profile_switch_in_progress = False
 
     def _operation_id(request: Request) -> str:
         operation_id = getattr(request.state, "operation_id", None)
         return str(operation_id or "unknown")
+
+    runtime = MutationRuntime(ctx, operation_id=_operation_id)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -1394,7 +1368,6 @@ def create_app(
 
     @app.post("/api/settings/profile/prepare", response_model=None)
     def settings_profile_prepare(payload: ProfileSwitchPayload) -> dict[str, object]:
-        nonlocal profile_switch_in_progress
         try:
             plan = prepare_profile_switch(
                 home=_settings_home(), target_workspace_id=payload.workspace_id
@@ -1404,12 +1377,11 @@ def create_app(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc
         switch_plans[plan.plan_id] = plan
-        profile_switch_in_progress = True
+        runtime.begin_profile_switch()
         return {"ok": True, "plan_id": plan.plan_id, "workspace_id": plan.target_workspace_id}
 
     @app.post("/api/settings/profile/commit", response_model=None)
     def settings_profile_commit(payload: ProfileSwitchCommitPayload) -> dict[str, object]:
-        nonlocal profile_switch_in_progress
         plan = switch_plans.pop(payload.plan_id, None)
         if plan is None:
             raise HTTPException(
@@ -1420,7 +1392,7 @@ def create_app(
         try:
             return commit_profile_switch(home=_settings_home(), plan=plan)
         except ProfileSettingsError as exc:
-            profile_switch_in_progress = False
+            runtime.end_profile_switch()
             raise HTTPException(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc
@@ -1577,7 +1549,7 @@ def create_app(
         """看板数据：日期、状态速览、今日简报、inbox 积压。"""
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
-        sync_state = _current_sync_snapshot().state.value
+        sync_state = runtime.snapshot().state.value
         brief_md = read_brief_block(ctx.vault_dir, day)
         inbox_path = ctx.vault_dir / "inbox.md"
         inbox_pending = (
@@ -1634,7 +1606,7 @@ def create_app(
 
     register_project_write_routes(
         RouteDependencies(app=app, context=ctx, operation_id=_operation_id),
-        run_mutation=lambda action, mutation: _run_web_mutation(action, mutation),
+        run_mutation=lambda action, mutation: runtime.run(action, mutation),
     )
 
     @app.get("/api/review")
@@ -1728,7 +1700,7 @@ def create_app(
                 )
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 
-            result = _run_web_mutation(
+            result = runtime.run(
                 "review/decide",
                 mutate,
             )
@@ -1743,7 +1715,7 @@ def create_app(
     @app.post("/api/review/batch", response_model=None)
     def api_batch_decide(payload: BatchDecidePayload) -> dict[str, object]:
         try:
-            result = _run_web_mutation(
+            result = runtime.run(
                 "review/batch",
                 lambda _operation_id: LocalMutationOutcome(
                     set_decisions(
@@ -1781,7 +1753,7 @@ def create_app(
                 )
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 
-            result = _run_web_mutation(
+            result = runtime.run(
                 "review/edit",
                 mutate,
             )
@@ -1823,7 +1795,7 @@ def create_app(
                     "message": "当前适配器不支持可靠远端检索，请人工确认是否已创建",
                 }
             if payload.decision == "succeeded":
-                result = _run_web_mutation(
+                result = runtime.run(
                     "external-actions/reconcile",
                     lambda _operation_id: LocalMutationOutcome(
                         reconcile_succeeded(ctx.vault_dir, current_action, payload.remote_id or ""),
@@ -1832,7 +1804,7 @@ def create_app(
                 )
                 action = result.business_return
             elif payload.decision == "not-found":
-                result = _run_web_mutation(
+                result = runtime.run(
                     "external-actions/reconcile",
                     lambda _operation_id: LocalMutationOutcome(
                         reconcile_not_found(ctx.vault_dir, current_action),
@@ -1841,7 +1813,7 @@ def create_app(
                 )
                 action = result.business_return
             elif payload.decision == "retry":
-                result = _run_web_mutation(
+                result = runtime.run(
                     "external-actions/reconcile",
                     lambda _operation_id: LocalMutationOutcome(
                         authorize_retry(
@@ -1862,7 +1834,7 @@ def create_app(
 
     @app.post("/api/review/apply", response_model=None)
     def api_apply(request: Request) -> dict[str, object] | JSONResponse:
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -1882,7 +1854,7 @@ def create_app(
         touched.extend(
             a.destination for a in report.actions if not a.destination.startswith("feishu-")
         )
-        git_note = _commit_suffix(ctx, touched, "审批应用写回")
+        git_note = runtime.commit_suffix(touched, "审批应用写回")
         external_actions = latest_actions(
             ctx.vault_dir, workspace_id=workspace_id_for_vault(ctx.vault_dir)
         )
@@ -1921,7 +1893,7 @@ def create_app(
             return LocalMutationOutcome(path, (path,))
 
         try:
-            result = _run_web_mutation("threads/state", mutate)
+            result = runtime.run("threads/state", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"更新失败：{exc}"}
         git_note = _commit_note(result.commit_result)
@@ -2011,7 +1983,7 @@ def create_app(
             return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
-            result = _run_web_mutation("threads/logs", mutate)
+            result = runtime.run("threads/logs", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
@@ -2081,7 +2053,7 @@ def create_app(
             return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
-            result = _run_web_mutation("threads/artifacts", mutate)
+            result = runtime.run("threads/artifacts", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
@@ -2149,7 +2121,7 @@ def create_app(
             path, written = append_global_inbox(ctx.vault_dir, text, candidate_id, markers=markers)
             return LocalMutationOutcome((path, written), (path,))
 
-        result = _run_web_mutation("capture", mutate)
+        result = runtime.run("capture", mutate)
         path, written = result.business_return
         label = "承诺" if kind is CaptureKind.TASK else "想法"
         tail = f"（截止 {due_date}）" if due_date else ""
@@ -2183,7 +2155,7 @@ def create_app(
             complete_task(feishu_clients.user_client(), guid)  # type: ignore[arg-type]
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化（授权过期/任务已删等）
             return {"ok": False, "message": f"完成失败：{type(exc).__name__}: {exc}"}
-        result = _run_web_mutation(
+        result = runtime.run(
             "tasks/complete",
             lambda _operation_id: LocalMutationOutcome(
                 mark_task_completed(ctx.vault_dir, ctx.today(), guid),
@@ -2233,7 +2205,7 @@ def create_app(
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
-        result = _run_web_mutation(
+        result = runtime.run(
             "tasks/update",
             lambda _operation_id: LocalMutationOutcome(
                 mark_task_edited(
@@ -2291,7 +2263,7 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"保存失败：{type(exc).__name__}: {exc}"}
         display_start = start_at[11:16] if start_at else None
-        result = _run_web_mutation(
+        result = runtime.run(
             "meetings/update",
             lambda _operation_id: LocalMutationOutcome(
                 mark_meeting_edited(
@@ -2320,10 +2292,10 @@ def create_app(
     def api_run_brief(request: Request) -> dict[str, object] | JSONResponse:
         from summit_workbench.workflows.brief.runner import run_brief
 
-        blocked = _sync_blocked(request)
+        blocked = runtime.sync_blocked(request)
         if blocked is not None:
             return blocked
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -2337,8 +2309,7 @@ def create_app(
                 config_file=ctx.provider_config_file(),
                 workspace_id=ctx.workspace_id,
             )
-            commit_note = _commit_suffix(
-                ctx,
+            commit_note = runtime.commit_suffix(
                 run.persisted_paths,
                 f"brief {ctx.today()}",
             )
@@ -2355,10 +2326,10 @@ def create_app(
     def api_run_weekly(request: Request) -> dict[str, object] | JSONResponse:
         from summit_workbench.workflows.weekly.weekly import generate_weekly
 
-        blocked = _sync_blocked(request)
+        blocked = runtime.sync_blocked(request)
         if blocked is not None:
             return blocked
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -2450,7 +2421,7 @@ def create_app(
             target = tmp_dir / Path(name).name
             target.write_text(text, encoding="utf-8")
             if "local_mutation" in inspect.signature(_run_web_import).parameters:
-                return _run_web_import(ctx, target, local_mutation=_run_web_mutation)
+                return _run_web_import(ctx, target, local_mutation=runtime.run)
             # 保持旧版/测试注入器的二参数兼容性；正式实现始终走集中式写入门。
             return _run_web_import(ctx, target)
         finally:
@@ -2488,7 +2459,7 @@ def create_app(
         request: Request, payload: UndoRevertPayload
     ) -> dict[str, object] | JSONResponse:
         """还原一次 wb 自动提交（等价 git revert；只作用于 vault 文件）。"""
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         sha = payload.sha.strip()
@@ -2545,10 +2516,10 @@ def create_app(
     def run_brief_endpoint(request: Request) -> RedirectResponse | JSONResponse:
         from summit_workbench.workflows.brief.runner import run_brief
 
-        blocked = _sync_blocked(request)
+        blocked = runtime.sync_blocked(request)
         if blocked is not None:
             return blocked
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -2569,10 +2540,10 @@ def create_app(
     def run_weekly_endpoint(request: Request) -> RedirectResponse | JSONResponse:
         from summit_workbench.workflows.weekly.weekly import generate_weekly
 
-        blocked = _sync_blocked(request)
+        blocked = runtime.sync_blocked(request)
         if blocked is not None:
             return blocked
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -2616,7 +2587,7 @@ def create_app(
                 set_decision(ctx.vault_dir, candidate_id, CandidateDecision(decision))
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 
-            result = _run_web_mutation(
+            result = runtime.run(
                 "review/decide",
                 mutate,
             )
@@ -2646,7 +2617,7 @@ def create_app(
                 )
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 
-            result = _run_web_mutation(
+            result = runtime.run(
                 "review/edit",
                 mutate,
             )
@@ -2665,7 +2636,7 @@ def create_app(
 
     @app.post("/review/apply", response_class=HTMLResponse, response_model=None)
     def apply(request: Request) -> HTMLResponse | JSONResponse:
-        blocked = _mutation_blocked(request)
+        blocked = runtime.mutation_blocked(request)
         if blocked is not None:
             return blocked
         try:
@@ -2795,103 +2766,11 @@ def create_app(
 
     # ---- 多设备同步（P0-10）----
 
-    from summit_workbench.domain.sync import AutomationOutcome, SyncSnapshot
     from summit_workbench.repositories.automation_primary import load_automation_primary
     from summit_workbench.workflows import sync_coordinator
 
-    def _current_sync_snapshot() -> SyncSnapshot:
-        return sync_coordinator.current_snapshot(
-            ctx.vault_dir,
-            home=ctx.active_workspace.home if ctx.active_workspace else None,
-            workspace_id=ctx.workspace_id,
-            backend_kind=ctx.git_backend_kind,
-            context=ctx.active_workspace,
-        )
-
-    def _run_web_mutation[T](
-        action: str, mutation: Callable[[str], LocalMutationOutcome[T]]
-    ) -> LocalMutationResult[T]:
-        if profile_switch_in_progress:
-            raise MutationBlocked("工作台正在切换，请等待本机服务重启后再修改")
-        profile = ctx.active_workspace.profile if ctx.active_workspace else None
-        return run_local_mutation(
-            ctx.vault_dir,
-            action,
-            mutation,
-            sync_snapshot=_current_sync_snapshot() if ctx.active_workspace else None,
-            sync_snapshot_provider=_current_sync_snapshot if ctx.active_workspace else None,
-            compatibility=ctx.compatibility,
-            backend_kind=ctx.git_backend_kind,
-            author=profile_identity(profile) if profile is not None else None,
-            push_after_commit=(
-                lambda: sync_coordinator.push_after_commit(
-                    ctx.vault_dir,
-                    home=ctx.active_workspace.home if ctx.active_workspace else None,
-                    workspace_id=ctx.workspace_id,
-                    backend_kind=ctx.git_backend_kind,
-                    context=ctx.active_workspace,
-                )
-            )
-            if ctx.active_workspace
-            else None,
-        )
-
-    def _sync_blocked(request: Request) -> JSONResponse | None:
-        """automation 角色门：secondary 上定时 writer 不执行（env-compat 放行）。"""
-        profile = ctx.active_workspace.profile if ctx.active_workspace else None
-        if ctx.active_workspace is None:
-            # 保留直接注入 WebContext 的 development/test 兼容语义：这些调用方
-            # 可能在 app 创建后才准备临时 profile。production 入口始终传入冻结
-            # 的 ActiveWorkspaceContext，不会走这条动态回退。
-            from summit_workbench.config.profiles import resolve_active_workspace
-
-            profile = resolve_active_workspace(allow_env_fallback=True).profile
-        claim = None
-        device_id = None
-        if ctx.active_workspace is not None:
-            claim = load_automation_primary(ctx.vault_dir)
-            device_id = ctx.active_workspace.device_id
-        if (
-            sync_coordinator.automation_gate(
-                profile,
-                claim=claim,
-                device_id=device_id,
-                require_claim=ctx.active_workspace is not None,
-            )
-            is AutomationOutcome.NOT_PRIMARY
-        ):
-            # P1-07D：secondary 上的手动/定时写入是预期跳过，不是错误。返回 200 友好
-            # 提示（前端以普通提示而非红色 ApiError 呈现），写入本身仍被门控跳过。
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "ok": True,
-                    "skipped": True,
-                    "code": "not_automation_primary",
-                    "message": "本机不是该 workspace 的主设备，本次操作已跳过",
-                },
-            )
-        return None
-
-    def _mutation_blocked(request: Request) -> JSONResponse | None:
-        """diverged/dirty 保护态：修改共享 vault 的写被拒（读照常）。"""
-        snapshot = _current_sync_snapshot()
-        ok, reason = sync_coordinator.mutation_guard(snapshot)
-        if ok:
-            return None
-        state = snapshot.state.value if snapshot is not None else "protected"
-        return JSONResponse(
-            status_code=409,
-            content=error_payload(
-                code="sync_diverged",
-                message=reason,
-                operation_id=_operation_id(request),
-                details={"state": state},
-            ),
-        )
-
     def _sync_payload() -> dict[str, object]:
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         claim = load_automation_primary(ctx.vault_dir)
         return {
             "ok": True,
@@ -2919,20 +2798,20 @@ def create_app(
     def api_sync_conflict_explain(paths: str | None = None) -> dict[str, object]:
         """Explain conflict handling without fetching, merging, or writing anything."""
         raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
-        explanation = explain_conflict(_current_sync_snapshot().state, raw_paths)
+        explanation = explain_conflict(runtime.snapshot().state, raw_paths)
         return {"ok": True, "conflict": explanation.as_dict()}
 
     @app.get("/api/sync/conflict/plan", response_model=None)
     def api_sync_conflict_plan(paths: str | None = None) -> dict[str, object]:
         """Return a safe recovery plan; preparation/apply are separate later steps."""
         raw_paths = tuple(item.strip() for item in (paths or "").split(",") if item.strip())
-        plan = plan_conflict_recovery(_current_sync_snapshot().state, raw_paths)
+        plan = plan_conflict_recovery(runtime.snapshot().state, raw_paths)
         return {"ok": True, "recovery_plan": plan.as_dict()}
 
     @app.get("/api/sync/conflict/details", response_model=None)
     def api_sync_conflict_details(paths: str | None = None) -> dict[str, object]:
         """Return safe structured details from already-fetched divergence refs."""
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         if snapshot.state.value != "diverged-protected":
             return {
                 "ok": True,
@@ -2967,7 +2846,7 @@ def create_app(
     @app.get("/api/sync/conflict/validate", response_model=None)
     def api_sync_conflict_validate(paths: str | None = None) -> dict[str, object]:
         """Validate automatic event recovery in an ephemeral, non-git directory."""
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         if snapshot.state.value != "diverged-protected":
             return {
                 "ok": True,
@@ -3013,7 +2892,7 @@ def create_app(
     @app.get("/api/sync/conflict/export", response_model=None)
     def api_sync_conflict_export() -> Response:
         """Export a body-free recovery manifest; never export vault content or credentials."""
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         raw_paths = ()
         from summit_workbench.workflows.sync_conflict_recovery import (
             inspect_divergence,
@@ -3049,7 +2928,7 @@ def create_app(
         payload: SyncConflictSelectionPayload,
     ) -> dict[str, object]:
         """Validate explicit choices against the current read-only divergence snapshot."""
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         if snapshot.state.value != "diverged-protected":
             return {
                 "ok": False,
@@ -3094,7 +2973,7 @@ def create_app(
         payload: SyncConflictRecoveryPayload,
     ) -> dict[str, object]:
         """Prepare or explicitly apply a revision-bound local recovery merge."""
-        snapshot = _current_sync_snapshot()
+        snapshot = runtime.snapshot()
         if snapshot.state.value != "diverged-protected":
             return {
                 "ok": False,
@@ -3204,7 +3083,7 @@ def create_app(
                     "state": "error",
                     "detail": "恢复提交已保留，但普通同步暂未完成",
                 }
-        current = _current_sync_snapshot()
+        current = runtime.snapshot()
         return {
             "ok": result.status == "committed",
             "available": True,
@@ -3235,7 +3114,7 @@ def create_app(
         from summit_workbench.repositories.automation_primary import claim_automation_primary
 
         try:
-            result = _run_web_mutation(
+            result = runtime.run(
                 "sync/primary",
                 lambda _operation_id: LocalMutationOutcome(
                     claim_automation_primary(

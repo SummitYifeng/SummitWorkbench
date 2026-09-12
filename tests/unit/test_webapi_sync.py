@@ -212,7 +212,9 @@ def test_run_brief_publishes_explicit_generated_paths(tmp_path, monkeypatch, cli
         lambda **_kwargs: run,
     )
     monkeypatch.setattr(
-        "summit_workbench.webapp.legacy_app._commit_suffix",
+        # Step 3：留痕逻辑搬到 webapp/mutation_runtime.py，运行时经该模块 global 调用它，
+        # 因此 patch 目标随之改变（只改注入点字符串，不改测试语义）。
+        "summit_workbench.webapp.mutation_runtime._commit_suffix",
         record_commit,
     )
 
