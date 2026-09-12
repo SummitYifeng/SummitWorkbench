@@ -272,14 +272,68 @@ macOS-only arm64 与纯客户端用法下均不可达；升级经实测是**一�
 两害相权，选择**保留已发布产物不动、把仓库文档改对**，并在此明确记录。
 该差异纯属版本字符串显示，**不涉及任何行为**；下次任何发版重建会自然消除它。
 
+**→ 需求方随后选择"发个补丁版修掉它"，已在 `v0.4.6` 完成，见下节。**
+
 ---
 
-## 六、需要需求方裁决的事项
+## 六、v0.4.6 补丁版（修掉 §5.2）
 
-1. **§2.1 `list_events`**：这个"按原始事件查询"的能力是否仍属于支持面？留还是删？
-2. **§2.2 两个归档 HTML**：你选择了删除，但证据显示它们被 `README.md` 链接、
-   且是活跃脚本的输出路径。**我按硬约束保留并上报**。若确认要删，需要先改
-   `README.md`/`PROJECTDESC.md`/`PRD.md` 与 `web/scripts/preview-brief.mjs` 的输出路径
-   （超出本轮授权）。
-3. **§2.3 四个空的 `web/src/features/` 子目录**：ADR 0036 明确"目录保留"，
-   且它们是拆分方案的落点。是否仍要删？
+需求方裁决后追加的一轮。**产品行为同样未改动**：只改指南开头一句文案并重建前端。
+
+- **tag**：`v0.4.6`（→ `8eeff60`）· **build 20**（`github.run_number` = 20）
+- **release run**：<https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34665831750>（success，**一次通过**）
+- **产物**：<https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.6>，
+  `latest` 正确指向 v0.4.6
+- **DMG SHA256**：`a47f1a068fc64617e025c440e8ffe29aad5f2e1cb41745426474cdb7ee737034`
+  （49381183 字节；feed / SHA256SUMS / release-metadata 三处一致，本地实测一致）
+
+### 修法：不是把 13 换成 20，而是让它不再可能漂移
+
+§5.2 那行字的本質問題不是"数字写错了"，而是**指南正文是构建时打进产物的静态 Markdown**，
+里面写任何版本号都只能描述"构建它的那次发布"，无法描述"读者正在运行的那个 App"。
+只把 13 改成 20，下一个版本会立刻再过期一次。
+
+所以新写法**不再出现任何具体版本号**，改为指路：
+
+> 想看当前装的是哪个版本：看**窗口顶栏右上角的状态文字**，它会实时显示
+> （形如「界面 v… · 服务 x.y.z · 已同步」）——那里读的是真实运行值，永远准。
+
+这句话指的是 `legacy-main.ts:372` 渲染的实时状态（客户端串用自己的 `CLIENT_BUILD`、
+服务端串用 `/api/version` 的 `server_version`），**构造上就不可能漂移**。
+
+### 验证（逐项实测，不只看 workflow 绿）
+
+| 项 | 证据 |
+|---|---|
+| 产物内源码确已修好 | DMG 内 `web/static/assets/index-B2HwK92i.js` 里 `适用版本` / `build 13` / `build 19` **全部消失**，新文案 `窗口顶栏右上角的状态文字` 存在 |
+| 装机 | `/Applications/SummitWorkbench.app` → `CFBundleShortVersionString 0.4.6`、`CFBundleVersion 20` |
+| 实际服务出的是修好的 bundle | App 服务的 `index.html` 引用 `index-B2HwK92i.js`；拉下来核对：新文案存在、旧字符串不存在、六页签齐全 |
+| API | `/api/version` → `server_version 0.4.6 / build 20 / git_revision 8eeff60 / frontend_build v2026.09.12-8eeff60-2bc31a83` |
+| 资源 | `/static/` JS/CSS 均 HTTP 200 |
+| 无 crash loop | 本次启动 **0 条 error/warning**、0 条异常生命周期事件 |
+| 升级通道 | App 轮询的 `releases/latest/download/update-feed.json` 可达（HTTP 200）且内容为 `version 0.4.6 / build 20`，即 App 不会提示"降级"到 .5 |
+| 门禁 | 本地完整 gate 全绿：890 passed / 1 skipped、覆盖率 82.33%、ruff、mypy strict、`tsc`、前端契约测试；CI [run 34665703015](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34665703015) 四 job 全 success |
+
+顺带修掉的另一处同类过期描述：`OPEN-VERIFICATION-ITEMS.md` §J 结尾原写"已安装的 build 9 App
+仍带旧前端"——该状态早在 v0.4.5 就已消除，已更正。
+
+---
+
+## 七、需要需求方裁决的事项（**均已裁决，本节存档**）
+
+1. **§2.1 `list_events`** → 需求方裁决：**保留，本轮不动作**（零行为风险，且它仍是契约测试的覆盖对象）。
+2. **§2.2 两个归档 HTML** → 需求方裁决：**按报告判断保留**。理由已在上文列明：
+   `ARCHITECTURE.html` 被 `README.md:38` 链接、并被 PRD/PROJECTDESC 点名；
+   `brief-v2-preview.html` 是活跃脚本 `web/scripts/preview-brief.mjs:14` 的输出路径。
+   若将来仍要删，需先改这三处文档链接与该脚本的输出路径。
+3. **§2.3 四个空的 `web/src/features/` 子目录** → 需求方裁决：**保留**。
+   ADR 0036 明确"目录保留"作为 feature 入口边界，且它们正是
+   [`LEGACY-MAIN-SPLIT-PLAN.md`](LEGACY-MAIN-SPLIT-PLAN.md) 的迁移落点
+   （`features/sync/`、`features/threads/`）。
+
+### 附：需求方同时裁决的其它三项
+
+- **§5.2 指南版本显示** → **发补丁版修掉**，已完成于 `v0.4.6`（见 §六）。
+- **两份拆分方案** → **先不动，作为后续独立任务**。方案已落盘，随时可开工；
+  两个方案的第一步都是"让源码级契约断言变得可搬迁"（步骤 0），建议开工时从它开始。
+- **A6 / F1** → **本轮不动**。A6 需第二台机器现场复跑；F1 是超出 `INTERNAL-DEV` 范围的非缺陷。
