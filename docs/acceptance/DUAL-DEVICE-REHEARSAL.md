@@ -100,7 +100,7 @@ Keychain 都不动。**
    且远端有 workspace marker（`git -C ~/Documents/Rehearsal/_vault ls-files | grep ".summit-workbench/workspace.json"`）。
 8. **Studio 就停在演练工作台上**，先别还原真实 profile（A6.1 需要它作为另一侧）。
 
-> **已知缺口（2026-09-13 实测发现，待排期）**：「新建我的工作台」**不会 `git init`**
+> **已知缺口 D1（2026-09-13 实测发现，待排期；完整清单见文末「附 · 本次复跑发现的产品缺陷」）**：「新建我的工作台」**不会 `git init`**
 > （`workflows/onboarding.py` 明确写着"全程不运行系统 git、不 `git init`"），而
 > `preview_remote_normalization()` 一上来就 `GitRepo(vault_dir)` 并要求已有
 > `origin` + `upstream`。两者合起来的效果是：**新工作台无法只靠界面接上远端**——新建后直接点
@@ -233,3 +233,46 @@ Keychain 都不动。**
    把 A6 一行改写为"已在 build 29 完整验收 + 已在本 build 抽查通过"，并写明本 build 的
    `frontend_build`（`build-meta.json` 或设置页版本状态条）、日期与逐条证据；若走了 §A6.3
    完整重跑，按完整口径关闭。
+
+## 附 · 本次复跑发现的产品缺陷（3 个，均未修）
+
+2026-09-13 在 Studio 上按本流程实际执行时逐个撞上，全部**用户可复现**，且都在"首次把一台机器接到
+远端"的必经路径上。修法方向一并记下，等排期。
+
+### D1 · 「新建我的工作台」不初始化 git 仓库
+
+- **证据**：`workflows/onboarding.py` 明确写着"全程不运行系统 git、不 `git init`"；全仓 `src/` 里
+  **没有任何 `repo.init()` 调用点**；新建出来的 vault 只有 `.summit-workbench/`，没有 `.git`。
+- **症状一**：在新工作台上直接点「预览 HTTPS 转换」→ `ApiError: 服务内部错误 [internal_error]`，
+  日志是 `GitError: 不是 git 仓库：…/Rehearsal/_vault`
+  （`routers/settings.py:825 → workflows/remote_normalization.py:217 → repositories/git.py:98 →
+  repositories/dulwich_git.py:183`）。而该接口第一行就要求已有 `origin` + `upstream`。
+- **症状二（同因，更隐蔽）**：`repositories/autocommit.py::commit_paths()` 直接返回 `NOT_GIT`，
+  界面不报错 ⇒ **「系统写回会自动 git 留痕」在新工作台上静默不生效**。
+- **修法**：create-new 初始化仓库（让新工作台天然纳入版本管理），或至少在界面上明确显示"本工作台
+  尚未纳入版本管理"；同时让预览在拿不到仓库时返回稳定错误码而不是 500。
+- **绕过**（本流程 §A7 第 4 步）：手工 `git init` + 首次提交 + `git remote add`，再用
+  `git -c credential.helper= push -u origin main` 把 PAT 输在 git 自己的提示符里（不进命令行、
+  不进 shell 历史、不覆盖通用 `github.com` 钥匙串条目）。
+
+### D2 · 「确认并转换」后运行中的服务仍使用启动时的 profile 快照
+
+- **证据链**：App 服务启动于 `2026-09-12T22:56:48Z`；「确认并转换」把 `git_username` 写进 profile 是在
+  `23:11:08Z`（**晚 15 分钟**）。Keychain 里只有 `git:github.com:Yifeng93`，查 `git:github.com:`（空用户名）
+  **未命中**。`webapp/context.py` 的 `WebContext.active_workspace` 在启动时冻结，而
+  `sync_workspace(context=ctx.active_workspace)` 正是从它取 `git_username`。
+- **症状**：转换成功并提示"转换完成"，但**同一进程内**点「立即重试」**必然** `error`；**重启 App 后立刻
+  `ready`**（实测 `/api/sync/status`：`_vault:ready`、ahead/behind `0/0`、`last_sync_at=23:18:18Z`）。
+- **修法**：转换成功后刷新内存里的 active workspace context；或让同步从磁盘 profile 读 `git_username`，
+  不要用启动快照。
+- **影响面**：这是"先转换 remote、再重试同步"的标准首次配置顺序，不是边缘情况。
+
+### D3 · 同步失败原因被完全吞掉（不可诊断）
+
+- **证据**：`domain/sync.py::classify_repo_error()` 对 `GitCredentialsUnavailable` **没有分支**，落到
+  裸 `SyncState.ERROR`；持久化的 `sync-state.json` 里 `detail` 为空、`repo_states` 只有 `_vault:error`；
+  `~/Library/Logs/summitworkbench-panel.log` 里**只有 `"component":"launcher"` 记录**，没有任何
+  `warn`/`error`；`/api/sync/run` 也只回状态枚举。最终定位只能靠把同步器拉到进程内复现。
+- **修法**：每个失败类别给一个稳定错误码 + 脱敏原因，写进 `sync-state.json`、banner 的 `detail` 与
+  结构化日志；`GitCredentialsUnavailable` 至少要有独立码（如 `credentials-missing`）。
+- **代价**：D2 的排查因为这一条多花了好几轮——三个缺陷叠在一起时，"没有错误信息"本身就是最大的缺陷。
