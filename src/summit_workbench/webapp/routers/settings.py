@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from summit_workbench import __version__
 from summit_workbench.config.app_support import (
     PROFILE_FILE_MODE,
     app_support_dir,
@@ -25,20 +26,51 @@ from summit_workbench.config.app_support import (
 )
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.profiles import ActiveWorkspaceContext
+from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.workspace import LocalProfile
 from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConfigError
 from summit_workbench.providers.llm.errors import LLMError
 from summit_workbench.repositories.profile_registry import load_profile
 from summit_workbench.webapp.api import (
+    AcceptancePreflightPayload,
+    AutomationRunPayload,
+    AutomationSettingsPayload,
+    DoctorPayload,
     FeishuCompletePayload,
+    GitRemoteNormalizationPayload,
+    GitRemoteNormalizationPlanPayload,
+    GitRemoteRollbackPayload,
     OnboardingConnectionPayload,
     OnboardingModelSavePayload,
     OnboardingModelVerifyPayload,
+    ProfileRemovePayload,
+    ProfileSwitchCommitPayload,
+    ProfileSwitchPayload,
+    ProviderSettingsPayload,
     ProviderVerifyPayload,
 )
+from summit_workbench.webapp.build_info import BuildInfoError, WebBuildInfo, discover_build_number
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.errors import error_payload
+from summit_workbench.webapp.mutation_runtime import MutationRuntime
 from summit_workbench.webapp.onboarding_view import render_onboarding_wizard
+from summit_workbench.workflows.acceptance_preflight import acceptance_preflight
+from summit_workbench.workflows.profile_settings import (
+    ProfileSettingsError,
+    ProfileSwitchPlan,
+    commit_profile_switch,
+    list_profile_summaries,
+    prepare_profile_switch,
+    remove_local_profile,
+    update_provider_settings,
+)
+from summit_workbench.workflows.remote_normalization import (
+    RemoteNormalizationError,
+    RemoteNormalizationPlan,
+    apply_remote_normalization,
+    preview_remote_normalization,
+    rollback_remote_normalization,
+)
 from summit_workbench.workflows.settings_connections import (
     complete_feishu_authorization,
     feishu_config,
@@ -689,3 +721,397 @@ def register_restricted_connection_routes(
 
 
 __all__ = ["register_restricted_connection_routes", "register_settings_connection_routes"]
+
+
+def register_settings_routes(
+    dependencies: RouteDependencies,
+    *,
+    runtime: MutationRuntime,
+    build_info: Callable[[], WebBuildInfo],
+) -> None:
+    """注册设置领域路由（LEGACY-APP-SPLIT-PLAN Step 7 / F）。
+
+    ``switch_plans`` / ``remote_normalization_plans`` **在函数体内创建**：提升为模块级 dict
+    会让同进程的多个 app 实例共享切换计划与远端方案，改变现有语义并污染测试（蓝图 §6-R8）。
+    """
+    app = dependencies.app
+    ctx = dependencies.context
+    switch_plans: dict[str, object] = {}
+    remote_normalization_plans: dict[str, RemoteNormalizationPlan] = {}
+
+    def _settings_home() -> Path:
+        return ctx.active_workspace.home if ctx.active_workspace else Path.home()
+
+    @app.get("/api/settings/profiles", response_model=None)
+    def settings_profiles() -> dict[str, object]:
+        from summit_workbench.repositories.profile_registry import active_profile_id
+
+        summaries = list_profile_summaries(home=_settings_home())
+        return {
+            "ok": True,
+            "active_workspace_id": active_profile_id(home=_settings_home()),
+            "current_device_id": (
+                ctx.active_workspace.device_id if ctx.active_workspace is not None else None
+            ),
+            "profiles": [item.as_dict() for item in summaries],
+        }
+
+    @app.post("/api/settings/acceptance-preflight", response_model=None)
+    def settings_acceptance_preflight(
+        request: Request, _payload: AcceptancePreflightPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Run the read-only P1-07D gate and return a copyable redacted report."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以运行验收预检",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        try:
+            try:
+                web_info = build_info()
+                frontend_build = web_info.frontend_build
+                git_revision = web_info.git_revision
+            except BuildInfoError:
+                frontend_build = None
+                git_revision = None
+            report = acceptance_preflight(
+                ctx.vault_dir,
+                home=ctx.active_workspace.home,
+                workspace_id=ctx.workspace_id,
+                app_version=__version__,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+                build_number=discover_build_number(),
+                frontend_build=frontend_build,
+                git_revision=git_revision,
+            )
+        except Exception:  # noqa: BLE001 - report boundary must stay redacted
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="acceptance_preflight_failed",
+                    message="验收预检无法完成；请查看本机诊断，不会显示凭据或远端密钥",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        return {
+            "ok": report.ok,
+            "workspace_id": report.workspace_id,
+            "app_version": report.app_version,
+            "checks": [item.__dict__ for item in report.checks],
+            "report": report.text,
+        }
+
+    @app.post("/api/settings/git/remote/preview", response_model=None)
+    def settings_git_remote_preview(
+        request: Request, payload: GitRemoteNormalizationPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Validate a candidate HTTPS origin in a temporary clone; no local mutation."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以规范化 Git remote",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        try:
+            from pydantic import SecretStr
+
+            plan = preview_remote_normalization(
+                ctx.vault_dir,
+                workspace_id=ctx.workspace_id,
+                username=payload.git_username,
+                pat=SecretStr(payload.pat),
+                candidate_url=payload.candidate_url,
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
+                ),
+            )
+        remote_normalization_plans[plan.plan_id] = plan
+        return {
+            "ok": True,
+            "plan_id": plan.plan_id,
+            "workspace_id": plan.workspace_id,
+            "old_url": plan.old_url,
+            "candidate_url": plan.candidate_url,
+            "branch": plan.branch,
+            "candidate_fetched": plan.candidate.fetched,
+            "candidate_ahead": plan.candidate.ahead,
+            "candidate_behind": plan.candidate.behind,
+            "note": "预览未修改 origin、profile、vault、提交、推送或 Keychain",
+        }
+
+    @app.post("/api/settings/git/remote/apply", response_model=None)
+    def settings_git_remote_apply(
+        request: Request, payload: GitRemoteNormalizationPlanPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Revalidate a preview then atomically apply origin/profile/keychain."""
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以规范化 Git remote",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        plan = remote_normalization_plans.get(payload.plan_id)
+        if plan is None or plan.workspace_id != ctx.workspace_id:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="normalization_plan_missing",
+                    message="转换预览已失效，请重新预览",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        try:
+            from pydantic import SecretStr
+
+            transaction = apply_remote_normalization(
+                ctx.vault_dir,
+                plan,
+                username=payload.git_username,
+                pat=SecretStr(payload.pat),
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
+                ),
+            )
+        remote_normalization_plans.pop(payload.plan_id, None)
+        return {
+            "ok": True,
+            "transaction_id": transaction.transaction_id,
+            "old_url": transaction.old_url,
+            "new_url": transaction.new_url,
+            "note": "origin/profile/Keychain 已更新；未提交、未推送、未修改 vault 内容",
+        }
+
+    @app.post("/api/settings/git/remote/rollback", response_model=None)
+    def settings_git_remote_rollback(
+        request: Request, payload: GitRemoteRollbackPayload
+    ) -> dict[str, object] | JSONResponse:
+        """Rollback the last applied remote normalization transaction."""
+        if not payload.confirmed or ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="confirmation_required",
+                    message="请明确确认回滚当前 remote 转换",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        try:
+            transaction = rollback_remote_normalization(
+                ctx.vault_dir,
+                workspace_id=ctx.workspace_id,
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
+                ),
+            )
+        return {
+            "ok": True,
+            "transaction_id": transaction.transaction_id,
+            "restored_url": transaction.old_url,
+            "note": "origin/profile 已恢复；未提交、未推送、未修改 vault 内容",
+        }
+
+    @app.post("/api/settings/profile/prepare", response_model=None)
+    def settings_profile_prepare(payload: ProfileSwitchPayload) -> dict[str, object]:
+        try:
+            plan = prepare_profile_switch(
+                home=_settings_home(), target_workspace_id=payload.workspace_id
+            )
+        except ProfileSettingsError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+        switch_plans[plan.plan_id] = plan
+        runtime.begin_profile_switch()
+        return {"ok": True, "plan_id": plan.plan_id, "workspace_id": plan.target_workspace_id}
+
+    @app.post("/api/settings/profile/commit", response_model=None)
+    def settings_profile_commit(payload: ProfileSwitchCommitPayload) -> dict[str, object]:
+        plan = switch_plans.pop(payload.plan_id, None)
+        if plan is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "switch_plan_missing", "message": "切换计划已失效，请重新准备"},
+            )
+        assert isinstance(plan, ProfileSwitchPlan)
+        try:
+            return commit_profile_switch(home=_settings_home(), plan=plan)
+        except ProfileSettingsError as exc:
+            runtime.end_profile_switch()
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    @app.post("/api/settings/profile/remove", response_model=None)
+    def settings_profile_remove(payload: ProfileRemovePayload) -> dict[str, object]:
+        try:
+            return remove_local_profile(
+                home=_settings_home(),
+                workspace_id=payload.workspace_id,
+                confirmed=payload.confirmed,
+            )
+        except ProfileSettingsError as exc:
+            if exc.code == "confirmation_required":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": exc.code,
+                        "message": str(exc),
+                        "details": {
+                            "workspace_id": payload.workspace_id,
+                            "deletes": ["local_profile", "runtime", "onboarding_draft"],
+                            "preserves": ["vault", "remote", "keychain"],
+                        },
+                    },
+                ) from exc
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    @app.post("/api/settings/provider", response_model=None)
+    def settings_provider(payload: ProviderSettingsPayload) -> dict[str, object]:
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        try:
+            return update_provider_settings(
+                home=_settings_home(),
+                workspace_id=ctx.workspace_id,
+                provider=payload.provider,
+                settings=payload.settings,
+                secret=payload.secret,
+            )
+        except ProfileSettingsError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": exc.code, "message": str(exc)}
+            ) from exc
+
+    def _automation_settings_payload() -> dict[str, object]:
+        from summit_workbench.repositories.automation_settings import load_automation_settings
+
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        try:
+            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
+            ) from exc
+        return {
+            "ok": True,
+            "workspace_id": settings.workspace_id,
+            "jobs": {
+                job.value: schedule.model_dump(mode="json")
+                for job, schedule in ((job, settings.for_job(job)) for job in AutomationJob)
+            },
+        }
+
+    @app.get("/api/settings/automation", response_model=None)
+    def settings_automation() -> dict[str, object]:
+        return _automation_settings_payload()
+
+    @app.put("/api/settings/automation", response_model=None)
+    def update_settings_automation(payload: AutomationSettingsPayload) -> dict[str, object]:
+        from summit_workbench.repositories.automation_settings import (
+            load_automation_settings,
+            save_automation_settings,
+        )
+
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        job = AutomationJob(payload.job)
+        try:
+            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
+            current = settings.for_job(job)
+            settings.jobs[job] = current.model_copy(
+                update={
+                    "enabled": payload.enabled,
+                    "hour": payload.hour,
+                    "minute": payload.minute,
+                    "weekdays": sorted(set(payload.weekdays)),
+                    "next_run_at": None,
+                }
+            )
+            save_automation_settings(settings, home=_settings_home())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
+            ) from exc
+        return {"ok": True, "job": settings.jobs[job].model_dump(mode="json")}
+
+    @app.post("/api/settings/automation/run", response_model=None)
+    def run_settings_automation(
+        request: Request, payload: AutomationRunPayload
+    ) -> dict[str, object] | JSONResponse:
+        from summit_workbench.workflows.automation_worker import run_automation_job
+
+        if ctx.active_workspace is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        # 「立即运行」是人工触发，不应被当天已执行过的调度记录拦截；
+        # 定时 worker 仍使用默认的 schedule due 门控。
+        result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job), force=True)
+        # secondary/未启用的「跳过」是预期结果，不是错误：返回 ok=true 让前端以提示而非
+        # 报错呈现（P1-07D 要求 Air 自动化安全跳过，绝不运行定时 writer）。
+        return {
+            "ok": result.status.value in {"success", "degraded", "skipped", "not-primary"},
+            **result.as_dict(),
+        }
+
+    @app.post("/api/settings/doctor", response_model=None)
+    def settings_doctor(payload: DoctorPayload) -> dict[str, object]:
+        from summit_workbench.cli.doctor import CheckStatus, run_checks
+        from summit_workbench.config.settings import load_settings
+
+        active = ctx.active_workspace
+        settings = load_settings(
+            work_root=ctx.work_root, vault_dir=ctx.vault_dir, timezone=ctx.timezone
+        )
+        checks = run_checks(
+            settings,
+            config_file=ctx.provider_config_file(),
+            online=payload.online,
+            context=active,
+        )
+        return {
+            "ok": not any(item.status is CheckStatus.FAIL for item in checks),
+            "online": payload.online,
+            "checks": [item.as_dict() for item in checks],
+        }
