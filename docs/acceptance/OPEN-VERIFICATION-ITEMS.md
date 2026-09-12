@@ -230,8 +230,10 @@
 **版本耦合（升级时必须一起做）**：Vite 8 声明 `peerOptional esbuild ^0.27 || ^0.28`，因此
 **esbuild 版本必须随 Vite 大版本同步抬升**；只改 Vite 会被 npm ERESOLVE 拒绝。
 
-**尚未重建的交付物**：本次只更新了仓库内的前端产物；已安装的 build 9 App 与历史 DMG 仍带旧前端。
-若要让装机版本包含新前端，需按 `docs/RELEASING.md` 重新打包。
+**尚未重建的交付物（本节为 §J 升级当时的状态）**：当时只更新了仓库内的前端产物；已安装的 build 9
+App 与历史 DMG 仍带旧前端。**该状态已于 v0.4.5 消除**：build 19 的 DMG 已重新打包、发布并装机，
+装机器件（`/Applications/SummitWorkbench.app`）现在带的是 build 19 的前端
+（`v2026.09.12-749eeef-0bc00d2c`）。历史 build 9 的产物身份不变。
 
 ## K. D/E 真实写回验收（2026-09-11）
 
