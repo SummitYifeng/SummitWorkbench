@@ -53,6 +53,16 @@ import type {
 } from './features/sync';
 import { renderSettings as renderSettingsFeature } from './features/settings';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
+import {
+  activateModal,
+  appRoot,
+  closeModal,
+  openModal,
+  registerModalCloseHook,
+  requestModalClose,
+  setModalReturnFocus,
+  toast,
+} from './features/shell';
 import type { UndoDiffPayload, UndoHistoryPayload } from './features/undo';
 // 使用指南（WEB_USAGE_GUIDE.md 由 npm run sync-guide 在构建前同步；随包内置，离线可看）
 import guideMd from './guide.md?raw';
@@ -141,7 +151,6 @@ interface ProjectReturnContext {
 }
 let projectReturnContext: ProjectReturnContext | null = null;
 let projectFocusAfterRenderName: string | null = null;
-let modalReturnFocus: HTMLElement | null = null;
 let lastStateReadAt: string | null = null;
 let lastReviewReadAt: string | null = null;
 let reviewDrafts: Record<string, ReviewDraftFields> = {};
@@ -199,9 +208,6 @@ function askDraftEntity(threadId: string): string {
   return 'ask:' + threadId;
 }
 
-const app = document.getElementById('app') as HTMLElement;
-const toasts = document.getElementById('toasts') as HTMLElement;
-
 const apiClient = createApiClient({
   onFailure: () => { connectionHadFailure = true; },
   onSuccess: (url) => {
@@ -229,14 +235,6 @@ function persistEntityDraft<T>(entity: string, value: T): void {
     draftStorageWarningShown = true;
     toast('浏览器暂时无法保存草稿；请先完成当前编辑再切页', 'err');
   }
-}
-
-function toast(msg: string, kind: 'ok' | 'err' | 'info' = 'info'): void {
-  const el = document.createElement('div');
-  el.className = 'toast ' + kind;
-  el.textContent = msg;
-  toasts.appendChild(el);
-  window.setTimeout(() => el.remove(), 4600);
 }
 
 /**
@@ -523,7 +521,7 @@ function render(): void {
 }
 
 function renderShell(): void {
-  app.innerHTML =
+  appRoot().innerHTML =
     '<a class="skip-link" href="#main-content">跳到主内容</a>' +
     '<div class="nav-shell"><header class="topbar">' +
     '<div class="brand"><span class="logo">SW</span><div><h1>SummitWorkbench</h1>' +
@@ -2739,63 +2737,6 @@ async function planApply(exec: boolean): Promise<void> {
   }
 }
 
-function activateModal(html: string, includeCloseButton = false): HTMLElement {
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement;
-  const modal = document.getElementById('modal') as HTMLElement;
-  if (backdrop.hidden) {
-    modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  }
-  modal.innerHTML = html;
-  backdrop.hidden = false;
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('tabindex', '-1');
-  const heading = modal.querySelector<HTMLElement>('h2, h3');
-  if (heading) {
-    if (!heading.id) heading.id = 'modal-title';
-    modal.setAttribute('aria-labelledby', heading.id);
-  } else {
-    modal.removeAttribute('aria-labelledby');
-  }
-  if (includeCloseButton) {
-    const close = document.createElement('button');
-    close.className = 'ghost close-modal';
-    close.textContent = '关闭';
-    close.style.marginTop = '12px';
-    modal.appendChild(close);
-    close.addEventListener('click', requestModalClose);
-  }
-  const first = modal.querySelector<HTMLElement>('button, input, select, textarea, [tabindex="0"]');
-  (first ?? modal).focus();
-  return modal;
-}
-
-function openModal(html: string): HTMLElement {
-  const modal = activateModal(html, true);
-  modal.dataset.draftDirty = '0';
-  delete modal.dataset.draftEntity;
-  modal.oninput = () => {
-    if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
-  };
-  modal.onchange = () => {
-    if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
-  };
-  return modal;
-}
-
-function closeModal(): void {
-  sourceReadSequence += 1;
-  (document.getElementById('modal-backdrop') as HTMLElement).hidden = true;
-  modalReturnFocus?.focus();
-  modalReturnFocus = null;
-}
-
-function requestModalClose(): void {
-  const modal = document.getElementById('modal') as HTMLElement | null;
-  const hasDraft = modal?.dataset.draftDirty === '1';
-  if (hasDraft && !window.confirm('当前弹层里有未保存内容。继续关闭并放弃草稿吗？')) return;
-  closeModal();
-}
 
 // ---------- 数据 ----------
 
@@ -2954,7 +2895,7 @@ async function showSyncConflictDetails(): Promise<void> {
   conflictMessage = null;
   conflictBusy = false;
   activateConflictModal('<div class="loading">正在读取分叉详情（只读）…</div>');
-  if (returnFocus) modalReturnFocus = returnFocus;
+  setModalReturnFocus(returnFocus);
   try {
     const data = await api<SyncConflictDetailsPayload>('/api/sync/conflict/details');
     if (!data.ok || !data.available || !data.details) {
@@ -3178,6 +3119,8 @@ async function exportSyncConflictPackage(): Promise<void> {
 
 export function mountLegacyWorkbench(): void {
   renderShell();
+  // 弹层关闭时作废 ask 域在途的来源读取（原 closeModal 内的直接赋值，§4.4）。
+  registerModalCloseHook(() => { sourceReadSequence += 1; });
   setMutationIdleHandler(async (targetBuild) => {
     saveCurrentDraftSnapshot();
     reloadToBuild(targetBuild);
