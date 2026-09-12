@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "product_id": "com.summitworkbench.panel",
-  "frontend_build": "v2026.09.12-c6c9d54-24472fb0",
-  "git_revision": "c6c9d54",
-  "source_hash": "24472fb0a9157f8169978b0d72093ec1043bad88240c7330baeaeed532ad8e7b",
-  "built_at": "2026-09-12T07:45:52.392Z",
-  "index_sha256": "3cddb8bb68482a211c448b31ebb713d3047564c700f0db95100c41ea2611bb68",
+  "frontend_build": "v2026.09.12-37d5141-5186cf1c",
+  "git_revision": "37d5141",
+  "source_hash": "5186cf1c3f0f53af389e06617308128d21468479b2e9c4d96febdfbd85d23b16",
+  "built_at": "2026-09-12T07:47:55.790Z",
+  "index_sha256": "74c6b5b1cc53e04df336e340a14f7efd85637419647367ece77ea6302e87cef7",
   "assets": {
-    "assets/index-BgiwYL2P.js": "4fc8b6b66d9aec5618062ea228c65a18af0d81182c4603365790c0cb6e23019d",
+    "assets/index-BkO1wyGE.js": "c6a49850f8527db9bd73e83ce80dc1a74b2c69d7e10b85be54ed01954f8fe9c2",
     "assets/index-Dzf63s49.css": "f2c8bcc0707aaa12db7969d6e50b6bb79c1265f91b6434debb50e4d7a5ae15e2"
   }
 }
