@@ -56,3 +56,13 @@ API 只读/预检契约、保护态 UI 接线、脱敏恢复审计、普通 push
 build 25–29 的候选包证据、已完成项和补验步骤见
 `docs/archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`。P2-02 已完成并标记 `[x]`；P2-03
 仍未启动。
+
+## 后续状态
+
+本 ADR 的结论锚定在 **build 29 / `697c239`**。此后前端做了整体拆分（`legacy-main.ts` →
+`features/sync/*`，Step 1/6，逐行对比特一致），而冲突恢复的**后端与 API 契约自 `697c239` 起
+逐字节未变**（11 条 `/api/sync/*` 在 `docs/contracts/web-route-contract.json` 中完全相同），
+前端只有一处用户可见新增行为（`ee561f5`：`/api/sync/status` 读取失败时保留保护态，而不是静默
+隐藏横幅）。因此"把结论重新锚定到当前 build"只需一次差异点抽查，范围与步骤见
+[`../acceptance/DUAL-DEVICE-REHEARSAL.md`](../acceptance/DUAL-DEVICE-REHEARSAL.md) §A6；
+未验证项以 [`../acceptance/OPEN-VERIFICATION-ITEMS.md`](../acceptance/OPEN-VERIFICATION-ITEMS.md) 为准。

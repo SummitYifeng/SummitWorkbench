@@ -21,26 +21,53 @@
   回退，使同事装完点一下「授权飞书」即可，无需任何本机预置。**产品行为与数据格式未改动**；
   安全取舍与构建契约见 [`../RELEASING.md`](../RELEASING.md)「内置飞书凭据」，发布与双机验收证据见
   [`CHANGELOG.md`](../../CHANGELOG.md) 的 `[0.4.7]` 条目「发布」一节。
-- **A6（真实双设备冲突恢复）仍开放**，但本轮新增了一条独立证据：在一台**从未安装过**的 Mac 上
-  完成「装包 → 跳转飞书授权成功 → 配置 DeepSeek API 成功 → 生成简报成功」（由使用者本人执行，
-  非自动化复现）。
+- **A6（真实双设备冲突恢复）**：**不是"从未验证"，而是"已在历史 build 上验证、待在当前 build 上复跑"**。
+  两台机器（Studio + Air）上的冲突恢复**已经做过并留下完整证据**：
+  - **build 29 / `0.4.3` / `697c239`（2026-09-07）**：P2-02 双机退出验收通过——详情解读、人工
+    `keep-local` 选择、未知视图与 binary 强制 `preserve-both`、临时预检（不写入）、显式确认、
+    普通双父提交 `c95b6c1` 与 `af662d5`、脱敏审计 `8a6a543` 与 `ec00260`、`conflict_snapshot_stale`
+    与 `current_worktree_dirty` 保护分支、审计失败仍报 `committed`+`recovery_audit_failed`、
+    普通 push、Studio 快进到同一 HEAD、双方 clean 且 ahead/behind `0/0`。
+    全程见 [`../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)，
+    结论见 `CHANGELOG.md` `[0.4.3]` 与 [ADR 0043](../decisions/0043-sync-conflict-explanation.md)（`[x]`）。
+  - **build 23 / P1-07D**：同一 DMG 的双向同步、Air 离线写入恢复、双端离线分歧进入
+    `diverged-protected`（不 force/reset/rebase/stash、不丢数据）；**build 24** 完成覆盖安装与增量冒烟。
+  - **因此 A6 当前待办只是"把结论重新锚定到当前 build"**。实测差异（`697c239..HEAD`）：
+    冲突恢复的**后端语义未变**——`sync_coordinator.py`、`repositories/git.py`、`git_backend.py`、
+    `config/git_credentials.py` 一次都没改；`docs/contracts/web-route-contract.json` 里
+    **11 条 `/api/sync/*` 全部逐字节相同**（该契约由 `inspect.getsource` 抽取路由与错误码），
+    期间只新增了 9 条无关路由、无删除无变更；`routers/sync.py` 的 +455 行是 Step 6/16 的机械外迁。
+    前端只有一处用户可见变化：`ee561f5` 给同步横幅加了**读取失败不静默隐藏**的保护态保留
+    （保留「查看冲突详情」入口并显示「同步状态读取失败…（上方为上次成功读取的状态）」），
+    其余 `features/sync/*` 都是 Step 1/6 的搬迁。⇒ 复跑可缩减为**差异点抽查**，
+    见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) §A6。
 - **A7（第二台机器的向导接入）本轮新增**：连接向导新增「从另一台 Mac 克隆」旅程（私有 HTTPS
   `remote/stage` → 暂存核对 → `remote/confirm` → 落盘为 secondary + workspace 级 Keychain 凭据）。
   后端 workflow 早已有测试，**HTTP 层此前无覆盖**，本轮补上；但真实两台机器的现场复跑仍待做。
 - **ADR 0041 措辞更正**：该 ADR 写「Air『连接已有工作台』向导新增 PAT 输入与 `connect-remote`
   预检流」，与代码不符——历次提交中向导从未有过 PAT 输入（`connect-remote` 只作为 connect-existing
   位置步的预检 flow 存在，见 `f9060a0`）。PAT 输入是本轮才接上的，因此 A7 不是回归而是首次验证。
-- **当前开放项：3 项，且均不阻塞交付** —— A6（需第二台机器现场复跑；代码路径已有端到端自动化 +
-  变异测试覆盖）、A7（同上，需第二台机器现场复跑）、F1（**非缺陷**，明确超出 `INTERNAL-DEV` 交付范围）。
-  **UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**
-- 判定口径：**「历史某个 build 上验证过」不等于「当前代码已验证」**，见 A 组。
+- **当前开放项：3 项，且均不阻塞交付** —— A6（**已在 build 29 双机验收通过，待按差异点抽查
+  重新锚定到当前 build**）、A7（从未现场复跑，需第二台机器）、F1（**非缺陷**，明确超出
+  `INTERNAL-DEV` 交付范围）。**UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**
+- 判定口径：**「历史某个 build 上验证过」不等于「当前代码已验证」**，见 A 组；但"当前 build 的
+  相关代码确实变了吗"要实测，不能只按时间推断——A6 就是先量差异再决定复跑范围。
 
 ## A. 真实外部服务回归
 
 | # | 项 | 说明 |
 |---|---|---|
-| A6 | 真实双设备上的冲突恢复提交 | 需要第二台机器（MacBook Air）；步骤见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
-| A7 | 第二台机器上的「从另一台 Mac 克隆」向导旅程 | 需要第二台机器（MacBook Air）；装包 → 克隆 → 确认 → 本机为 secondary → 模型/飞书；步骤同见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
+| A6 | 当前 build 上的双设备冲突恢复 | 已在 build 29 双机验收通过（[P2-02 runbook](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)）；待按[差异点抽查](DUAL-DEVICE-REHEARSAL.md)重新锚定到当前 build |
+| A7 | 第二台机器上的「从另一台 Mac 克隆」向导旅程 | 从未现场复跑，需要第二台机器（MacBook Air）；装包 → 克隆 → 确认 → 本机为 secondary → 模型/飞书；步骤见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
+
+> **双机历史轮次（都已做过并有记录，供 A6/A7 复用）**
+>
+> | 轮次 | build / 源码 | 覆盖内容 | 证据位置 |
+> |---|---|---|---|
+> | P1-07D | build 23 / `0.4.3` | remote preview/apply、schema 迁移、preflight 全 PASS、Studio↔Air 双向同步、Air 离线写入恢复、双端离线分歧进入 `diverged-protected` | `CHANGELOG.md` `[0.4.3]`；[ADR 0041](../archive/decisions/0041-remote-normalization-acceptance.md) |
+> | 覆盖安装冒烟 | build 24 / `0.4.3` | 两台设备覆盖安装与增量冒烟（HTTPS remote、preflight、基础同步、secondary profile、简报/周报友好跳过、零写入） | `CHANGELOG.md` `[0.4.3]` |
+> | **P2-02（即 A6 本体）** | **build 29 / `697c239`** | **完整冲突恢复退出验收**：人工选择、`preserve-both`、临时预检、双父提交、脱敏审计、两类保护分支、审计失败分支、普通 push 与对端快进 | [P2-02 runbook](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)；[ADR 0043](../decisions/0043-sync-conflict-explanation.md) |
+> | 分发版单机 | build 21 / `v0.4.7` | 在**从未安装过**的 Mac 上：装包 → 飞书授权 → DeepSeek → 生成简报（使用者本人执行） | `CHANGELOG.md` `[0.4.7]` |
 
 > **A1–A5 已于 2026-09-11 在真实凭据 / 真实飞书 / 真实远端上复验通过**，当时用真实 vault 与真实
 > 模型（未用隔离副本，保护手段是 git 基线与事后回退）。逐项结果、证据与两个修复见 §L，并已登记到
@@ -409,7 +436,9 @@ Ref refs/heads/wb-acceptance-probe updated
 
 ### 仍待人工
 
-- **A6**：真实双设备冲突恢复需要第二台机器（MacBook Air）。
+- **A6**：完整流程已在 build 29 双机验收通过（见上表与 P2-02 runbook）；当前只需按
+  [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) §A6 做一次**差异点抽查**
+  （同步横幅读取失败保护态 + 一条分歧→恢复→push→快进的闭环）。
 - **A7**：在第二台机器上装包并走「从另一台 Mac 克隆」向导（真实私有 HTTPS 仓库 + 真实 PAT），
   确认本机 profile 为 secondary、PAT 只出现在 Keychain、草稿与仓库里都没有 PAT。
 - A3/A4 的**面板点击路径**（一键完成、行内编辑、会议行内编辑）由产品所有者复核；本轮已验证其

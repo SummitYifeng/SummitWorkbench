@@ -756,3 +756,21 @@ macOS 打包链路；其余提交一律 `[skip ci]`。
 | `test-build.mjs` | 设置页内容锚点从 `features/settings/index.ts` 移到 `render.ts` | 设置页在 8c 拆成目录后，barrel 只剩 re-export |
 | `test-browser-contract.mjs` | `settingsSource` 从单文件改为 `filesMatching(/^src\/features\/settings\/.*\.ts$/)` | 设置契约现在分布在目录内多个文件；放置保证由"单文件"改为"feature 内" |
 | `python tests/contract/*` | 前端源码聚合读取（`5428267`），`test_native_panel_contract.py` 增加 `_web_sources()`/`_web_source_after()` 逐文件切片 | 同一符号搬进新模块后，原先"读单文件"的 Python 守卫会误报 |
+
+### C.7 步骤 9 之后的收尾提交（同一条线，非新步骤）
+
+拆分目标在步骤 9 达成（`legacy-main.ts` 964 行，只剩类型契约、跨域状态、`render()`、
+全局派发、`refresh*` 与 `mountLegacyWorkbench`）。之后为"多设备同步收尾"落了这些提交，
+都属于同一目标的收尾，不改动拆分边界：
+
+| 提交 | 内容 |
+| --- | --- |
+| `487b456` | 连接向导新增「从另一台 Mac 克隆」旅程（第二台机器接入；PAT 只进 workspace 级 Keychain），使用指南与验收清单同步更新 |
+| `e946b6c` | 上述源码对应的产物提交 |
+| `46e6bb0` | 双机现场复跑文档（A6/A7） |
+| `1590cb9` | 把同步冲突恢复的请求链做成可执行断言（stub `fetch`，含"校验请求不得携带 `confirmed`"的变异验证） |
+| `4002915` | 上述源码对应的产物提交 |
+
+同一线的手动 CI：阶段边界 `34683593077`、多设备功能 `34683968128`，两次均 4/4 job 绿。
+收尾时的实测门禁：`tsc` 干净、14 个前端脚本全绿（73 个源文件）、
+`pytest --cov` **931 passed / 1 skipped，覆盖率 83.39%**、ruff/mypy/secret scan 全过。

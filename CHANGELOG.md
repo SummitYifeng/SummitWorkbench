@@ -168,11 +168,51 @@
   未为此重建前端。详见 `docs/implementation/DELIVERY-CLEANUP-REPORT.md` §5.2。
   **该瑕疵已在 `v0.4.6` 修复**（见下）。
 
-## [Unreleased] - 2026-09-11
+## [Unreleased]
+
+### 2026-09-12 · 前端拆分收尾与第二台机器接入
+
+#### 新增
+
+- **连接向导支持第二台机器接入**：向导第一步新增「**从另一台 Mac 克隆**」——填私有 HTTPS
+  仓库地址、目标文件夹（必须尚不存在）、GitHub 用户名和 PAT，先 `remote/stage` 暂存并核对
+  workspace marker（显示工作区短码与兼容性），再 `remote/confirm` 落盘，本机作为 **secondary**
+  加入。PAT 只活在 stage 与 confirm 之间：不进草稿、不进 `sessionStorage`、不回显、只写进
+  workspace 级 Keychain，仓库历史里也没有。此前这些后端接口（P0-09C）**没有任何调用方**，
+  新机器只能靠手工配置接入。入口只在空安装向导出现（完整 app 里没有这些受限路由）。
+
+#### 变更
+
+- **前端整体拆分完成**（`docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md` Steps 0–9）：
+  `web/src/legacy-main.ts` **3395 → 964 行**，收敛为纯组合根（类型契约、跨域状态、`render()`、
+  全局 click/submit 派发、`refresh*`、`mountLegacyWorkbench`），其余全部归入 `features/*`
+  或既有 `src/{api,core,lifecycle}`。**行为不变**：不改文案、DOM 结构、请求路径与请求头、
+  键盘/焦点行为；路由契约快照与每步全量门禁均通过。
+  - 与计划的偏差已记录并给出实测依据（同文件附录 C）：刷新编排取 §4.3 方案 B；
+    400–500 行目标实测不可达（派发器本身 340 行 / 57 分支，下限约 750 行）；
+    §3.1 把簇 5 放到 `lifecycle/*` 在 §4.1 分层下不成立（会形成 L0 → features 反向依赖）。
+  - 前端测试脚本从 7 个增至 14 个，全部布局无关。
+
+#### 测试与验收
+
+- **同步冲突恢复请求链**改为可执行断言：stub `fetch` 驱动
+  `详情 → 逐文件选择 → 选择校验 → 临时预检 → 确认恢复`，锁定"选择校验请求不得携带 `confirmed`"、
+  预检 `confirmed: false`、只有确认才 `confirmed: true`、`opaque-binary` 只能 `preserve-both`、
+  未选完时预检按钮禁用；并做过变异验证（给校验请求加上 `confirmed` 会被抓出）。
+- **A6 状态更正**：双设备冲突恢复**已在 build 29 / `697c239` 双机验收通过**（证据见
+  `docs/archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md` 与 ADR 0043），当前待办是把
+  结论重新锚定到本 build。实测差异：同步后端与 11 条 `/api/sync/*` 契约自 build 29 起**逐字节
+  未变**，前端唯一用户可见变化是 `ee561f5` 的"读取失败不静默隐藏保护态"。复跑范围据此缩减为
+  差异点抽查，见 `docs/acceptance/DUAL-DEVICE-REHEARSAL.md`。
+- 本次收尾实测门禁：`tsc` 干净、14 个前端脚本全绿（73 个源文件）、`pytest --cov`
+  **931 passed / 1 skipped，覆盖率 83.39%**、ruff / format / mypy / secret scan 全过；
+  手动触发 CI 两次（阶段边界与本次功能）均 4/4 job 绿。
+
+### 2026-09-11 · 远端 CI、前端工具链与交付门禁补强
 
 > 远端 CI、前端工具链与交付门禁补强，并产出 build 11 内部包。build 9 的历史产物身份不变。
 
-### 修复
+#### 修复
 
 - 修复 macOS framework 版 Python（python.org 安装包）下的 runtime record 身份误判：framework 构建会
   re-exec 到 `Python.app/Contents/MacOS/Python`，真实进程路径与 `sys.executable` 永不相等，导致
@@ -198,7 +238,7 @@
   现在 `MAX_TRANSCRIPT_BYTES` 是 workflow 层的单一真源，两条路径共用同一数值；CLI 会显式列出
   被跳过的文件而不是静默丢弃。修复后同一目录的预估 token 从 419 万降到 12。
 
-### 构建与交付
+#### 构建与交付
 
 - **build 12 内部包（当前装机版本）**：`0.4.4` / build `12` / arm64 / `INTERNAL-DEV`，前端
   `v2026.09.11-e8ed6f7-6e6e0c91`；DMG SHA-256
