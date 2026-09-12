@@ -38,6 +38,22 @@ def test_service_supervisor_has_identity_gate_and_recovery_states() -> None:
     assert "dateDecodingStrategy = .iso8601" in runtime
 
 
+def test_service_supervisor_pins_runtime_record_path_for_the_child() -> None:
+    """子进程的 runtime 记录路径必须显式传给服务端。
+
+    服务端默认从 ``Path.home()``（认 ``$HOME``）推导记录路径，而 App 用
+    ``NSHomeDirectory()``（不认 ``$HOME``）去读。正常启动下两者一致；但 ``$HOME`` 与账户
+    家目录不同时（例如从终端以自定义 HOME 启动），服务端写下的记录 App 永远找不到，
+    启动就卡在 ``readiness_timeout`` 循环里。显式传 ``WB_RUNTIME_RECORD`` 消除该隐式假设。
+    """
+    source = _source("ServiceSupervisor.swift")
+    runtime = _source("RuntimeRecord.swift")
+    # 必须用 App 自己读取记录的那个 URL，否则等于没对齐。
+    assert 'environment["WB_RUNTIME_RECORD"] = RuntimeRecord.url.path' in source
+    assert "static var url: URL" in runtime
+    assert "NSHomeDirectory()" in runtime
+
+
 def test_navigation_policy_rejects_non_panel_loopback() -> None:
     source = _source("PanelWindowController.swift")
     assert 'url.scheme?.lowercased() == "http"' in source

@@ -150,6 +150,11 @@ final class ServiceSupervisor {
         child.arguments = configuration.serverArguments
         var environment = ProcessInfo.processInfo.environment
         environment["WORK_ROOT"] = configuration.workRoot
+        // 显式对齐 runtime 记录路径。服务端默认从 Path.home()（认 $HOME）推导，而本 App 从
+        // NSHomeDirectory()（不认 $HOME）读取；正常启动下两者一致，但一旦 $HOME 与账户家目录
+        // 不同（例如从终端以自定义 HOME 启动），服务端写下的记录就永远找不到，App 会一直重试到
+        // readiness_timeout。显式传参消除这个隐式假设（服务端 --runtime-record 的默认值即本变量）。
+        environment["WB_RUNTIME_RECORD"] = RuntimeRecord.url.path
         environment["WB_PANEL_MODE"] = configuration.mode.rawValue
         environment["WB_LAUNCH_SESSION"] = UUID().uuidString
         environment["WB_SESSION_TOKEN"] = sessionToken
