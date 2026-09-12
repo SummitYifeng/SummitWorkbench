@@ -10,6 +10,9 @@ export function mountSyncBanner(deps: SyncDeps): void {
 export { refreshSyncBanner, retrySync, exportSyncSnapshot, exportSyncConflictPackage } from './banner';
 export {
   applySyncConflictRecovery,
+  conflictRecoveryRequest,
+  conflictSelectionRequest,
+  missingConflictSelections,
   previewSyncConflictRecovery,
   showSyncConflictDetails,
 } from './conflict';
