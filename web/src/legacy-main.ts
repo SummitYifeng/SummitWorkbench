@@ -35,28 +35,12 @@ import type { ProjectListFilter, ProjectState, ProjectView } from './features/pr
 import { reviewHtml } from './features/review';
 import type { ExternalAction, ReviewEntry, ReviewFilter, ReviewPayload } from './features/review';
 import {
-  conflictDigestSummary,
-  conflictKindLabel,
-  conflictRevision,
-  conflictSelectionLabel,
-} from './features/sync';
-import type {
-  ConflictDetails,
-  ConflictSelection,
-  RecoveryPreparationSummary,
-  SyncConflictDetailsPayload,
-  SyncConflictRecoveryPayload,
-  SyncStatusPayload,
-} from './features/sync';
-import {
-  activateModal,
   applyTabChrome,
   closeModal,
   focusVisibleProjectLink,
   mountShell,
   openModal,
   requestModalClose,
-  setModalReturnFocus,
   toast,
   viewElement,
 } from './features/shell';
@@ -73,10 +57,20 @@ import {
   resetAskForWorkspace,
   setAskDraft,
 } from './features/ask';
+import {
+  applySyncConflictRecovery,
+  exportSyncConflictPackage,
+  exportSyncSnapshot,
+  mountSyncBanner,
+  previewSyncConflictRecovery,
+  refreshSyncBanner,
+  retrySync,
+  showSyncConflictDetails,
+} from './features/sync';
+import { mountUndo, openUndoModal } from './features/undo';
 import { mountGuide } from './features/guide';
 import { renderSettings as renderSettingsFeature } from './features/settings';
 import { mountToday, plusMinutesInput, tsToDatetimeLocal, type ImportReceipt } from './features/today';
-import type { UndoDiffPayload, UndoHistoryPayload } from './features/undo';
 
 type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
 
@@ -177,11 +171,6 @@ let versionCheckPromise: Promise<void> | null = null;
 let restoredDraft: DraftSnapshot | null = null;
 // null = 尚未按任何 workspace 载入过；服务端省略 workspace_id 时回退为 'unknown'，也必须载入一次。
 let loadedAskWorkspace: string | null = null;
-let conflictDetails: ConflictDetails | null = null;
-let conflictSelections: Record<string, ConflictSelection> = {};
-let conflictPreparation: RecoveryPreparationSummary | null = null;
-let conflictMessage: string | null = null;
-let conflictBusy = false;
 
 function persistEntityDraft<T>(entity: string, value: T): void {
   if (saveEntityDraft(entity, value, remoteVersion?.workspace_id)) return;
@@ -1775,97 +1764,6 @@ function backFromProjectDetail(): void {
   }, 0);
 }
 
-// ---------- 撤销系统改动（P0'） ----------
-
-const UNDO_FLYNOTE =
-  '还原只作用于 vault 文件；飞书侧已产生的副作用（已建任务/会议、已完成状态）不可撤销、不受本次还原影响。';
-
-async function openUndoModal(): Promise<void> {
-  // 复用统一 dialog 激活：初始焦点进入弹层、dialog/aria-modal 语义、关闭按钮与返回焦点，
-  // 并清掉上一个弹层遗留的草稿标记，避免 Escape 出现无关的"未保存内容"确认。
-  const modal = openModal('<div class="loading">正在读取系统自动提交…</div>');
-  let history: UndoHistoryPayload;
-  try {
-    history = await api<UndoHistoryPayload>('/api/undo/history');
-  } catch (err) {
-    openModal('<h3>撤销系统改动</h3><p class="msg err">' + esc(String(err)) + '</p>');
-    return;
-  }
-  if (!history.ok || !history.commits) {
-    openModal(
-      '<h3>撤销系统改动</h3><p class="msg err">' + esc(history.message ?? '读取失败') + '</p>',
-    );
-    return;
-  }
-  if (history.commits.length === 0) {
-    openModal(
-      '<h3>撤销系统改动</h3>' +
-      '<p>' + esc(history.note ?? '暂无系统自动提交') + '</p>' +
-      '<p class="hint">每次系统写回成功都会自动留痕（git 提交，消息以 wb: 开头），可在此一键还原。' + UNDO_FLYNOTE + '</p>',
-    );
-    return;
-  }
-  const rows = history.commits.map((c) =>
-    '<div class="undo-commit">' +
-    '<div class="undo-head"><strong>' + esc(c.message) + '</strong>' +
-    '<span class="hint">' + esc(c.short_sha) + ' · ' + esc(c.time.replace('T', ' ').slice(0, 16)) + '</span></div>' +
-    '<div class="hint undo-files">触碰文件：' + esc(c.files.join('、')) + '</div>' +
-    '<button class="ghost" data-undo="diff" data-sha="' + c.sha + '">查看差异</button> ' +
-    '<button class="ok" data-undo="revert" data-sha="' + c.sha + '">还原此提交</button>' +
-    '<pre class="undo-diff" hidden></pre>' +
-    '</div>'
-  ).join('');
-  openModal(
-    '<h3>撤销系统改动</h3>' +
-    '<p class="hint">' + UNDO_FLYNOTE + ' 工作树有未提交人工改动的文件会被拒绝还原。</p>' + rows,
-  );
-  modal.querySelectorAll<HTMLElement>('[data-undo]').forEach((btn) => {
-    const sha = btn.dataset.sha ?? '';
-    if (btn.dataset.undo === 'diff') {
-      btn.addEventListener('click', () => { void loadUndoDiff(btn, sha); });
-    } else if (btn.dataset.undo === 'revert') {
-      btn.addEventListener('click', () => { void doUndoRevert(sha); });
-    }
-  });
-}
-
-async function loadUndoDiff(btn: HTMLElement, sha: string): Promise<void> {
-  const row = btn.closest<HTMLElement>('.undo-commit');
-  const pre = row?.querySelector<HTMLElement>('.undo-diff');
-  if (!pre) return;
-  if (!pre.hidden && pre.textContent) {
-    pre.hidden = true;
-    return;
-  }
-  pre.hidden = false;
-  pre.textContent = '正在读取差异…';
-  try {
-    const r = await api<UndoDiffPayload>('/api/undo/diff?sha=' + encodeURIComponent(sha));
-    pre.textContent = r.ok ? (r.diff ?? '') : ('读取失败：' + (r.message ?? ''));
-  } catch (err) {
-    pre.textContent = String(err);
-  }
-}
-
-async function doUndoRevert(sha: string): Promise<void> {
-  if (!window.confirm('确定还原该次系统改动？' + UNDO_FLYNOTE)) return;
-  try {
-    const r = await mutation(() =>
-      api<{ ok: boolean; message: string }>('/api/undo/revert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sha }),
-      })
-    );
-    toast(r.message, r.ok ? 'ok' : 'err');
-    if (r.ok) {
-      closeModal();
-      void refreshAll();
-    }
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-}
 async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
   try {
@@ -2116,311 +2014,6 @@ async function refreshAll(): Promise<{ state: boolean; review: boolean }> {
   return { state: stateOk, review: reviewOk };
 }
 
-function conflictSelectionsPayload(): Record<string, string> {
-  return Object.fromEntries(Object.entries(conflictSelections).filter(([, choice]) => choice)) as Record<string, string>;
-}
-
-function missingConflictSelections(): string[] {
-  return conflictDetails?.paths.filter((item) => !item.automatic && !conflictSelections[item.path]).map((item) => item.path) ?? [];
-}
-
-function activateConflictModal(html: string): HTMLElement {
-  const modal = activateModal(html);
-  modal.dataset.draftEntity = 'sync-conflict';
-  modal.dataset.draftDirty = Object.values(conflictSelections).some(Boolean) ? '1' : '0';
-  return modal;
-}
-
-function renderSyncConflictModal(): void {
-  const modal = document.getElementById('modal') as HTMLElement | null;
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
-  if (!modal || !backdrop || !conflictDetails) return;
-  const details = conflictDetails;
-  const missing = missingConflictSelections();
-  const preparation = conflictPreparation;
-  const message = conflictMessage
-    ? '<div class="msg ' + (preparation?.ok ? 'ok' : 'err') + '">' + esc(conflictMessage) + '</div>' : '';
-  const pathRows = details.paths.map((item) => {
-    const changedOn = item.changed_on.map((side) => side === 'local' ? '本机' : '远端').join('、');
-    const metadata = conflictDigestSummary(item);
-    const selector = item.automatic
-      ? '<span class="conflict-auto">' + esc(item.action === 'rebuild' ? '合并后重建' : '自动收集') + '</span>'
-      : '<label class="conflict-choice"><span class="sr-only">' + esc(item.path) + '处理方式</span>' +
-        '<select data-conflict-path="' + esc(item.path) + '"' + (conflictBusy ? ' disabled' : '') + '>' +
-        '<option value="">请选择处理方式</option>' +
-        ((item.kind === 'unknown-generated-view' || item.kind === 'opaque-binary')
-          ? ['preserve-both'] as ConflictSelection[]
-          : ['keep-local', 'keep-remote', 'preserve-both'] as ConflictSelection[]).map((choice) =>
-          '<option value="' + choice + '"' + (conflictSelections[item.path] === choice ? ' selected' : '') + '>' +
-          conflictSelectionLabel(choice) + '</option>').join('') + '</select></label>';
-    return '<div class="conflict-path"><div class="conflict-path-main"><code>' + esc(item.path) + '</code>' +
-      '<span class="hint">' + esc(conflictKindLabel(item.kind)) + ' · 变更：' + esc(changedOn) + '</span>' +
-      (metadata ? '<span class="hint conflict-metadata">' + esc(metadata) + '</span>' : '') + '</div>' +
-      '<div class="conflict-path-action">' + selector + '</div></div>';
-  }).join('');
-  const status = preparation
-    ? '<div class="conflict-preflight"><strong>' + (preparation.ok ? '临时预检通过' : '临时预检未通过') + '</strong>' +
-      '<span>事件 ' + preparation.event_count + ' · 聚合 ' + preparation.aggregate_count +
-      ' · 重建视图 ' + preparation.rebuilt_view_count + ' · 候选文件 ' + preparation.candidate_path_count + '</span>' +
-      (preparation.error_code ? '<span class="hint">原因：' + esc(preparation.error_code) + '</span>' : '') + '</div>' : '';
-  activateConflictModal('<h3>同步冲突详情</h3>' +
-    '<p class="hint">当前处于保护态。这里只读取已存在的分叉快照，不展示正文；确认前不会修改 vault。</p>' +
-    '<div class="conflict-revisions"><span>共同基线 <code>' + esc(conflictRevision(details.base_revision)) + '</code></span>' +
-    '<span>本机 <code>' + esc(conflictRevision(details.local.revision)) + '</code></span>' +
-    '<span>远端 <code>' + esc(conflictRevision(details.remote.revision)) + '</code></span></div>' +
-    '<div class="conflict-summary">自动处理 ' + details.automatic_path_count + ' 项 · 需要选择 ' + details.manual_path_count + ' 项</div>' +
-    '<div class="conflict-paths">' + (pathRows || '<p class="hint">没有可处理的分叉文件。</p>') + '</div>' + message + status +
-    '<p class="hint conflict-safety">恢复只会创建普通的本地双父提交，并尝试普通同步；不会 force-push、reset、rebase 或 stash。若远端已再次变化，仍会回到保护态。</p>' +
-    '<div class="row"><button class="primary" data-action="sync-conflict-preview"' +
-    (conflictBusy || missing.length > 0 ? ' disabled' : '') + '>临时预检（不写入）</button>' +
-    (preparation?.ok ? '<button class="ok" data-action="sync-conflict-apply"' + (conflictBusy ? ' disabled' : '') + '>确认恢复并创建提交</button>' : '') +
-    '<button class="ghost" data-action="sync-conflict-export"' + (conflictBusy ? ' disabled' : '') + '>导出冲突包</button>' +
-    '<button class="ghost" data-action="copy-diagnostics"' + (conflictBusy ? ' disabled' : '') + '>复制诊断</button>' +
-    '<button class="ghost" data-action="close-modal"' + (conflictBusy ? ' disabled' : '') + '>稍后处理</button></div>');
-  backdrop.hidden = false;
-  modal.querySelectorAll<HTMLSelectElement>('[data-conflict-path]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const path = select.dataset.conflictPath ?? '';
-      if (path) conflictSelections[path] = select.value as ConflictSelection;
-      persistEntityDraft('sync-conflict', conflictSelectionsPayload());
-      conflictMessage = null;
-      renderSyncConflictModal();
-      if (path) modal.querySelector<HTMLSelectElement>('[data-conflict-path="' + CSS.escape(path) + '"]')?.focus();
-    });
-  });
-}
-
-async function showSyncConflictDetails(): Promise<void> {
-  const modal = document.getElementById('modal') as HTMLElement | null;
-  const backdrop = document.getElementById('modal-backdrop') as HTMLElement | null;
-  if (!modal || !backdrop) return;
-  const returnFocus = document.querySelector<HTMLElement>('[data-action="sync-conflict-details"]');
-  conflictDetails = null;
-  conflictSelections = {};
-  conflictPreparation = null;
-  conflictMessage = null;
-  conflictBusy = false;
-  activateConflictModal('<div class="loading">正在读取分叉详情（只读）…</div>');
-  setModalReturnFocus(returnFocus);
-  try {
-    const data = await api<SyncConflictDetailsPayload>('/api/sync/conflict/details');
-    if (!data.ok || !data.available || !data.details) {
-      activateConflictModal('<h3>无法读取同步冲突</h3><p class="msg err">' + esc(data.reason ?? '当前已不在冲突保护态，请刷新同步状态。') + '</p>' +
-        '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>');
-      return;
-    }
-    conflictDetails = data.details;
-    const saved = loadEntityDraft<Record<string, string>>('sync-conflict', Date.now(), remoteVersion?.workspace_id) ?? {};
-    conflictSelections = Object.fromEntries(data.details.paths.filter((item) => !item.automatic).map((item) => {
-      const allowed: ConflictSelection[] = item.kind === 'unknown-generated-view' || item.kind === 'opaque-binary'
-        ? ['preserve-both']
-        : ['keep-local', 'keep-remote', 'preserve-both'];
-      const choice = saved[item.path] as ConflictSelection;
-      return [item.path, allowed.includes(choice) ? choice : ''];
-    }));
-    renderSyncConflictModal();
-  } catch (err) {
-    activateConflictModal('<h3>无法读取同步冲突</h3><p class="msg err">' + esc(String(err)) + '</p>' +
-      '<div class="row"><button class="ghost" data-action="close-modal">关闭</button></div>');
-  }
-}
-
-function conflictRecoveryRequest(confirmed: boolean): Record<string, unknown> {
-  if (!conflictDetails) throw new Error('缺少分叉快照');
-  return {
-    base_revision: conflictDetails.base_revision,
-    local_revision: conflictDetails.local.revision,
-    remote_revision: conflictDetails.remote.revision,
-    selections: conflictSelectionsPayload(),
-    confirmed,
-  };
-}
-
-function conflictSelectionRequest(): Record<string, unknown> {
-  if (!conflictDetails) throw new Error('缺少分叉快照');
-  return {
-    base_revision: conflictDetails.base_revision,
-    local_revision: conflictDetails.local.revision,
-    remote_revision: conflictDetails.remote.revision,
-    selections: conflictSelectionsPayload(),
-  };
-}
-
-async function previewSyncConflictRecovery(): Promise<void> {
-  if (!conflictDetails || conflictBusy) return;
-  const missing = missingConflictSelections();
-  if (missing.length) {
-    conflictMessage = '请先为所有人工文件选择处理方式。';
-    renderSyncConflictModal();
-    return;
-  }
-  conflictBusy = true;
-  conflictMessage = '正在临时环境预检，当前 vault 不会写入…';
-  renderSyncConflictModal();
-  try {
-    const request = conflictRecoveryRequest(false);
-    if (conflictDetails.manual_path_count > 0) {
-      const selection = await api<{ ok: boolean; selection?: { error_code?: string | null }; reason?: string }>(
-        '/api/sync/conflict/selection/validate',
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflictSelectionRequest()) },
-      );
-      if (!selection.ok) {
-        conflictMessage = selection.reason ?? selection.selection?.error_code ?? '人工选择未通过校验。';
-        conflictBusy = false;
-        renderSyncConflictModal();
-        return;
-      }
-    }
-    const data = await api<SyncConflictRecoveryPayload>('/api/sync/conflict/recover', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
-    });
-    conflictPreparation = data.preparation ?? null;
-    conflictMessage = data.preparation?.ok
-      ? '预检完成。请确认后才会写回并创建提交。'
-      : data.reason ?? '恢复准备未完成。';
-  } catch (err) {
-    conflictMessage = String(err);
-  } finally {
-    conflictBusy = false;
-    renderSyncConflictModal();
-  }
-}
-
-async function applySyncConflictRecovery(): Promise<void> {
-  if (!conflictDetails || !conflictPreparation?.ok || conflictBusy) return;
-  if (!window.confirm('确认将预检结果写回当前 vault，创建普通的本地双父合并提交，并尝试普通同步？')) return;
-  conflictBusy = true;
-  let committed = false;
-  conflictMessage = '正在写回并创建本地恢复提交…';
-  renderSyncConflictModal();
-  try {
-    const data = await mutation(() => api<SyncConflictRecoveryPayload>('/api/sync/conflict/recover', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflictRecoveryRequest(true)),
-    }));
-    if (data.recovery?.status === 'committed') {
-      committed = true;
-      clearEntityDraft('sync-conflict', remoteVersion?.workspace_id);
-      closeModal();
-      const auditFailed = data.recovery.audit?.status === 'failed';
-      const message = auditFailed
-        ? (data.push?.ok
-          ? '恢复提交已同步，但脱敏审计记录未完成。'
-          : '恢复提交已创建；普通同步与脱敏审计记录均未完成。')
-        : (data.push?.ok
-          ? '恢复提交已创建并完成普通同步。'
-          : '恢复提交已创建，普通同步暂未完成，请稍后点击“立即重试”。');
-      toast(message, data.push?.ok && !auditFailed ? 'ok' : 'info');
-      await Promise.all([refreshSyncBanner(), refreshState()]);
-      return;
-    }
-    conflictMessage = data.reason ?? '恢复未提交：' + (data.recovery?.error_code ?? data.recovery?.status ?? '未知原因');
-  } catch (err) {
-    conflictMessage = String(err);
-  } finally {
-    conflictBusy = false;
-    if (!committed && conflictDetails) renderSyncConflictModal();
-  }
-}
-
-async function refreshSyncBanner(): Promise<void> {
-  const el = document.getElementById('sync-banner') as HTMLElement | null;
-  if (!el) return;
-  try {
-    const data = await api<SyncStatusPayload>('/api/sync/status');
-    const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
-    el.hidden = !interesting;
-    if (interesting) {
-      const rows = [
-        ['状态', data.state],
-        ['待推送', String(data.pending_commits ?? 0)],
-        ['最后成功', data.last_sync_at ?? '—'],
-        ['本地领先', String(data.ahead ?? 0)],
-        ['远端领先', String(data.behind ?? 0)],
-        ['分支', data.branch ?? '—'],
-        ['远端主机', data.remote_host ?? '—'],
-        ['仓库', (data.repo_states ?? []).join('、') || '—'],
-        ['主设备', data.automation_primary_device_id ?? '—'],
-        ['主设备代际', String(data.automation_primary_generation ?? '—')],
-        ['下一步', data.next_step ?? '—'],
-      ];
-      const conflictAction = data.state === 'diverged-protected'
-        ? '<button class="ghost" data-action="sync-conflict-details">查看冲突详情</button>' : '';
-      el.innerHTML = '<div class="sync-title">同步状态</div>' +
-        '<div class="sync-grid">' + rows.map(([label, value]) =>
-          '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
-        '</div>' +
-        (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
-        '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
-        '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
-    }
-  } catch (err) {
-    // 读取失败不能静默隐藏：已显示的保护态（如 diverged-protected 及其"查看冲突详情"入口）
-    // 必须保留，并明确标注这是上次成功读取的状态。
-    if (el.hidden) return;
-    el.querySelector('.sync-read-error')?.remove();
-    const note = document.createElement('div');
-    note.className = 'sync-detail sync-read-error';
-    note.innerHTML = '同步状态读取失败：' + esc(String(err)) +
-      '（上方为上次成功读取的状态） <button class="ghost" data-action="sync-refresh">重新读取</button>';
-    el.appendChild(note);
-  }
-}
-
-async function retrySync(): Promise<void> {
-  try {
-    const data = await mutation(() => api<{ ok: boolean; message?: string }>('/api/sync/run', { method: 'POST' }));
-    toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
-    await Promise.all([refreshSyncBanner(), refreshState()]);
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-}
-
-async function exportSyncSnapshot(): Promise<void> {
-  try {
-    const data = await api<SyncStatusPayload>('/api/sync/export');
-    const content = JSON.stringify(data, null, 2) + '\n';
-    if (sendNativeMessage({
-      type: 'saveTextFile',
-      filename: 'summitworkbench-sync-status.json',
-      content,
-    })) {
-      toast('请选择保存位置', 'info');
-      return;
-    }
-    const blob = new Blob([content], { type: 'application/json' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'summitworkbench-sync-status.json';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(link.href);
-      link.remove();
-    }, 1000);
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-}
-
-async function exportSyncConflictPackage(): Promise<void> {
-  try {
-    const response = await fetch('/api/sync/conflict/export', { cache: 'no-store' });
-    if (!response.ok) throw new Error('冲突包导出失败（HTTP ' + response.status + '）');
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(await response.blob());
-    link.download = 'summitworkbench-sync-recovery.zip';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
-    toast('冲突包已准备下载', 'ok');
-  } catch (err) {
-    toast(String(err), 'err');
-  }
-}
-
 // ---------- 启动（由 main.ts composition root 调用） ----------
 
 export function mountLegacyWorkbench(): void {
@@ -2454,6 +2047,12 @@ export function mountLegacyWorkbench(): void {
         window.setTimeout(() => window.close(), 800);
       });
     },
+  });
+  mountUndo({ refreshAll });
+  mountSyncBanner({
+    refreshState,
+    workspaceId: () => remoteVersion?.workspace_id,
+    persistEntityDraft,
   });
   mountAsk({
     projects: () => state?.projects ?? [],

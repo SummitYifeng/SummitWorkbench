@@ -1,0 +1,108 @@
+import { api } from '../../api/request';
+import { mutation } from '../../lifecycle/connection';
+import { sendNativeMessage } from '../../lifecycle/native-bridge';
+import { esc } from '../../md';
+import { toast } from '../shell';
+import { getSyncDeps } from './state';
+import type { SyncStatusPayload } from './types';
+
+/** 顶部同步保护态横幅、重试与导出（原 legacy-main 逐条搬迁）。 */
+
+export async function refreshSyncBanner(): Promise<void> {
+  const el = document.getElementById('sync-banner') as HTMLElement | null;
+  if (!el) return;
+  try {
+    const data = await api<SyncStatusPayload>('/api/sync/status');
+    const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
+    el.hidden = !interesting;
+    if (interesting) {
+      const rows = [
+        ['状态', data.state],
+        ['待推送', String(data.pending_commits ?? 0)],
+        ['最后成功', data.last_sync_at ?? '—'],
+        ['本地领先', String(data.ahead ?? 0)],
+        ['远端领先', String(data.behind ?? 0)],
+        ['分支', data.branch ?? '—'],
+        ['远端主机', data.remote_host ?? '—'],
+        ['仓库', (data.repo_states ?? []).join('、') || '—'],
+        ['主设备', data.automation_primary_device_id ?? '—'],
+        ['主设备代际', String(data.automation_primary_generation ?? '—')],
+        ['下一步', data.next_step ?? '—'],
+      ];
+      const conflictAction = data.state === 'diverged-protected'
+        ? '<button class="ghost" data-action="sync-conflict-details">查看冲突详情</button>' : '';
+      el.innerHTML = '<div class="sync-title">同步状态</div>' +
+        '<div class="sync-grid">' + rows.map(([label, value]) =>
+          '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
+        '</div>' +
+        (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
+        '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
+        '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
+    }
+  } catch (err) {
+    // 读取失败不能静默隐藏：已显示的保护态（如 diverged-protected 及其"查看冲突详情"入口）
+    // 必须保留，并明确标注这是上次成功读取的状态。
+    if (el.hidden) return;
+    el.querySelector('.sync-read-error')?.remove();
+    const note = document.createElement('div');
+    note.className = 'sync-detail sync-read-error';
+    note.innerHTML = '同步状态读取失败：' + esc(String(err)) +
+      '（上方为上次成功读取的状态） <button class="ghost" data-action="sync-refresh">重新读取</button>';
+    el.appendChild(note);
+  }
+}
+
+export async function retrySync(): Promise<void> {
+  try {
+    const data = await mutation(() => api<{ ok: boolean; message?: string }>('/api/sync/run', { method: 'POST' }));
+    toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
+    await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+export async function exportSyncSnapshot(): Promise<void> {
+  try {
+    const data = await api<SyncStatusPayload>('/api/sync/export');
+    const content = JSON.stringify(data, null, 2) + '\n';
+    if (sendNativeMessage({
+      type: 'saveTextFile',
+      filename: 'summitworkbench-sync-status.json',
+      content,
+    })) {
+      toast('请选择保存位置', 'info');
+      return;
+    }
+    const blob = new Blob([content], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'summitworkbench-sync-status.json';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 1000);
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
+
+export async function exportSyncConflictPackage(): Promise<void> {
+  try {
+    const response = await fetch('/api/sync/conflict/export', { cache: 'no-store' });
+    if (!response.ok) throw new Error('冲突包导出失败（HTTP ' + response.status + '）');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(await response.blob());
+    link.download = 'summitworkbench-sync-recovery.zip';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
+    toast('冲突包已准备下载', 'ok');
+  } catch (err) {
+    toast(String(err), 'err');
+  }
+}
