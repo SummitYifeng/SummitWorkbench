@@ -99,3 +99,25 @@ def test_repo_has_no_stray_untracked_template() -> None:
         "conventions.template.md",
     }
     assert names == set(NEW_TEMPLATES) | legacy, names
+
+
+def test_seed_conventions_documents_exactly_the_schema_vocabulary() -> None:
+    """种子规范里的 type 词表必须与 `domain.vault.NOTE_TYPES` 完全一致。
+
+    种子模板会成为**新 workspace 的规范**；它少写一个 type 就会让新库里的笔记被判为
+    「未知 type」，多写一个则会让 Agent 写出校验不过的笔记。变异验证：在模板词表里删掉
+    任意一行（例如 `decision`），本用例必须变红。
+    """
+    import re
+
+    from summit_workbench.domain.vault import NOTE_TYPES
+
+    text = (default_vault_templates_dir() / "conventions.template.md").read_text(encoding="utf-8")
+    documented = set(
+        re.findall(r"^\| `([a-z][a-z-]*)` \| (?:single|multi|global|free) \|", text, flags=re.MULTILINE)
+    )
+    assert documented == set(NOTE_TYPES), {
+        "only_in_template": sorted(documented - set(NOTE_TYPES)),
+        "only_in_code": sorted(set(NOTE_TYPES) - documented),
+    }
+
