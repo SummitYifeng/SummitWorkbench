@@ -219,9 +219,10 @@
 
 > 双机复跑收尾（A6 完整闭环的第 5–6 步）时撞到的两个问题，都在**冲突恢复**这条路径上，
 > 且互为因果：界面上看不到原因（D7），而真正的原因是恢复**对同一文件不可重复执行**（D8）。
-> 只以源码 + 单元/契约测试 + 变异验证收口（提交 `fd19603`），**尚未打进任何 DMG**
-> （前端静态资源已重建为 `v2026.09.13-fd19603-c7517c5a`，构建提交 `abd4449`，
-> 下一次打包自然带上）；真实 UI 复验需 build 30 或更高；
+> 源码提交 `fd19603`，附单元/契约测试与变异验证；随内部产物 **build 30** 出包
+> （`frontend_build = v2026.09.13-b31c3ac-c7517c5a`，DMG SHA-256
+> `8a87044ba839ba2c291013a5b6d373b7834e9f1596259da9fa89fda0a131b645`），
+> 并在真机上复验 D8 通过（见下）；
 > 完整复现步骤与证据见 `docs/acceptance/DUAL-DEVICE-REHEARSAL.md` 文末「附」。
 
 #### 修复
@@ -254,6 +255,34 @@
   无「把已有本地工作台首次发布到新远端」的路径、同步失败仍不落盘到 `~/Library/Logs`。
 - 现场代价与 build 29 的逐条复核见 §O：D8 在真机上把用户从「保留双方」逼成「保留本机」，
   远端那条捕捉最终只剩第二父提交 `f013de6` 一个副本（工作树里 `grep -rl 离线-A2` 已找不到）。
+- **真机复验（build 30，见 §P）**：在装好的 build 30 上重造分叉（本地 `wb: capture [d8-local-verify]`
+  vs 远端 `wb: capture [d8-remote-verify]`，且 vault 里本来就躺着第一轮的 `inbox.md.remote`），
+  走真实恢复接口选「保留双方副本」：预检 `status=validated / error_code=null`（不再被拒），
+  写回 `applied_paths = ["inbox.md.remote.09aebd7"]`，第一轮的 `inbox.md.remote` 哈希不变
+  （`13bfc790…`），本机与远端两份内容同时在位。
+
+### 2026-09-13 · 待修：恢复提交后的 push 可能被误判为非快进（D9）
+
+> 只在 build 30 真机复验时暴露：**dulwich 判定"能否快进"用的是提交时间戳剪枝，不是图可达性**。
+> 当远端父提交的 committer time 晚于本地恢复提交（跨机时钟偏差，或任何把提交时间写晚的来源），
+> 恢复本身成功、推送却被拒，workspace 卡在 `diverged-protected`，而 git 自己的
+> `merge-base --is-ancestor` 认为这是一次干净快进。**尚未修复**，排期处理。
+
+- **复现（build 30 真机）**：远端父 `09aebd7`（`commit_time = 01:50:00Z`）、本地恢复提交
+  `001df9a`（`01:47:21Z`）+ 审计 `f0a51bc`（`01:47:22Z`）⇒
+  `dulwich.graph.can_fast_forward(repo, 09aebd7, f0a51bc) = False`，而
+  `git merge-base --is-ancestor 09aebd7 HEAD` = **YES**；`porcelain.push` 抛
+  `DivergedBranches(b'09aebd7…', b'f0a51bc…')`，App 归类为 `non-fast-forward`。
+  同一对提交用系统 git（走代理）推送**成功**（`09aebd7..f0a51bc`），证明远端接受这次快进、
+  拒绝完全来自客户端的前置检查。
+- **直接子提交不触发**：`can_fast_forward(09aebd7, 001df9a) = True`——多一跳（审计提交）才踩到
+  时间戳剪枝，所以"恢复提交 + 审计提交"这个固定组合正好落在坏区里。
+- **为什么真机也会遇到**：本次是人工造的远端提交时间偏晚触发的，但同样的形状在**两台机器时钟
+  有偏差**（哪怕几分钟）时天然成立——对端"未来"的提交 + 本机按真实时间生成恢复提交。
+- **修法方向**：在 `DulwichGitBackend.push` 里捕获 `porcelain.DivergedBranches` 后，用**不依赖
+  时间戳的图可达性**复核（从本地头沿 parents 走到远端 ref）；只有确认真快进时，才对该 ref
+  显式 `force=True` 重推一次，并把"图复核通过"写进状态原因。不做无条件 force。
+
 
 ### 2026-09-12 · 前端拆分收尾与第二台机器接入
 

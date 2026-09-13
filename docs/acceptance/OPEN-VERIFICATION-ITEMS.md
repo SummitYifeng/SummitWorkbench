@@ -836,7 +836,7 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 > [`../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)；
 > 本轮是"差异点抽查 + 一条端到端闭环"，把结论落在当前 build 上。
 
-### 本轮发现的产品缺陷（D1–D8，**全部已修**）
+### 本轮发现的产品缺陷（D1–D8 **已修**，D9 待修）
 
 修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205` /
 D7 `fd19603` / D8 `fd19603`。其中 D6 是用户可见的新增能力（顶部栏「⇅ 立即同步」+ 空闲自动拉取），
@@ -916,3 +916,65 @@ D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_co
 | 远端 `main`（`gh api repos/SummitYifeng/summitworkbench-rehearsal`，**远端权威**） | `ed820ed` |
 | 工作树 / 状态 | clean，`ahead/behind 0/0`，`state: ready` |
 | 最后一次同步 | 01:33:46Z（窗口可见时的自动拉取，未人工点击） |
+
+## P. build 30 的真机复验：D8 通过、D7 对齐、新发现 D9（2026-09-13）
+
+产物：**build 30**（`0.4.7` / arm64 / `INTERNAL-DEV`，源码 `b31c3ac`，
+`frontend_build = v2026.09.13-b31c3ac-c7517c5a`，DMG SHA-256
+`8a87044ba839ba2c291013a5b6d373b7834e9f1596259da9fa89fda0a131b645`，app SHA-256
+`063bab4b569ef2a090de48ea33f70e8df6e508264de645535a87b84a4db552a1`）。
+装到 Studio 后，运行中进程的 `runtime.json` 与包内 `build-manifest.json` 的 `frontend_build` 一致；
+包内 bundle 能搜到提示表文案 `改选「保留本机」或「采用远端」`，而 build 29 的 bundle 里
+只有「恢复准备未完成」——"D7/D8 是否进了这个包"可以就地复核。
+
+### P.1 D8 真机复验（**通过**）
+
+在 Rehearsal 工作台重造一个**与现场同形**的分叉：本地 `wb: capture [d8-local-verify]`（`060f33e`）
+对远端 `wb: capture [d8-remote-verify]`（`09aebd7`，共同 base `ed820ed`），而 vault 里本来就躺着
+第一轮恢复留下的 `inbox.md.remote`（`13bfc790…`）——这正是现场把恢复整次拒掉的那个条件。
+
+| 步骤 | 观察 |
+|---|---|
+| `POST /api/sync/run` | `state = diverged-protected`；`details`：base `ed820ed`、local `060f33e`、remote `09aebd7`、`manual_path_count = 1`（`inbox.md` 双侧都改） |
+| 预检（`selections={"inbox.md":"preserve-both"}`，`confirmed=false`） | `preparation.status = validated`、`ok = true`、`candidate_path_count = 1`、**`error_code = null`** —— build 29 在这一步必然 `rejected` + `preserve_both_path_collision` |
+| 写回（`confirmed=true`） | `recovery.status = committed`、`revision = 001df9a`、**`applied_paths = ["inbox.md.remote.09aebd7"]`**、`audit.status = committed` |
+| 工作树 | 新增 `inbox.md.remote.09aebd7`（958 B，尾部是远端那条 `D8-远端验证`）；`inbox.md` 保留本机内容（`D8-本机验证`）；**第一轮的 `inbox.md.remote` 哈希仍是 `13bfc790…`，未被覆盖** |
+
+### P.2 D7 对齐（前端拿到的是带原因的错误码）
+
+用与现场同形的"快照过期"请求打真实端点（前端的发法就是这样：它手里握着打开详情那一刻的
+revision，之后本地又动过一次）：
+
+```json
+{"ok": false, "available": true, "state": "diverged-protected",
+ "recovery": {"status": "stale", "error_code": "conflict_snapshot_stale"}}
+```
+
+build 29 的前端只读 `data.reason`（这个响应里不存在）⇒ 显示「恢复准备未完成。」；
+build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命中提示表，显示
+「远端或本机在上次读取之后又变了：请关掉本弹层、重新打开「查看冲突详情」再试。」
+渲染本身由 `web/scripts/test-sync-render.mjs` 的断言 + 变异验证兜底。
+
+### P.3 新发现 D9：恢复提交后的 push 被误判为非快进（**未修，待排期**）
+
+真机复验里顺带撞到：`push_after_commit` 报告
+`远端已有新提交，需要处理分叉（non-fast-forward）`，但这一对提交其实是**干净快进**。
+
+| 判据 | 结果 |
+|---|---|
+| `dulwich.graph.can_fast_forward(repo, 09aebd7, f0a51bc)` | **False** |
+| `can_fast_forward(repo, 09aebd7, 001df9a)`（直接子提交） | True |
+| `git merge-base --is-ancestor 09aebd7 HEAD` | **YES**（图可达性：确实是快进） |
+| `porcelain.push` | `DivergedBranches(b'09aebd7…', b'f0a51bc…')` → App 归类 `non-fast-forward` |
+| 同一对提交用系统 git（走 127.0.0.1:7890 代理）推送 | **成功**：`09aebd7..f0a51bc` —— 远端接受这次快进 |
+| 随后 `POST /api/sync/run` | `ready`，`ahead/behind 0/0` |
+
+- **根因**：dulwich 的 `can_fast_forward` 用 `commit_time` 剪枝（`min_stamp`）找公共祖先，
+  不是图可达性。本地恢复提交 `001df9a`（`01:47:21Z`）与审计 `f0a51bc`（`01:47:22Z`）都**早于**
+  远端父 `09aebd7`（`01:50:00Z`），于是从 tip 出发的遍历把整条路径剪掉，LCA 找不到。
+- **本次的触发条件是我人工造的**（远端提交时间被写晚），但形状在**两台机器时钟有偏差**时天然成立：
+  对端"未来"的提交 + 本机按真实时间生成恢复提交 ⇒ 恢复成功、推送被拒、卡在 `diverged-protected`
+  （重试恢复也一样，因为恢复提交依旧"更早"）。
+- **修法方向**：`DulwichGitBackend.push` 捕获 `porcelain.DivergedBranches` 后，用不依赖时间戳的
+  图可达性复核（从本地头沿 parents 走到远端 ref）；只有确认真快进时，才对该 ref 显式
+  `force=True` 重推一次，并把"图复核通过"写进状态原因。不做无条件 force。

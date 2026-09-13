@@ -249,11 +249,12 @@ Keychain 都不动。**
    `frontend_build`（`build-meta.json` 或设置页版本状态条）、日期与逐条证据；若走了 §A6.3
    完整重跑，按完整口径关闭。
 
-## 附 · 本次复跑发现的产品缺陷（8 个，**全部已修**）
+## 附 · 本次复跑发现的产品缺陷（9 个：D1–D8 **已修**，D9 待修）
 
 > 修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205` /
-> D7 `fd19603` / D8 `fd19603`。产物：build 28（D4）、**build 29**（D1/D2/D3/D5/D6）；
-> **D7/D8 只以源码 + 单元/契约测试收口，尚未打进任何 build**（见文末说明）。
+> D7 `fd19603` / D8 `fd19603`。产物：build 28（D4）、**build 29**（D1/D2/D3/D5/D6）、
+> **build 30**（D7/D8，已真机复验通过，见文末与 `OPEN-VERIFICATION-ITEMS.md` §P）。
+> D9 是 build 30 复验时新发现的，尚未修复。
 > 下文的根因分析与修法方向保留原样，作为这些改动的依据与回归锚点。
 
 2026-09-13 在 Studio 上按本流程实际执行时逐个撞上，全部**用户可复现**，且都在"首次把一台机器接到
@@ -379,10 +380,36 @@ Keychain 都不动。**
   连做两次保留双方并断言两份副本内容都在；变异验证（恢复旧的 `raise`）能复现 `rejected`
   + `preserve_both_path_collision`。
 
-> **D7/D8 的产物状态**：两者都在 build 29 的真机复跑中撞到，但修完时演练已进入收尾（Phase 6 复原机器），
-> 因此只以 **源码 + 单元/契约测试 + 变异验证**收口，**没有**重新出 DMG；前端静态资源已随源码重建
-> （`v2026.09.13-fd19603-c7517c5a`，构建提交 `abd4449`），下一次打包会自然带上这两个修复。
-> 真实 UI 复验需要 build 30 或更高；
-> 排期时把"打一次 build 并在真机上跑一遍 D7/D8 的复现步骤"作为验收条件即可。复现步骤 =
-> §A6.2 第 5 步连点两次「保留双方副本」，第 1 次成功、第 2 次应成功并落成
+> **D7/D8 的产物状态**：两者都在 build 29 的真机复跑中撞到，修完随 **build 30**
+> （`frontend_build = v2026.09.13-b31c3ac-c7517c5a`，DMG SHA-256
+> `8a87044ba839ba2c291013a5b6d373b7834e9f1596259da9fa89fda0a131b645`）出包，
+> 并已在装好的 build 30 上真机复验：**D8 通过**（重造分叉 + vault 里已有第一轮
+> `inbox.md.remote`，选「保留双方副本」→ 预检 `validated`、写回
+> `applied_paths = ["inbox.md.remote.09aebd7"]`、第一轮兄弟文件哈希不变、两份内容同时在位）；
+> **D7 对齐**（"快照过期"响应带 `error_code`，命中的是具体原因而不是「恢复准备未完成」）。
+> 复现步骤 = §A6.2 第 5 步连点两次「保留双方副本」，第 1 次成功、第 2 次应成功并落成
 > `*.remote.<rev7>`；若被拒，提示语必须带具体原因而不是笼统的"恢复准备未完成"。
+> 完整证据见 [`OPEN-VERIFICATION-ITEMS.md`](OPEN-VERIFICATION-ITEMS.md) §P。
+
+### D9 · 恢复提交后的 push 被误判为非快进（**未修，待排期**）
+
+- **怎么撞到的**：build 30 的真机复验里，冲突恢复写回成功（`recovery.status = committed`）之后，
+  同一次响应里的 `push` 却是 `diverged-protected` + 「远端已有新提交，需要处理分叉
+  （non-fast-forward）」。而这一对提交其实是**干净快进**。
+- **证据**（逐条可复核）：
+  - `dulwich.graph.can_fast_forward(repo, 09aebd7, f0a51bc) = False`，但同一条
+    `can_fast_forward(repo, 09aebd7, 001df9a) = True`（直接子提交时正常）；
+  - `git merge-base --is-ancestor 09aebd7 HEAD` = **YES**（图可达性角度确实是快进）；
+  - `porcelain.push` 抛 `DivergedBranches(b'09aebd7…', b'f0a51bc…')`，App 归类
+    `non-fast-forward`；同一对提交用系统 git（走 127.0.0.1:7890 代理）推送**成功**
+    （`09aebd7..f0a51bc`），随后 `POST /api/sync/run` 回到 `ready`、`ahead/behind 0/0`。
+- **根因**：dulwich 的 `can_fast_forward` 用 `commit_time` 剪枝找公共祖先，不是图可达性。
+  本地恢复提交 `001df9a`（`01:47:21Z`）与审计 `f0a51bc`（`01:47:22Z`）都**早于**远端父
+  `09aebd7`（`01:50:00Z`）⇒ 从 tip 出发的遍历把整条路径剪掉，找不到 LCA，
+  于是"不是快进"。**"恢复提交 + 审计提交"这个固定两跳组合正好落在坏区里**（直接子提交不触发）。
+- **本次的触发条件是我人工造的**（为了让远端提交与本地分叉，我把远端提交的时间写晚了），
+  但形状在**两台机器时钟有偏差**时天然成立：对端"未来"的提交 + 本机按真实时间生成恢复提交
+  ⇒ 恢复成功、推送被拒、卡在 `diverged-protected`；重试恢复也一样（新的恢复提交依旧"更早"）。
+- **修法方向**：`DulwichGitBackend.push` 捕获 `porcelain.DivergedBranches` 后，用**不依赖时间戳的
+  图可达性**复核（从本地头沿 parents 走到远端 ref）；只有确认真快进时才对该 ref 显式
+  `force=True` 重推一次，并把"图复核通过"写进状态原因。**不做无条件 force。**
