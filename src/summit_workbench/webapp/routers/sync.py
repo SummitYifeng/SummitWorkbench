@@ -87,6 +87,30 @@ def register_sync_routes(dependencies: RouteDependencies, *, runtime: MutationRu
             "automation_primary_generation": claim.generation if claim is not None else None,
         }
 
+    def _sync_local_role(claimed_device_id: str) -> str | None:
+        """G1：声明成功后把本机 profile 的角色同步为 automation-primary。
+
+        只在本机就是被声明的设备时改（绝不因为"别人声明成功"而改本机角色）；profile 属于
+        本机 Application Support，不进 vault、不产生提交。
+        """
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return None
+        from summit_workbench.domain.workspace import DeviceRole
+        from summit_workbench.repositories.profile_registry import load_profile, save_profile
+
+        home = ctx.active_workspace.home
+        profile = load_profile(ctx.workspace_id, home=home)
+        if profile is None:
+            return None
+        if claimed_device_id != ctx.active_workspace.device_id:
+            return profile.device_role.value
+        if profile.device_role is DeviceRole.AUTOMATION_PRIMARY:
+            return profile.device_role.value
+        save_profile(
+            profile.model_copy(update={"device_role": DeviceRole.AUTOMATION_PRIMARY}), home=home
+        )
+        return DeviceRole.AUTOMATION_PRIMARY.value
+
     @app.get("/api/sync/status", response_model=None)
     def api_sync_status() -> dict[str, object]:
         """当前 workspace 同步状态（供 UI banner；不执行任何 git 写）。"""
@@ -436,7 +460,48 @@ def register_sync_routes(dependencies: RouteDependencies, *, runtime: MutationRu
         return {
             "ok": True,
             "claim": result.business_return.model_dump(mode="json"),
+            "device_role": _sync_local_role(result.business_return.device_id),
             **_mutation_fields(result),
+        }
+
+    @app.post("/api/sync/primary/downgrade", response_model=None)
+    def api_downgrade_primary(request: Request) -> dict[str, object] | JSONResponse:
+        """把本机角色降为 secondary（只改本机 profile，**不动** vault 内的主设备声明）。
+
+        没有这个入口时角色只能升不能降：另一台机器要接手，本机必须先放弃 automation-primary。
+        声明本身保持不变，接管仍由对方通过 /api/sync/primary/claim（takeover）完成。
+        """
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active profile 可以调整本机角色",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        from summit_workbench.domain.workspace import DeviceRole
+        from summit_workbench.repositories.profile_registry import load_profile, save_profile
+
+        home = ctx.active_workspace.home
+        profile = load_profile(ctx.workspace_id, home=home)
+        if profile is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="profile_missing",
+                    message="本机没有该工作台的 profile",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        if profile.device_role is not DeviceRole.SECONDARY:
+            save_profile(
+                profile.model_copy(update={"device_role": DeviceRole.SECONDARY}), home=home
+            )
+        return {
+            "ok": True,
+            "device_role": DeviceRole.SECONDARY.value,
+            "device_id": ctx.active_workspace.device_id,
         }
 
     @app.post("/api/sync/run", response_model=None)

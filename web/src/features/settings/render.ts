@@ -22,6 +22,12 @@ interface AutomationJob {
 }
 interface AutomationSettings { jobs: Record<string, AutomationJob> }
 
+/** `/api/sync/status` 里与 automation-primary 归属有关的字段（G1）。 */
+export interface SyncPrimaryStatus {
+  automation_primary_device_id?: string | null;
+  automation_primary_generation?: number | null;
+}
+
 export interface SettingsActions {
   api: <T>(url: string, init?: RequestInit) => Promise<T>;
   mutation: <T>(request: () => Promise<T>) => Promise<T>;
@@ -71,6 +77,53 @@ function httpsCandidate(url: string | null | undefined): string {
 }
 
 /**
+ * G1：定时自动化主设备的显式入口（此前只有后端 API，界面没有任何入口）。
+ *
+ * 三种状态分别给不同动作：本机已是主设备（幂等说明）、尚无声明（直接声明）、
+ * 别的设备持有（必须勾选确认 + 带回当前 generation 才能接管）。本机角色为
+ * automation-primary 时另给降级入口，否则角色只能升不能降。
+ */
+function primaryRoleHtml(
+  currentDeviceId: string | null | undefined,
+  role: string | undefined,
+  primaryDeviceId: string | null | undefined,
+  generation: number | null | undefined,
+): string {
+  const localId = currentDeviceId ?? '';
+  const isLocalPrimary = Boolean(primaryDeviceId) && primaryDeviceId === localId;
+  const generationText = generation === null || generation === undefined ? '' : String(generation);
+  const roleLabel = role === 'automation-primary'
+    ? '主设备（定时自动化在本机运行）'
+    : '备用设备（不运行定时自动化）';
+  let action: string;
+  if (isLocalPrimary) {
+    action = '<button class="primary" type="button" disabled>本机已是主设备</button>';
+  } else if (!primaryDeviceId) {
+    action = '<button class="primary" type="button" data-action="primary-claim" data-device="' + esc(localId) +
+      '" data-takeover="false">声明本机为主设备</button>';
+  } else {
+    action = '<label class="automation-enabled"><input id="primary-takeover-ack" type="checkbox">我确认由本机接管定时自动化</label>' +
+      '<button class="primary" type="button" data-action="primary-claim" data-device="' + esc(localId) +
+      '" data-takeover="true" data-generation="' + esc(generationText) + '">接管主设备</button>';
+  }
+  const downgrade = role === 'automation-primary'
+    ? '<button class="ghost" type="button" data-action="primary-downgrade">降级为备用设备</button>'
+    : '';
+  const primaryLine = primaryDeviceId
+    ? esc(primaryDeviceId) + ' · generation ' + esc(generationText || '?')
+    : '（尚未声明：定时自动化不会在任何机器上运行）';
+  return '<section class="block"><h3 class="section-title">定时自动化主设备</h3>' +
+    '<p class="hint">同一时间只应有一台 Mac 跑定时自动化。接管会把归属转到本机、generation 递增，并需要与另一台机器沟通。</p>' +
+    '<div class="settings-path"><span class="meta">本机 device id：' + esc(localId || '（未读到）') + '</span></div>' +
+    '<div class="settings-path"><span class="meta">当前主设备：' + primaryLine + '</span></div>' +
+    '<div class="settings-path"><span class="meta">本机角色：' + esc(roleLabel) + '</span></div>' +
+    (primaryDeviceId && !isLocalPrimary
+      ? '<p class="hint">接管后果：定时自动化转移到本机、generation 加一，另一台机器需要重新声明或确认。</p>'
+      : '') +
+    '<div class="row">' + action + downgrade + '</div><div id="primary-claim-result"></div></section>';
+}
+
+/**
  * 设置页渲染序号：保存/刷新/切页会并发触发多次读取，先发起的旧响应
  * 不得覆盖后发起的新内容（例如刚保存模型后的刷新被保存前的读取盖回）。
  */
@@ -80,10 +133,11 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
   const requestId = ++settingsRenderSequence;
   view.innerHTML = '<div class="loading">正在读取设置…</div>';
   try {
-    const [response, automation, state] = await Promise.all([
+    const [response, automation, state, sync] = await Promise.all([
       actions.api<ProfileList>('/api/settings/profiles'),
       actions.api<AutomationSettings>('/api/settings/automation'),
       actions.api<{ status: { feishu_auth?: { needs_reauthorize?: boolean } } }>('/api/state'),
+      actions.api<SyncPrimaryStatus>('/api/sync/status'),
     ]);
     if (requestId !== settingsRenderSequence) return;
     const active = response.profiles.find((p) => p.active) ?? response.profiles[0];
@@ -125,6 +179,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<form id="remote-normalization-form"><div class="grid2"><label>HTTPS 仓库地址<input id="remote-candidate-url" value="' + esc(httpsCandidate(active?.remote_url)) + '"></label>' +
       '<label>GitHub 用户名<input id="remote-github-username"></label><label>访问令牌（仅本次使用）<input id="remote-github-pat" type="password"></label></div>' +
       '<div class="row"><button class="primary" type="button" data-action="git-remote-preview">预览 HTTPS 转换</button><button class="ghost" type="button" data-action="git-remote-rollback">回滚最近一次转换</button></div></form><div id="remote-normalization-result"></div></section>' +
+      primaryRoleHtml(response.current_device_id, active?.device_role, sync?.automation_primary_device_id, sync?.automation_primary_generation) +
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
     view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid">' +

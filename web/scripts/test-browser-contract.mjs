@@ -153,6 +153,26 @@ assert.match(
   'the toolbar exposes 立即同步, not only the banner retry',
 );
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
+// G1: the automation-primary claim/takeover endpoint existed but nothing in the UI could reach it,
+// so a machine whose profile said `secondary` could never become primary (and never downgrade).
+assert.match(
+  settingsSource,
+  /data-action="primary-claim"/,
+  'the settings page exposes the automation-primary claim/takeover entry point',
+);
+assert.match(
+  settingsSource,
+  /data-action="primary-downgrade"/,
+  'the settings page exposes the downgrade-to-secondary entry point',
+);
+assert.match(
+  settingsSource,
+  /id="primary-takeover-ack"/,
+  'takeover requires an explicit acknowledgement in the rendered card',
+);
+// The dispatch branch must exist too: a rendered button without a handler is a dead entry point.
+assert.match(source, /action === 'primary-claim'/, 'primary claim dispatch is wired');
+assert.match(source, /action === 'primary-downgrade'/, 'primary downgrade dispatch is wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
 assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');

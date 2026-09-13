@@ -95,7 +95,9 @@ import {
 import {
   applyGitRemoteNormalization,
   authorizeFeishu,
+  claimAutomationPrimary,
   copyAutomationSummary,
+  downgradeAutomationPrimary,
   migrateWorkspace,
   mountSettings,
   previewGitRemoteNormalization,
@@ -535,6 +537,18 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'acceptance-preflight') {
     void runAcceptancePreflight();
+    return;
+  }
+  if (action === 'primary-claim') {
+    void claimAutomationPrimary(
+      btn.dataset.device ?? '',
+      btn.dataset.takeover === 'true',
+      btn.dataset.generation ?? '',
+    );
+    return;
+  }
+  if (action === 'primary-downgrade') {
+    void downgradeAutomationPrimary();
     return;
   }
   if (action === 'profile-remove') {

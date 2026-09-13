@@ -19,6 +19,8 @@ import {
   rollbackGitRemoteNormalization,
   removeProfile,
   runAcceptancePreflight,
+  claimAutomationPrimary,
+  downgradeAutomationPrimary,
 } from './features/settings';
 
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -168,6 +170,77 @@ await renderSettings(twoProfileView, {
 });
 export const profilesHtml = twoProfileView.innerHTML;
 
+// G1：主设备卡片。别的设备持有声明时必须渲染「勾选确认 + 接管 + generation」，
+// 本机角色为 automation-primary 时另有降级按钮。
+const primaryProfile = (role) => ({
+  workspace_id: 'ws-1', workspace_short_code: 'ws1', display_name: '合成工作区',
+  path: '/tmp/synthetic-workspace', compatibility: 'ok', device_role: role, active: true,
+  provider_status: { model: 'configured', feishu: 'configured' },
+  sync_summary: { state: 'ready', pending_commits: 0 },
+});
+const primaryView = makeView();
+await renderSettings(primaryView, {
+  api: (url) => {
+    if (url === '/api/settings/profiles') {
+      return Promise.resolve({ profiles: [primaryProfile('automation-primary')], current_device_id: 'dev-local' });
+    }
+    if (url === '/api/settings/automation') return Promise.resolve({ jobs: {} });
+    if (url === '/api/sync/status') {
+      return Promise.resolve({ automation_primary_device_id: 'dev-other', automation_primary_generation: 3 });
+    }
+    return Promise.resolve({ status: { feishu_auth: { needs_reauthorize: false } } });
+  },
+  mutation: (work) => work(), toast: () => {}, refresh: () => {},
+});
+export const primaryTakeoverHtml = primaryView.innerHTML;
+
+const primaryOwnView = makeView();
+await renderSettings(primaryOwnView, {
+  api: (url) => {
+    if (url === '/api/settings/profiles') {
+      return Promise.resolve({ profiles: [primaryProfile('automation-primary')], current_device_id: 'dev-local' });
+    }
+    if (url === '/api/settings/automation') return Promise.resolve({ jobs: {} });
+    if (url === '/api/sync/status') {
+      return Promise.resolve({ automation_primary_device_id: 'dev-local', automation_primary_generation: 4 });
+    }
+    return Promise.resolve({ status: { feishu_auth: { needs_reauthorize: false } } });
+  },
+  mutation: (work) => work(), toast: () => {}, refresh: () => {},
+});
+export const primaryOwnHtml = primaryOwnView.innerHTML;
+
+// G1 写请求：未勾选确认时一个请求都不发；勾选后必须带回 device_id/takeover/expected_generation。
+fields['primary-claim-result'] = makeView();
+fields['primary-takeover-ack'] = { checked: false };
+const primaryClaims = [];
+mountSettings({
+  api: (url, options) => {
+    if (url === '/api/sync/primary/claim' || url === '/api/sync/primary/downgrade') {
+      primaryClaims.push({ url, body: JSON.parse(String(options?.body ?? '{}')), options });
+      return Promise.resolve({ ok: true, device_role: 'automation-primary' });
+    }
+    return recordingApi(url, options);
+  },
+  mutation: (work) => work(),
+  toast: (message, kind) => { toasts.push({ message, kind }); },
+  refresh: () => {},
+  workspaceId: () => 'ws-1',
+  clearDraftSnapshot: () => {}, disposeApiClient: () => {}, disposeWorkspaceStore: () => {},
+});
+await claimAutomationPrimary('dev-local', true, '3');
+export const primaryBlockedCount = primaryClaims.length;
+fields['primary-takeover-ack'].checked = true;
+await claimAutomationPrimary('dev-local', true, '3');
+await claimAutomationPrimary('', false, '');
+await downgradeAutomationPrimary();
+export const primaryProbe = primaryClaims.map((call) => ({
+  url: call.url,
+  body: call.body,
+  method: call.options?.method,
+  contentType: call.options?.headers?.['Content-Type'],
+}));
+
 // 移除本机 profile：确认 → POST JSON；空 id 不发请求；当前工作台提示需要重启。
 await removeProfile('ws-active');
 await new Promise((r) => setTimeout(r, 10));
@@ -234,6 +307,39 @@ try {
     mod.removeProbe.toasts.some((message) => message.includes('重启工作台后生效')),
     'removing the active workspace must say a restart is required',
   );
+
+  // G1：没有声明时给"声明"入口；别的设备持有时给"勾选确认 + 接管 + generation"与降级入口。
+  assert.match(mod.finalHtml, /尚未声明/, 'settings says when no primary is declared yet');
+  assert.match(mod.finalHtml, /声明本机为主设备/, 'settings offers the first claim entry point');
+  assert.match(mod.primaryTakeoverHtml, /id="primary-takeover-ack"/, 'takeover requires an explicit ack checkbox');
+  assert.match(mod.primaryTakeoverHtml, /data-action="primary-claim"/, 'takeover button is rendered');
+  assert.match(mod.primaryTakeoverHtml, /data-generation="3"/, 'takeover carries the current generation');
+  assert.match(mod.primaryTakeoverHtml, /本机 device id：dev-local/, 'settings shows the local device id');
+  assert.match(mod.primaryTakeoverHtml, /dev-other · generation 3/, 'settings shows the current primary and generation');
+  assert.match(mod.primaryTakeoverHtml, /接管后果/, 'takeover consequences are stated before the click');
+  assert.match(mod.primaryTakeoverHtml, /data-action="primary-downgrade"/, 'downgrade entry point is rendered');
+  assert.match(mod.primaryOwnHtml, /本机已是主设备/, 'an idempotent device is told it is already primary');
+  assert.doesNotMatch(
+    mod.primaryOwnHtml,
+    /data-action="primary-claim" data-device="dev-local" data-takeover="true"/,
+    'an idempotent device is not offered a takeover',
+  );
+
+  // G1 写请求契约：未勾选不发请求；勾选后 POST JSON 且带回 expected_generation。
+  assert.equal(mod.primaryBlockedCount, 0, 'takeover without the ack checkbox must not issue a request');
+  assert.deepEqual(
+    mod.primaryProbe.map((call) => call.url),
+    ['/api/sync/primary/claim', '/api/sync/primary/downgrade'],
+    'only the two explicit primary actions issue requests',
+  );
+  assert.deepEqual(mod.primaryProbe[0].body, {
+    device_id: 'dev-local', takeover: true, expected_generation: 3,
+  });
+  assert.deepEqual(mod.primaryProbe[1].body, {});
+  for (const call of mod.primaryProbe) {
+    assert.equal(call.method, 'POST', call.url + ' must be POSTed');
+    assert.equal(call.contentType, 'application/json', call.url + ' must send a JSON body');
+  }
 
   console.log('Settings render race tests passed');
 } finally {

@@ -5,7 +5,9 @@ export { mountSettings } from './mount';
 export {
   applyGitRemoteNormalization,
   authorizeFeishu,
+  claimAutomationPrimary,
   copyAutomationSummary,
+  downgradeAutomationPrimary,
   migrateWorkspace,
   previewGitRemoteNormalization,
   removeProfile,
@@ -21,3 +23,4 @@ export {
 } from './actions';
 export type { SettingsDeps } from './deps';
 export type { AcceptancePreflightPayload, RemoteNormalizationPreviewPayload } from './types';
+export type { SyncPrimaryStatus } from './render';

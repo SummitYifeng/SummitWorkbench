@@ -696,6 +696,19 @@
     "method": [
       "POST"
     ],
+    "path": "/api/sync/primary/downgrade",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": [
+      "profile_missing",
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/sync/run",
     "request_fields": [],
     "request_model": null,

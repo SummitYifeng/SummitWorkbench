@@ -73,6 +73,95 @@ export async function rollbackGitRemoteNormalization(): Promise<void> {
   }
 }
 
+/** G1：后端稳定错误码 → 用户能照做的短句（绝不把原始文本直接甩给用户）。 */
+const PRIMARY_FAILURE_HINTS: Record<string, string> = {
+  primary_already_claimed: '另一台 Mac 已经是主设备。要由本机接管，请先勾选确认再点「接管主设备」。',
+  primary_generation_conflict: '主设备声明已经变化（另一台机器刚改过）。请刷新设置页后重新确认。',
+  primary_takeover_invalid: '本机已经是主设备，不需要接管。',
+  primary_state_corrupt: 'vault 内的主设备声明已损坏，需要人工检查 .summit-workbench/automation-primary.json。',
+  workspace_not_configured: '当前没有已连接的工作台。',
+  profile_missing: '本机没有这个工作台的档案。',
+};
+
+function primaryFailureMessage(err: unknown): string {
+  const code = (err as { code?: string | null } | null)?.code ?? null;
+  if (code && PRIMARY_FAILURE_HINTS[code]) return PRIMARY_FAILURE_HINTS[code];
+  return String(err);
+}
+
+function showPrimaryResult(message: string, ok: boolean): void {
+  const output = document.getElementById('primary-claim-result');
+  if (output) output.innerHTML = '<div class="' + (ok ? 'success' : 'error') + '">' + esc(message) + '</div>';
+}
+
+/**
+ * G1：声明/接管主设备。
+ *
+ * 别的设备持有主设备时必须：勾选确认 + 显式 takeover + 带回当前 generation，三者缺一不发请求。
+ */
+export async function claimAutomationPrimary(
+  deviceId: string,
+  takeoverRequested: boolean,
+  generation: string,
+): Promise<void> {
+  if (!deviceId) {
+    toast('没有读到本机 device id，请刷新设置页后重试', 'err');
+    return;
+  }
+  const body: Record<string, unknown> = { device_id: deviceId, takeover: takeoverRequested };
+  if (takeoverRequested) {
+    const ack = document.getElementById('primary-takeover-ack') as HTMLInputElement | null;
+    if (!ack?.checked) {
+      toast('接管需要先勾选确认（定时自动化会转移到本机）', 'err');
+      return;
+    }
+    const expected = Number(generation);
+    if (!Number.isInteger(expected) || expected < 1) {
+      toast('没有读到当前 generation，请刷新设置页后重试', 'err');
+      return;
+    }
+    if (!window.confirm('确认由本机接管定时自动化？generation 会递增，另一台机器需要重新确认。')) return;
+    body.expected_generation = expected;
+  }
+  try {
+    await api<{ ok: boolean; device_role?: string }>('/api/sync/primary/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const message = takeoverRequested
+      ? '已接管主设备：定时自动化现在在本机运行。'
+      : '已声明本机为主设备：定时自动化现在在本机运行。';
+    showPrimaryResult(message, true);
+    toast(message, 'ok');
+    void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
+  } catch (err) {
+    const message = primaryFailureMessage(err);
+    showPrimaryResult(message, false);
+    toast(message, 'err');
+  }
+}
+
+/** G1：降级为备用设备（只改本机档案，vault 内的主设备声明不动）。 */
+export async function downgradeAutomationPrimary(): Promise<void> {
+  if (!window.confirm('确认本机降级为备用设备？本机将不再运行定时自动化；vault 内的主设备声明保持不变。')) return;
+  try {
+    await api<{ ok: boolean; device_role: string }>('/api/sync/primary/downgrade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const message = '本机已降级为备用设备：定时自动化不再在本机运行。';
+    showPrimaryResult(message, true);
+    toast(message, 'ok');
+    void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
+  } catch (err) {
+    const message = primaryFailureMessage(err);
+    showPrimaryResult(message, false);
+    toast(message, 'err');
+  }
+}
+
 export async function runAcceptancePreflight(): Promise<void> {
   try {
     const result = await api<AcceptancePreflightPayload>('/api/settings/acceptance-preflight', {
