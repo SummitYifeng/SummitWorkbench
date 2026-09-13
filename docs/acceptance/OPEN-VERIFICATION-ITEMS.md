@@ -1273,6 +1273,8 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
   pytest tests/integration/test_packaged_app.py -q          1 passed（清理后复跑）
 ```
 
+远端 CI 见 §R.9（本轮提交全部带 `[skip ci]`，收尾时经使用者同意手动触发一次，对当前 HEAD 全绿）。
+
 ### R.7 全新 Air 从零配置 + 真机双机冒烟（2026-09-13T03:34–03:41Z，**通过**）
 
 使用者按"完全清空 → 从第一步配置 → 同步好后做最小冒烟"的方案执行（比对齐时的最小选项更强）。
@@ -1387,6 +1389,43 @@ G1 的「降级为备用设备」就是给这种状态提供对齐入口的（�
 
 本次两台机器的系统时钟一致（Air 写声明 `07:42:34Z` vs Studio 当时 `07:44:00Z`），
 **未**观察到 D9 前提的跨机时钟偏差；两台机器的时间差可忽略。
+
+### R.9 远端 CI 对当前 HEAD 全绿（2026-09-13T08:03–08:06Z）
+
+本轮所有提交都按要求带 `[skip ci]`（从未自动触发 CI）。收尾时经使用者同意手动触发一次
+`workflow_dispatch`，验证"仓库级门禁"这块唯一没被远端验过的表面。
+
+| 项 | 值 |
+|---|---|
+| run | `34746739863`（workflow_dispatch，branch `main`） |
+| 链接 | https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34746739863 |
+| HEAD | `70f236e87551c67889a35b92bf115d837b524fd5` |
+| 结论 | **success**（2m18s） |
+
+关键步骤（逐条取自 CI 日志）：
+
+- `quality-gate`：**actionlint** 通过；`ruff` / `ruff format --check` 通过；
+  `mypy (strict)` = `Success: no issues found in 340 source files`；
+  `pytest with coverage gate` = **971 passed / 1 skipped**、覆盖率 **83.55%**（门限 80%）；
+  `tsc --noEmit`（unused declaration 检查）与 `npm run test:frontend` 通过；
+  `frontend build` + `verify-build` = `Build verified: v2026.09.13-70f236e-ae564ff2`；
+  `secret scan passed`；native update 行为测试通过。
+- `macOS arm64 contract`：`scripts/build-macos-app.sh` 构建成功，
+  `WB_PACKAGED_APP=dist/ci/arm64/SummitWorkbench.app` 的**打包冒烟 1 passed**。
+- `macOS x86_64 contract`：按预期走 `Reject unsupported architecture`（仅支持 Apple Silicon）。
+
+说明与边界：
+
+- CI **不引用任何 `secrets.`**（`grep -c 'secrets\.' .github/workflows/ci.yml` = 0），构建用
+  `BUILD_NUMBER=github.run_number`、输出到 `dist/ci/`；因此 CI 的包**不带内置飞书凭据**，
+  它验证的是仓库门禁与打包结构，**不替代**交付包 build 34（本地以
+  `REQUIRE_BUNDLED_FEISHU=true` 产出、已装 Studio/Air 并真机核验）。
+- 本轮未改动依赖与构建脚本（`pyproject.toml`/`uv.lock`/`web/package*.json`/`native/`/
+  `scripts/build-macos-app.sh` 的 diff 均为空），所以 CI 里 `uv lock --check`、`npm ci`、
+  native 测试与上一次绿跑逐字一致；唯一变量是本轮改动的 44 个文件。
+- CI 侧前端构建标为 `v2026.09.13-70f236e-ae564ff2`（`source_hash` 同为 `ae564ff2`，
+  只是 `git_revision` 取当前提交）；仓库内提交的静态产物仍是 `v2026.09.13-d4f43f8-ae564ff2`
+  （产出它的源码提交），两者内容一致。
 
 ### R.6 本轮未能完成 / 仍开放
 

@@ -256,6 +256,11 @@
   逐条证据见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R.7。
 - **开放项（已闭合）**：两个演练仓库由使用者在 GitHub 网页删除，代理复核 `gh repo view` 均 404，
   本地残留（含 `/tmp` 里前几轮遗留的会话令牌 `.t3`–`.t8`）一并清除，见 §R.6.1。
+- 远端 CI：本轮提交按要求全部带 `[skip ci]`（未自动触发），收尾时经使用者同意手动触发一次
+  `workflow_dispatch` 验证当前 HEAD ⇒ **全绿**（`quality-gate`：actionlint/ruff/format/mypy 340 files/
+  pytest 971 passed·83.55%/tsc/前端测试/build+verify/secret scan/native；`macOS arm64 contract`：
+  构建 + 打包冒烟 1 passed；`x86_64` 按预期拒绝）。
+  run <https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34746739863>（HEAD `70f236e`，2m18s）。
 - **开放项（使用者明确决定不做）**：G2 的"真实 GitHub 空仓库 → 绑定 → 首次 push"成功分支未做
   端到端（其余已覆盖：单测 + API 契约 + 真机非 HTTPS 拒绝路径 + 两后端一致性）；需要时按
   §R.6.3 的 4 步现场确认。
