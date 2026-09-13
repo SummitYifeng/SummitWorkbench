@@ -28,7 +28,9 @@ from pydantic import BaseModel
 from summit_workbench.repositories.git_backend import (
     GitAuthError,
     GitConflictError,
+    GitCredentialsUnavailable,
     GitNonFastForward,
+    GitProxyError,
     GitRemoteSchemeUnsupported,
     GitRemoteUnavailable,
     GitTlsError,
@@ -104,7 +106,9 @@ def is_offline_error(error: BaseException) -> bool:
 
 def classify_repo_error(error: BaseException) -> SyncState:
     """单个仓库同步失败 → workspace 级状态类别。"""
-    if isinstance(error, GitAuthError | GitTlsError):
+    if isinstance(error, GitAuthError | GitTlsError | GitCredentialsUnavailable):
+        # 本机缺少 workspace 级凭据同样属于"必须由人修凭据"，而不是不可解释的 error
+        # （2026-09-13 真机复跑：它曾落成裸 error，界面上什么也看不出来）。
         return SyncState.AUTH_REQUIRED
     if isinstance(error, GitRemoteSchemeUnsupported):
         return SyncState.REMOTE_SCHEME_UNSUPPORTED
@@ -115,6 +119,66 @@ def classify_repo_error(error: BaseException) -> SyncState:
     if isinstance(error, GitRemoteUnavailable):
         return SyncState.ERROR
     return SyncState.ERROR
+
+
+_REPO_REASON_LABELS: dict[str, str] = {
+    "no-remote": "未配置远端",
+    "no-upstream": "未设置 upstream",
+    "worktree-dirty": "工作树有未提交改动",
+    "credentials-missing": "本机缺少该工作区的 Git 凭据",
+    "auth-rejected": "远端拒绝认证（凭据无效或权限不足）",
+    "proxy-unreachable": "本机代理无法连接远端",
+    "tls-failed": "远端 TLS/证书校验失败",
+    "remote-unavailable": "远端不可达或仓库不存在",
+    "remote-scheme-unsupported": "远端地址不是受支持的 HTTPS",
+    "non-fast-forward": "远端已有新提交，需要处理分叉",
+    "conflict": "合并冲突",
+    "offline": "当前处于离线",
+    "diverged": "双方分叉，已进入保护态",
+    "lock-busy": "另一个同步正在进行",
+    "unclassified": "未分类的同步失败",
+}
+
+
+def repo_error_reason(error: BaseException) -> str:
+    """把一个仓库的同步失败压成**稳定原因码**。
+
+    原因码只由异常**类型**决定，绝不携带异常文本——dulwich/Keychain 的消息里可能出现
+    URL、主机名或路径。原因码进 ``snapshot.detail``，用于排障与支持。
+    """
+    if isinstance(error, GitCredentialsUnavailable):
+        return "credentials-missing"
+    if isinstance(error, GitProxyError):
+        return "proxy-unreachable"
+    if isinstance(error, GitTlsError):
+        return "tls-failed"
+    if isinstance(error, GitAuthError):
+        return "auth-rejected"
+    if isinstance(error, GitRemoteSchemeUnsupported):
+        return "remote-scheme-unsupported"
+    if isinstance(error, GitNonFastForward):
+        return "non-fast-forward"
+    if isinstance(error, GitConflictError):
+        return "conflict"
+    if isinstance(error, GitRemoteUnavailable):
+        return "offline" if is_offline_error(error) else "remote-unavailable"
+    return "unclassified"
+
+
+def repo_reason_label(code: str) -> str:
+    """原因码 → 人类可读短句（未知码回落到通用文案）。"""
+    return _REPO_REASON_LABELS.get(code, _REPO_REASON_LABELS["unclassified"])
+
+
+def repo_reason_detail(code: str) -> str:
+    """组合成 "短句（稳定码）"，让界面与支持都能用。"""
+    return f"{repo_reason_label(code)}（{code}）"
+
+
+def describe_repo_reasons(entries: list[tuple[str, str]]) -> str:
+    """把 [(仓库名, 原因码)] 压成一行 detail；全部正常时返回空串。"""
+    parts = [f"{name}：{repo_reason_detail(code)}" for name, code in entries if code]
+    return "；".join(parts)
 
 
 def combine_repo_states(states: list[SyncState]) -> SyncState:

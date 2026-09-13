@@ -8,6 +8,7 @@ not-primary（交互允许）、并发三连 sync 只一次实际 push、mutatio
 
 from __future__ import annotations
 
+import subprocess
 import threading
 from pathlib import Path
 
@@ -307,3 +308,96 @@ def test_discover_skips_remote_clone_staging(tmp_path) -> None:
     discovered = _discover(work)
     assert vault in discovered
     assert staging not in discovered
+
+
+# ---- D3（2026-09-13 双机复跑）：失败原因必须可见、稳定、脱敏 ----------------
+
+
+def test_repo_error_reason_is_type_based_and_sanitized() -> None:
+    """原因码只由异常类型决定：dulwich/Keychain 的原文绝不进 detail。"""
+    from summit_workbench.domain.sync import repo_error_reason, repo_reason_detail
+    from summit_workbench.repositories.git_backend import (
+        GitConflictError,
+        GitCredentialsUnavailable,
+        GitNonFastForward,
+        GitProxyError,
+        GitTlsError,
+    )
+
+    assert (
+        repo_error_reason(GitCredentialsUnavailable("含 user:canary-secret@host/x.git"))
+        == "credentials-missing"
+    )
+    assert repo_error_reason(GitProxyError("代理 127.0.0.1:7890 失败")) == "proxy-unreachable"
+    assert repo_error_reason(GitTlsError("certificate verify failed")) == "tls-failed"
+    assert repo_error_reason(GitNonFastForward("non-fast-forward")) == "non-fast-forward"
+    assert repo_error_reason(GitConflictError("conflict")) == "conflict"
+    assert repo_error_reason(RuntimeError("别的")) == "unclassified"
+    detail = repo_reason_detail("credentials-missing")
+    assert "credentials-missing" in detail and "canary-secret" not in detail
+
+
+def test_classify_repo_error_treats_missing_credentials_as_auth_required() -> None:
+    from summit_workbench.repositories.git_backend import GitCredentialsUnavailable
+
+    assert (
+        classify_repo_error(GitCredentialsUnavailable("HTTPS remote 缺少凭据"))
+        is SyncState.AUTH_REQUIRED
+    )
+
+
+def test_sync_workspace_snapshot_detail_names_the_failure(monkeypatch, tmp_path) -> None:
+    """拉取路径此前完全不带 detail —— 用户只能看到裸 error（D3 的真机症状）。"""
+    from summit_workbench.repositories.git_backend import GitCredentialsUnavailable
+    from summit_workbench.workflows import sync_coordinator
+
+    vault = tmp_path / "_vault"
+    vault.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(vault)], check=True)
+    subprocess.run(
+        ["git", "-C", str(vault), "remote", "add", "origin", "https://github.com/acme/private.git"],
+        check=True,
+    )
+
+    canary = "user:canary-secret@github.com/acme/private.git"
+
+    def boom(self, remote: str = "origin") -> None:
+        raise GitCredentialsUnavailable(f"HTTPS remote 缺少 workspace-scoped 凭据 {canary}")
+
+    monkeypatch.setattr(GitRepo, "fetch", boom)
+    monkeypatch.setattr(sync_coordinator, "require_https_remote", lambda url: None)
+
+    state, outcomes, snapshot = sync_coordinator.sync_workspace(vault, workspace_id="ws-1")
+    assert state is SyncState.AUTH_REQUIRED
+    assert outcomes == [("_vault", SyncState.AUTH_REQUIRED)]
+    assert snapshot is not None
+    assert "credentials-missing" in snapshot.detail
+    assert "canary-secret" not in snapshot.detail
+
+
+def test_push_after_commit_detail_is_sanitized(monkeypatch, tmp_path) -> None:
+    """写路径原先把 str(exc) 直接写进持久化状态与界面，会带出 URL/路径。"""
+    from summit_workbench.workflows import sync_coordinator
+
+    vault = tmp_path / "_vault"
+    vault.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(vault)], check=True)
+    subprocess.run(
+        ["git", "-C", str(vault), "remote", "add", "origin", "https://github.com/acme/private.git"],
+        check=True,
+    )
+
+    canary = "embedded user:canary-secret@github.com/acme/private.git"
+
+    def boom(self, remote: str = "origin") -> None:
+        raise GitError(f"push {remote} 失败：{canary}")
+
+    monkeypatch.setattr(GitRepo, "has_remote", lambda self, name="origin": True)
+    monkeypatch.setattr(GitRepo, "has_upstream", lambda self: True)
+    monkeypatch.setattr(GitRepo, "push", boom)
+
+    state, snapshot = sync_coordinator.push_after_commit(vault, workspace_id="ws-1")
+    assert state is SyncState.ERROR
+    assert snapshot is not None
+    assert "unclassified" in snapshot.detail
+    assert "canary-secret" not in snapshot.detail

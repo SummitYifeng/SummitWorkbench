@@ -26,8 +26,11 @@ from summit_workbench.domain.sync import (
     SyncState,
     classify_repo_error,
     combine_repo_states,
+    describe_repo_reasons,
     is_offline_error,
     next_step_for,
+    repo_error_reason,
+    repo_reason_detail,
     state_from_counts,
 )
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile
@@ -126,8 +129,12 @@ def _sync_single_repo(
     backend_kind: str | None = None,
     workspace_id: str | None = None,
     username: str | None = None,
-) -> tuple[SyncState, SyncSnapshot | None]:
-    """同步单个仓库（只 fetch/ff/push，绝不 force）。返回 (repo 状态, 无)。"""
+) -> tuple[SyncState, str]:
+    """同步单个仓库（只 fetch/ff/push，绝不 force）。返回 (repo 状态, 稳定原因码)。
+
+    原因码由异常**类型**决定（见 ``domain.sync.repo_error_reason``），不含任何值，
+    供 ``snapshot.detail`` 展示——用户看到的必须是"为什么失败"，不是三选一的猜测。
+    """
     repo = GitRepo(
         path,
         backend_kind=backend_kind,
@@ -135,11 +142,11 @@ def _sync_single_repo(
         username=username,
     )
     if not repo.has_remote():
-        return SyncState.UNCONFIGURED, None
+        return SyncState.UNCONFIGURED, "no-remote"
     try:
         remote_url = repo.remote_url("origin")
         if not remote_url:
-            return SyncState.UNCONFIGURED, None
+            return SyncState.UNCONFIGURED, "no-remote"
         # Development/CLI conformance fixtures may use local-path remotes. The
         # packaged active-workspace path passes Dulwich explicitly and is the
         # production boundary where HTTPS is mandatory.
@@ -147,49 +154,49 @@ def _sync_single_repo(
             require_https_remote(remote_url)
         repo.fetch()
     except GitRemoteSchemeUnsupported:
-        return SyncState.REMOTE_SCHEME_UNSUPPORTED, None
+        return SyncState.REMOTE_SCHEME_UNSUPPORTED, "remote-scheme-unsupported"
     except GitAuthError:
-        return SyncState.AUTH_REQUIRED, None
+        return SyncState.AUTH_REQUIRED, "auth-rejected"
     except GitError as exc:
-        return classify_repo_error(exc), None
+        return classify_repo_error(exc), repo_error_reason(exc)
     dirty = repo.is_dirty()
     if dirty:
         # 不自动 stash/rebase/reset，也不把未提交的人工改动混入同步；即使当前只
         # 有 local-ahead 提交，后续 push/写入也无法证明不会覆盖用户工作树。
-        return SyncState.DIRTY_PROTECTED, None
+        return SyncState.DIRTY_PROTECTED, "worktree-dirty"
     if not repo.has_upstream():
-        return SyncState.UNCONFIGURED, None
+        return SyncState.UNCONFIGURED, "no-upstream"
     try:
         counts = repo.ahead_behind()
     except GitError as exc:
-        return classify_repo_error(exc), None
+        return classify_repo_error(exc), repo_error_reason(exc)
     try:
         if counts.behind > 0:
             if dirty:
-                return SyncState.DIRTY_PROTECTED, None
+                return SyncState.DIRTY_PROTECTED, "worktree-dirty"
             try:
                 repo.ff_merge_upstream()
             except GitAuthError:
-                return SyncState.AUTH_REQUIRED, None
+                return SyncState.AUTH_REQUIRED, "auth-rejected"
             except GitError as exc:
                 if is_offline_error(exc):
-                    return SyncState.OFFLINE_LOCAL_AHEAD, None
+                    return SyncState.OFFLINE_LOCAL_AHEAD, "offline"
                 # 无法快进（存在分叉，需人工处理）：不 force，本地提交保留
-                return SyncState.DIVERGED_PROTECTED, None
+                return SyncState.DIVERGED_PROTECTED, "diverged"
         if counts.ahead > 0:
             try:
                 repo.push()
             except GitNonFastForward:
-                return SyncState.DIVERGED_PROTECTED, None
+                return SyncState.DIVERGED_PROTECTED, "non-fast-forward"
             except GitAuthError:
-                return SyncState.AUTH_REQUIRED, None
+                return SyncState.AUTH_REQUIRED, "auth-rejected"
             except GitError as exc:
-                return classify_repo_error(exc), None
+                return classify_repo_error(exc), repo_error_reason(exc)
     except GitNonFastForward:
-        return SyncState.DIVERGED_PROTECTED, None
+        return SyncState.DIVERGED_PROTECTED, "non-fast-forward"
     except GitError as exc:
-        return classify_repo_error(exc), None
-    return SyncState.READY, None
+        return classify_repo_error(exc), repo_error_reason(exc)
+    return SyncState.READY, ""
 
 
 _REMOTE_STAGING_PREFIX = ".summit-workbench-remote-"
@@ -240,18 +247,22 @@ def sync_workspace(
     workspace_id = workspace_id or _workspace_id_of(vault_dir)
     previous = load_sync_state_if_available(workspace_id, home)
     outcomes: list[tuple[str, SyncState]] = []
+    reasons: list[tuple[str, str]] = []
     try:
         with workspace_lock(vault_dir.parent):
             for path in repo_paths:
-                state, _snap = _sync_single_repo(
+                state, reason = _sync_single_repo(
                     path,
                     backend_kind=backend_kind,
                     workspace_id=workspace_id,
                     username=username,
                 )
                 outcomes.append((path.name, state))
+                if state is not SyncState.READY:
+                    reasons.append((path.name, reason))
     except LockBusy:
         outcomes.append(("(workspace)", SyncState.ERROR))
+        reasons.append(("(workspace)", "lock-busy"))
     combined = combine_repo_states([state for _, state in outcomes])
     primary_repo = GitRepo(
         vault_dir,
@@ -291,6 +302,7 @@ def sync_workspace(
         branch=branch,
         remote_host=remote_host,
         repo_states=[f"{name}:{state.value}" for name, state in outcomes],
+        detail=describe_repo_reasons(reasons),
     )
     if home is not None:
         save_sync_state(snapshot, home=home)
@@ -361,7 +373,7 @@ def push_after_commit(
                     username=username,
                 ),
             ),
-            detail="凭据需要重新配置",
+            detail="凭据需要重新配置（auth-rejected）",
             last_sync_at=previous.last_sync_at if previous is not None else None,
         )
     except GitNonFastForward:
@@ -378,7 +390,7 @@ def push_after_commit(
                     username=username,
                 ),
             ),
-            detail="远端分叉，本地提交已保留",
+            detail="远端分叉，本地提交已保留（non-fast-forward）",
             last_sync_at=previous.last_sync_at if previous is not None else None,
         )
     except GitError as exc:
@@ -396,7 +408,7 @@ def push_after_commit(
                         username=username,
                     ),
                 ),
-                detail="离线，本地提交已保留",
+                detail="离线，本地提交已保留（offline）",
                 last_sync_at=previous.last_sync_at if previous is not None else None,
             )
         else:
@@ -413,7 +425,9 @@ def push_after_commit(
                         username=username,
                     ),
                 ),
-                detail=str(exc),
+                # 稳定原因码 + 短句：绝不把 dulwich/Keychain 的原始文本（可能含 URL、
+                # 主机名或路径）写进持久化状态与界面。
+                detail=repo_reason_detail(repo_error_reason(exc)),
                 last_sync_at=previous.last_sync_at if previous is not None else None,
             )
     if home is not None:
