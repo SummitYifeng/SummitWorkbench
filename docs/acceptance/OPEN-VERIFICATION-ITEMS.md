@@ -1204,6 +1204,7 @@ Air 由使用者 AirDrop，**本轮不再跑双机往返冒烟**。
 | G1 冲突路径（真机） | `POST /api/sync/primary/claim {device_id:"00000000-0000-4000-8000-000000000000", takeover:false}` ⇒ **409 `primary_already_claimed`**；`automation-primary.json` SHA-256 **前后不变**，vault 仍 clean（证明"别的设备不 takeover 绝不抢占"） |
 | G2 错误面（真机） | `POST /api/settings/git/remote/publish {candidate_url:"git@github.com:owner/repo.git", pat:"probe-…"}` ⇒ **409 `remote_scheme_unsupported`**，无副作用（证明只接受 HTTPS、且拒绝发生在写 Keychain/远端之前） |
 | G3 服务日志（真机） | `~/Library/Logs/summitworkbench-server.log` 存在、`-rw-------`（**0600**）、284 B，首行 `{"component":"server","event":"server_started","app_version":"0.4.7","frontend_build":"v2026.09.13-8b7767d-ae564ff2","has_workspace":true}`，无 URL/路径/凭据 |
+| 包内确实带上了新界面 | 对已安装包的 `Contents/Resources/web/static/assets/index-*.js` 逐字 grep：`primary-claim`、`primary-downgrade`、`primary-takeover-ack`、`git-remote-publish`、`定时自动化主设备`、`接管主设备`、`降级为备用设备`、`首次发布到远端`、`昨晚为什么没自动同步`、`summitworkbench-server.log` **全部 PRESENT**（证明 G1/G2 界面与更新后的指南真的进了交付包） |
 
 **Air 侧**：由使用者 AirDrop 同一个 DMG 后按既有流程安装（本轮未远程操作 Air，也未再跑双机
 往返冒烟——这是对齐时明确的可选项）。两台机器的版本一致性待 Air 安装后由 `frontend_build` 核对。
@@ -1274,10 +1275,19 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
 
 ### R.6 本轮未能完成 / 仍开放
 
-1. **两个演练仓库未删除**（使用者本轮要求删除）：`gh repo delete SummitYifeng/summitworkbench-rehearsal{,-2} --yes`
-   被 **HTTP 403** 拒绝——当前 `gh` 令牌缺少 `delete_repo` scope。解除方式（需要使用者交互一次）：
-   `gh auth refresh -h github.com -s delete_repo`，然后重跑上面两条删除命令。仓库本身仍在，
-   不影响任何功能。
+1. **两个演练仓库未删除**（使用者本轮要求删除）：两条凭据路径都已试过，均无权限——
+   `gh repo delete SummitYifeng/summitworkbench-rehearsal{,-2} --yes` 得 **HTTP 403**
+   （`gh` OAuth 令牌 scope 实测为 `gist, read:org, repo, workflow`，**缺 `delete_repo`**）；
+   改用 app 存的那份细粒度 Git PAT 走 REST API 得 **HTTP 404**（该 PAT 对这两个 **org** 仓库
+   `GET`/`DELETE` 均 404，即根本不在其可见范围内）。解除方式（需要使用者交互一次）：
+
+   ```bash
+   gh auth refresh -h github.com -s delete_repo
+   gh repo delete SummitYifeng/summitworkbench-rehearsal --yes
+   gh repo delete SummitYifeng/summitworkbench-rehearsal-2 --yes
+   ```
+
+   两个仓库本身仍在，不影响任何功能。
 2. **Air 安装**：本轮未在 Air 上安装 build 34（需使用者 AirDrop 并手动操作），
    因此**没有**再跑双机往返冒烟（对齐时该项未被选中）。
 3. **G2 未对真实 GitHub 空仓库做端到端**：发布流程要使用者自己的 PAT 且会在其账号下**新建**
