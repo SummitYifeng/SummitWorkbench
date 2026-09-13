@@ -113,6 +113,9 @@ def _trace_html(result: object) -> str:
             f"<p>路由：<code>{escape(trace.route)}</code>（{escape(trace.route_reason)}）</p>"
         )
         rows.append("<p>检索词：" + escape("、".join(trace.terms) or "—") + "</p>")
+        degraded = getattr(trace, "degraded", "")
+        if degraded:
+            rows.append("<p>⚠ 索引不可用，已降级为纯 Markdown 扫描：" + escape(degraded) + "</p>")
         if trace.expanded:
             items = "".join(
                 f"<li><code>{escape(anchor)}</code> ← {escape(seed)}</li>"

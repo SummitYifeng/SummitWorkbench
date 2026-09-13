@@ -5,11 +5,18 @@
 1. **索引库放在 vault 之外**（默认 ``Application Support/SummitWorkbench/kb-index.sqlite``），
    以免污染资产与双机同步；
 2. **可重建**：全量重建必须随时可用，增量按 ``(path, mtime, size, hash)`` 跳过未变文件；
-3. **不是阅读前提**：索引缺失/损坏时，检索退化为纯 Python BM25 扫描（本模块自带），
-   纯 Markdown + Git 始终自足。
+3. **不是阅读前提**：索引缺失/损坏时降级检索（FTS5 不可用 → 自建 BM25；库整个不可用 →
+   退回纯 Markdown 子串扫描），纯 Markdown + Git 始终自足。
 
 FTS5 是否可用**先探测再决定**，不假设：探测失败时 `search` 返回 ``None``，
 由上层走 BM25 兜底，而不是让整次问答失败。
+
+第 3 条约束有**三种**真实的失败形态，都必须自愈或优雅降级，而不是把栈抛给使用者：
+
+- 索引文件是垃圾内容（``file is not a database``）→ **删掉重建**（索引可重建，不丢资产）；
+- 表结构不匹配（旧版本残留 / 手工改过）→ **删表重建**（`CREATE TABLE IF NOT EXISTS` 修不了这种）；
+- 索引库**根本建不出来**（只读目录、路径不可写）→ 抛 :class:`IndexUnavailableError`，
+  由上层退回纯 Markdown 扫描（``retrieval.retrieve_candidates``）。
 """
 
 from __future__ import annotations
@@ -180,6 +187,30 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# 建表语句之外的「这个版本期望表里有什么」：用来识别旧版本残留 / 被手工改坏的表。
+# `CREATE TABLE IF NOT EXISTS` 对**已存在但列不对**的表是空操作，只靠它自愈不了。
+_REQUIRED_COLUMNS: dict[str, frozenset[str]] = {
+    "notes": frozenset(
+        {
+            "source_id",
+            "hash",
+            "mtime",
+            "size",
+            "title",
+            "area",
+            "workstream",
+            "type",
+            "status",
+            "domain",
+            "date",
+            "updated",
+            "summary",
+            "meta_json",
+        }
+    ),
+    "chunks": frozenset({"id", "source_id", "heading", "text"}),
+}
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
     source_id TEXT PRIMARY KEY,
@@ -205,6 +236,14 @@ _FTS_SCHEMA = (
 )
 
 
+class IndexUnavailableError(RuntimeError):
+    """索引库在本机**完全不可用**（打不开、目录只读、路径是目录）。
+
+    与「FTS5 不可用」不同：那种情况仍能用自建 BM25；这个异常意味着连块表都读不到，
+    上层必须退回纯 Markdown 扫描。
+    """
+
+
 class KnowledgeIndex:
     """可重建的本地检索索引。所有写操作都只碰 ``db_path``，从不写 vault。"""
 
@@ -213,13 +252,78 @@ class KnowledgeIndex:
         self.db_path = db_path.expanduser()
         self.fts_ok = fts5_available()
         self._notes: dict[str, NoteMeta] = {}
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(self.db_path)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.executescript(_SCHEMA)
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise IndexUnavailableError(
+                f"索引库目录不可用：{self.db_path.parent}（{exc}）"
+            ) from exc
+        self._connection = self._open_repaired()
+
+    # ---- 打开与自愈 ----
+
+    def _open_repaired(self) -> sqlite3.Connection:
+        """打开索引库；坏文件/坏表结构先删后重建，最多重试一次。
+
+        重试一次就够：第一次失败的唯一补救动作是「删掉重建」，而删除本身失败
+        （只读目录、权限不足）时再试一次也还是失败，此时抛 :class:`IndexUnavailableError`。
+        """
+        last: Exception | None = None
+        for attempt in (1, 2):
+            try:
+                connection = sqlite3.connect(self.db_path)
+            except sqlite3.Error as exc:  # 打不开（只读目录 / 权限 / 路径是目录）
+                last = exc
+                break
+            connection.row_factory = sqlite3.Row
+            try:
+                self._prepare_schema(connection)
+            except sqlite3.Error as exc:
+                last = exc
+                connection.close()
+                if attempt == 1 and self._discard():
+                    continue
+                break
+            return connection
+        raise IndexUnavailableError(f"索引库不可用：{self.db_path}（{last}）")
+
+    def _discard(self) -> bool:
+        """删除坏掉的索引文件及其 WAL/journal 边车。删的是**索引**，不丢任何资产。"""
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            target = self.db_path.with_name(self.db_path.name + suffix)
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                return False
+        return True
+
+    @staticmethod
+    def _schema_mismatch(connection: sqlite3.Connection) -> bool:
+        """表缺失或列不齐 → 需要删表重建。"""
+        for table, expected in _REQUIRED_COLUMNS.items():
+            rows = connection.execute(f"PRAGMA table_info({table})").fetchall()
+            if not rows:
+                return True
+            if not expected.issubset({row["name"] for row in rows}):
+                return True
+        return False
+
+    def _prepare_schema(self, connection: sqlite3.Connection) -> None:
+        if self._schema_mismatch(connection):
+            connection.executescript(
+                "DROP TABLE IF EXISTS chunks_fts;"
+                " DROP TABLE IF EXISTS chunks;"
+                " DROP TABLE IF EXISTS notes;"
+            )
+        connection.executescript(_SCHEMA)
         if self.fts_ok:
-            self._connection.execute(_FTS_SCHEMA)
-        self._connection.commit()
+            try:
+                connection.execute(_FTS_SCHEMA)
+            except sqlite3.Error:
+                # 外部 content 表还在，但 FTS 表建不出来（例如 FTS5 被编译掉了）：
+                # 退化为自建 BM25，而不是让整次问答失败。
+                self.fts_ok = False
+        connection.commit()
 
     def close(self) -> None:
         self._connection.close()
@@ -339,8 +443,18 @@ class KnowledgeIndex:
         return len(stale)
 
     def _rebuild_fts(self) -> None:
-        if self.fts_ok:
+        if not self.fts_ok:
+            return
+        try:
             self._connection.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+        except sqlite3.Error:
+            # FTS 影子表坏了（内容表与索引不同步 / 残留旧结构）：本会话退化为 BM25，
+            # 并把 FTS 表丢掉，让下一次打开时按 _prepare_schema 重建。
+            self.fts_ok = False
+            try:
+                self._connection.execute("DROP TABLE IF EXISTS chunks_fts")
+            except sqlite3.Error:
+                pass
 
     # ---- 读取 ----
 
@@ -445,18 +559,24 @@ class KnowledgeIndex:
         return reached
 
     def search(self, query: str, *, limit: int = 300) -> list[Hit] | None:
-        """FTS5 块级检索；FTS5 不可用或无可用检索词时返回 None（交给 BM25 兜底）。"""
+        """FTS5 块级检索；FTS5 不可用 / 索引坏了 / 无检索词时返回 None（交给 BM25 兜底）。"""
         if not self.fts_ok:
             return None
         expression = fts_query(query_terms(query))
         if not expression:
             return None
-        rows = self._connection.execute(
-            "SELECT c.source_id, c.heading, c.text, bm25(chunks_fts) AS rank"
-            " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
-            " WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
-            (expression, limit),
-        )
+        try:
+            rows = self._connection.execute(
+                "SELECT c.source_id, c.heading, c.text, bm25(chunks_fts) AS rank"
+                " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
+                " WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
+                (expression, limit),
+            ).fetchall()
+        except sqlite3.Error:
+            # 查询期才发现 FTS 坏了（例如影子表被外部改过）：不要让整次问答失败，
+            # 交给 BM25 兜底；本会话不再尝试 FTS。
+            self.fts_ok = False
+            return None
         return [
             Hit(
                 source_id=row["source_id"],
@@ -528,3 +648,56 @@ def bm25_scores(hits: Iterable[Hit], query: str, *, k1: float = 1.2, b: float = 
             )
     scored.sort(key=lambda hit: (-hit.score, hit.source_id, hit.heading))
     return scored
+
+
+_PROBE_NOTE = """---
+title: 探针笔记
+type: note
+status: active
+workstream: probe
+date: 2026-09-13
+---
+
+# 索引能力探针
+
+## 检索目标
+
+探针专用词 zz-probe-anchor 只出现在这一块里。
+"""
+
+
+def runtime_diagnostic() -> dict[str, object]:
+    """在**当前解释器**里实测索引层能力，供打包后的包内探针调用。
+
+    为什么必须有它：开发机 venv 的 SQLite 支持 FTS5+trigram，并不代表冻结进 App 的解释器
+    也支持。这个函数只做只读探测（临时目录里造一篇探针笔记），回答三个问题：
+
+    1. 当前 SQLite 版本是多少、FTS5/trigram 是否可用；
+    2. FTS5 可用时，块级检索是否真的命中 `路径#区块`；
+    3. FTS5 不可用时，自建 BM25 兜底路径是否仍然命中。
+
+    绝不触碰使用者的真实 vault（临时目录 + 临时索引库）。
+    """
+    import tempfile
+
+    report: dict[str, object] = {
+        "sqlite_version": sqlite3.sqlite_version,
+        "fts5_trigram": fts5_available(),
+    }
+    with tempfile.TemporaryDirectory(prefix="wb-kb-probe.") as tmp:
+        root = Path(tmp)
+        vault = root / "vault"
+        (vault / "probe").mkdir(parents=True)
+        (vault / "probe" / "probe.md").write_text(_PROBE_NOTE, encoding="utf-8")
+        db_path = root / "probe.sqlite"
+        with KnowledgeIndex(vault, db_path) as index:
+            index.build()
+            hits = index.search("zz-probe-anchor")
+            if hits is not None:
+                report["fts_hit"] = [hit.anchor for hit in hits]
+            else:
+                report["fts_hit"] = None
+            fallback = bm25_scores(index.all_chunks(), "zz-probe-anchor")
+            report["bm25_fallback_hit"] = [hit.anchor for hit in fallback]
+    report["chunk_level_ok"] = bool(report["fts_hit"]) or bool(report["bm25_fallback_hit"])
+    return report

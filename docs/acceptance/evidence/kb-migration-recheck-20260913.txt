@@ -1,0 +1,60 @@
+SummitWorkbench · C-lite 迁移独立复核（A.7）
+生成时间：2026-09-13 17:49:41 CST
+复核人：DSH agent（独立于当初执行迁移的会话）
+vault：~/Documents/Work/_vault  · 基线提交 d0b0d00（迁移前）→ HEAD（迁移后）
+
+======================================================================
+1) 结构：文件数变化
+======================================================================
+d0b0d00 (迁移前) markdown 文件数: 115
+HEAD     (迁移后) markdown 文件数: 55
+被删除（合并掉的原子笔记）: 65
+新增（分析笔记）:
+    hii/notes/20260911-hic-hii-royalty-analysis.md
+    hii/notes/20260912-hii-hic-ip-analysis.md
+    hii/notes/20260913-hic-hii-china-visit-playbook-analysis.md
+    hii/notes/20260913-hic-hii-current-visits-analysis.md
+    it/notes/20260912-hic-it-roadmap-analysis.md
+
+======================================================================
+2) 逐行无损校验：d0b0d00 的每篇被删笔记 → 现行库中是否逐行存在
+   （排除 `## 关联` 段：该段在 C-lite 中是有意重写的）
+======================================================================
+被删笔记：65 篇；校验内容行：1296；缺失：5
+
+  · 旧：hii/notes/20260623-kate-mayer-ip-action-items.md
+      缺失行：- 四套课程材料逐项修改要求（见 [[20260912-four-copyright-materials|四套版权材料的正式名称与年份口径]]）；
+  · 旧：hii/notes/20260912-hic-owned-assets.md
+      缺失行：- 「活满」品牌（见 [[20260912-huoman-brand-direction|「活满」品牌定位未决]]）；
+  · 旧：hii/notes/20260912-hii-core-ip-assets.md
+      缺失行：- Hoffman Process 相关核心课程材料（四套，见 [[20260912-four-copyright-materials|四套版权材料口径]]）；
+  · 旧：hii/notes/20260912-ip-timeline.md
+      缺失行：见 [[20260730-cao-muzi-execution-checklist|曹木子的 HIC 内部执行清单（2026-07-30）]]。
+  · 旧：hii/notes/20260912-ip-timeline.md
+      缺失行：见 [[20260623-kate-mayer-ip-action-items|HII 2026-06-23 IP & License 执行清单（Kate Mayer 邮件）]]。
+
+结论：5 处差异全部是**链接目标重写**（展示文字一字不差，只有 [[目标]] 从已被合并掉的
+      原子笔记换成了 [[hii/notes/20260912-hii-hic-ip-analysis#区块]]）。逐字内容 0 丢失。
+
+======================================================================
+3) 区块锚点完整性：`[[文件#区块]]` 是否都能定位到真实存在的块
+======================================================================
+双链总数：310
+其中带 `#区块` 的链接：94
+区块锚点可解析：94
+区块锚点悬空（指向不存在的节）：0
+
+整篇目标解析不到的链接：7（逐条定性如下）
+  · conventions → [[文件#标题]]
+  · conventions → [[分析笔记#区块标题]]
+  · index/timeline → [[笔记]]
+  · review/kb-intake → [[...]]
+  · review/meetings → [[meetings/notes/2026-08-30-产品周会]]
+  · review/meetings → [[meetings/notes/2026-08-30-产品周会]]
+  · review/meetings → [[2026-08-30-产品周会-transcript]]
+
+定性：这 7 条**全部是示例/格式模板**，不是真实引用——
+  - conventions.md 的 2 条是 `[[文件#标题]]` / `[[分析笔记#区块标题]]` 语法示例；
+  - index/timeline.md 的 1 条是「每行格式」维护规则里的模板；
+  - review/meetings.md 的 4 条在 HTML 注释 `<!-- ... -->` 的示例块内，解析器不会当成真实条目。
+结论：94 个真实区块锚点 **0 悬空**；C-lite 的 `[[文件#区块]]` 重写完全自洽。

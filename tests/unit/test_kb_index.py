@@ -9,17 +9,21 @@
 
 from __future__ import annotations
 
+import os
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from summit_workbench.repositories import kb_index as kb
 from summit_workbench.repositories.kb_index import (
+    IndexUnavailableError,
     KnowledgeIndex,
     bm25_scores,
     default_index_path,
     fts5_available,
 )
+from summit_workbench.workflows.ask.retrieval import retrieve_candidates, retrieve_via_index
 
 
 def _note(vault: Path, rel: str, body: str, **front: object) -> Path:
@@ -181,3 +185,96 @@ def test_neighbours_expand_outlinks_and_inlinks(vault: Path, tmp_path: Path) -> 
         assert "meetings/notes/20260907-it-alignment" in out  # 入链
         two = index.neighbours("meetings/notes/20260907-it-alignment", hops=2)
         assert "hii/notes/20260912-trademark-consensus" in two
+
+
+# ---- 索引库损坏 / 不可用：三种真实失败形态都必须自愈或优雅降级 ----
+#
+# 这一组对应使用者 2026-09-13 实测的线上缺陷：索引文件被写坏时 `wb ask` 直接抛
+# `sqlite3.DatabaseError: file is not a database`，而模块文档承诺的是「退化为纯 Python BM25」。
+# 三条断言分别锁住：垃圾文件自愈、只读目录降级、旧表结构自愈。
+
+
+def test_corrupt_index_file_is_rebuilt_and_ask_still_works(vault: Path, tmp_path: Path) -> None:
+    """索引文件是垃圾内容时：删掉重建，问答不崩（这是本轮修的真实缺陷）。"""
+    target = tmp_path / "kb.sqlite"
+    target.write_bytes(b"this is definitely not a sqlite database" * 32)
+
+    with KnowledgeIndex(vault, target) as index:
+        stats = index.build()
+        assert stats.added == 4
+        assert index.chunk_count() > 0
+    # 文件已被换成真正的库，而不是继续拿着垃圾文件
+    assert target.read_bytes()[:16] == b"SQLite format 3\x00"
+
+
+def test_corrupt_index_does_not_raise_out_of_retrieve_via_index(
+    vault: Path, tmp_path: Path
+) -> None:
+    """端到端：坏索引库绝不能把 sqlite3 的栈抛给 `wb ask`。"""
+    target = tmp_path / "kb.sqlite"
+    target.write_bytes(b"\x00\x01\x02 not a database" * 64)
+    candidates, trace = retrieve_via_index(vault, "商标共识规范", index_path=target)
+    assert candidates, "坏索引库之后仍须能召回（重建后的索引或降级扫描）"
+    assert trace.degraded == ""  # 自愈成功，没有降级
+
+
+def test_readonly_directory_degrades_to_substring_scan(vault: Path, tmp_path: Path) -> None:
+    """目录只读、索引库建不出来：抛 IndexUnavailableError，检索退回纯 Markdown 扫描。"""
+    if os.geteuid() == 0:  # root 无视目录权限，这条断言在本机无意义
+        pytest.skip("以 root 运行时目录权限不生效")
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    locked.chmod(0o500)
+    target = locked / "kb.sqlite"
+    try:
+        with pytest.raises(IndexUnavailableError):
+            KnowledgeIndex(vault, target)
+
+        expected = retrieve_candidates(vault, "商标共识规范")
+        assert expected, "前置条件：子串扫描本身要有命中"
+        candidates, trace = retrieve_via_index(vault, "商标共识规范", index_path=target)
+        assert [c.source_id for c in candidates] == [c.source_id for c in expected]
+        assert trace.degraded, "降级必须在检索轨迹里写明原因，否则使用者以为这是块级检索"
+        assert "索引库打不开" in trace.degraded
+    finally:
+        locked.chmod(0o700)
+
+
+def test_mismatched_table_schema_is_rebuilt(vault: Path, tmp_path: Path) -> None:
+    """旧版本残留 / 被手工改坏的表结构：`CREATE TABLE IF NOT EXISTS` 修不了，必须删表重建。"""
+    target = tmp_path / "kb.sqlite"
+    stale = sqlite3.connect(target)
+    stale.executescript(
+        "CREATE TABLE notes (source_id TEXT PRIMARY KEY, title TEXT);"
+        " CREATE TABLE chunks (id INTEGER PRIMARY KEY, source_id TEXT);"
+    )
+    stale.commit()
+    stale.close()
+
+    with KnowledgeIndex(vault, target) as index:
+        stats = index.build()  # 旧表少了 hash/meta_json 等列，不自愈这里就会 OperationalError
+        assert stats.added == 4
+        assert index.notes()["hii/notes/20260912-trademark-consensus"].workstream == "hii"
+        assert index.search("商标共识规范") is not None or not fts5_available()
+
+
+def test_broken_fts_shadow_table_falls_back_to_bm25(vault: Path, tmp_path: Path) -> None:
+    """内容表还在但 FTS 影子表坏了：本会话退化为 BM25，而不是让检索失败。"""
+    target = tmp_path / "kb.sqlite"
+    with KnowledgeIndex(vault, target) as index:
+        index.build()
+
+    broken = sqlite3.connect(target)
+    broken.executescript("DROP TABLE IF EXISTS chunks_fts;")
+    broken.commit()
+    broken.close()
+
+    with KnowledgeIndex(vault, target) as index:
+        index.build()
+        if fts5_available():
+            # 影子表被丢弃后 _prepare_schema 会重建它；要么重建成功（返回命中），
+            # 要么明确告知上层走兜底（None）——两者都不能抛异常。
+            hits = index.search("商标共识规范")
+            assert hits is None or hits
+        else:  # pragma: no cover - 本机 FTS5 可用
+            assert index.search("商标共识规范") is None

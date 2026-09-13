@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -160,6 +161,30 @@ def retrieve_candidates(
     return scored[:limit]
 
 
+def _degraded(
+    vault_dir: Path,
+    query: str,
+    plan: RoutingPlan,
+    *,
+    reason: str,
+    project: str | None,
+    limit: int | None,
+) -> tuple[list[Candidate], Trace]:
+    """索引层不可用时退回旧版子串扫描，并在轨迹里**写明降级原因**。
+
+    这条路径必须存在：索引库是纯派生数据，坏了不能连累问答——纯 Markdown + Git 始终自足。
+    """
+    candidates = retrieve_candidates(vault_dir, query, project=project, limit=limit or plan.limit)
+    trace = Trace(
+        route=plan.kind.value,
+        route_reason=plan.reason,
+        terms=tuple(_terms(query)),
+        hits=len(candidates),
+        degraded=reason,
+    )
+    return candidates, trace
+
+
 def retrieve_via_index(
     vault_dir: Path,
     query: str,
@@ -176,11 +201,28 @@ def retrieve_via_index(
 
     FTS5 不可用时自动退化为纯 Python BM25（``KnowledgeIndex.search`` 返回 ``None``），
     因此这条路径**不会**因为打包环境缺 FTS5 而失效。
+
+    索引库本身坏了（垃圾内容 / 表结构不匹配 / 目录只读）时会自愈重建；自愈不了则退回
+    旧版子串扫描——**任何情况下都不把 ``sqlite3`` 的栈抛给使用者**。
     """
-    from summit_workbench.repositories.kb_index import KnowledgeIndex, bm25_scores
+    from summit_workbench.repositories.kb_index import (
+        IndexUnavailableError,
+        KnowledgeIndex,
+        bm25_scores,
+    )
 
     resolved_plan = plan or route_query(query)
-    index = KnowledgeIndex(vault_dir, index_path)
+    try:
+        index = KnowledgeIndex(vault_dir, index_path)
+    except (sqlite3.Error, IndexUnavailableError, OSError) as exc:
+        return _degraded(
+            vault_dir,
+            query,
+            resolved_plan,
+            reason=f"索引库打不开（{exc}）",
+            project=project,
+            limit=limit,
+        )
     try:
         index.build()
         hits = index.search(query)
@@ -209,6 +251,16 @@ def retrieve_via_index(
             )
             for chunk in ranked[: (limit or resolved_plan.limit)]
         ]
+    except (sqlite3.Error, IndexUnavailableError) as exc:
+        # 建索引/检索中途才发现坏了（磁盘满、库被外部进程改坏）：同样退回子串扫描。
+        return _degraded(
+            vault_dir,
+            query,
+            resolved_plan,
+            reason=f"索引检索失败（{exc}）",
+            project=project,
+            limit=limit,
+        )
     finally:
         index.close()
     return candidates, trace

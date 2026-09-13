@@ -91,6 +91,13 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        # 包内探针：冻结进 App 的解释器到底支不支持 FTS5/trigram？开发机 venv 支持不算数。
+        # 见 docs/acceptance/OPEN-VERIFICATION-ITEMS.md §S —— 这条只能对**已构建的包**跑。
+        "--kb-diagnostic",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     return parser
 
 
@@ -101,6 +108,11 @@ def main(argv: list[str] | None = None) -> None:
     args = _parser().parse_args(argv)
     if args.tls_diagnostic:
         print(json.dumps(tls_runtime_diagnostic(), ensure_ascii=False, sort_keys=True))
+        return
+    if args.kb_diagnostic:
+        from summit_workbench.repositories.kb_index import runtime_diagnostic
+
+        print(json.dumps(runtime_diagnostic(), ensure_ascii=False, sort_keys=True))
         return
     validate_bind_host(args.host, mode_from_environment(os.environ.get("WB_PANEL_MODE")))
     static_dir = Path(args.static_dir).expanduser() if args.static_dir else None

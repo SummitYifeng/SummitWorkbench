@@ -1,4 +1,4 @@
-## [未发布] - 2026-09-13
+## [0.4.8] - 2026-09-13
 
 > 工作知识库重建 + 第二大脑纯文本检索做深。**不破**「无向量库 / 无 RAG / 不加第三方依赖」硬边界；
 > 不引云服务端、不引守护进程。
@@ -33,15 +33,33 @@
   `--config-file`，并在默认配置缺失时回退到本机 active workspace 的 profile。
 - **入库工具**：`scripts/kb_intake.py`（幂等 + 内容哈希去重 + 同 ref 冲突即停）、
   `scripts/kb_verify_quotes.py`（逐字引用校验 + **原件逐字保留**校验）、
-  `scripts/kb_acceptance.py`（两个真实问题的可重复端到端验收）。
+  `scripts/kb_acceptance.py`（真实问题回归清单的可重复端到端验收）。
+- **包内检索能力探针**：`server_entry.py --kb-diagnostic`（+ `kb_index.runtime_diagnostic()`）
+  在**已构建的包**里实测 SQLite 版本、FTS5/trigram 可用性与「块级检索是否真的命中」。
+  开发机 venv 支持 FTS5 不算数——冻结进 App 的解释器才是分发环境。探针对 FTS5 可用与不可用
+  **两种结果都断言**：可用必须命中 `路径#区块`，不可用则自建 BM25 必须命中。
+- **人员索引再生成脚本**（`scripts/kb_index_people.py`）：`index/people.md` 正文写着「由聚合脚本
+  重生成，不需要手工维护条目」，但那个脚本当时写在 `/tmp`、没有进仓库，页面因此不可复现。
+  现在固化进 `scripts/` 并有 `--check`（页面与 frontmatter 不一致即非零退出）。
 
 ### 修复
 
+- **损坏的索引库不再让问答直接崩**（`repositories/kb_index.py` / `workflows/ask/retrieval.py`）。
+  实测复现：索引文件是垃圾内容时 `KnowledgeIndex.__init__` 抛
+  `sqlite3.DatabaseError: file is not a database`，而模块文档承诺的是「索引损坏时降级检索」。
+  现在三种真实失败形态都被妥善处理：垃圾文件 → **删掉重建**；旧版本残留 / 表结构不匹配
+  （`CREATE TABLE IF NOT EXISTS` 修不了这种）→ **删表重建**；索引库根本建不出来（只读目录、
+  路径不可写）→ 抛 `IndexUnavailableError`，`retrieve_via_index` 外层兜底**退回纯 Markdown
+  子串扫描**并在检索轨迹里写明降级原因（`Trace.degraded`，问答页同步渲染）。FTS 影子表在
+  查询期坏掉也会退化为自建 BM25。**索引是纯派生数据，坏了不能连累问答。**
 - `wb ask` 此前完全看不到 App 配置的 workspace（provider 配置在
   `profiles/<workspace_id>/config.toml`），表现为「App 里配好了模型、命令行说配置不存在」。
 - `scripts/kb_intake.py` 归档时标题降级未跳过围栏代码块，会把模板示例里的 `# 标题` 变成真实的
   `##` 区块，从而污染检索分块与引用锚点。
 - 来源笔记 `id` 原先一律 `<date>-src`（同日多份会撞），改为由目标路径派生的稳定 4 位十六进制。
+- `scripts/kb_acceptance.py` 的裁决逻辑抽成可测纯函数（`audit_case` / `evidence_chains`）：
+  证据层只认 `meeting-transcript` 与 `source`。**会议笔记是派生摘要，不算证据层**——早先版本
+  把它算进去，「笔记 → 会议笔记」这条链就能让验收通过，看起来走到了证据，其实停在摘要上。
 
 ### 测试
 
@@ -50,6 +68,22 @@
   `test_vault_templates.py`；`test_webapi.py` / `test_vault_repo.py` 增补。
 - 关键信号均做**代码级变异验证**（删掉 source 降权 / 同源去重 / 类型权威加权 / 导航区块降权 /
   单篇块数上限 / 双链扩展，对应用例必须变红）。
+- **真实问题回归清单从 2 题扩到 8 题**（`scripts/kb_acceptance.py`）：覆盖 ① 回溯 / ② 决策 /
+  ⑤ 回顾三个优先场景，外加点查与综合。只有 Q1/Q2 真调模型，其余只验检索，**不增加 token 成本**。
+- 新增 `tests/unit/test_ask_regression_questions.py`：同样 8 题跑在合成 vault 上（进 CI），
+  每题断言「关键证据被召回 + 引用是块级 + ≤2 跳走到证据层」。问题清单**直接从 `kb_acceptance.CASES`
+  取**，并有守卫测试防止两组清单漂移。
+- 新增 `tests/unit/test_kb_acceptance.py`：锁住裁决者自身的判据，含「会议摘要不得冒充证据层」的
+  回归（这条对应一次真实踩坑），以及编造区块 / 缺块级引用 / 缺追溯链 / 该有逐字稿却没走到。
+- 新增 `tests/unit/test_kb_people_index.py`：排序（条目数降序、同数按名字升序）、前 4 篇预览与
+  `（共 N 篇）`、模板与机器目录排除、`--check` 在页面过期时必须红。
+- `tests/unit/test_kb_index.py` 增补四类失败形态：索引文件是垃圾内容、只读目录、表结构不匹配、
+  FTS 影子表损坏。
+- **prompt 版本锁定**：`qa-answer` 升到 v2 后没有任何测试锁住文件版本，`test_ask_workflow.py`
+  还停在 `Prompt(version=1)`。现在断言文件为 `qa-answer@v2`、正文含 v2 的 `路径#区块标题`
+  契约，并让编排测试的 stub 与文件同版本。
+- `tests/integration/test_packaged_app.py` 增补包内 `--kb-diagnostic` 探针断言（FTS5 可用与否
+  都必须证明块级检索可用）。
 
 ## [0.4.7] - 2026-09-12
 

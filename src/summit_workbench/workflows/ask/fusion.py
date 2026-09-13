@@ -98,10 +98,14 @@ class Trace:
     fused: tuple[RankedChunk, ...] = ()
     dropped: tuple[tuple[str, str], ...] = field(default=())  # (anchor, 原因)
     expanded: tuple[tuple[str, str], ...] = field(default=())  # (anchor, 来源)
+    # 索引层不可用而退回纯 Markdown 扫描时，写明原因——否则使用者会以为这就是块级检索的结果
+    degraded: str = ""
 
     def summary(self) -> str:
         terms = "、".join(self.terms) or "—"
         lines = [f"路由：{self.route}（{self.route_reason}）", f"检索词：{terms}"]
+        if self.degraded:
+            lines.append(f"⚠ 索引不可用，已降级：{self.degraded}")
         if self.expanded:
             lines.append("双链扩展：" + "；".join(f"{a} ← {b}" for a, b in self.expanded))
         if self.dropped:

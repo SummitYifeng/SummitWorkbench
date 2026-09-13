@@ -7,13 +7,28 @@ from pathlib import Path
 
 from pydantic import SecretStr
 
-from summit_workbench.prompts import Prompt
+from summit_workbench.prompts import Prompt, load_prompt
 from summit_workbench.providers.llm.client import CompletionResult, Usage
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.workflows.ask.ask import AskTurn, answer_question
 
 CFG = ModelConfig(capability="qa", model_id="m", base_url="http://x", credential_account="shared")
-PROMPT = Prompt(name="qa-answer", version=1, capability="qa", body="系统提示")
+# 必须与 prompts/qa-answer.md 的 frontmatter 对齐（由下方 test_qa_answer_prompt_version 锁住）
+PROMPT = Prompt(name="qa-answer", version=2, capability="qa", body="系统提示")
+
+
+def test_qa_answer_prompt_version_is_locked_to_the_file() -> None:
+    """prompt 版本会写进 qa-insight 的 `prompt_version`，所以文件与断言必须同步。
+
+    这条锁是必要的：文档与 CHANGELOG 声称 v2 时，prompt 文件曾经停在 v1 而没有任何测试会红。
+    """
+    prompt = load_prompt("qa-answer")
+    assert prompt.version_label == "qa-answer@v2"
+    # v2 的契约变化：`source_id` 可能是 `路径#区块标题`，模型必须逐字照抄整个 id
+    # （只写路径部分会让引用退化到「整篇」，答案的精确性就丢了）
+    assert "路径#区块标题" in prompt.body
+    # 上面的 stub 必须与真实文件同版本，否则这组编排测试测的就不是线上 prompt 的契约
+    assert PROMPT.version == prompt.version
 
 
 class FakeCompleter:

@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
-"""端到端验收：§8.0 的两个真实问题（可重复运行，失败即非零退出）。
+"""端到端验收：真实问题回归清单（可重复运行，失败即非零退出）。
 
 这是「第二大脑答得对不对」的可判定版本——不是看答案读起来像不像，而是断言：
 
-1. 两题都**不能**是 unanswerable（答不出来必须红，不许用模型编的答案冒充通过）；
+1. 问题**不能**是 unanswerable（答不出来必须红，不许用模型编的答案冒充通过）；
 2. 每条事实的出处都是 **`路径#区块`** 形式，且该锚点在索引里真实存在、能解析回原文；
 3. 检索轨迹存在，且路由与预期一致；
-4. **追溯链**：至少一条被引用的笔记能沿双链（≤2 跳）走到会议笔记或逐字稿；
-5. 题目要求的关键证据笔记必须被召回（Q1 → 商标共识；Q2 → IT Roadmap）。
+4. **追溯链**：至少一条被引用笔记能沿双链（≤2 跳）走到**证据层**（逐字稿或原始材料）；
+5. 题目要求的关键证据笔记必须被召回。
+
+清单覆盖使用者指定的三个优先场景 ① 回溯 / ② 决策 / ⑤ 回顾，外加点查与综合两个基础形态。
+只有 `Q1` / `Q2` 会真的调用模型（它们是对外验收口径）；其余各题**只验检索**
+（`use_model=False`），因此扩充清单不增加任何 token 成本。
 
 用法：
 
-    .venv/bin/python scripts/kb_acceptance.py           # 真调模型
-    .venv/bin/python scripts/kb_acceptance.py --no-model  # 只验检索，不问模型
+    .venv/bin/python scripts/kb_acceptance.py           # Q1/Q2 真调模型 + 其余只验检索
+    .venv/bin/python scripts/kb_acceptance.py --no-model  # 全部只验检索，不问模型
 """
 
 from __future__ import annotations
@@ -33,6 +37,13 @@ from summit_workbench.repositories.kb_index import KnowledgeIndex, default_index
 from summit_workbench.workflows.ask.ask import answer_question  # noqa: E402
 from summit_workbench.workflows.ask.retrieval import build_index  # noqa: E402
 
+# 什么算「证据层」：**逐字稿**或**原始材料**。
+#
+# `meeting-note` 是派生摘要，故意不在集合里——这一条是踩过坑的：早先版本把会议笔记也算作
+# 证据层，于是「笔记 → 会议笔记」这条链会让验收通过，看起来走到了证据，其实停在摘要上，
+# 摘要里的内容是不是原件说的并没有被校验。判据必须只认原件。
+EVIDENCE_TYPES = frozenset({"meeting-transcript", "source"})
+
 
 @dataclass(frozen=True)
 class Case:
@@ -41,24 +52,82 @@ class Case:
     expect_route: str
     must_recall: str
     expect_transcript: bool = False
+    # 只有对外验收的两题真调模型；其余是检索回归，不花 token
+    use_model: bool = False
 
 
 CASES = (
+    # ---- 对外验收口径：真调模型 ----
     Case(
-        name="Q1 商标共识规范",
+        name="Q1 商标共识规范（决策）",
         question="根据之前和 HII 的沟通，请告诉我当前我们达成的商标共识规范是什么？",
         expect_route="decision",
         must_recall="hii/notes/20260912-hii-hic-ip-analysis",
+        use_model=True,
     ),
     Case(
-        name="Q2 IT 进度与下一阶段",
+        name="Q2 IT 进度与下一阶段（点查）",
         question="IT 当前的开发进度是什么，下一个阶段该怎么做？",
         expect_route="point",
         must_recall="it/notes/20260912-hic-it-roadmap-analysis",
         # IT 侧有会议逐字稿，因此「走得到逐字稿」这条必须真的成立
         expect_transcript=True,
+        use_model=True,
+    ),
+    # ---- ① 回溯 ----
+    Case(
+        name="R1 商标共识的来龙去脉（回溯）",
+        question="HII 与 HIC 的商标共识是怎么走到今天这一步的？来龙去脉是什么？",
+        expect_route="retrospect",
+        must_recall="hii/notes/20260912-hii-hic-ip-analysis",
+    ),
+    Case(
+        name="R2 门户权限方向的由来（回溯）",
+        question="门户权限「不同项目各自管理员」这个方向最早是怎么提出的？后来怎么定下来的？",
+        expect_route="retrospect",
+        must_recall="meetings/notes/20260907-portal-permission-alignment",
+    ),
+    # ---- ② 决策 ----
+    Case(
+        name="D1 royalty 分层口径与依据（决策）",
+        question="royalty 分层的口径与依据是什么？",
+        expect_route="decision",
+        must_recall="hii/notes/20260911-hic-hii-royalty-analysis",
+    ),
+    # ---- ⑤ 回顾 ----
+    Case(
+        name="V1 本周进展回顾（回顾）",
+        question="这周 IT 和 HII 这边都有哪些进展？回顾一下。",
+        expect_route="review",
+        must_recall="it/notes/20260912-hic-it-roadmap-analysis",
+    ),
+    Case(
+        name="V2 本月决策复盘（回顾）",
+        question="复盘一下这段时间的决策，本月的结论都定了哪些？",
+        expect_route="review",
+        must_recall="hii/notes/20260912-hii-hic-ip-analysis",
+    ),
+    # ---- 基础形态：综合 ----
+    Case(
+        name="S1 系统现状一览（综合）",
+        question="目前有哪些系统，分别是什么状态？",
+        expect_route="synthesis",
+        must_recall="it/notes/20260912-hic-it-roadmap-analysis",
     ),
 )
+
+
+@dataclass(frozen=True)
+class Observation:
+    """一次运行的客观事实：模型回答与纯检索都能产出同样的形状。
+
+    把它与 :func:`audit_case` 分开，是为了让判定逻辑可以脱离模型、脱离真实 vault 被单测。
+    """
+
+    route: str
+    anchors: tuple[str, ...] = ()  # 事实级引用（`路径#区块`）；纯检索时为召回锚点
+    fused: tuple[str, ...] = ()  # 融合排序给出的 source_id（不含区块）
+    recalled: tuple[str, ...] = ()  # 额外计入「已召回」的 source_id（追问固定来源等）
 
 
 def _check_anchor(index: KnowledgeIndex, anchor: str) -> tuple[bool, str]:
@@ -74,6 +143,70 @@ def _check_anchor(index: KnowledgeIndex, anchor: str) -> tuple[bool, str]:
         if row["heading"] == heading:
             return True, ""
     return False, f"区块不存在：{anchor}"
+
+
+def evidence_chains(
+    index: KnowledgeIndex, anchors: tuple[str, ...], *, hops: int = 2
+) -> tuple[list[str], list[str]]:
+    """被引用笔记 ≤``hops`` 跳内能走到的证据层。
+
+    返回 ``(全部证据链, 其中走到逐字稿的链)``。链的写法是 ``笔记 → 证据``，
+    类型判定只看**链尾**——走到哪一层算哪一层，不做「链上出现过就算」的宽松判定。
+    """
+    notes = index.notes()
+    chains: list[str] = []
+    transcripts: list[str] = []
+    for anchor in anchors:
+        source_id = anchor.split("#", 1)[0]
+        if source_id not in notes:
+            continue
+        for neighbour in sorted(index.neighbours(source_id, hops=hops)):
+            info = notes.get(neighbour)
+            if info is None or info.type not in EVIDENCE_TYPES:
+                continue
+            chain = f"{source_id} → {neighbour}"
+            chains.append(chain)
+            if info.type == "meeting-transcript":
+                transcripts.append(chain)
+    return chains, transcripts
+
+
+def audit_case(case: Case, observation: Observation, index: KnowledgeIndex) -> list[str]:
+    """把一条验收（路由 / 关键证据 / 块级锚点 / 追溯链）判成失败清单。
+
+    纯函数：只读索引，不调模型、不写盘。空列表即通过。
+    """
+    failures: list[str] = []
+
+    # 1) 路由
+    if observation.route != case.expect_route:
+        failures.append(f"{case.name}：路由 {observation.route} != 期望 {case.expect_route}")
+
+    # 2) 关键证据必须被召回（融合结果或事实引用任意一处出现即可）
+    recalled = set(observation.fused) | set(observation.recalled)
+    recalled |= {anchor.split("#", 1)[0] for anchor in observation.anchors}
+    if not any(case.must_recall in item for item in recalled):
+        failures.append(f"{case.name}：未召回关键证据 {case.must_recall}")
+
+    # 3) 引用必须是块级，且锚点真实存在（编造的区块必须红）
+    block_level = [anchor for anchor in observation.anchors if "#" in anchor]
+    for anchor in observation.anchors:
+        ok, reason = _check_anchor(index, anchor)
+        if not ok:
+            failures.append(f"{case.name}：{reason}")
+    if observation.anchors and not block_level:
+        failures.append(f"{case.name}：没有任何块级（路径#区块）引用")
+
+    # 4) 追溯链：被引用笔记 ≤2 跳内能走到证据层；有逐字稿的材料必须真的走到逐字稿
+    chains, transcripts = evidence_chains(index, observation.anchors)
+    if not chains:
+        failures.append(
+            f"{case.name}：没有任何被引用笔记能在 2 跳内走到证据层"
+            "（type: meeting-transcript 或 source）"
+        )
+    if case.expect_transcript and not transcripts:
+        failures.append(f"{case.name}：没有走到逐字稿（本材料有逐字稿，不应只停在原文）")
+    return failures
 
 
 def main() -> int:
@@ -92,9 +225,10 @@ def main() -> int:
     print(f"索引：{stats.summary()}")
     print(f"索引库：{index_path}\n")
 
-    # 模型配置在这里解析一次（--no-model 时完全不需要，因此不提前调用）
+    # 模型配置在这里解析一次（--no-model 或全部题目都不调模型时完全不需要）
+    any_model = (not args.no_model) and any(case.use_model for case in CASES)
     cfg = api_key = prompt = None
-    if not args.no_model:
+    if any_model:
         cfg = load_model_config("qa", active.config_file, workspace_id=active.workspace_id)
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("qa-answer")
@@ -106,7 +240,7 @@ def main() -> int:
             print("=" * 78)
             print(f"【{case.name}】{case.question}")
             print("-" * 78)
-            if args.no_model:
+            if args.no_model or not case.use_model:
                 from summit_workbench.workflows.ask.retrieval import retrieve_via_index
 
                 candidates, trace = retrieve_via_index(
@@ -140,53 +274,26 @@ def main() -> int:
             # 1) 路由
             assert trace is not None
             print(f"\n检索轨迹：路由={trace.route}（{trace.route_reason}）")
-            if trace.route != case.expect_route:
-                failures.append(f"{case.name}：路由 {trace.route} != 期望 {case.expect_route}")
 
             # 2) 关键证据必须被召回
-            recalled = {c.source_id for c in trace.fused} | set(anchors)
-            if not any(case.must_recall in item for item in recalled):
-                failures.append(f"{case.name}：未召回关键证据 {case.must_recall}")
+            fused = tuple(chunk.source_id for chunk in trace.fused)
 
             # 3) 引用必须是块级且锚点真实存在
             block_level = [a for a in anchors if "#" in a]
             print(f"块级引用：{len(block_level)}/{len(anchors)}")
-            for anchor in anchors:
-                ok, reason = _check_anchor(index, anchor)
-                if not ok:
-                    failures.append(f"{case.name}：{reason}")
-            if anchors and not block_level:
-                failures.append(f"{case.name}：没有任何块级（路径#区块）引用")
 
-            # 4) 追溯链：被引用笔记 ≤2 跳内能走到**证据层**。
-            #    证据层只认「逐字稿」或「原始材料」：
-            #    `type: meeting-transcript` / `type: source`。
-            #    会议笔记是派生摘要，不算证据层——否则「走得到逐字稿」会被摘要冒充。
-            #    HII 侧没有会议逐字稿（证据是邮件与汇总文档），因此也要接受 `type: source`。
-            notes = index.notes()
-            evidence_types = {"meeting-transcript", "source"}
-            chains: list[str] = []
-            for anchor in block_level:
-                source_id = anchor.split("#", 1)[0]
-                for neighbour in index.neighbours(source_id, hops=2):
-                    info = notes.get(neighbour)
-                    if info is not None and info.type in evidence_types:
-                        chains.append(f"{source_id} → {neighbour}")
-            transcripts = [
-                chain
-                for chain in chains
-                if (notes.get(chain.split(" → ")[-1]) is not None)
-                and notes[chain.split(" → ")[-1]].type == "meeting-transcript"
-            ]
+            # 4) 追溯链：被引用笔记 ≤2 跳内能走到**证据层**（逐字稿 / 原始材料）
+            observation = Observation(
+                route=trace.route,
+                anchors=tuple(anchors),
+                fused=fused,
+            )
+            case_failures = audit_case(case, observation, index)
+            failures.extend(case_failures)
+
+            chains, transcripts = evidence_chains(index, tuple(anchors))
             print(f"追溯到证据层：{chains[0] if chains else '（未走出）'}（共 {len(chains)} 条）")
             print(f"其中走到逐字稿：{transcripts[0] if transcripts else '（无）'}")
-            if not chains:
-                failures.append(
-                    f"{case.name}：没有任何被引用笔记能在 2 跳内走到证据层"
-                    "（type: meeting-transcript 或 source）"
-                )
-            if case.expect_transcript and not transcripts:
-                failures.append(f"{case.name}：没有走到逐字稿（本材料有逐字稿，不应只停在原文）")
             if answer_facts:
                 print(f"事实条数：{len(answer_facts)}")
 
@@ -196,7 +303,17 @@ def main() -> int:
         for item in failures:
             print(f"  - {item}")
         return 1
-    print("✓ 验收通过：两题都答出来了，逐条带块级出处，且能追到证据层。")
+    model_cases = [case for case in CASES if case.use_model and not args.no_model]
+    if model_cases:
+        print(
+            f"✓ 验收通过：{len(CASES)} 题检索全部合格（其中 {len(model_cases)} 题真调模型并答出），"
+            "逐条带块级出处，且能追到证据层。"
+        )
+    else:
+        print(
+            f"✓ 验收通过：{len(CASES)} 题检索全部合格（未调用模型），"
+            "逐条带块级出处，且能追到证据层。"
+        )
     return 0
 
 
