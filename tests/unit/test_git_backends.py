@@ -11,11 +11,15 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+from dulwich.graph import can_fast_forward
+from dulwich.repo import Repo
 
 from summit_workbench.repositories.git_backend import (
+    AheadBehind,
     CommitIdentity,
     GitConflictError,
     GitNonFastForward,
@@ -206,6 +210,105 @@ def test_remote_missing_and_non_fast_forward_typed(kind: str, tmp_path: Path) ->
     b2.commit("wb: b2", author=ID)
     with pytest.raises(GitNonFastForward):
         b2.push()
+
+
+def _skewed_commit(path: Path, message: str, *, when: int) -> str:
+    """造一个 committer/author 时间显式给定的提交（模拟两台机器的时钟偏差）。
+
+    ``backend.commit`` 用当前时间；D9 的坏区只有在**远端父提交比本地提交新**时出现，
+    所以这里绕过后端直接写 commit 对象（仍走 ``ref=b"HEAD"``，语义与正常提交一致）。
+    """
+    sha: bytes = Repo(str(path)).do_commit(
+        message=message.encode("utf-8"),
+        author=b"Skew Author <skew@example.com>",
+        committer=b"Skew Author <skew@example.com>",
+        commit_timestamp=when,
+        ref=b"HEAD",
+    )
+    return sha.decode("ascii")
+
+
+def test_push_succeeds_when_remote_parent_committer_time_is_newer(tmp_path: Path) -> None:
+    """D9：远端父提交的 committer time 比本地提交新（跨机时钟偏差）时仍须推送成功。
+
+    dulwich 的 ``can_fast_forward`` 用时间戳剪枝，两跳（恢复提交 + 审计提交）会落在
+    坏区：图上是真快进，它却报分叉。修复后用图可达性复核 + 单 refspec 显式强推。
+    变异验证：去掉 ``_push_confirmed_fast_forward``（或让 ``_is_ancestor`` 恒为 False）
+    本用例在 ``local.push()`` 处抛 ``GitNonFastForward``。
+    """
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    bare = tmp_path / "remote.git"
+    DulwichGitBackend(bare).init(bare=True)
+    seed = DulwichGitBackend(tmp_path / "seed")
+    seed.init()
+    (tmp_path / "seed" / "base.txt").write_text("base", encoding="utf-8")
+    seed.add(["base.txt"])
+    seed.commit("wb: base", author=ID)
+    seed.add_remote("origin", str(bare))
+    seed.push()
+    base = seed.head_revision()
+
+    local = DulwichGitBackend(tmp_path / "local")
+    local.clone(str(bare), tmp_path / "local")
+    assert local.has_upstream() and local.upstream_revision() == base
+
+    now = int(time.time())
+    for name, delta in (("recovery", 7200), ("audit", 3600)):
+        (tmp_path / "local" / f"{name}.txt").write_text(name, encoding="utf-8")
+        local.add([f"{name}.txt"])
+        _skewed_commit(tmp_path / "local", f"wb: {name}", when=now - delta)
+    head = local.head_revision()
+
+    # 前置断言：确认确实落在 D9 的坏区（dulwich 认为不可快进，而图上是真快进）。
+    # 保留这条是为了防止哪天 dulwich 修好了、本用例悄悄失去覆盖；届时请连同图复核一起复核。
+    assert (
+        can_fast_forward(Repo(str(tmp_path / "local")), base.encode("ascii"), head.encode("ascii"))
+        is False
+    )
+
+    local.push()
+
+    assert DulwichGitBackend(bare).head_revision() == head
+    assert local.ahead_behind() == AheadBehind(ahead=0, behind=0)
+
+
+def test_push_rejects_true_divergence_even_when_graph_check_runs(tmp_path: Path) -> None:
+    """D9 的另一半：真分叉必须仍然是 typed ``GitNonFastForward``，远端一个字节都不动。
+
+    变异验证：把 ``_is_ancestor`` 改成恒 True（即"无条件 force"），远端 ref 会被本地
+    head 覆盖，下面的 ``head_revision() == remote_head`` 断言立刻失败。
+    """
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    bare = tmp_path / "remote.git"
+    DulwichGitBackend(bare).init(bare=True)
+    seed = DulwichGitBackend(tmp_path / "seed")
+    seed.init()
+    (tmp_path / "seed" / "f.txt").write_text("0", encoding="utf-8")
+    seed.add(["f.txt"])
+    seed.commit("wb: base", author=ID)
+    seed.add_remote("origin", str(bare))
+    seed.push()
+
+    local = DulwichGitBackend(tmp_path / "local")
+    local.clone(str(bare), tmp_path / "local")
+    writer = DulwichGitBackend(tmp_path / "writer")
+    writer.clone(str(bare), tmp_path / "writer")
+    (tmp_path / "writer" / "f.txt").write_text("writer", encoding="utf-8")
+    writer.add(["f.txt"])
+    writer.commit("wb: writer", author=ID)
+    writer.push()
+    remote_head = writer.head_revision()
+
+    (tmp_path / "local" / "f.txt").write_text("local", encoding="utf-8")
+    local.add(["f.txt"])
+    local.commit("wb: local", author=ID)
+
+    with pytest.raises(GitNonFastForward):
+        local.push()
+
+    assert DulwichGitBackend(bare).head_revision() == remote_head
 
 
 def test_identity_and_revert_message_recorded(tmp_path: Path) -> None:

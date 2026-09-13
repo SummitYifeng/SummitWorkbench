@@ -24,7 +24,7 @@ from dulwich.diff_tree import tree_changes
 from dulwich.errors import NotGitRepository
 from dulwich.ignore import IgnoreFilterManager
 from dulwich.index import IndexEntry
-from dulwich.objects import Blob, Tree
+from dulwich.objects import Blob, Commit, Tree
 from dulwich.repo import Repo
 
 from summit_workbench.config.tls_trust import ca_bundle_path as ca_bundle_path
@@ -655,6 +655,74 @@ class DulwichGitBackend:
                     pass
         repo.reset_index(new_tree)
 
+    @staticmethod
+    def _is_ancestor(repo: Repo, ancestor: bytes | None, descendant: bytes | None) -> bool:
+        """**不看 commit_time** 的图可达性：ancestor 是否为 descendant 的祖先（含相等）。
+
+        D9：dulwich 的 ``graph.can_fast_forward`` 用 commit_time 剪枝（``WorkList`` 按
+        时间戳出队），一旦远端父提交的 committer time 晚于本地提交（两台机器时钟偏差，
+        或任何把提交时间写晚的来源），从 tip 出发的遍历会把整条路径剪掉 ⇒ 找不到公共
+        祖先 ⇒ 误报分叉。这里只沿 parents 做 BFS，时间戳与对象是否缺失都不影响结论。
+        """
+        if ancestor is None or descendant is None:
+            return False
+        if ancestor == descendant:
+            return True
+        seen: set[bytes] = set()
+        stack: list[bytes] = [descendant]
+        while stack:
+            sha = stack.pop()
+            if sha in seen:
+                continue
+            seen.add(sha)
+            if sha == ancestor:
+                return True
+            try:
+                commit = repo.object_store[sha]
+            except KeyError:
+                continue  # 对象缺失（浅克隆/部分推送）时不能证明可达
+            if isinstance(commit, Commit):
+                stack.extend(commit.parents)
+        return False
+
+    def _push_refspec(self, repo: Repo) -> bytes | None:
+        """当前分支的显式 refspec（``refs/heads/<branch>:<remote ref>``）。
+
+        远端 ref 优先取 ``branch.<name>.merge``；没有 upstream 配置时退回同名分支。
+        只作用于这一个 ref——绝不使用"无 refspec + force"的写法（那会 force 所有 ref）。
+        """
+        ref_name = self._head_ref_name(repo)
+        if ref_name is None or not ref_name.startswith(b"refs/heads/"):
+            return None
+        branch = ref_name[len(b"refs/heads/") :]
+        remote_ref = self._config_get(repo, (b"branch", branch), b"merge") or ref_name
+        return ref_name + b":" + remote_ref
+
+    def _push_confirmed_fast_forward(
+        self, repo: Repo, remote: str, url: str, sink: Any, exc: porcelain.DivergedBranches
+    ) -> None:
+        """D9：dulwich 误报分叉后的复核与收敛。
+
+        只有**图可达性复核确认远端 tip 是本地 head 的祖先**（真快进）时才显式强推这
+        一个分支一次；复核不通过仍然是 typed ``GitNonFastForward``，绝不无条件 force。
+        """
+        if not self._is_ancestor(repo, exc.current_sha, exc.new_sha):
+            raise GitNonFastForward(f"push {remote} 失败（非快进被拒）") from exc
+        refspec = self._push_refspec(repo)
+        if refspec is None:
+            raise GitNonFastForward(f"push {remote} 失败（非快进被拒）") from exc
+        try:
+            porcelain.push(
+                repo,
+                remote_location=remote,
+                refspecs=[refspec],
+                force=True,
+                errstream=sink,
+                **self.transport_kwargs(url, operation="push"),
+            )
+        except Exception as inner:  # noqa: BLE001 - 跨库分类
+            raise _classify_remote(inner, f"push {remote} 失败") from inner
+
     def push(self, remote: str = "origin") -> None:
         repo = self._open()
         url = self._remote_url(repo, remote)
@@ -676,7 +744,8 @@ class DulwichGitBackend:
                     **self.transport_kwargs(url, operation="push"),
                 )
             except porcelain.DivergedBranches as exc:
-                raise GitNonFastForward(f"push {remote} 失败（非快进被拒）") from exc
+                # D9：先做不看时间戳的图复核，只有真快进才对该 ref 显式强推一次。
+                self._push_confirmed_fast_forward(repo, remote, url, sink, exc)
             except Exception as exc:  # noqa: BLE001
                 raise _classify_remote(exc, f"push {remote} 失败") from exc
         remote_head = self._peek_remote_head(url)
