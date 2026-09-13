@@ -119,4 +119,3 @@ def test_seed_conventions_documents_exactly_the_schema_vocabulary() -> None:
         "only_in_template": sorted(documented - set(NOTE_TYPES)),
         "only_in_code": sorted(set(NOTE_TYPES) - documented),
     }
-
