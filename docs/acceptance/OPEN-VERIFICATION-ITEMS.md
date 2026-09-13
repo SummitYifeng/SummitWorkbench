@@ -1130,3 +1130,20 @@ App 找不到档案就停在向导）；本机 vault 只剩一个空的 `_vault/
   `SummitWorkbench.rehearsal2-bak`、`dist/releases-local-v0.4.7-b26…b32`、
   `/Applications/SummitWorkbench.app.previous`、`/tmp` 里的 PAT/会话令牌副本。
 - 日常使用包：**build 33**；两台机器分别在 `automation-primary`（Studio）/ `secondary`（Air）角色上运行。
+
+### Q.6 真实双机往返冒烟（2026-09-13T02:50Z，**通过**）
+
+复原完成后在**真实 vault**上做了一次日常用法验证：
+
+1. Air（secondary）输出一条捕捉 `测试`；
+2. Studio（automation-primary）点顶部栏「**⇅ 立即同步**」（D6 新增的按钮）。
+
+| 检查 | 结果 |
+|---|---|
+| 新提交 | `448869b wb: capture [0fb8ca0c-9df4-413e-90a5-23f35ac3f1c2]`，只改 `inbox.md`（+4 行），author `_vault <wb@local>` |
+| Studio 落盘内容 | `inbox.md`：`- [ ] 测试` + `<!-- wb-candidate: web-20260913024918465238 -->` + `<!-- wb-capture-kind: idea -->`（候选 id 的时间戳 = Air 本地捕捉时刻） |
+| 收敛 | Studio `HEAD = origin/main = 448869b`、工作树 clean、`state = ready`、`ahead/behind 0/0`、`last_sync_at = 02:50:09Z` |
+| 路径性质 | **快进**（无冲突、无保护态）——正是 D6 想消灭的"对端推过、本机只能干等/下次写入必然分叉"场景 |
+
+这条同时验证了：Air 的克隆凭据可用、两台共用一个 workspace、D6 的「立即同步」在真实工作台上按预期拉取、
+以及同步后内容一致。**多设备同步收官。**
