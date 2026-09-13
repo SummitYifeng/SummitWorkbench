@@ -1332,26 +1332,40 @@ Air 接管 → 门控关闭 → 过期 generation 被拒 → 归还 Studio → A
 
 | # | 操作 | 期望 | 实际 |
 |---|---|---|---|
-| 1 | **Air** 打开「设置 → 高级与维护 → 定时自动化主设备」 | 本机 device id = Air、当前主设备 = Studio · generation 1、本机角色 = 备用设备、只有「勾选确认 + 接管主设备」（**无**降级按钮） | 与期望一致（使用者确认） |
-| 2 | **Air** 不勾选直接点「接管主设备」 | 拒绝且什么都不改 | 红色提示「接管需要先勾选确认（定时自动化会转移到本机）」（显式确认生效） |
-| 3 | **Air** 勾选 →「接管主设备」→ 系统二次确认 | generation → 2、角色翻转为主设备 | 卡片显示 当前主设备 = Air · **generation 2**、本机角色 = **主设备（定时自动化在本机运行）**，按钮变为禁用「本机已是主设备」+「降级为备用设备」 |
+| 1 | **Air** 打开「设置 → 高级与维护 → 定时自动化主设备」 | 本机 device id = Air、当前主设备 = Studio · generation 1、本机角色 = 备用设备、只有「勾选确认 + 接管主设备」（**无**降级按钮） | 角色行由 §R.7 的 `device_role = "secondary"` 支持；**卡片的按钮形态未逐条回报** |
+| 2 | **Air** 不勾选直接点「接管主设备」 | 拒绝且什么都不改 | **未逐条回报**（代理侧无此步证据；"未勾选不发请求"另有 §R.3 的前端单测覆盖） |
+| 3 | **Air** 勾选 →「接管主设备」→ 系统二次确认 | generation → 2、角色翻转为主设备 | 使用者逐字回报：当前主设备 = `e1b8b735-… · generation **2**`、本机角色 = **主设备（定时自动化在本机运行）**（按钮形态未回报） |
 | 4 | **Studio** 同步归属 | Studio 视角看到归属已属 Air | `automation_primary_device_id = e1b8b735-…`、`automation_primary_generation = 2`、`state=ready`；归属提交 `8325639 wb: sync/primary` 由 Air push、Studio 拉取（`HEAD == origin/main`） |
 | 5 | **Studio 门控探针 A**（设置页「立即运行」的同一路径：`POST /api/settings/automation/run {job:brief}`） | 非主设备 ⇒ 跳过 | `status="not-primary"`、`detail="本机不是该 workspace 的主设备"` |
 | 6 | **Studio 门控探针 B**（`POST /api/run/brief`） | 非主设备 ⇒ 跳过 | `skipped=true`、`code="not_automation_primary"` |
 | 7 | **零写入核对**（探针 5/6 之后） | 声明与工作树都不变 | 声明 SHA-256 **前后一致**（`2cae47c8…`）、vault 工作树 **0** 变更 |
 | 8 | **Studio** 用**过期** generation 接管（`takeover=true, expected_generation=1`） | 被拒且不写入 | **409 `primary_generation_conflict`**（`takeover 必须基于当前 generation`），声明哈希仍未变 |
 | 9 | **Studio** 用当前 generation 接管（`expected_generation=2`） | generation → 3、主设备回 Studio | **200**、`generation=3`、`device_id=51885d3d-…`、`device_role="automation-primary"`、`commit.status="committed"`；提交 `44a2d17 wb: sync/primary` 已 push |
-| 10 | **Air** 同步后看卡片 | 当前主设备 = Studio · generation 3 | 与期望一致；此时「本机角色」仍是本机档案里的旧值 **主设备**，并同时出现「接管」与「降级」两个按钮（见下方说明） |
-| 11 | **Air** 点「降级为备用设备」 | 本机角色回 secondary | 「本机已降级为备用设备：定时自动化不再在本机运行。」，降级按钮消失 |
+| 10 | **Air** 同步后看卡片 | 当前主设备 = Studio · generation 3 | **未逐条回报**（推断；见下方"证据强度说明"） |
+| 11 | **Air** 点「降级为备用设备」 | 本机角色回 secondary | **未逐条回报**（推断；见下方"证据强度说明"）——该步骤是否被点过，不影响步骤 12/13 的门控结论 |
 | 12 | **Air** 点「晨间简报 → 立即运行」（此时已非主设备，**零写入**） | 被门控跳过 | 绿色提示 **`not-primary：本机不是该 workspace 的主设备`** |
 | 13 | **决定性反证**（Studio 侧机器可核验）：核对远端在步骤 12 之后有没有被偷偷写入 | 不应出现任何 `wb: brief 2026-09-13` | 远端最近 5 个提交只有 `44a2d17`/`8325639`/`598a285`/`448869b`/`86cc529`，**全仓 `--all --grep="brief 2026-09-13"` 零命中**；`HEAD == origin/main == 44a2d17`、vault 工作树 **0** 变更 |
+
+#### 证据强度说明（哪些是机器核验、哪些是使用者回报、哪些是推断）
+
+- **机器核验（代理侧，不可辩驳）**：步骤 4 的归属拉取、**5/6 两条门控探针**、7 的零写入核对、
+  8 的 `primary_generation_conflict`、9 的归还结果与 generation 3、**13 的"没有 `wb: brief` 提交"反证**。
+- **使用者逐字回报**：步骤 3 的卡片两行（`generation 2` + 角色"主设备"）、步骤 12 的绿色
+  `not-primary：本机不是该 workspace 的主设备`。
+- **推断（已标注，不作为硬证据）**：步骤 1/2/10/11。其中步骤 12 的绿色提示只能证明
+  "点击时 Air 已被门控关掉"，其充分条件是**声明已指向 Studio**（即步骤 10 的同步已发生）；
+  它**不能**单独证明步骤 11 的降级按钮被点过——因为声明一旦属于 Studio，Air 的角色即使是旧的
+  `automation-primary` 也照样被挡住（`automation_gate` 要求"角色为主设备 **且** 声明设备匹配"）。
+  因此 Air 本机档案的最终值需要一次目视确认才能写死；无论哪种结果，**功能状态相同**
+  （Air 被门控、只有 Studio 跑自动化）。
 
 #### 这次真机闭环证明了什么
 
 - **D10 肯定分支**（此前只有单测+变异）：marker 指本机 ⇒ profile 真的落成 `automation-primary`，
   且 `automation_gate` 放行；
-- **G1 三条交互语义**在真机上成立：必须**勾选确认**（步骤 2 的拒绝）+ **二次确认** + 带
-  `expected_generation`；**过期 generation 被拒且零写入**（步骤 8）；**降级入口可用**（步骤 11）；
+- **G1 的 `expected_generation` 语义**在真机成立且被拒时**零写入**（步骤 8，机器核验）；
+  **接管路径**在真机成立（步骤 3，使用者回报 + 步骤 4 的机器核验）；"必须勾选确认"与
+  "降级按钮"两条只有前端单测覆盖与本次目视（步骤 2/11 未逐条回报）；
 - **"同一时间只有一台机器跑自动化"**在两个方向上都有机器证据：Air 接管后 Studio 被关掉
   （步骤 5/6，零写入）、归还并降级后 Air 被关掉（步骤 12），且步骤 13 反证了被跳过的那次
   **没有产生任何提交**；
