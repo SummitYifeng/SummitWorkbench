@@ -1206,8 +1206,8 @@ Air 由使用者 AirDrop，**本轮不再跑双机往返冒烟**。
 | G3 服务日志（真机） | `~/Library/Logs/summitworkbench-server.log` 存在、`-rw-------`（**0600**）、284 B，首行 `{"component":"server","event":"server_started","app_version":"0.4.7","frontend_build":"v2026.09.13-8b7767d-ae564ff2","has_workspace":true}`，无 URL/路径/凭据 |
 | 包内确实带上了新界面 | 对已安装包的 `Contents/Resources/web/static/assets/index-*.js` 逐字 grep：`primary-claim`、`primary-downgrade`、`primary-takeover-ack`、`git-remote-publish`、`定时自动化主设备`、`接管主设备`、`降级为备用设备`、`首次发布到远端`、`昨晚为什么没自动同步`、`summitworkbench-server.log` **全部 PRESENT**（证明 G1/G2 界面与更新后的指南真的进了交付包） |
 
-**Air 侧**：由使用者 AirDrop 同一个 DMG 后按既有流程安装（本轮未远程操作 Air，也未再跑双机
-往返冒烟——这是对齐时明确的可选项）。两台机器的版本一致性待 Air 安装后由 `frontend_build` 核对。
+**Air 侧**：使用者随后在**全新 Air** 上从零配置了同一个 build 34 并完成真机双机冒烟，
+证据见 **§R.7**（两台 `frontend_build` 一致）。
 
 ### R.3 五项交付的测试与变异验证
 
@@ -1273,6 +1273,54 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
   pytest tests/integration/test_packaged_app.py -q          1 passed（清理后复跑）
 ```
 
+### R.7 全新 Air 从零配置 + 真机双机冒烟（2026-09-13T03:34–03:41Z，**通过**）
+
+使用者按"完全清空 → 从第一步配置 → 同步好后做最小冒烟"的方案执行（比对齐时的最小选项更强）。
+
+**Air 侧：从零配置 build 34（全部通过）**
+
+| 检查 | 证据（Air 上采集） |
+|---|---|
+| 包身份 | `runtime.json.frontend_build = v2026.09.13-8b7767d-ae564ff2`、`api_protocol=2`，与 Studio **完全一致** |
+| 同一工作台 | `workspace_id = bf22c8d2-ef62-4bd3-9917-e76fdd3f7f0f`（与 Studio 相同） |
+| **角色（D10 真机）** | `profiles/<ws>/config.toml` 的 `device_role = "secondary"`——全新 profile 由克隆流程按 vault 内 marker（指向 Studio）自动判定，**没有抢占** |
+| 远端 | `git_remote_url = https://github.com/yifeng93/YifengWorkKnowledge.git`（HTTPS，`require_https_remote` 通过） |
+| 克隆前置 | 目标 `~/Documents/Work/_vault` 确实不存在（向导的 `target_exists` / `target_parent_missing` 两道门都过） |
+| 向导与预检 | 向导三步（克隆 → 模型 → 飞书，飞书用**包内内置凭据**、本机零预置）全部通过；使用者另跑「预览 HTTPS 转换」成功 |
+| **服务日志（G3 真机）** | `~/Library/Logs/summitworkbench-server.log`：`-rw-------`（**0600**）、568 B、**两行 `server_started`、零 `sync_failed`**（首次配置全程没有同步失败）；两行 `app_version=0.4.7`、`frontend_build` 与包一致 |
+
+**真机双机冒烟（真实 vault，两条腿都被覆盖）**
+
+| 检查 | 结果 |
+|---|---|
+| Air 写 → 远端 | Air 捕捉「测试」：提交 `598a285 wb: capture [b8a7633e-0309-4638-9624-f50982be9fa2]`，作者 `_vault <wb@local>`，**只改 `inbox.md`（+4 行）**，候选标记 `web-20260913033919077798`（时间戳 = Air 本地 03:39:19Z） |
+| Studio 拉（自动） | Studio 每分钟自动拉取已生效：`last_sync_at = 03:40:32Z`，HEAD 自动前进到 `598a285` |
+| Studio 拉（手动复核） | `POST /api/sync/run` ⇒ `ok=true`、`state=ready`、`_vault:ready` |
+| 收敛 | `HEAD == origin/main == 598a285`、`ahead/behind 0/0`、`pending_commits 0`、`detail` 空、vault 工作树 **0** 变更 |
+| 路径性质 | 线性快进（新提交的父就是上一轮冒烟的 `448869b`）——**无冲突、无保护态** |
+| **未抢占（D10/G1 真机）** | Studio 的 `automation_primary_device_id` 事后仍为自己 `51885d3d-…`、`generation` 仍为 **1** |
+| **G3（Studio 真机）** | Studio 服务日志在整轮冒烟后**仍只有 1 行 `server_started`、零 `sync_failed`**（干净同步不写日志，符合设计：只有失败/降级才落盘） |
+| 版本一致性 | 两台 `frontend_build` 均为 `v2026.09.13-8b7767d-ae564ff2` |
+
+**这次真机额外证明了什么**
+
+- 分发版承诺（**内置飞书凭据、零预置一键授权**）在一台从零开始的机器上成立；
+- **D10 的否定分支**在真机上成立：marker 指向别的设备 ⇒ 全新 profile 落成 `secondary`，
+  且主设备归属与 generation 不被改写；
+- **G3** 在两台机器上都按设计工作（正常路径安静、失败才落盘）；
+- 两台机器的 HTTPS 克隆、upstream、ahead/behind、自动拉取与推送全部走通。
+
+**诚实边界（不夸大）**
+
+- Air 的 `device_id = e1b8b735-2b31-4ae2-9bf1-1dafa9261b76`，与本文件上一轮记录的 Air 设备 id
+  **相同**⇒ 这次"清空"清掉的是工作台/本机配置，`device.json` 的设备身份仍在。因此
+  **D10 的肯定分支**（marker 指本机 ⇒ `AUTOMATION_PRIMARY`）在这次真机上**没有**被区分验证，
+  它目前仍只有 §R.3 的单测 + 变异验证；要真机钉死需要做一次 G1 接管（见 §R.6.7）。
+- Air 侧 `/api/sync/status` 与 `acceptance-preflight` 的 curl 输出未采集到（粘贴时 URL 末尾
+  多了一个被转义的 `;` ⇒ `/api/sync/status;` ⇒ `{"detail":"Not Found"}`，是粘贴问题而非 App 问题）；
+  Air 侧"预检通过"为使用者口头确认，**机器可核验的 Air 侧证据**是本表上半部分的
+  `runtime.json` / `config.toml` / 服务日志三项。
+
 ### R.6 本轮未能完成 / 仍开放
 
 1. **两个演练仓库未删除**（使用者本轮要求删除）：两条凭据路径都已试过，均无权限——
@@ -1288,8 +1336,7 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
    ```
 
    两个仓库本身仍在，不影响任何功能。
-2. **Air 安装**：本轮未在 Air 上安装 build 34（需使用者 AirDrop 并手动操作），
-   因此**没有**再跑双机往返冒烟（对齐时该项未被选中）。
+2. ~~Air 安装与双机冒烟~~：**已在 §R.7 完成**（全新 Air 从零配置 build 34 + 真机往返冒烟通过）。
 3. **G2 未对真实 GitHub 空仓库做端到端**：发布流程要使用者自己的 PAT 且会在其账号下**新建**
    资源，本轮未获授权执行；已用单测 + API 测试 + 真机非 HTTPS 拒绝路径覆盖。
    需要现场确认时：在 GitHub 新建空私有仓库（不勾选 README）→ 设置页「首次发布到远端」填
@@ -1300,3 +1347,10 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
    不影响使用；需要时 `rm -rf` 即可。
 6. 服务日志会按 5 MiB ×（1 + 3 个轮转）自我限制，长期运行无需人工清理；`logs/` 在 vault 内的
    是**工作台内容**，与机器日志无关。
+7. **G1 接管的真机验证仍待做（可选，2 分钟）**：Air 的设置页应显示「本机 device id / 当前主设备
+   = `51885d3d-…` · generation 1 / 本机角色 = 备用设备」+「勾选确认 + 接管主设备」（无降级按钮）。
+   在 Air 上勾选并接管 ⇒ generation → 2、Air 角色变主设备、其 preflight 的 `automation-role`
+   变 `automation-primary`（这会**真机验证 D10 的肯定分支**与 G1 的严格接管语义）；
+   随后在 Studio 用同样的勾选+`expected_generation=2` 接管回来（generation → 3），
+   或在 Air 点「降级为备用设备」再让 Studio 接管。做完后 Studio 的
+   `automation_primary_device_id` 应回到 `51885d3d-…`。

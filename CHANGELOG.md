@@ -244,9 +244,19 @@
 - 真机（Studio）：安装 build 34 后 `runtime.json.frontend_build` 为新包、
   `/api/sync/status` = `ready` / ahead-behind `0/0`、`acceptance-preflight` **11/11 PASS**
   （含 `automation-role: automation-primary`）、`POST /api/sync/run` 对真实 HTTPS 远端成功、
-  两个新路由存在、服务日志按 0600 落盘。Air 侧由使用者 AirDrop 安装同一 DMG。
+  两个新路由存在、服务日志按 0600 落盘。
+- 真机（Air，**全新机器从第一步配置**）：同一个 DMG 从零走完向导（克隆 → 模型 → 飞书，
+  飞书用**包内内置凭据**、本机零预置），`frontend_build` 与 Studio 一致、
+  `device_role = secondary`（D10 真机：marker 指向 Studio ⇒ 全新 profile 不抢占）、
+  服务日志 0600 且**零 `sync_failed`**。
+- **真机双机冒烟（通过）**：Air 捕捉「测试」⇒ `598a285 wb: capture [b8a7633e-…]`（只改
+  `inbox.md` +4 行）⇒ Studio 自动拉取（`last_sync_at 03:40:32Z`）并手动 `POST /api/sync/run`
+  复核 ⇒ `HEAD == origin/main == 598a285`、`ahead/behind 0/0`、`pending 0`、vault 工作树 clean、
+  线性快进无保护态；Studio 的主设备声明未被改写（仍为 `51885d3d-…` / generation 1）。
+  逐条证据见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R.7。
 - **未完成**：两个演练仓库（`SummitYifeng/summitworkbench-rehearsal{,-2}`）本应删除，但当前
   `gh` 令牌缺少 `delete_repo` scope，删除被 403 拒绝；解除方式见 §R 的开放项。
+  G1 接管的真机验证（会真机钉死 D10 的肯定分支）为可选待办，步骤见 §R.6.7。
 
 ### 2026-09-13 · 双机复跑发现的缺陷修复（D1–D6）
 
