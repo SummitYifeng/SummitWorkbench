@@ -270,6 +270,18 @@
   写回 `applied_paths = ["inbox.md.remote.09aebd7"]`，第一轮的 `inbox.md.remote` 哈希不变
   （`13bfc790…`），本机与远端两份内容同时在位。
 
+### 2026-09-13 · 双机复原收尾（Phase 6）
+
+Studio 与 Air 都回到**真实工作台**（`bf22c8d2-…` / `YifengWorkKnowledge`），两台 HEAD 相同
+（`86cc529`）、各自 `ready`、ahead/behind `0/0`：
+
+- **Studio**：清空档案后由向导重新连接 `~/Documents/Work/_vault`，重做 HTTPS 转换；
+  设备角色修正为 `automation-primary`（见 §Q.1 的 D10），App 自带 11 项 `acceptance-preflight` 全 PASS。
+- **Air**：原 profile 已丢失（`real-bak` 并不存在），按**新设备**重建——空档案 +
+  「从另一台 Mac 克隆」拉取真实 vault，得到**新 device id** 并落为 `secondary`；
+  模型/飞书沿用 workspace Keychain，git 凭据由克隆流程写入。
+- 日常使用包 **build 33**（含 D11 与内置飞书凭据）；Studio 侧演练残留与中间构建产物已清理。
+
 ### 2026-09-13 · 修复：已 typed 的远端错误不再被文本兜底重分类（D11）
 
 `_classify_remote()` 只按异常**文本**匹配，从不检查传入的是不是已经是我们自己的稳定类型。

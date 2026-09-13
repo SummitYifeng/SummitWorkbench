@@ -1097,3 +1097,36 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 | 模型 / 飞书 | profile `[models.shared]` = deepseek-v4-flash；`[feishu]` app_id/redirect/scopes 就位（build 32/33 内置 app_secret） |
 | 日常使用包 | **build 33**（`989ce9c`，`frontend_build = v2026.09.13-989ce9c-9517f794`，DMG SHA-256 `29e3ae3d8b5aeb952200144432bb313e83e11b72be8036f7c9f82afc4cd32a6a`），含 D11 修复与内置飞书凭据；`/Applications` 已是它 |
 | `acceptance-preflight`（App 自带 11 项） | **全部 PASS**：app/build 33、production backend=dulwich、`remote-scheme: https://github.com`、`credentials: workspace-scoped Keychain configured`、`fetch: HTTPS fetch completed`、`branch/upstream main a0/b0`、`schema-path → 2`、**`automation-role: automation-primary`**（Q.1 修正已在 App 视角生效） |
+
+### Q.4 Air 按"新设备"重建（secondary，2026-09-13T02:46Z）
+
+Air 的真实 profile 在演练期间已丢失（`SummitWorkbench.real-bak` 根本不存在 ⇒ 当初那条 `mv` 失败，
+App 找不到档案就停在向导）；本机 vault 只剩一个空的 `_vault/` 和 9月7 一次未走完的暂存克隆
+`.summit-workbench-remote-bd5fjceu/`。经确认"Air 上没有任何重要文档"后，改成**按新设备重来**：
+
+1. 清空 Air 的 `Application Support/SummitWorkbench*`、`~/Documents/Work/{_vault,.summit-workbench-remote-*,.wb.lock}`、
+   `~/Documents/Rehearsal`（演练 vault）；
+2. 向导「**从另一台 Mac 克隆**」→ `https://github.com/yifeng93/YifengWorkKnowledge.git` +
+   目标 `~/Documents/Work/_vault`（先确认不存在）+ 用户名 `Yifeng93` + PAT → 暂存核对 marker
+   （`bf22c8d2…`、兼容性 OK）→ 确认；
+3. 模型沿用 workspace Keychain 的 `llm:shared:shared`，飞书用 build 33 内置 app_secret。
+
+**核验结果（Air 实测）**：
+
+| 检查 | 结果 |
+|---|---|
+| active workspace / 角色 | `bf22c8d2-ef62-4bd3-9917-e76fdd3f7f0f` / `device_role = "secondary"`（marker 里的主设备仍是 Studio `51885d3d-…`） |
+| 同步 | `state = ready`、`ahead/behind 0/0`、`_vault:ready`、`last_sync_at = 02:46:56Z` |
+| 仓库 | HEAD `86cc529 wb: brief 2026-09-12` = `origin/main` = `origin/HEAD`，工作树 clean —— **与 Studio 同 HEAD** |
+| 凭据 | workspace Keychain：`git:github.com:Yifeng93`（克隆流程新写入）、`llm:shared:shared`、`feishu:…:refresh_token`（外加旧的小写 `git:github.com:yifeng93`，无害） |
+| 包 / 设备 | build 33（`v2026.09.13-989ce9c-9517f794`）；**新 device id `e1b8b735-…`**（≠ Studio `51885d3d-…`），`device_name = YifengAirdeMacBook-Air.local` |
+| 残留 | `~/Documents/Work/` 只剩 `_vault`（+ App 正常的 `.wb.lock`）；`Rehearsal` 已清；档案目录只剩 `SummitWorkbench` |
+
+### Q.5 Phase 6 收尾（Studio）
+
+- 保留：`dist/releases-local-v0.4.7-b25/`（内置飞书凭据的原始出处）、`b33/`（当前日常包）；
+  两个演练仓库 `SummitYifeng/summitworkbench-rehearsal{,-2}` 按使用者要求暂留。
+- 清除：`~/Documents/Rehearsal{,_2}`、`SummitWorkbench.rehearsal-final-bak`、
+  `SummitWorkbench.rehearsal2-bak`、`dist/releases-local-v0.4.7-b26…b32`、
+  `/Applications/SummitWorkbench.app.previous`、`/tmp` 里的 PAT/会话令牌副本。
+- 日常使用包：**build 33**；两台机器分别在 `automation-primary`（Studio）/ `secondary`（Air）角色上运行。
