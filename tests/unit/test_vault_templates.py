@@ -113,9 +113,8 @@ def test_seed_conventions_documents_exactly_the_schema_vocabulary() -> None:
     from summit_workbench.domain.vault import NOTE_TYPES
 
     text = (default_vault_templates_dir() / "conventions.template.md").read_text(encoding="utf-8")
-    documented = set(
-        re.findall(r"^\| `([a-z][a-z-]*)` \| (?:single|multi|global|free) \|", text, flags=re.MULTILINE)
-    )
+    row = r"^\| `([a-z][a-z-]*)` \| (?:single|multi|global|free) \|"
+    documented = set(re.findall(row, text, flags=re.MULTILINE))
     assert documented == set(NOTE_TYPES), {
         "only_in_template": sorted(documented - set(NOTE_TYPES)),
         "only_in_code": sorted(set(NOTE_TYPES) - documented),
