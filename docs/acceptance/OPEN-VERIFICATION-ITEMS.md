@@ -1321,6 +1321,56 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
   Air 侧"预检通过"为使用者口头确认，**机器可核验的 Air 侧证据**是本表上半部分的
   `runtime.json` / `config.toml` / 服务日志三项。
 
+### R.8 G1 接管/降级 + 自动化门控的真机闭环（2026-09-13T07:42–07:50Z，**通过**）
+
+承接 §R.7（Air 已作为 `secondary` 接好）。本轮把 G1 的**点击路径**在真机上走完：
+Air 接管 → 门控关闭 → 过期 generation 被拒 → 归还 Studio → Air 降级 → 门控再确认。
+两台机器：Air `e1b8b735-2b31-4ae2-9bf1-1dafa9261b76`、Studio `51885d3d-6f75-49ca-8896-9f46288474e8`；
+归属 generation 走 **1 → 2 → 3**。**全程在 App 界面点击**（无终端探针参与用户侧操作）。
+
+#### 步骤与证据
+
+| # | 操作 | 期望 | 实际 |
+|---|---|---|---|
+| 1 | **Air** 打开「设置 → 高级与维护 → 定时自动化主设备」 | 本机 device id = Air、当前主设备 = Studio · generation 1、本机角色 = 备用设备、只有「勾选确认 + 接管主设备」（**无**降级按钮） | 与期望一致（使用者确认） |
+| 2 | **Air** 不勾选直接点「接管主设备」 | 拒绝且什么都不改 | 红色提示「接管需要先勾选确认（定时自动化会转移到本机）」（显式确认生效） |
+| 3 | **Air** 勾选 →「接管主设备」→ 系统二次确认 | generation → 2、角色翻转为主设备 | 卡片显示 当前主设备 = Air · **generation 2**、本机角色 = **主设备（定时自动化在本机运行）**，按钮变为禁用「本机已是主设备」+「降级为备用设备」 |
+| 4 | **Studio** 同步归属 | Studio 视角看到归属已属 Air | `automation_primary_device_id = e1b8b735-…`、`automation_primary_generation = 2`、`state=ready`；归属提交 `8325639 wb: sync/primary` 由 Air push、Studio 拉取（`HEAD == origin/main`） |
+| 5 | **Studio 门控探针 A**（设置页「立即运行」的同一路径：`POST /api/settings/automation/run {job:brief}`） | 非主设备 ⇒ 跳过 | `status="not-primary"`、`detail="本机不是该 workspace 的主设备"` |
+| 6 | **Studio 门控探针 B**（`POST /api/run/brief`） | 非主设备 ⇒ 跳过 | `skipped=true`、`code="not_automation_primary"` |
+| 7 | **零写入核对**（探针 5/6 之后） | 声明与工作树都不变 | 声明 SHA-256 **前后一致**（`2cae47c8…`）、vault 工作树 **0** 变更 |
+| 8 | **Studio** 用**过期** generation 接管（`takeover=true, expected_generation=1`） | 被拒且不写入 | **409 `primary_generation_conflict`**（`takeover 必须基于当前 generation`），声明哈希仍未变 |
+| 9 | **Studio** 用当前 generation 接管（`expected_generation=2`） | generation → 3、主设备回 Studio | **200**、`generation=3`、`device_id=51885d3d-…`、`device_role="automation-primary"`、`commit.status="committed"`；提交 `44a2d17 wb: sync/primary` 已 push |
+| 10 | **Air** 同步后看卡片 | 当前主设备 = Studio · generation 3 | 与期望一致；此时「本机角色」仍是本机档案里的旧值 **主设备**，并同时出现「接管」与「降级」两个按钮（见下方说明） |
+| 11 | **Air** 点「降级为备用设备」 | 本机角色回 secondary | 「本机已降级为备用设备：定时自动化不再在本机运行。」，降级按钮消失 |
+| 12 | **Air** 点「晨间简报 → 立即运行」（此时已非主设备，**零写入**） | 被门控跳过 | 绿色提示 **`not-primary：本机不是该 workspace 的主设备`** |
+| 13 | **决定性反证**（Studio 侧机器可核验）：核对远端在步骤 12 之后有没有被偷偷写入 | 不应出现任何 `wb: brief 2026-09-13` | 远端最近 5 个提交只有 `44a2d17`/`8325639`/`598a285`/`448869b`/`86cc529`，**全仓 `--all --grep="brief 2026-09-13"` 零命中**；`HEAD == origin/main == 44a2d17`、vault 工作树 **0** 变更 |
+
+#### 这次真机闭环证明了什么
+
+- **D10 肯定分支**（此前只有单测+变异）：marker 指本机 ⇒ profile 真的落成 `automation-primary`，
+  且 `automation_gate` 放行；
+- **G1 三条交互语义**在真机上成立：必须**勾选确认**（步骤 2 的拒绝）+ **二次确认** + 带
+  `expected_generation`；**过期 generation 被拒且零写入**（步骤 8）；**降级入口可用**（步骤 11）；
+- **"同一时间只有一台机器跑自动化"**在两个方向上都有机器证据：Air 接管后 Studio 被关掉
+  （步骤 5/6，零写入）、归还并降级后 Air 被关掉（步骤 12），且步骤 13 反证了被跳过的那次
+  **没有产生任何提交**；
+- 归属提交随每次接管写入共享工作台并 push（`8325639`、`44a2d17`），历史保持线性。
+
+#### 记录一个预期内的状态（不是缺陷）
+
+步骤 10 里 Air 的卡片同时显示「当前主设备 = Studio」与「本机角色 = 主设备」：**归属以共享工作台
+里的声明为准**，本机角色是本机档案的旧值，两者不一致时门控按声明走（Air 已被正确挡住）。
+G1 的「降级为备用设备」就是给这种状态提供对齐入口的（步骤 11 用它对齐）。
+另外，`acceptance-preflight` 的 `automation-role` 一项只检查**本机 profile 角色**、不比对声明归属，
+因此它在"角色已过时"的机器上仍会 PASS——这是该项的既有定义，本轮未改动；判断"谁在跑自动化"
+应以同步状态里的 `automation_primary_device_id` 与门控探针为准。
+
+#### 顺带观察
+
+本次两台机器的系统时钟一致（Air 写声明 `07:42:34Z` vs Studio 当时 `07:44:00Z`），
+**未**观察到 D9 前提的跨机时钟偏差；两台机器的时间差可忽略。
+
 ### R.6 本轮未能完成 / 仍开放
 
 1. ~~两个演练仓库未删除~~：**已闭环（2026-09-13，使用者手动删除）**。代理侧两条凭据路径都无权限
@@ -1344,10 +1394,5 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
    不影响使用；需要时 `rm -rf` 即可。
 6. 服务日志会按 5 MiB ×（1 + 3 个轮转）自我限制，长期运行无需人工清理；`logs/` 在 vault 内的
    是**工作台内容**，与机器日志无关。
-7. **G1 接管的真机验证仍待做（可选，2 分钟）**：Air 的设置页应显示「本机 device id / 当前主设备
-   = `51885d3d-…` · generation 1 / 本机角色 = 备用设备」+「勾选确认 + 接管主设备」（无降级按钮）。
-   在 Air 上勾选并接管 ⇒ generation → 2、Air 角色变主设备、其 preflight 的 `automation-role`
-   变 `automation-primary`（这会**真机验证 D10 的肯定分支**与 G1 的严格接管语义）；
-   随后在 Studio 用同样的勾选+`expected_generation=2` 接管回来（generation → 3），
-   或在 Air 点「降级为备用设备」再让 Studio 接管。做完后 Studio 的
-   `automation_primary_device_id` 应回到 `51885d3d-…`。
+7. ~~G1 接管的真机验证~~：**已在 §R.8 完成**（Air 接管 → 门控关闭 → 过期 generation 被拒 →
+   归还 Studio → Air 降级 → 门控再确认，全程 App 界面点击；归属 generation 1→2→3）。

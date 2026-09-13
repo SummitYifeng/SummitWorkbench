@@ -256,7 +256,11 @@
   逐条证据见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R.7。
 - **未完成**：两个演练仓库（`SummitYifeng/summitworkbench-rehearsal{,-2}`）本应删除，但当前
   `gh` 令牌缺少 `delete_repo` scope，删除被 403 拒绝；解除方式见 §R 的开放项。
-  G1 接管的真机验证（会真机钉死 D10 的肯定分支）为可选待办，步骤见 §R.6.7。
+- 真机（Air ⇄ Studio，G1 接管闭环，**通过**）：Air 在界面里勾选接管（必须先勾选，未勾选被拒）
+  ⇒ generation 1→2、Air 变主设备 ⇒ Studio 侧自动化被门控关掉（`not-primary`，零写入、声明哈希不变）
+  ⇒ Studio 用**过期** generation 接管被拒（409 `primary_generation_conflict`、零写入）⇒ 用当前
+  generation 接管回来（→3）⇒ Air 降级为备用设备后其「立即运行」返回绿色 `not-primary`，且远端
+  **没有**任何 `wb: brief 2026-09-13` 提交被偷偷写入。逐条证据见 §R.8。
 
 ### 2026-09-13 · 双机复跑发现的缺陷修复（D1–D6）
 
