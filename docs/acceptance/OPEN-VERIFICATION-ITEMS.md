@@ -1071,6 +1071,9 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
   复现：`GitRepo(vault, workspace_id=<不存在的 workspace>, username=…)` → `fetch()` →
   `GitBackendRuntimeError` / 原因码 `unclassified`（修好后为 `GitCredentialsUnavailable` /
   `credentials-missing`）。
+- **真机复核**：修好后在 `_vault` 上用不存在的 workspace id 复现同一路径 →
+  异常类型 `GitCredentialsUnavailable`、原因码 `credentials-missing`、状态 `auth-required`
+  （修前是 `GitBackendRuntimeError` / `unclassified` / 裸 `error`）。
 - **修法**：`_classify_remote()` 开头 `if isinstance(exc, GitError): return exc`。两个新测试 +
   变异验证（去掉守卫即失败）：typed 错误原样返回且原因码为 `credentials-missing` /
   `AUTH_REQUIRED`；注入会抛 `GitCredentialsUnavailable` 的 resolver 后 `fetch()` 仍是
@@ -1091,4 +1094,6 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 | 同步 | `state = ready`、`ahead/behind 0/0`、`remote_host = github.com`、`last_sync_at` 有值 |
 | 凭据 | profile `git_username = Yifeng93`、`git_remote_url = https://…/YifengWorkKnowledge.git`；Keychain 有 `git:github.com:Yifeng93` |
 | 工作树 | clean、`main`、与 `origin/main` 同步 |
-| 模型 / 飞书 | profile `[models.shared]` = deepseek-v4-flash；`[feishu]` app_id/redirect/scopes 就位（build 32 内置 app_secret） |
+| 模型 / 飞书 | profile `[models.shared]` = deepseek-v4-flash；`[feishu]` app_id/redirect/scopes 就位（build 32/33 内置 app_secret） |
+| 日常使用包 | **build 33**（`989ce9c`，`frontend_build = v2026.09.13-989ce9c-9517f794`，DMG SHA-256 `29e3ae3d8b5aeb952200144432bb313e83e11b72be8036f7c9f82afc4cd32a6a`），含 D11 修复与内置飞书凭据；`/Applications` 已是它 |
+| `acceptance-preflight`（App 自带 11 项） | **全部 PASS**：app/build 33、production backend=dulwich、`remote-scheme: https://github.com`、`credentials: workspace-scoped Keychain configured`、`fetch: HTTPS fetch completed`、`branch/upstream main a0/b0`、`schema-path → 2`、**`automation-role: automation-primary`**（Q.1 修正已在 App 视角生效） |

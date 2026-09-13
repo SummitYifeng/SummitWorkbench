@@ -282,7 +282,12 @@
 修法：`_classify_remote()` 开头 `if isinstance(exc, GitError): return exc`——已经脱敏且已分类的
 错误原样抛出，只有真正的未知异常才走文本映射与兜底。两个新测试（typed 原样返回 +
 `credentials-missing`/`AUTH_REQUIRED`；注入抛 `GitCredentialsUnavailable` 的 resolver 后
-`fetch()` 仍是 `credentials-missing`）都做过变异验证（去掉守卫即失败）。
+`fetch()` 仍是 `credentials-missing`）都做过变异验证（去掉守卫即失败）。真机复核：同一路径修复前
+是 `GitBackendRuntimeError`/`unclassified`/裸 `error`，修复后是
+`GitCredentialsUnavailable`/`credentials-missing`/`auth-required`。随内部产物 **build 33**
+（`989ce9c`、`frontend_build = v2026.09.13-989ce9c-9517f794`、DMG SHA-256
+`29e3ae3d8b5aeb952200144432bb313e83e11b72be8036f7c9f82afc4cd32a6a`，同样内置飞书凭据）出包；
+`_vault` 上的 App 自带 11 项 `acceptance-preflight` 全部 PASS（含 `automation-role: automation-primary`）。
 
 ### 2026-09-13 · 内部产物 build 32（补回内置飞书凭据）
 
