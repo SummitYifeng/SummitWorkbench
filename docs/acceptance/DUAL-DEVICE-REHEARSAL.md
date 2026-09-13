@@ -310,3 +310,18 @@ Keychain 都不动。**
 - **教训**：b27 与 b28 是**同一意图在两层各写了一次检查**，第一次只修了上层（`stage_remote_clone`），
   下层（`transport_kwargs`）把上层放行的情况又拦了一次。功能测试覆盖不到这种"两层同名守卫"，
   所以这次补的是**针对该层**的单元测试 + 变异验证（恢复旧守卫能复现真机异常原文）。
+
+### D5 · 向导草稿收尾不干净（低危，含一处路径未规范化）
+
+- **证据**：`onboarding_view.py` 里**没有任何 `method:'DELETE'`**（`grep -c` = 0）；
+  `/api/onboarding/remote/confirm` 成功后确实清了草稿，但紧接着向导的 `persist()` 又把它写回去，
+  走到「设置完成」/「进入工作台」也不清。实测 Air 完成接入后草稿仍在，内容为
+  `step: "done"`、`flow: "connect-existing"`、`git_mode: "remote"`、`remote_url`、`git_username`
+  ——**无任何秘密**（`grep -c github_pat` = 0，字段白名单由 `OnboardingDraft` 的 `extra="forbid"` 保证）。
+- **影响**：同一台机器**下次**出现空安装时，`restore()` 会从 `step:'done'` 恢复，向导直接停在
+  「设置完成」而不是第 1 步「选择工作区」（可点「上一步」退回，但很困惑）。
+- **同处第二个瑕疵**：草稿里的 `vault_dir` 存的是**未展开**的 `~/Documents/Rehearsal/_vault`，而
+  `work_root` 是展开后的绝对路径（后端 `expanduser()` 过）。目前只有向导自己把它当表单默认值读，
+  所以只是数据卫生问题；一旦将来有别的消费者按路径使用它，`Path("~/…").is_dir()` 会是 False。
+- **修法**：进入工作台时显式清一次草稿（或让后端在 confirm 后标记完成、`persist()` 不再写回）；
+  向导持久化前对路径做 `expanduser()` 规范化。
