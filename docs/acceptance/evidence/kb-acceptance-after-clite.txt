@@ -1,0 +1,72 @@
+索引：新增 44，更新 0，移除 0，跳过（未变）0，总块数 420
+索引库：/Users/yifengstudio/Library/Application Support/SummitWorkbench/kb-index.sqlite
+
+==============================================================================
+【Q1 商标共识规范】根据之前和 HII 的沟通，请告诉我当前我们达成的商标共识规范是什么？
+------------------------------------------------------------------------------
+
+根据 HII 沟通形成的共识：所有相关商标/版权 registrations 统一登记在 Hoffman Institute International, Inc.（霍夫曼研究所国际股份有限公司，即 HII）名下，不是 Hoffman China 也不是 Hoffman Institute Foundation；HII 核心商标（Hoffman Process、和夫曼之旅、Negative Love Syndrome、Quadrinity Symbol 等）与 HIC 自有品牌（活满 / Huoman）必须分开管理。Hoffman Institute Foundation 仅在作为历史任职机构时按历史事实保留。部分中文商标的申请/注册状态与「和夫曼之旅」的具体文字仍待确认。
+
+  • 所有相关 registrations 登记在 HII 名下，不是 Hoffman China，也不是 Hoffman Institute Foundation；正式英文名称为 HOFFMAN INSTITUTE INTERNATIONAL, INC.，中文名称为霍夫曼研究所国际股份有限公司。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 登记地址正式写法为英文 1299 FOURTH STREET, 6TH FLOOR SAN RAFAEL, CALIFORNIA 94901 UNITED STATES OF AMERICA，中文为美国加利福尼亚州94901圣拉斐尔第四街1299号6层。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 逐项归属：活满 / Huoman（中国品牌商标）归 HIC，已注册；Negative Love Syndrome（英文商标）、Hoffman Process（英文商标/项目名）、Chinese translation of Hoffman Process（中文商标）、Quadrinity Symbol（图形商标，美国律师 reference HOFF-23737-TM-CN）属 HII 核心体系；负向之爱综合征（中文商标）属 HII 核心体系、具体状态待确认；和夫曼之旅（Hoffman Process 中文品牌名）归 HII、正在注册；Logo 归 HII 且邮件明确暂不单独申请 trademark。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 必须分开管理的一对：HII 授权品牌资产（Hoffman Process、和夫曼之旅、其他 HII 核心商标/符号）与 HIC 自有品牌资产（活满、后续 HIC 自行开发的新品牌）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • Hoffman Institute Foundation（HIF）不是处处都要删：作为版权主体/权利声明时统一写成 HII；但作为历史任职机构时按历史事实保留，例如 Hoffman Institute Foundation former CEO（Liza Ingrasci）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 尚未确认的事项包括：Hoffman Process 及其它中文相关商标的最新申请/注册状态；以及「和夫曼之旅」的具体商标文字仍建议以最终 filing document 核对（邮件未直接写出该中文词组）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 决定：相关 registrations 均应登记在 Hoffman Institute International, Inc. 名下，中文写作霍夫曼研究所国际股份有限公司；不是 Hoffman China，也不是 Hoffman Institute Foundation。
+      ← decisions/20260623-registration-entity-is-hii#决定
+  • 例外：Hoffman Institute Foundation 作为历史任职机构时按历史事实保留，例如 Hoffman Institute Foundation former CEO（Liza Ingrasci），不得改写成 HII。
+      ← decisions/20260623-registration-entity-is-hii#决定
+  • 「活满」与「和夫曼之旅」必须从此分开管理，材料称其为「最值得立即执行的一项」；状态表中「活满归 HIC」已确认，「活满未来品牌定位」未确认。
+      ← decisions/20260912-huoman-separate-from-hefuman#证据
+  • HII 与 HIC 的双轨 IP 体系已由 HIC 管理层确认口径；HII 侧 2026-06-23 的正式执行清单（IP filing 先行、filing confirmation 作为合同 Addenda）已由曹木子拆解为中文执行清单并转罗艺峰处理。
+      ← hii/hii-loyalty#现在在哪
+  • License Contract 已接近最终版（near final），但 HII 核心版权与商标的保护 filing 尚未启动；需要确定「先签约还是先 filing」的先后关系，以及 filing 结果如何进入合同。
+      ← decisions/20260623-filing-before-license-execution#背景
+
+检索轨迹：路由=decision（命中关键词 共识、规范）
+块级引用：11/11
+追溯到证据层：hii/notes/20260912-hii-hic-ip-analysis → hii/sources/20260912-hii-hic-ip-overview（共 58 条）
+其中走到逐字稿：hii/notes/20260912-hii-hic-ip-analysis → meetings/transcripts/2026-08-24-luo-yifeng-video-meeting-1-transcript
+事实条数：11
+==============================================================================
+【Q2 IT 进度与下一阶段】IT 当前的开发进度是什么，下一个阶段该怎么做？
+------------------------------------------------------------------------------
+
+IT 当前处于 Phase 2（把业务放进系统，2026 年 8 月—年底），Phase 1 已基本完成；整体状态是报名系统与门户/CMS 已上线运行，权限体系、IT 账户治理、本地 AI、财务电子化仍在建设中，企业知识库已明确方向，手机端尚未开发。下一步按 2026 年 9–12 月 Roadmap 推进：9 月做稳定与治理，10 月标准化并启动 AI 知识库 V0.1 与手机端产品设计，11 月进入真实产品阶段，12 月年度收口。
+
+  • IT 目前处于 Phase 2（把业务放进系统，2026 年 8 月—年底）；Phase 1（把系统做出来、把核心系统的开发与维护能力重新收回公司内部）已基本完成：韩文博 8 月初全职加入并接管代码、部署与开发流程，何鲁敏已退出日常 IT 工作。
+      ← it/it-roadmap#现在在哪
+  • 各模块当前状态：报名系统 🟢 正式生产运行；门户 / CMS 🟢 已投入业务使用；权限体系 🟡 持续建设；IT 账户治理 🟡 刚形成体系；本地 AI 🟡 模型可运行；企业知识库 🔵 已明确方向；部门业务电子化 🟡 财务先行；手机端 ⚪ 尚未开发。
+      ← it/it-roadmap#现在在哪
+  • 9 月为「稳定与治理月」，关键词是把已经做出来的东西管起来；P0 为完成何鲁敏全部权限清理、梳理公司重要管理员账户、梳理支付相关账户、梳理 API Token / Secret。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 9 月 P1：报名系统继续优化权限颗粒度、相关方培训、账户管理、真实业务反馈修正；门户做 CMS 权限优化、招生/运营反馈处理。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 10 月为标准化与新项目启动：启动 AI 知识库 V0.1（知识源＝Process / 课程资料，用户＝罗艺峰 + 韩文博）；启动手机端产品设计（产品定位、用户路径、信息架构、V1 范围、原型，围绕报名 + 内容/社区 + 营销）；财务电子化继续完成流程标准化并判断哪些进入系统。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 11 月进入真实产品阶段：AI 进入内部可用版本并准备小范围全员测试；手机端开始正式开发；报名系统继续将其他项目逐渐纳入统一架构；财务形成第一版业务电子化模板 / 方法论。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 12 月年度收口：报名系统从开发项目变成稳定运营系统；门户实现业务自主维护；手机端进入正式开发阶段；AI 达到 AI Chat + Process 知识库内部 Beta；业务电子化方面财务形成较完整样板，是否启动第二部门根据财务试点结果再决定。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 报名系统方面：韩文博已把测试邀请发给张凌紫；罗艺峰提出若当天有一轮学员测试且不涉及支付，当天即可上线，但因实际当天会有支付（已有学员报名后要开始写作业），韩文博当天部署支付；罗艺峰要求支付测试先用 1 元、2 元这类小额，并在群里跟庄廷婷、张凌紫说明具体要做什么、时间线是什么，并把张凌紫拉进「报名系统改造」。
+      ← meetings/notes/20260824-enrollment-payment-test#事实与进展
+  • 两位老师在此前两个项目结束后提出新需求：有很多课后的问卷；罗艺峰在 enrollment 报名系统开一个分支，把「任何要发问卷、以及在哪个时期发问卷」的具体内容与题目做出来，再合并到主轨，由韩文博拉取查看。
+      ← meetings/notes/20260824-enrollment-payment-test#事实与进展
+  • 工作线总览中，IT 开发（`it/`）对应 HIC 内部 IT 系统的开发计划、进度与阶段目标，主页为 `it/it-roadmap.md`。
+      ← index/workstreams#四条工作线
+
+检索轨迹：路由=point（命中关键词 是什么、当前、进度）
+块级引用：10/10
+追溯到证据层：it/it-roadmap → hii/sources/20260912-hii-hic-ip-overview（共 54 条）
+其中走到逐字稿：it/it-roadmap → meetings/transcripts/2026-09-07-luo-yifeng-video-meeting-2-transcript
+事实条数：10
+
+==============================================================================
+✓ 验收通过：两题都答出来了，逐条带块级出处，且能追到证据层。

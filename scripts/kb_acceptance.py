@@ -40,6 +40,7 @@ class Case:
     question: str
     expect_route: str
     must_recall: str
+    expect_transcript: bool = False
 
 
 CASES = (
@@ -47,13 +48,15 @@ CASES = (
         name="Q1 商标共识规范",
         question="根据之前和 HII 的沟通，请告诉我当前我们达成的商标共识规范是什么？",
         expect_route="decision",
-        must_recall="hii/notes/20260912-trademark-consensus",
+        must_recall="hii/notes/20260912-hii-hic-ip-analysis",
     ),
     Case(
         name="Q2 IT 进度与下一阶段",
         question="IT 当前的开发进度是什么，下一个阶段该怎么做？",
         expect_route="point",
-        must_recall="it/notes/20260912-it-roadmap-sep-dec",
+        must_recall="it/notes/20260912-hic-it-roadmap-analysis",
+        # IT 侧有会议逐字稿，因此「走得到逐字稿」这条必须真的成立
+        expect_transcript=True,
     ),
 )
 
@@ -161,20 +164,29 @@ def main() -> int:
             #    会议笔记是派生摘要，不算证据层——否则「走得到逐字稿」会被摘要冒充。
             #    HII 侧没有会议逐字稿（证据是邮件与汇总文档），因此也要接受 `type: source`。
             notes = index.notes()
+            evidence_types = {"meeting-transcript", "source"}
             chains: list[str] = []
             for anchor in block_level:
                 source_id = anchor.split("#", 1)[0]
                 for neighbour in index.neighbours(source_id, hops=2):
                     info = notes.get(neighbour)
-                    if info is not None and info.type in {"meeting-transcript", "source"}:
+                    if info is not None and info.type in evidence_types:
                         chains.append(f"{source_id} → {neighbour}")
-                        break
-            print(f"追溯到证据层：{chains[0] if chains else '（未走出）'}")
+            transcripts = [
+                chain
+                for chain in chains
+                if (notes.get(chain.split(" → ")[-1]) is not None)
+                and notes[chain.split(" → ")[-1]].type == "meeting-transcript"
+            ]
+            print(f"追溯到证据层：{chains[0] if chains else '（未走出）'}（共 {len(chains)} 条）")
+            print(f"其中走到逐字稿：{transcripts[0] if transcripts else '（无）'}")
             if not chains:
                 failures.append(
                     f"{case.name}：没有任何被引用笔记能在 2 跳内走到证据层"
                     "（type: meeting-transcript 或 source）"
                 )
+            if case.expect_transcript and not transcripts:
+                failures.append(f"{case.name}：没有走到逐字稿（本材料有逐字稿，不应只停在原文）")
             if answer_facts:
                 print(f"事实条数：{len(answer_facts)}")
 

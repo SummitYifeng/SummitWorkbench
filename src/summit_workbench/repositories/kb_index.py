@@ -32,7 +32,9 @@ from summit_workbench.workflows.ask.terms import fts_query, query_terms
 _SKIP_DIRS = {".git", ".obsidian", "_signals", ".summit-workbench", "templates"}
 # 不进索引的 status：草稿不是事实，不得被问答当成依据（conventions §2.2）。
 _EXCLUDED_STATUS = frozenset({"draft"})
-WIKILINK = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]")
+# 双链目标**包含** `#区块` 部分：C-lite 粒度下「指向某一节」是一等用法，
+# 丢掉 `#` 之后那一段就退化成了「指向整篇」。
+WIKILINK = re.compile(r"\[\[([^\]|]+?)(?:\|[^\]]+)?\]\]")
 # 存在 meta_json 里的双链键名（避免为此加一列而破坏既有索引库）
 _LINKS_KEY = "__links__"
 TITLE = re.compile(r"^#\s+(.*?)\s*$", re.MULTILINE)
@@ -364,13 +366,54 @@ class KnowledgeIndex:
                 index.setdefault(alias.casefold(), info.source_id)
         return index
 
-    def resolve_link(self, target: str, *, aliases: dict[str, str] | None = None) -> str | None:
-        """把双链目标（文件名 / 路径 / 别名）解析成 source_id；解析不到返回 None。"""
+    def resolve_link_target(
+        self, target: str, *, aliases: dict[str, str] | None = None
+    ) -> tuple[str, str] | None:
+        """把双链目标解析成 ``(source_id, 区块标题)``；区块标题为空串表示整篇。
+
+        目标可以是 `文件名`、`路径/文件名`、`别名`，也可以带 `#区块标题`。
+        """
         table = aliases if aliases is not None else self.aliases()
-        key = target.strip().removesuffix(".md").casefold()
+        file_part, _, heading = target.strip().partition("#")
+        key = file_part.removesuffix(".md").casefold()
         if not key:
             return None
-        return table.get(key) or table.get(key.rsplit("/", 1)[-1])
+        resolved = table.get(key) or table.get(key.rsplit("/", 1)[-1])
+        if resolved is None:
+            return None
+        return resolved, heading.strip()
+
+    def resolve_link(self, target: str, *, aliases: dict[str, str] | None = None) -> str | None:
+        """把双链目标解析成 source_id（丢弃 `#区块`）；解析不到返回 None。"""
+        resolved = self.resolve_link_target(target, aliases=aliases)
+        return resolved[0] if resolved else None
+
+    def chunk_at(self, source_id: str, heading: str) -> Hit | None:
+        """按 `#区块标题` 精确取块；标题为空或找不到时返回 None。"""
+        if not heading:
+            return None
+        row = self._connection.execute(
+            "SELECT heading, text FROM chunks WHERE source_id = ? AND heading = ? LIMIT 1",
+            (source_id, heading),
+        ).fetchone()
+        if row is None:
+            return None
+        return Hit(source_id=source_id, heading=row["heading"], text=row["text"], score=0.0)
+
+    def anchor_hints(self, source_id: str) -> dict[str, str]:
+        """该笔记出链里的 `目标 → 区块标题` 提示，用于把扩展定位到正确的块。"""
+        info = self.notes().get(source_id)
+        if info is None:
+            return {}
+        hints: dict[str, str] = {}
+        for link in info.links:
+            resolved = self.resolve_link_target(link)
+            if resolved is None:
+                continue
+            target, heading = resolved
+            if heading and target not in hints:
+                hints[target] = heading
+        return hints
 
     def neighbours(self, source_id: str, *, hops: int = 1) -> set[str]:
         """双链扩展：出链 + 入链，支持 1–2 跳（别名参与解析）。"""

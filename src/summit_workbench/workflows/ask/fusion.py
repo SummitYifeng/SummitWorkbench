@@ -242,6 +242,12 @@ def fuse(
     if plan.hops > 0:
         position = {chunk.source_id: i for i, (_, chunk) in enumerate(scored)}
         seeds = [chunk for _, chunk in sorted(scored, key=lambda item: -item[0])[:5]]
+        # `[[文件#区块]]` 形式的出链要定位到**那一块**，而不是目标笔记的首块
+        # （C-lite 粒度下一节就是一个结论，定位错了等于引错结论）。
+        hints: dict[str, str] = {}
+        for seed in seeds:
+            for target, heading in index.anchor_hints(seed.source_id).items():
+                hints.setdefault(target, heading)
         for seed in seeds:
             if seed.note_type == "source":
                 continue
@@ -276,7 +282,8 @@ def fuse(
                         ),
                     )
                 else:
-                    chunk = index.representative_chunk(neighbour)
+                    hinted = index.chunk_at(neighbour, hints.get(neighbour, ""))
+                    chunk = hinted or index.representative_chunk(neighbour)
                     if chunk is None:
                         continue
                     position[neighbour] = len(scored)
