@@ -130,12 +130,14 @@ try {
 const conflictEntry = `
 import {
   applySyncConflictRecovery,
+  autoSyncIfIdle,
   conflictRecoveryRequest,
   conflictSelectionRequest,
   missingConflictSelections,
   mountSyncBanner,
   previewSyncConflictRecovery,
   refreshSyncBanner,
+  retrySync,
   showSyncConflictDetails,
 } from './features/sync';
 
@@ -195,6 +197,7 @@ modal.querySelectorAll = (selector: string) => {
 };
 
 let statusFails = false;
+let statusState = 'local-ahead';
 const calls: Array<{ url: string; method: string; body: any }> = [];
 const detailsPath = 'notes/a.md';
 const binaryPath = 'notes/b.bin';
@@ -235,10 +238,13 @@ globalThis.fetch = async (url: any, init: any) => {
       preparation: { ok: true, event_count: 2, aggregate_count: 1, rebuilt_view_count: 0, candidate_path_count: 2 },
     });
   }
+  if (target === '/api/sync/run') {
+    return jsonResponse({ ok: true, state: 'ready', repos: [{ name: '_vault', state: 'ready' }] });
+  }
   if (target === '/api/sync/status') {
     if (statusFails) throw new Error('本地服务暂时不可达');
     return jsonResponse({
-      ok: true, workspace_id: 'ws-1', state: 'local-ahead', pending_commits: 1,
+      ok: true, workspace_id: 'ws-1', state: statusState, pending_commits: 1,
       last_sync_at: null, next_step: '点击立即重试', detail: '',
       ahead: 1, behind: 0, branch: 'main', remote_host: 'github.com',
       repo_states: ['_vault:local-ahead'],
@@ -304,6 +310,25 @@ banner.hidden = true;
 banner.innerHTML = '';
 await refreshSyncBanner();
 export const bannerHiddenStaysHidden = { hidden: banner.hidden, html: banner.innerHTML };
+
+// D6：空闲自动拉取只在"读到的状态是 ready"时真正同步一次，且按钮与自动拉取共用在途守卫。
+const runCount = () => calls.filter((call) => call.url === '/api/sync/run').length;
+statusFails = false;
+statusState = 'local-ahead';
+const runsBefore = runCount();
+await autoSyncIfIdle();
+const runsAfterNotReady = runCount();
+statusState = 'ready';
+await autoSyncIfIdle();
+const runsAfterReady = runCount();
+statusFails = true;
+await autoSyncIfIdle();
+const runsAfterReadFailure = runCount();
+statusFails = false;
+const beforeGuard = runCount();
+await Promise.all([retrySync(), retrySync()]);
+const afterGuard = runCount();
+export const autoSyncProbe = { runsBefore, runsAfterNotReady, runsAfterReady, runsAfterReadFailure, guardDelta: afterGuard - beforeGuard };
 
 export const afterApply = {
   html: modal.innerHTML,
@@ -400,6 +425,25 @@ try {
   // ready 时横幅本来就是隐藏的：读取失败不应凭空造出一个错误横幅。
   assert.equal(flow.bannerHiddenStaysHidden.hidden, true);
   assert.equal(flow.bannerHiddenStaysHidden.html, '');
+
+  // D6 空闲自动拉取：非 ready 不动 git；ready 恰好同步一次；读失败也不动；
+  // 连点两次「立即重试」只发一次（否则第二次会撞 workspace 锁）。
+  assert.equal(
+    flow.autoSyncProbe.runsAfterNotReady,
+    flow.autoSyncProbe.runsBefore,
+    'a non-ready state must not trigger an automatic sync',
+  );
+  assert.equal(
+    flow.autoSyncProbe.runsAfterReady,
+    flow.autoSyncProbe.runsBefore + 1,
+    'an idle ready state pulls exactly once',
+  );
+  assert.equal(
+    flow.autoSyncProbe.runsAfterReadFailure,
+    flow.autoSyncProbe.runsAfterReady,
+    'a failed status read must not trigger an automatic sync',
+  );
+  assert.equal(flow.autoSyncProbe.guardDelta, 1, 'a double click issues exactly one sync');
 
   console.log('Sync conflict recovery request tests passed');
 } finally {

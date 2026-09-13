@@ -11,6 +11,8 @@ import { normalizeTab, type ShellTab } from './tabs';
 export interface ShellActions {
   onSelectTab: (tab: ShellTab) => void;
   onRefresh: () => void;
+  /** 立即同步：拉取远端新提交（只 fetch/快进/推送，绝不 force）。 */
+  onSync: () => void;
   onCheckUpdates: () => void;
   onUndo: () => void;
   onQuit: () => void;
@@ -27,6 +29,7 @@ export function mountShell(actions: ShellActions): void {
     '<span class="version-status checking" id="version-status">正在检查版本</span>' +
     '<span class="day-pill" id="day-pill">—</span>' +
     '<button class="ghost" id="btn-refresh" title="刷新">↻</button>' +
+    '<button class="ghost" id="btn-sync" title="立即同步：拉取远端新提交（只 fetch/快进/推送，绝不 force）">⇅ 立即同步</button>' +
     '<button class="ghost" id="btn-check-updates" title="检查更新">检查更新</button>' +
     '<button class="ghost" id="btn-undo" title="撤销系统改动（只作用于 vault 文件）">↩ 撤销</button>' +
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
@@ -74,6 +77,9 @@ export function mountShell(actions: ShellActions): void {
   });
   (document.getElementById('btn-refresh') as HTMLButtonElement).addEventListener('click', () => {
     actions.onRefresh();
+  });
+  (document.getElementById('btn-sync') as HTMLButtonElement).addEventListener('click', () => {
+    actions.onSync();
   });
   (document.getElementById('btn-check-updates') as HTMLButtonElement).addEventListener('click', () => {
     actions.onCheckUpdates();

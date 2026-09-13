@@ -55,6 +55,7 @@ import {
   exportSyncSnapshot,
   mountSyncBanner,
   previewSyncConflictRecovery,
+  autoSyncIfIdle,
   refreshSyncBanner,
   retrySync,
   showSyncConflictDetails,
@@ -842,6 +843,7 @@ async function refreshAll(): Promise<{ state: boolean; review: boolean }> {
 export function mountLegacyWorkbench(): void {
   mountShell({
     onSelectTab: (next) => { tab = next; render(); },
+    onSync: () => { void retrySync(); },
     onRefresh: () => {
       void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
         toast(result.state && result.review ? '已刷新' : '刷新未完成：保留了可用的旧数据', result.state && result.review ? 'ok' : 'err');
@@ -940,7 +942,8 @@ export function mountLegacyWorkbench(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void checkVersion('visible');
-    void refreshSyncBanner();
+    // D6：回到前台时先读状态，若仍是 ready（干净、无保护态）就真正拉一次远端。
+    void autoSyncIfIdle();
   });
 
   async function startApp(): Promise<void> {
@@ -952,13 +955,14 @@ export function mountLegacyWorkbench(): void {
 
   // 60 秒自动刷新只发生在可见页；隐藏页暂停读取，回到前台时由 visibilitychange 立即补一次。
   void startApp();
-  void refreshSyncBanner();
+  // D6：启动后也拉一次——只读为主的设备打开即是新的。
+  void autoSyncIfIdle();
   window.setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     void checkVersion('interval');
   }, 60000);
   window.setInterval(() => {
     if (document.visibilityState !== 'visible') return;
-    void refreshSyncBanner();
+    void autoSyncIfIdle();
   }, 60000);
 }

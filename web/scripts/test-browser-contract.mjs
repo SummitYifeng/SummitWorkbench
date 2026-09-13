@@ -144,6 +144,14 @@ assert.match(
   /data-action="profile-remove"/,
   'removing a local profile is reachable from the settings page, not only dispatched',
 );
+// D6: the toolbar must expose 立即同步. Before this, /api/sync/run was reachable only through the
+// banner's 立即重试, which is hidden whenever the state is ready — so a clean device had no way to
+// pull at all.
+assert.match(
+  fileFor('src/features/shell/shell.ts'),
+  /id="btn-sync"/,
+  'the toolbar exposes 立即同步, not only the banner retry',
+);
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
@@ -219,15 +227,17 @@ assertNearby(
   /[\s\S]{0,500}openModal\(/,
   'undo dialog uses the shared modal activation',
 );
-// 后台轮询只在可见页运行；回到前台时同时刷新同步横幅。
+// 后台轮询只在可见页运行；回到前台时同时刷新同步状态。
 assertNearby(
   /document\.visibilityState !== 'visible'\) return;/,
   /[\s\S]{0,80}checkVersion\('interval'\)/,
   'the 60s version poll pauses while the page is hidden',
 );
+// D6 之后 60s 同步轮询走的是 autoSyncIfIdle()（先读状态，仅 ready 时才真正同步一次）；
+// "隐藏页不跑" 的守卫必须还在。
 assertNearby(
   /document\.visibilityState !== 'visible'\) return;/,
-  /[\s\S]{0,80}refreshSyncBanner\(\)/,
+  /[\s\S]{0,80}autoSyncIfIdle\(\)/,
   'the 60s sync poll pauses while the page is hidden',
 );
 // 同步状态读取失败时不能把已显示的保护态横幅静默隐藏。
@@ -275,7 +285,7 @@ assert.match(fileFor('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 
 assert.match(fileFor('src/features/today/index.ts'), /if \(!open\) importButton\?\.focus\(\)/, 'closing the import drawer restores focus to its trigger');
 assertNearby(/@media \(max-width: 900px\)/, /[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
 assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
-assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}#btn-refresh, \.header-right #btn-quit\s*\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');
+assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}\.header-right #btn-refresh,[^\n]{0,120}\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');
 assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,420}\.automation-enabled\s*\{[\s\S]{0,180}white-space: normal[\s\S]{0,180}overflow-wrap: anywhere/, 'very narrow settings labels wrap before they can overflow the page');
 
 // ---------------------------------------------------------------------------------------------

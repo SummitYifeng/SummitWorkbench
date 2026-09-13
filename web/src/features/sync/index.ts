@@ -7,7 +7,13 @@ export function mountSyncBanner(deps: SyncDeps): void {
   setSyncDeps(deps);
 }
 
-export { refreshSyncBanner, retrySync, exportSyncSnapshot, exportSyncConflictPackage } from './banner';
+export {
+  autoSyncIfIdle,
+  refreshSyncBanner,
+  retrySync,
+  exportSyncSnapshot,
+  exportSyncConflictPackage,
+} from './banner';
 export {
   applySyncConflictRecovery,
   conflictRecoveryRequest,

@@ -8,9 +8,16 @@ import type { SyncStatusPayload } from './types';
 
 /** 顶部同步保护态横幅、重试与导出（原 legacy-main 逐条搬迁）。 */
 
-export async function refreshSyncBanner(): Promise<void> {
+/**
+ * 一次同步是否在途。按钮与自动拉取共用同一守卫：第二次请求会撞上后端的 workspace 锁，
+ * 报出「另一个同步正在进行」，对用户毫无意义。
+ */
+let syncBusy = false;
+
+/** 读取同步状态并渲染横幅；返回本次读到 payload（失败为 null），供空闲自动拉取判断。 */
+export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
   const el = document.getElementById('sync-banner') as HTMLElement | null;
-  if (!el) return;
+  if (!el) return null;
   try {
     const data = await api<SyncStatusPayload>('/api/sync/status');
     const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
@@ -39,26 +46,59 @@ export async function refreshSyncBanner(): Promise<void> {
         '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
         '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
     }
+    return data;
   } catch (err) {
     // 读取失败不能静默隐藏：已显示的保护态（如 diverged-protected 及其"查看冲突详情"入口）
     // 必须保留，并明确标注这是上次成功读取的状态。
-    if (el.hidden) return;
+    if (el.hidden) return null;
     el.querySelector('.sync-read-error')?.remove();
     const note = document.createElement('div');
     note.className = 'sync-detail sync-read-error';
     note.innerHTML = '同步状态读取失败：' + esc(String(err)) +
       '（上方为上次成功读取的状态） <button class="ghost" data-action="sync-refresh">重新读取</button>';
     el.appendChild(note);
+    return null;
+  }
+}
+
+/**
+ * 空闲自动拉取（D6）。
+ *
+ * 背景：``sync_workspace`` 只被 ``/api/sync/run`` 调用，而那个端点此前**只在同步横幅的
+ * 「立即重试」**里可达，横幅在状态 ``ready`` 时是隐藏的 ⇒ 一台干净、只读为主的设备
+ * 没有任何拉取入口，会一直显示旧数据；它下次写入时又必然撞上分叉。
+ *
+ * 行为边界（保守）：
+ * - 只在**读到的状态是 ready** 时才真正同步一次（即 fetch + 快进；ready 下没有可推送的东西）；
+ * - ``dirty-protected`` / ``diverged-protected`` / ``offline-local-ahead`` 等一律**不自动动 git**，
+ *   仍由用户点「立即重试」——脏工作树绝不自动合并的既有保护不变；
+ * - 失败静默（离线、代理抖动），下一次 tick 自然重试。
+ */
+export async function autoSyncIfIdle(): Promise<void> {
+  const status = await refreshSyncBanner();
+  if (syncBusy || !status || status.state !== 'ready') return;
+  syncBusy = true;
+  try {
+    await api('/api/sync/run', { method: 'POST' });
+    await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
+  } catch {
+    // 离线或瞬时失败：保持静默，不打扰用户；下一次 tick 会再试。
+  } finally {
+    syncBusy = false;
   }
 }
 
 export async function retrySync(): Promise<void> {
+  if (syncBusy) return;
+  syncBusy = true;
   try {
     const data = await mutation(() => api<{ ok: boolean; message?: string }>('/api/sync/run', { method: 'POST' }));
     toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
     await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
   } catch (err) {
     toast(String(err), 'err');
+  } finally {
+    syncBusy = false;
   }
 }
 
