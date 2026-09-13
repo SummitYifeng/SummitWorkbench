@@ -1813,7 +1813,7 @@ Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 s
 而开发机 venv 是 **3.53.1** ——不探一下根本不知道分发环境是什么。两者 FTS5+trigram 都可用，
 强制关掉 FTS 的兜底分支也都活着。
 
-### U.4 已发布包的「真机问两题」**未能完成**（本轮遗留，如实记录）
+### U.4 已发布包的真机验收：先被权限挡住，**已闭环**（2026-09-13，同日补做）
 
 装好已发布包（build 22，`/api/version` 回报 `server_version 0.4.8 / build 22 / git_revision c46aff1`）
 之后，`/api/ask` 与本机一切**要读 `~/Documents/Work/_vault` 的接口**都**永久挂起**：
@@ -1840,10 +1840,24 @@ Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 s
 早已被授权，所以命令行读同一个文件毫无问题（`UserNotificationCenter` 进程确实在跑，
 与「有等待中的系统提示」一致）。
 
-**因此**：§T.5 的两题验收是对**本地包（build 35，同一份源码、同一脚本）**做的，不是对已发布包做的。
-已发布包只完成了 U.3 的包内探针与版本/清单核验。**这一步需要使用者本人操作一次**：
-打开 App → 在弹出的「允许访问「文稿」文件夹」上选**允许** → 再问那两题。
-这是**本轮唯一未闭环的验收项**，不当作已完成。
+**⇒ 闭环**：使用者批准该授权后，App 于 `2026-09-13T13:21:37Z` 重启，同一个已发布包
+（build 22）立刻恢复正常 —— `/api/state` **200 / 0.021s**（此前挂起）。于是当场把
+已发布包的验收补齐：
+
+| 项 | 结果 |
+| --- | --- |
+| `POST /api/ask` 两题（真调模型） | **2/2 通过**，路由 `decision` / `point` |
+| 事实引用块级比例 | Q1 5/5、Q2 4/4，且锚点全部真实存在 |
+| 追溯链 | Q1 18 条、Q2 19 条，均含走到逐字稿（Q2 本题要求） |
+| `路径#区块` 经 `/api/sources/read` 打开 | **9/9** 成功，`anchor`/`heading` 均正确 |
+| 21 条主张对回 `_vault` 原文 | **21/21 命中、0 条编造** |
+
+证据：`evidence/kb-gui-published-build22.txt`、
+`evidence/kb-gui-published-build22-obsidian-crosscheck.txt`。
+
+因此本轮的两题真机验收**同时**覆盖了两个产物：**本地包 build 35**（§T.5）与
+**已发布包 build 22**（本节）。仍未做到的只有 GUI 截图（会话无屏幕录制权限），
+这一点不因闭环而改变；上面那张「U.4 未能完成」的表仍然保留，因为它是定位过程的一部分。
 
 ### U.5 本轮新发现、未修的缺陷
 
@@ -1858,7 +1872,15 @@ Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 s
 
 ### U.6 本机当前状态
 
-`/Applications/SummitWorkbench.app` = **已发布包 0.4.8 / build 22**（`codesign --verify --deep --strict` 通过）。
-其上首次读取 vault 仍需使用者点一次「允许访问「文稿」文件夹」（见 U.4）。
+`/Applications/SummitWorkbench.app` = **已发布包 0.4.8 / build 22**
+（`CFBundleShortVersionString 0.4.8`、`CFBundleVersion 22`、`codesign --verify --deep --strict` 通过，
+构建自 `SummitYifeng/SummitWorkbench` 的 `c46aff1`）。「文稿」文件夹授权已批准，接口正常（见 U.4）。
 本地另一份 build 35 产物保留在 `dist/releases/0.4.8/arm64/`，被取代的 `fbf735b` 产物保留在
 `dist/releases/0.4.8.superseded-fbf735b/`（均未删除）。
+
+> 顺带澄清一个容易混淆的短哈希：`bb7ab22` **不是**本 App 的构建提交，它在
+> `yifeng93/SummitWorkbench-Updates`（更新 feed 仓库）里，是默认分支尖端的
+> “publish signed update feed for build 109”（2026-09-06）——那是历史遗留的 feed 提交，
+> 与 0.4.8 无关。判断「本机装的是哪一版」只认
+> `Contents/Resources/build-manifest.json` 的 `version`/`build`/`frontend_build`
+> （其中 `frontend_build` 里的短哈希就是构建提交）。
