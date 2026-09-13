@@ -135,6 +135,7 @@ import {
   missingConflictSelections,
   mountSyncBanner,
   previewSyncConflictRecovery,
+  refreshSyncBanner,
   showSyncConflictDetails,
 } from './features/sync';
 
@@ -154,6 +155,7 @@ function fakeElement(): any {
 const toasts = fakeElement();
 const modal = fakeElement();
 const backdrop = fakeElement();
+const banner = fakeElement();
 const selects = new Map<string, any>();
 
 globalThis.HTMLElement = class {};
@@ -164,7 +166,11 @@ globalThis.document = {
   activeElement: null,
   createElement: () => fakeElement(),
   getElementById: (id: string) =>
-    id === 'modal' ? modal : id === 'modal-backdrop' ? backdrop : id === 'toasts' ? toasts : null,
+    id === 'modal' ? modal
+      : id === 'modal-backdrop' ? backdrop
+      : id === 'toasts' ? toasts
+      : id === 'sync-banner' ? banner
+      : null,
   querySelector: () => null,
   querySelectorAll: () => [],
 };
@@ -188,6 +194,7 @@ modal.querySelectorAll = (selector: string) => {
   });
 };
 
+let statusFails = false;
 const calls: Array<{ url: string; method: string; body: any }> = [];
 const detailsPath = 'notes/a.md';
 const binaryPath = 'notes/b.bin';
@@ -226,6 +233,15 @@ globalThis.fetch = async (url: any, init: any) => {
     return jsonResponse({
       ok: true,
       preparation: { ok: true, event_count: 2, aggregate_count: 1, rebuilt_view_count: 0, candidate_path_count: 2 },
+    });
+  }
+  if (target === '/api/sync/status') {
+    if (statusFails) throw new Error('本地服务暂时不可达');
+    return jsonResponse({
+      ok: true, workspace_id: 'ws-1', state: 'local-ahead', pending_commits: 1,
+      last_sync_at: null, next_step: '点击立即重试', detail: '',
+      ahead: 1, behind: 0, branch: 'main', remote_host: 'github.com',
+      repo_states: ['_vault:local-ahead'],
     });
   }
   throw new Error('unexpected request: ' + target);
@@ -268,6 +284,27 @@ export const afterPreview = {
 };
 
 await applySyncConflictRecovery();
+// 横幅：读取状态失败时不得静默隐藏已显示的保护态（本轮新代码）。
+await refreshSyncBanner();
+export const bannerWithState = {
+  hidden: banner.hidden,
+  hasState: banner.innerHTML.includes('同步状态'),
+  hasPending: banner.innerHTML.includes('待推送'),
+};
+statusFails = true;
+await refreshSyncBanner();
+export const bannerAfterReadFailure = {
+  hidden: banner.hidden,
+  keepsState: banner.innerHTML.includes('同步状态'),
+  errorNote: banner.children.map((c: any) => c.className + '|' + c.innerHTML).join(' '),
+  hasRetryButton: banner.children.some((c: any) => String(c.innerHTML).includes('sync-refresh')),
+};
+// 之前就是隐藏的（ready）：读取失败必须继续保持隐藏，不能凭空冒出一个错误横幅。
+banner.hidden = true;
+banner.innerHTML = '';
+await refreshSyncBanner();
+export const bannerHiddenStaysHidden = { hidden: banner.hidden, html: banner.innerHTML };
+
 export const afterApply = {
   html: modal.innerHTML,
   backdropHidden: backdrop.hidden,
@@ -350,6 +387,19 @@ try {
     flow.afterApply.toasts.some((text) => text.includes('恢复提交已创建并完成普通同步')),
     'the success message names the commit and the sync',
   );
+
+  // 横幅读取失败：已显示的（非 ready）状态必须保留，并说明"上方是上次成功读取的状态"。
+  assert.equal(flow.bannerWithState.hidden, false, 'a non-ready state shows the banner');
+  assert.equal(flow.bannerWithState.hasState, true);
+  assert.equal(flow.bannerWithState.hasPending, true, 'the pending count is shown');
+  assert.equal(flow.bannerAfterReadFailure.hidden, false, 'a read failure must NOT hide the banner');
+  assert.equal(flow.bannerAfterReadFailure.keepsState, true, 'the last known state stays visible');
+  assert.match(flow.bannerAfterReadFailure.errorNote, /同步状态读取失败/);
+  assert.match(flow.bannerAfterReadFailure.errorNote, /上方为上次成功读取的状态/);
+  assert.equal(flow.bannerAfterReadFailure.hasRetryButton, true, 'the user can re-read');
+  // ready 时横幅本来就是隐藏的：读取失败不应凭空造出一个错误横幅。
+  assert.equal(flow.bannerHiddenStaysHidden.hidden, true);
+  assert.equal(flow.bannerHiddenStaysHidden.html, '');
 
   console.log('Sync conflict recovery request tests passed');
 } finally {
