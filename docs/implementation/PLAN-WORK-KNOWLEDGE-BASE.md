@@ -578,7 +578,7 @@ confidential: false
 > ⚠️ **已安装的 0.4.8 bundle 落后于源码**：R2 只进了源码（CLI/venv 生效），`/Applications` 里的 app
 > 仍按旧规则切块。**GUI 侧要看到 `#` 锚点效果，必须在 Phase 5/6 重新打包并重装**（已加入 Phase 5 交付项）。
 
-### Phase 4 · 首批入库 —— 进行中（5 个执行者并行）
+### Phase 4 · 首批入库 —— 已完成（5 个执行者并行 + 主控收尾）
 
 **并行分工（文件集互不重叠，避免写冲突；共享文件由主控统一回填）**
 
@@ -600,6 +600,31 @@ confidential: false
   幂等检查（`source.ref` + `hash` 去重）、全库锚点与逐字终检、git 提交与推送。
 - **关键纪律**：执行者不得使用先验知识补全事实；原文没写的必须写「原文未明确」；
   决策只在原件确有「明确决定」时建页，`## 选项` 不得事后补编。
+
+**结果（全部真跑，vault 提交 `12c2e5e`，已推送远端）**
+
+| 项 | 结果 |
+|---|---|
+| 素材 | 8 份原件逐字入库（HII 4 + IT 4，含 2 份逐字稿）；**8 份逐行 diff 全部 = 0** |
+| 知识层 | 4 篇分析笔记 + 3 篇会议笔记 + 8 个主题簇页（全部 `draft→active`）+ 3 个来华子页（SOP + 2 个在办个案） |
+| 决策 | **15 篇**（HII 9 + IT 6），`## 证据` 逐条 `路径#区块`；`## 选项` 只写原件真实候选，无候选则明写「原件未记录候选方案」 |
+| 入口页 | `projects/{hii-affairs,it-development}` 回填当前状态 / 下一步 / 阻塞 / 决策记录 / 关键结论 / 未决 / 时间线 |
+| 索引层 | `index/{projects,decisions,people,timeline}` 回填；`decisions` 与 `people` 由脚本重生成 |
+| `wb vault check` | ✓ 52 篇全部通过 |
+| 双链与锚点 | ✓ **269 条双链 + 377 条 `路径#区块` 全部可解析**（`scripts/kb_verify_links.py`） |
+| 索引 | ✓ 全量重建：52 篇 / **679 块**，FTS5 可用 |
+| id 唯一性 | ✓ 0 重复 |
+| 幂等 | ✓ 8 份原件 → 8 个 `source`/`transcript` 页，0 重复 |
+
+**本阶段的两个额外收获（已回写规范）**
+
+1. **`kb_index_people.py` 会抹掉新规范 frontmatter**：它 `render()` 自带一份最小 frontmatter
+   （只有 date/type/status/project/updated/title/aliases），写入时把页面已有的
+   `id` / `area` / `workstream` / `summary` **整段覆盖掉**。已修为「保留既有 frontmatter、只替换正文」，
+   并补回归测试（旧测试一条未改 → 行为兼容）。
+2. **幂等键的判定范围被澄清**：派生产物（分析笔记 / 决策 / 簇页 / 个案页）**沿用**同一 `ref`+`hash`
+   以保持溯源一致，**不算冲突**；幂等只看 `source` / `meeting-transcript` 页。
+   第一次终检把派生笔记也算进去，报了 8 组「冲突」——**是我检查口径写错，不是库里真有问题**，已修正并把该口径写进 conventions §11。
 
 ### Phase 1 发现的问题（必须进 Phase 5 的代码修复清单）
 
