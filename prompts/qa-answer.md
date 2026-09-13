@@ -1,6 +1,6 @@
 ---
 name: qa-answer
-version: 1
+version: 2
 capability: qa
 output: json
 ---
@@ -24,6 +24,9 @@ output: json
 规则：
 
 - 只引用实际提供的来源；任何 `source_id` 都必须出现在输入的来源列表中。
+- `source_id` 可能形如 `路径#区块标题`（例如 `hii/notes/foo#逐项商标归属与状态`）。这种形式表示
+  「这条事实来自那份笔记的**那一个区块**」，必须**逐字照抄整个 source_id**（含 `#` 与区块标题），
+  不得只写路径部分、也不得自己拼一个区块名。
 - 事实与建议分区：能被来源直接支撑的进 `facts`，你的判断进 `suggestions`。
 - 证据冲突不要替用户裁决，放进 `conflicts` 并列呈现，让用户自行判断。
 - 不确定就说不确定，把 `unanswerable` 设为 true，绝不用外部知识填补。

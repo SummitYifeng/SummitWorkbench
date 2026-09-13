@@ -7,7 +7,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -19,10 +19,12 @@ from summit_workbench.providers.llm.client import MAX_RETRIES, CompletionResult,
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMSchemaError
 from summit_workbench.providers.llm.usage import UsageRecord, record_from_result
+from summit_workbench.workflows.ask.fusion import Trace, Weights
 from summit_workbench.workflows.ask.retrieval import (
     Candidate,
     candidate_by_id,
     retrieve_candidates,
+    retrieve_via_index,
 )
 from summit_workbench.workflows.meetings.processor import estimate_tokens
 
@@ -56,6 +58,7 @@ class AskResult:
     sources: tuple[Candidate, ...]  # 实际进入上下文的来源
     usage: UsageRecord | None  # 无召回、未调用模型时为 None
     dropped_sources: tuple[str, ...] = ()  # 被剔除的越界引用来源 ID
+    trace: Trace | None = None  # 索引检索的轨迹（命中了哪些块、走了哪些双链、排除了什么）
 
 
 def _task_key(query: str) -> str:
@@ -201,6 +204,9 @@ def answer_question(
     completer: Completer | None = None,
     now: datetime | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    index_path: Path | None = None,
+    weights: Weights | None = None,
+    today: date | None = None,
 ) -> AskResult:
     """召回本地来源并让模型带来源作答；无召回则不调用模型。
 
@@ -214,7 +220,20 @@ def answer_question(
     history = history[-_MAX_HISTORY_TURNS:]
     history_text = _render_history(history)
 
-    candidates = retrieve_candidates(vault_dir, query, project=project, limit=limit)
+    trace: Trace | None = None
+    if index_path is not None:
+        # 索引检索主干：块级 FTS5/BM25 + 查询路由 + 多信号融合 + 双链扩展。
+        candidates, trace = retrieve_via_index(
+            vault_dir,
+            query,
+            index_path=index_path,
+            project=project,
+            limit=limit,
+            weights=weights,
+            today=today,
+        )
+    else:
+        candidates = retrieve_candidates(vault_dir, query, project=project, limit=limit)
     # 追问轮：把历史引用过的来源补回候选（去重、保持新鲜召回在前）。
     seen: set[str] = set()
     merged: list[Candidate] = []
@@ -238,6 +257,7 @@ def answer_question(
             answer=QaAnswer(summary="本地知识库未召回相关笔记，无法作答。", unanswerable=True),
             sources=(),
             usage=None,
+            trace=trace,
         )
 
     fixed = (
@@ -260,4 +280,5 @@ def answer_question(
         sources=tuple(sources),
         usage=usage,
         dropped_sources=dropped,
+        trace=trace,
     )

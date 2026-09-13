@@ -1456,3 +1456,84 @@ G1 的「降级为备用设备」就是给这种状态提供对齐入口的（�
    是**工作台内容**，与机器日志无关。
 7. ~~G1 接管的真机验证~~：**已在 §R.8 完成**（Air 接管 → 门控关闭 → 过期 generation 被拒 →
    归还 Studio → Air 降级 → 门控再确认，全程 App 界面点击；归属 generation 1→2→3）。
+
+---
+
+## S. 工作知识库重建 + 第二大脑检索改造（2026-09-13，本轮）
+
+> 本轮目标：把工作知识库的结构与规范定对 → 首批真实材料入库 → 把「第二大脑」的**纯文本**检索做深
+> （不破「无向量库 / 无 RAG / 不加第三方依赖」硬边界），并用**两个真实问题**做端到端验收。
+
+### S.1 破坏性步骤与备份（已核验）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 仓库外备份 | `~/Library/Application Support/SummitWorkbench/backup/vault-before-rebuild-20260913/`：`_vault` 目录副本 + `vault-full-history.tar.gz`（696 条目）+ `obsidian-root/.obsidian` + `当前材料` 副本 |
+| 备份核验 | 备份内 git 历史 **55 提交**（与源一致）；非 `.git` 文件清单 `diff` **完全一致**；材料 `diff -r` 一致；`workspace_id` / `device_id` / `generation` 与源一致 |
+| 清空与重建 | 删除 `_vault` 全部内容与旧 `.git`，保留 `.summit-workbench/`（`bf22c8d2-…`，Studio `51885d3d-…`，generation 3）；`git init -b main`，新历史从 1 个提交开始；**未使用 force/reset/rebase/stash** |
+| 作用范围 | 只动 `~/Documents/Work/_vault/`；`~/Documents/Work/.obsidian/` 与其它位置未动（使用者逐条确认） |
+
+### S.2 首批材料入库（实测口径）
+
+- 桌面材料实测为 **9 个文件**（交接文档写的 11 个有误）：和HII的沟通 4 篇 md；和IT相关 5 个
+  （3 份 txt + IT 计划 md + 智能纪要 md，**其中 zip 已解压为 md，无 zip 本体**）。
+- `罗艺峰的视频会议 (3).txt` 与 `(2).txt` **sha256 完全相同**（字节级重复），按内容哈希去重，**未重复入库**。
+- 入库形态（使用者选定 **C 混合**）：原文整篇作 `source` **逐字保留**，另拆原子笔记并回链原文。
+- 产物：**105 篇** Markdown（8 篇 source/逐字稿 + 62 篇原子笔记 + 9 篇决策 + 3 篇会议笔记 +
+  5 篇项目主页 + 4 篇线索主页 + 索引/规范/README/契约页）。
+
+### S.3 质量门（全部真跑）
+
+| 门 | 结果 |
+| --- | --- |
+| `wb vault check` | ✓ 105 篇全部通过 schema 校验 |
+| 逐字引用机械校验 | ✓ 125 条 `路径` 引用 / 说话人时间点 / 原件比对，**0 问题** |
+| 原件逐字保留 | ✓ 8 篇 source/逐字稿与原件**逐字一致**；注入式变异（往原件区插一句）能被抓出 |
+| 幂等 / 去重 / 脏数据 | ✓ 三种失败模式真跑：重复入库 0 新增；同内容不同名跳过；同 ref 不同内容 **退出码 2 且不覆盖** |
+| 双链解析 | ✓ `wb vault check` + 全库 232 条双链，除文档/模板里的示例占位外全部可解析 |
+| 索引 | ✓ 105 篇 / 700+ 块，FTS5+trigram 可用，索引库在 **vault 之外** |
+| Workbench 门禁 | ✓ `tsc`、13 个前端脚本、`build`+`verify-build`、`pytest --cov`（**1051 passed**，覆盖率 83.58%）、`ruff check`、`ruff format --check`、`mypy`、`secret_scan.py`、打包 App 冒烟 1 passed |
+| 路由契约 | ✓ `docs/contracts/web-route-contract.json` **无 diff**（未新增路由；`/api/sources/read` 只是响应新增 `anchor`/`heading` 两个字段，已同步更新其测试） |
+
+### S.4 两个真实问题的端到端验收（本轮核心）
+
+可重复用例：`scripts/kb_acceptance.py`（真调模型）。证据输出：
+`docs/acceptance/evidence/kb-acceptance-run-6.txt`。
+
+**Q1**「根据之前和 HII 的沟通，请告诉我当前我们达成的商标共识规范是什么？」
+
+- 路由 `decision`；**16/16 条事实带 `路径#区块` 出处**（`hii/notes/20260912-trademark-consensus#…`）；
+- 追溯链走到证据层：`hii/notes/20260912-trademark-consensus → hii/sources/20260912-hii-hic-ip-overview`；
+- 答案内容（登记主体统一为 HII、逐项商标归属、活满/和夫曼之旅分开管理）经人工与原文 §6.1/§6.2/§6.3/§9.2 逐条核对一致。
+
+**Q2**「IT 当前的开发进度是什么，下一个阶段该怎么做？」
+
+- 路由 `point`；**6/6 条事实带 `路径#区块` 出处**；
+- 追溯链走到**逐字稿**：`it/it-roadmap → meetings/transcripts/2026-09-07-luo-yifeng-video-meeting-2-transcript`；
+- 人工核对：Phase 2 现状与 9–12 月分月 Roadmap 均可在原文对应章节逐字核对。
+
+**验收过程中修正的两处「我这边的错」**（如实记录）：
+
+1. 最初的判据把「追溯」写成必须走到 `meetings/`，导致 Q1 假失败——**HII 侧材料本来就没有会议逐字稿**
+   （证据是邮件与汇总文档）。判据改为：证据层 = `type: meeting-transcript` 或 `type: source`（逐字稿或原始材料），
+   **会议笔记（派生摘要）不算证据层**。
+2. 第一版验收跑不过 Q2 的「下一个阶段」：原因是 `it/it-roadmap` 与分月 Roadmap **之间没有双链**
+   （属内容缺口，不是代码缺陷）。补上该双链并让双链扩展**不再按目标类型加权**（链接本身才是信号）后通过。
+
+### S.5 入库时发现的数据质量问题（未自行裁决）
+
+- 接待手册 §11.3 检查表存在**语义相反的错别字**（「私人费用无误混入工作费用」应为「勿/不」）；
+- Linda Banes 职务两处不一致（手册 `Coordinator` / 当前来华 `Associate`）；
+- Royalty 费率「重新起算」有两个触发条件（首次实际付款 / 每自然年）且交叉情形原文未定义；
+- 0.5% 档阈值（201 名起）仅有同事反馈、无邮件证据（原文自认）；Refund Policy 未形成可写入 SOP 的规则；
+- Danny 离境日期与航班缺失；Nita / Crystal 培训角色未展开；Sunny / 张凌紫 接待职责未明确。
+- 以上均已记入 `hii/notes/20260913-china-visit-doc-errata.md` 与 `hii/hii-loyalty.md` 的 `## 未决问题`，
+  **原件未改**（`source` 不可变）。
+
+### S.6 仍开放 / 已知局限
+
+- **打包 App 里尚无新检索代码**：本轮只跑通源码运行路径（`wb ask` / `wb kb`）与打包冒烟；
+  要把新检索带进 `/Applications/SummitWorkbench.app` 需重新打包安装（属发布流程，不在本轮范围）。
+- `index/projects.md` 的「已暂停 / 已归档」、`index/timeline.md` 的跨期大事记、
+  `community/` 与 `hr/` 两条工作线目前是**诚实的占位**（首批材料未覆盖这两条线，不编造）。
+- 双机（Studio / Air）：本轮按约定只验同步状态，未重走完整双机配方。

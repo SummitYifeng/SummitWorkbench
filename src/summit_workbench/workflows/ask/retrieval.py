@@ -1,16 +1,27 @@
-"""本地 vault 召回：按路径 / frontmatter / 全文筛选候选笔记（PRD M1-6）。
+"""本地 vault 召回（PRD M1-6）。
 
-只做确定性、可测的本地检索（ripgrep 等价的全文子串打分），不调用模型。默认排除派生的
-``qa-insight``（事实检索不吃自己产出的洞察）与原始逐字稿 / 审批页等非知识内容。
+两条路径：
+
+- :func:`retrieve_candidates`：**旧版**子串打分扫描（ripgrep 等价、零依赖、全量扫全库）。
+  保留它有两个作用：索引不可用时兜底；以及作为新检索的对照基线。
+- :func:`retrieve_via_index`：**新检索主干**——块级 FTS5/BM25 + 查询路由 + 多信号融合，
+  返回 ``路径#区块`` 级引用与检索轨迹（见 :mod:`.fusion` / :mod:`.router`）。
+
+两条路径都只做确定性、可测的本地检索，不调用模型。默认排除派生的 ``qa-insight``
+（事实检索不吃自己产出的洞察）与原始逐字稿 / 审批页等非知识内容。
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
+from summit_workbench.repositories.kb_index import IndexStats
 from summit_workbench.repositories.vault import iter_markdown_files, load_note
+from summit_workbench.workflows.ask.fusion import Trace, Weights, fuse
+from summit_workbench.workflows.ask.router import RoutingPlan, route_query
 
 # 默认不进入问答上下文的笔记类型：派生洞察、原始证据、临时审批页。
 _EXCLUDED_TYPES = frozenset({"qa-insight", "meeting-transcript", "approval-page"})
@@ -26,6 +37,7 @@ class Candidate:
     projects: tuple[str, ...]
     body: str
     score: float
+    why: tuple[str, ...] = ()  # 融合检索给出的「为什么命中」；旧版召回为空
 
 
 def _terms(query: str) -> list[str]:
@@ -81,7 +93,10 @@ def candidate_by_id(vault_dir: Path, source_id: str) -> Candidate | None:
     """
     if not vault_dir.is_dir() or not source_id:
         return None
-    rel = Path(source_id)
+    # 追问轮可能回传「路径#区块」形式的引用：定位文件时只看路径部分，
+    # 但返回值保留完整锚点，保证引用能原样延续。
+    path_part = source_id.split("#", 1)[0]
+    rel = Path(path_part)
     if rel.is_absolute() or ".." in rel.parts:
         return None
     path = vault_dir.joinpath(rel).with_suffix(".md")
@@ -143,3 +158,68 @@ def retrieve_candidates(
         )
     scored.sort(key=lambda c: (-c.score, c.source_id))
     return scored[:limit]
+
+
+def retrieve_via_index(
+    vault_dir: Path,
+    query: str,
+    *,
+    index_path: Path,
+    project: str | None = None,
+    workstream: str | None = None,
+    limit: int | None = None,
+    today: date | None = None,
+    weights: Weights | None = None,
+    plan: RoutingPlan | None = None,
+) -> tuple[list[Candidate], Trace]:
+    """索引 + 路由 + 融合的检索主干，返回 ``(候选, 检索轨迹)``。
+
+    FTS5 不可用时自动退化为纯 Python BM25（``KnowledgeIndex.search`` 返回 ``None``），
+    因此这条路径**不会**因为打包环境缺 FTS5 而失效。
+    """
+    from summit_workbench.repositories.kb_index import KnowledgeIndex, bm25_scores
+
+    resolved_plan = plan or route_query(query)
+    index = KnowledgeIndex(vault_dir, index_path)
+    try:
+        index.build()
+        hits = index.search(query)
+        if hits is None:  # FTS5 不可用 / 检索词全在 3 字以下 → BM25 兜底
+            hits = bm25_scores(index.all_chunks(), query)
+        ranked, trace = fuse(
+            hits,
+            index=index,
+            query=query,
+            plan=resolved_plan,
+            weights=weights,
+            today=today,
+            project=project,
+            workstream=workstream,
+        )
+        notes = index.notes()
+        candidates = [
+            Candidate(
+                source_id=chunk.anchor,
+                title=chunk.title,
+                note_type=chunk.note_type,
+                projects=notes[chunk.source_id].projects if chunk.source_id in notes else (),
+                body=chunk.text[:_BODY_CHAR_CAP].strip(),
+                score=chunk.score,
+                why=chunk.why,
+            )
+            for chunk in ranked[: (limit or resolved_plan.limit)]
+        ]
+    finally:
+        index.close()
+    return candidates, trace
+
+
+def build_index(vault_dir: Path, index_path: Path, *, full: bool = False) -> IndexStats:
+    """重建（增量或全量）检索索引；供 ``wb kb index`` 调用。返回 ``IndexStats``。"""
+    from summit_workbench.repositories.kb_index import KnowledgeIndex
+
+    index = KnowledgeIndex(vault_dir, index_path)
+    try:
+        return index.build(full=full)
+    finally:
+        index.close()

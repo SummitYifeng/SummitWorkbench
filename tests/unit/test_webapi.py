@@ -395,6 +395,8 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
 
     response = client.get("/api/sources/read", params={"source_id": "projects/P1"})
     assert response.status_code == 200
+    # 2026-09-13 新增 `anchor` / `heading` 两个字段（问答引用升级为「路径#区块」）：
+    # 整篇引用时 anchor 就是 source_id，heading 为空。
     assert response.json() == {
         "ok": True,
         "source_id": "projects/P1",
@@ -402,6 +404,8 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
         "date": "2026-09-01",
         "body": "# 项目一\n\n正文。",
         "truncated": False,
+        "anchor": "projects/P1",
+        "heading": "",
     }
     assert (
         client.get("/api/sources/read", params={"source_id": "../projects/P1"}).status_code == 400
@@ -409,6 +413,32 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
     assert (
         client.get("/api/sources/read", params={"source_id": "settings/secrets"}).status_code == 400
     )
+
+
+def test_api_sources_read_returns_the_requested_block(tmp_path: Path) -> None:
+    """`路径#区块` 引用必须只返回那一块，并回报区块标题；不存在的区块要 404。"""
+    client, vault = _client(tmp_path, seed_review=False)
+    source = vault / "hii" / "notes" / "consensus.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "---\ntitle: 商标共识规范\ndate: 2026-09-12\ntype: note\n---\n\n"
+        "# 商标共识规范\n\n## 登记主体\n\n登记在 HII 名下。\n\n"
+        "## 逐项商标归属与状态\n\n活满归 HIC。\n",
+        encoding="utf-8",
+    )
+
+    response = client.get(
+        "/api/sources/read", params={"source_id": "hii/notes/consensus#逐项商标归属与状态"}
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["heading"] == "逐项商标归属与状态"
+    assert payload["anchor"] == "hii/notes/consensus#逐项商标归属与状态"
+    assert "活满归 HIC" in payload["body"]
+    assert "登记在 HII 名下" not in payload["body"]
+
+    missing = client.get("/api/sources/read", params={"source_id": "hii/notes/consensus#不存在"})
+    assert missing.status_code == 404
 
 
 def test_api_sources_read_rejects_non_utf8_file_instead_of_internal_error(tmp_path: Path) -> None:

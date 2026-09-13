@@ -55,6 +55,7 @@ def _ask_html(
     from summit_workbench.config.secrets import CredentialError, resolve_credential
     from summit_workbench.prompts import load_prompt
     from summit_workbench.providers.llm import LLMError, load_model_config
+    from summit_workbench.repositories.kb_index import default_index_path
     from summit_workbench.workflows.ask.ask import answer_question
 
     try:
@@ -65,7 +66,14 @@ def _ask_html(
         api_key = resolve_credential(cfg.api_key_ref)
         prompt = load_prompt("qa-answer")
         result = answer_question(
-            vault_dir, question, cfg, api_key, prompt=prompt, history=history, project=project
+            vault_dir,
+            question,
+            cfg,
+            api_key,
+            prompt=prompt,
+            history=history,
+            project=project,
+            index_path=default_index_path(),
         )
     except (LLMError, CredentialError, FileNotFoundError, ValueError) as exc:
         return f'<p class="not-actionable">问答不可用：{escape(str(exc))}</p>', [], None
@@ -87,7 +95,49 @@ def _ask_html(
     if result.sources:
         srcs = "、".join(f"[[{escape(c.source_id)}]]" for c in result.sources)
         parts.append(f'<p class="not-actionable">召回来源：{srcs}</p>')
+    trace_html = _trace_html(result)
+    if trace_html:
+        parts.append(trace_html)
     return "\n".join(parts), source_ids, answer.model_dump(mode="json")
 
 
-__all__ = ["_ask_html", "_cited_source_ids"]
+def _trace_html(result: object) -> str:
+    """把检索轨迹渲染成一个可折叠区块：命中了哪些块、走了哪些双链、排除了什么、为什么。"""
+    trace = getattr(result, "trace", None)
+    sources = getattr(result, "sources", ())
+    if trace is None and not sources:
+        return ""
+    rows: list[str] = []
+    if trace is not None:
+        rows.append(
+            f"<p>路由：<code>{escape(trace.route)}</code>（{escape(trace.route_reason)}）</p>"
+        )
+        rows.append("<p>检索词：" + escape("、".join(trace.terms) or "—") + "</p>")
+        if trace.expanded:
+            items = "".join(
+                f"<li><code>{escape(anchor)}</code> ← {escape(seed)}</li>"
+                for anchor, seed in trace.expanded
+            )
+            rows.append(f"<p>双链扩展：</p><ul>{items}</ul>")
+        if trace.dropped:
+            items = "".join(
+                f"<li><code>{escape(anchor)}</code>：{escape(reason)}</li>"
+                for anchor, reason in trace.dropped
+            )
+            rows.append(f"<p>已排除：</p><ul>{items}</ul>")
+    if sources:
+        items = "".join(
+            "<li><code>"
+            + escape(candidate.source_id)
+            + "</code>（"
+            + escape(candidate.note_type or "—")
+            + "）"
+            + (("：" + escape("；".join(candidate.why))) if candidate.why else "")
+            + "</li>"
+            for candidate in sources
+        )
+        rows.append(f"<p>命中块与命中理由：</p><ul>{items}</ul>")
+    return "<details class='kb-trace'><summary>检索轨迹</summary>" + "".join(rows) + "</details>"
+
+
+__all__ = ["_ask_html", "_cited_source_ids", "_trace_html"]

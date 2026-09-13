@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, Form
@@ -83,7 +84,10 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
     def api_sources_read(source_id: str = "") -> dict[str, object] | JSONResponse:
         """只读返回允许的知识 Markdown，供问答与审批共用证据面板。"""
         raw_id = source_id.strip()
-        relative = Path(raw_id)
+        # 引用可以是「路径#区块」：解析文件时只看路径部分，返回时按区块切片，
+        # 让「每条结论带 路径#区块 出处」在来源面板里能直接跳到对应段落。
+        path_part, _, block = raw_id.partition("#")
+        relative = Path(path_part)
         if relative.suffix.lower() != ".md":
             relative = relative.with_suffix(".md")
         if (
@@ -112,6 +116,25 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
             return JSONResponse(
                 {"ok": False, "message": "来源不是可读取的 Markdown 笔记"}, status_code=415
             )
+        heading = ""
+        if block:
+            from summit_workbench.workflows.ask.chunking import chunk_markdown
+
+            wanted = block.strip()
+            match = next(
+                (
+                    chunk
+                    for chunk in chunk_markdown(path_part, note.body)
+                    if chunk.heading == wanted
+                ),
+                None,
+            )
+            if match is None:
+                return JSONResponse(
+                    {"ok": False, "message": f"来源中没有区块 {wanted}"}, status_code=404
+                )
+            note = replace(note, body=match.text)
+            heading = match.heading
         title = next(
             (line[2:].strip() for line in note.body.splitlines() if line.startswith("# ")),
             str(note.meta.get("title") or note.meta.get("project") or source.stem),
@@ -127,6 +150,8 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
             "date": date_value,
             "body": body,
             "truncated": truncated,
+            "anchor": raw_id,
+            "heading": heading,
         }
 
     @app.post("/api/review/decide", response_model=None)

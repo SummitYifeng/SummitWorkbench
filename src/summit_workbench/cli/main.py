@@ -12,6 +12,7 @@ from summit_workbench.cli.ask import ask_command
 from summit_workbench.cli.brief import brief_command
 from summit_workbench.cli.doctor import doctor_command
 from summit_workbench.cli.feishu import feishu_app
+from summit_workbench.cli.kb import kb_app
 from summit_workbench.cli.meeting import meeting_app
 from summit_workbench.cli.model import model_app
 from summit_workbench.cli.project import project_app
@@ -31,6 +32,7 @@ app = typer.Typer(
     add_completion=False,
 )
 app.add_typer(vault_app)
+app.add_typer(kb_app)
 app.add_typer(feishu_app)
 app.add_typer(meeting_app)
 app.add_typer(model_app)

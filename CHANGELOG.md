@@ -1,3 +1,56 @@
+## [未发布] - 2026-09-13
+
+> 工作知识库重建 + 第二大脑纯文本检索做深。**不破**「无向量库 / 无 RAG / 不加第三方依赖」硬边界；
+> 不引云服务端、不引守护进程。
+
+### 新增
+
+- **工作知识库规范 v2**（库内 `conventions.md`）：修好指向 MyKnowledge 上游规范的相对路径；
+  明确「工作层叠加」字段（`workstream` / `source` / `people` / `org` / `confidential`）、
+  目录归属判定（项目主页留在顶层 `projects/`）、决策集中 `decisions/`、附件 1MB 分界、
+  双链规则、`路径#区块` 检索约定、机器目录隔离。
+- **vault schema 加法**（`domain/vault.py`）：新增 6 个 `type`（`workstream` / `note` / `decision` /
+  `source` / `index` / `long-form-thought`）与 1 个 scope `free`（绑定关系可为空，但不得 `project`
+  与 `projects` 并存）。既有 type 与 scope 行为未变。
+- **只读来源白名单加法**（`webapp/knowledge_sources.py`）：新增 `hii` / `it` / `community` / `hr` /
+  `decisions` / `index`，否则 `路径#区块` 引用在来源面板点不开。
+- **检索索引层**（`repositories/kb_index.py`）：frontmatter 结构化表 + 按 `##` 分块的
+  **SQLite FTS5(trigram)** 全文索引；`(path, mtime, size, hash)` 增量 + 全量重建；
+  FTS5 **先探测再决定**，不可用时退化为自带纯 Python BM25。索引库放
+  `Application Support/SummitWorkbench/kb-index.sqlite`（**vault 之外**，不入 Git）。
+- **查询路由**（`workflows/ask/router.py`）：点查 / 综合 / 回溯 / 决策 / 回顾五类，
+  启发式（关键词加权 + 问句形态 + 时间词）兜底，模型判定为可选增强且故障时自动回落。
+- **多信号融合**（`workflows/ask/fusion.py`）：FTS 正文/区块标题/标题分权 + frontmatter 过滤与
+  元数据命中 + 类型权威加权（索引/MOC/决策优先）+ **双链扩展 1–2 跳**（别名可解析）+
+  时间加权 + 去重 + **同源去重**（`source` 原件与其派生笔记同时命中时优先派生笔记）+
+  导航型区块降权 + 单篇块数上限；每条命中都带「为什么命中」。
+- **`路径#区块` 级引用**：`source_id` 升级为 `路径#区块标题`，与 Obsidian `[[文件#标题]]` 语法一致，
+  Workbench 与 Obsidian 双向可点；`/api/sources/read` 支持按区块切片（响应新增 `anchor` / `heading`）。
+- **检索轨迹**：`wb ask` 打印命中块、双链扩展链、被排除原因；问答页渲染为可折叠的
+  「检索轨迹」区块。**逐字稿不进初始召回**，但通过会议笔记的 `## 证据索引` 在轨迹里显式暴露，
+  使 `笔记 → 会议笔记 → 逐字稿` 可走通。
+- **CLI**：新增 `wb kb index|status|route`；`wb ask` 新增 `--index/--no-index`、`--trace/--no-trace`、
+  `--config-file`，并在默认配置缺失时回退到本机 active workspace 的 profile。
+- **入库工具**：`scripts/kb_intake.py`（幂等 + 内容哈希去重 + 同 ref 冲突即停）、
+  `scripts/kb_verify_quotes.py`（逐字引用校验 + **原件逐字保留**校验）、
+  `scripts/kb_acceptance.py`（两个真实问题的可重复端到端验收）。
+
+### 修复
+
+- `wb ask` 此前完全看不到 App 配置的 workspace（provider 配置在
+  `profiles/<workspace_id>/config.toml`），表现为「App 里配好了模型、命令行说配置不存在」。
+- `scripts/kb_intake.py` 归档时标题降级未跳过围栏代码块，会把模板示例里的 `# 标题` 变成真实的
+  `##` 区块，从而污染检索分块与引用锚点。
+- 来源笔记 `id` 原先一律 `<date>-src`（同日多份会撞），改为由目标路径派生的稳定 4 位十六进制。
+
+### 测试
+
+- 新增 `tests/unit/test_ask_chunking_terms_router.py`、`test_kb_index.py`、
+  `test_ask_fusion_index.py`、`test_kb_scripts.py`、`test_vault_schema_kb.py`、
+  `test_vault_templates.py`；`test_webapi.py` / `test_vault_repo.py` 增补。
+- 关键信号均做**代码级变异验证**（删掉 source 降权 / 同源去重 / 类型权威加权 / 导航区块降权 /
+  单篇块数上限 / 双链扩展，对应用例必须变红）。
+
 ## [0.4.7] - 2026-09-12
 
 > 分发版：让**同事拿到 DMG 装完就能用**——飞书授权从「需要管理员在每台机器上预置
