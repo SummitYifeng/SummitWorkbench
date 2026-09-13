@@ -270,6 +270,15 @@
   写回 `applied_paths = ["inbox.md.remote.09aebd7"]`，第一轮的 `inbox.md.remote` 哈希不变
   （`13bfc790…`），本机与远端两份内容同时在位。
 
+### 2026-09-13 · 内部产物 build 32（补回内置飞书凭据）
+
+`build 27–31` 为测试包，构建时未导出 `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET`，也没有
+`~/.config/summitworkbench/config.toml` 兜底 ⇒ 在这几个包上飞书拿不到 app_secret。日常使用包
+**build 32** 用 build 25 包里那份凭据（仅经环境变量传入构建，不落仓库）重打，凭据回退链恢复为
+「显式配置/Keychain > 内置默认」。源码 `1bd8572`、`frontend_build = v2026.09.13-1bd8572-9517f794`、
+DMG SHA-256 `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5`。
+**生产包要用 `REQUIRE_BUNDLED_FEISHU=true` 构建**，缺凭据就直接失败，而不是悄悄出一个不能授权飞书的包。
+
 ### 2026-09-13 · 待修：恢复提交后的 push 可能被误判为非快进（D9）
 
 > 只在 build 30 真机复验时暴露：**dulwich 判定"能否快进"用的是提交时间戳剪枝，不是图可达性**。

@@ -1010,6 +1010,21 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 - **教训**：同一个错误码会在多条路径上露出；只修"我看到的这一条"等于没修。真机复验的价值正在这里：
   单元/契约测试当时是绿的（它们只覆盖了 `recover` 那条），是**人眼在弹层里看到了裸码**才把它揪出来。
 
+### P.4b 日常使用包：build 32（补回内置飞书凭据）
+
+`build 27–31` 都是不带内置飞书凭据的测试包（构建时未导出 `WB_FEISHU_APP_ID` /
+`WB_FEISHU_APP_SECRET`），而 `~/.config/summitworkbench/config.toml` 也不存在 ⇒ 复原机器后
+**飞书会因拿不到 app_secret 而失败**。既然 Phase 6 要让 Studio 回到日常使用，就用 build 25 包里
+那份凭据（`dist/releases-local-v0.4.7-b25/.../Resources/feishu-defaults.json`，仅经环境变量传给
+构建脚本，不落仓库、不打印）重打了 **build 32**：
+
+| 项 | 值 |
+|---|---|
+| 源码 / 前端 | `1bd8572` / `v2026.09.13-1bd8572-9517f794` |
+| DMG SHA-256 | `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5` |
+| app SHA-256 | `be11eccb717a757b9921a0380687aa8817e669f6dd1916768293df8533283e64` |
+| 内置凭据 | `app_id = cli_aa1e751a…`、`redirect_uri = http://localhost:8765/callback`、secret 就位（与 build 25 同源） |
+
 ### P.5 收尾状态（2026-09-13T02:09Z）
 
 第三轮验证完成后由接口收敛（`preserve-both`）：恢复提交 `5675da4`、审计 `18227e8`、
