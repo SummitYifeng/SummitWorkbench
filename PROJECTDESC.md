@@ -83,9 +83,16 @@
 
 不得从 `docs/archive/background/THINKING_DOC.md` 或当前旧版 `docs/archive/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.6 build 20）
+## 当前交付边界（v0.4.7 build 34）
 
-已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02、v0.4.4 UI/UX 维护和 v0.4.5 交付前清理、v0.4.6 指南版本标记修正均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
+已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02、v0.4.4 UI/UX 维护、v0.4.5 交付前清理、v0.4.6 指南版本标记修正与 v0.4.7 分发版（build 34）均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
+
+- **v0.4.7 build 34（交付包）**：修掉三项真机未决项并补上两项使用缺口。
+  **D9**：dulwich 的 `can_fast_forward` 用 commit_time 剪枝挑公共祖先，跨机时钟偏差下会把真快进误判成分叉（冲突恢复成功但 push 报 non-fast-forward）；现在改为不看时间戳的图可达性复核，只在确认真快进时对该分支单 refspec 强推一次，**绝不无条件 force**。
+  **D10**：`connect-local` 与 remote clone 过去无条件写 `device_role=secondary`，导致 marker 指定的主设备上定时自动化也不跑；现在按 vault 内 `automation-primary.json` 决定角色（别的设备持有则保持 secondary，绝不抢占）。
+  **G1**：「设置 → 高级与维护」新增**定时自动化主设备**区块（本机 device id / 当前主设备与 generation / 本机角色），支持显式勾选 + `expected_generation` 的接管与**降级为备用设备**；声明成功后同步本机 profile 角色。
+  **G2**：没有任何远端的工作台新增**首次发布到远端**（只接受空 HTTPS 仓库，先校验凭据与可推送，再 add origin → 首次 push → 写 Keychain；失败回到“没有远端”，绝不 force），不再需要手工 `git remote add`。
+  **G3**：同步/推送失败落盘到独立服务日志 `~/Library/Logs/summitworkbench-server.log`（JSONL、0600、5 MiB 轮转），只写稳定原因码、计数与异常类名，绝不写 URL/主机/路径/凭据/正文，也绝不写进 vault。
 
 - **v0.4.3 产品化基线 · P1-07D（ADR 0041）**：生产同步限定 HTTPS remote，提供可预览/回滚的 SSH → HTTPS 转换、只读 acceptance preflight 与双设备自动验收。候选包 build 23 已在 Mac Studio 与 MacBook Air 安装同一 DMG 并完成完整双机闭环，build 24 已完成双机增量冒烟，P1-07D 正式通过。
 
@@ -109,4 +116,4 @@
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，v0.4.6 build 20 是当前内部交付基线。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`。
+P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，**v0.4.7 build 34 是当前交付基线**（D9/D10/G1/G2/G3 五项收口）。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md`。
