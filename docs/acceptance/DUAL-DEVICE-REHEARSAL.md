@@ -249,9 +249,11 @@ Keychain 都不动。**
    `frontend_build`（`build-meta.json` 或设置页版本状态条）、日期与逐条证据；若走了 §A6.3
    完整重跑，按完整口径关闭。
 
-## 附 · 本次复跑发现的产品缺陷（6 个，**全部已修**）
+## 附 · 本次复跑发现的产品缺陷（8 个，**全部已修**）
 
-> 修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205`。产物：build 28（D4）、**build 29**（D1/D2/D3/D5/D6）。
+> 修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205` /
+> D7 `fd19603` / D8 `fd19603`。产物：build 28（D4）、**build 29**（D1/D2/D3/D5/D6）；
+> **D7/D8 只以源码 + 单元/契约测试收口，尚未打进任何 build**（见文末说明）。
 > 下文的根因分析与修法方向保留原样，作为这些改动的依据与回归锚点。
 
 2026-09-13 在 Studio 上按本流程实际执行时逐个撞上，全部**用户可复现**，且都在"首次把一台机器接到
@@ -345,3 +347,42 @@ Keychain 都不动。**
 - **修法方向**（择一或组合）：顶部栏加一个「立即同步」按钮；把 60 秒轮询在**工作树 clean 且非保护态**
   时升级为一次真正的 `sync_workspace()`；或在窗口获得焦点/变为可见时跑一次拉取（当前只有
   `checkVersion` + 状态刷新）。注意要保留"脏工作树绝不自动合并"的现有保护。
+
+### D7 · 冲突恢复预检被拒时，界面只说"恢复准备未完成"
+
+- **发现路径**：§A6.2 第 5–6 步第二次点「预检并写入」时，弹层只显示
+  「临时预检未通过：恢复准备未完成。」——**没有任何可执行信息**，与 D3 是同一类缺陷，只是发生在
+  前端。后端其实已经把原因装在 `preparation.error_code` 里（本例为 `preserve_both_path_collision`），
+  是前端把它丢了。
+- **证据**：`web/src/features/sync/conflict.ts::previewSyncConflictRecovery()` 只读
+  `data.reason`，读不到就落到写死的字符串；`preparation.error_code` 与 `recovery.error_code`
+  两个字段虽在类型里、却从未被使用（`grep -c error_code` 在前端仅出现在类型声明）。
+- **修法**：按错误码给一张**可执行**的提示表（`RECOVERY_FAILURE_HINTS`），未知码退化为
+  「恢复准备未通过（<code>）：请重新打开冲突详情后重试。」；`data.reason` 仍然优先。
+  回归锚点：`web/scripts/test-sync-render.mjs` 用真实的被拒响应体断言弹层文案含具体原因、
+  且**不再**出现「恢复准备未完成」；变异验证（去掉提示表查表）能复现旧文案。
+
+### D8 · 同一路径第二次选「保留双方副本」必然失败（`preserve_both_path_collision`）
+
+- **证据**：第一次恢复会把远端内容写到 `inbox.md.remote`；第二次对同一路径再选「保留双方副本」时
+  `target.exists()` 为真，直接 `raise ValueError("preserve_both_path_collision")`，
+  整次恢复被拒（`RecoveryPreparation(status='rejected', error_code='preserve_both_path_collision',
+  candidate_paths=())`）。也就是说：**冲突恢复对同一文件不可重复执行**，而这恰恰是用户在
+  「保留双方副本 → 发现还要再合一次」时最自然的动作。
+- **风险面**：不能用覆盖解决——`inbox.md.remote` 是那份远端内容的唯一副本；也不能让用户在
+  两个同名文件里手动猜。修法必须**确定性**且**不丢数据**。
+- **修法**：兄弟名改为带远端 revision 短码
+  `f"{path}.remote.{remote_revision[:7]}"`（同一份远端内容 ⇒ 同名；不同内容 ⇒ 不同名，天然不撞），
+  并把实际落盘的相对路径（`target.relative_to(staging).as_posix()`）写进 `candidate_paths`，
+  让预检报告与真正写回的文件名一致。回归锚点：
+  `tests/unit/test_sync_conflict_recovery.py::test_second_preserve_both_uses_a_revision_suffixed_sibling`
+  连做两次保留双方并断言两份副本内容都在；变异验证（恢复旧的 `raise`）能复现 `rejected`
+  + `preserve_both_path_collision`。
+
+> **D7/D8 的产物状态**：两者都在 build 29 的真机复跑中撞到，但修完时演练已进入收尾（Phase 6 复原机器），
+> 因此只以 **源码 + 单元/契约测试 + 变异验证**收口，**没有**重新出 DMG；前端静态资源已随源码重建
+> （`v2026.09.13-fd19603-c7517c5a`，构建提交 `abd4449`），下一次打包会自然带上这两个修复。
+> 真实 UI 复验需要 build 30 或更高；
+> 排期时把"打一次 build 并在真机上跑一遍 D7/D8 的复现步骤"作为验收条件即可。复现步骤 =
+> §A6.2 第 5 步连点两次「保留双方副本」，第 1 次成功、第 2 次应成功并落成
+> `*.remote.<rev7>`；若被拒，提示语必须带具体原因而不是笼统的"恢复准备未完成"。

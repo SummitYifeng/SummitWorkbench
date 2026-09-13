@@ -833,13 +833,29 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 > [`../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)；
 > 本轮是"差异点抽查 + 一条端到端闭环"，把结论落在当前 build 上。
 
-### 本轮发现的产品缺陷（D1–D6，**全部已修**）
+### 本轮发现的产品缺陷（D1–D8，**全部已修**）
 
-修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205`。其中 D6 是用户可见的新增能力（顶部栏「⇅ 立即同步」+ 空闲自动拉取），
-D1–D3/D5 是缺陷修复；D4 随 build 28、其余随 **build 29** 出包。
+修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205` /
+D7 `fd19603` / D8 `fd19603`。其中 D6 是用户可见的新增能力（顶部栏「⇅ 立即同步」+ 空闲自动拉取），
+其余是缺陷修复；D4 随 build 28，D1/D2/D3/D5/D6 随 **build 29** 出包。
+**D7/D8 是收尾阶段发现的，只以源码 + 单元/契约测试 + 变异验证收口，尚未打进任何 DMG**
+（前端静态资源已重建为 `v2026.09.13-fd19603-c7517c5a`，下一次打包自然带上；真实 UI 复验需要
+build 30 或更高；复现步骤已写进排练文档的文末说明）。
 
 见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」：D1 新工作台不 `git init`
 （预览 500 + 写回留痕静默失效）、D2「确认并转换」后仍用启动快照（同进程同步必失败、重启才恢复）、
 D3 同步失败原因被吞成裸 `error`、D4 私有 clone 失败被兜底吞掉（同一意图在两层各写了同名守卫）、
 D5 向导草稿收尾不干净、D6 干净工作区没有主动拉取入口（`sync_workspace` 只被 `/api/sync/run` 调用，
-读路径与 60s 轮询都不 fetch，而该按钮只在横幅可见时存在）。
+读路径与 60s 轮询都不 fetch，而该按钮只在横幅可见时存在）、
+D7 恢复预检被拒时界面只说"恢复准备未完成"（后端已给 `error_code`，前端丢弃 ⇒ 与 D3 同类的可诊断性缺陷）、
+D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_collision`（恢复对同一文件不可重复执行）。
+
+### 本轮未覆盖 / 后续排期（**不是本轮缺陷**，是已知产品缺口）
+
+这些是复跑过程中顺带确认的**能力缺口**，都能用命令绕过、不阻塞演练，登记在此免得丢失：
+
+| # | 缺口 | 证据 | 影响 |
+|---|---|---|---|
+| G1 | 界面没有 `automation-primary` 的**显式接管**入口 | `POST /api/sync/primary/claim`（`routers/sync.py:398`）全仓只有后端定义，前端只**显示** `automation_primary_device_id`（`features/sync/banner.ts:35`），没有任何调用点 | 主设备代数变更只能靠命令行/直接调 API；换机或主设备丢失时需要人工介入 |
+| G2 | 界面没有把**已有本地工作台首次发布到新远端**的路径 | 设置页的 remote 区块只做**规范化**（preview 要求已存在 `origin` + `upstream`，`routers/settings.py:808`）；向导的 remote 模式只做 **clone**（已有远端 → 本地） | 本地已存在、远端还没建的工作台必须手工 `git init` / `git remote add` / 首次 push（本轮 §A7 第 4 步就是这么绕的） |
+| G3 | 同步/面板日志缺少失败细节 | D3 只解决了**状态可读性**（稳定错误码 + 脱敏原因进 `sync-state.json` 与横幅）；`workflows/sync_coordinator.py` 与 `domain/sync.py` 里**没有任何 logger 调用**，`~/Library/Logs/summitworkbench-panel.log` 至今只有 `component: "launcher"` 记录 | 排查"昨晚为什么没同步"只能去翻 API 内存快照或重启 App 触发一次；日志文件本身永远不含同步失败 |

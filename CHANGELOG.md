@@ -215,6 +215,44 @@
 - 门禁：`tsc` 干净、14 个前端脚本全绿、`pytest` **941 passed / 1 skipped**
   （覆盖率 83.46%）、ruff / format / mypy / secret scan 全过。
 
+### 2026-09-13 · 冲突恢复的可重复执行与可诊断性修复（D7/D8）
+
+> 双机复跑收尾（A6 完整闭环的第 5–6 步）时撞到的两个问题，都在**冲突恢复**这条路径上，
+> 且互为因果：界面上看不到原因（D7），而真正的原因是恢复**对同一文件不可重复执行**（D8）。
+> 只以源码 + 单元/契约测试 + 变异验证收口（提交 `fd19603`），**尚未打进任何 DMG**
+> （前端静态资源已重建为 `v2026.09.13-fd19603-c7517c5a`，构建提交 `abd4449`，
+> 下一次打包自然带上）；真实 UI 复验需 build 30 或更高；
+> 完整复现步骤与证据见 `docs/acceptance/DUAL-DEVICE-REHEARSAL.md` 文末「附」。
+
+#### 修复
+
+- **预检被拒时会说清原因（D7）**：冲突恢复弹层的「预检并写入」失败时，后端其实已经把原因放在
+  `preparation.error_code`（例如 `preserve_both_path_collision`），但前端只读 `data.reason`，
+  读不到就落回写死的「恢复准备未完成。」——用户看不到任何可执行信息。现在按错误码给
+  **可执行的提示表**（`RECOVERY_FAILURE_HINTS`：快照过期 / 工作树脏 / 选择不完整 / 选择非法 /
+  同名远端副本已存在 / 投影重建失败 / 远端内容缺失），未知码退化为带码文案
+  「恢复准备未通过（<code>）：请重新打开冲突详情后重试。」，`data.reason` 仍然优先。
+- **「保留双方副本」可重复执行（D8）**：第一次恢复把远端内容写到 `<path>.remote` 后，第二次对同一
+  路径再选「保留双方副本」会因为 `target.exists()` 直接
+  `raise ValueError("preserve_both_path_collision")`，**整次恢复被拒**——而「先保留双方、之后
+  再合一次」正是最自然的动作。现在兄弟名带远端 revision 短码（`<path>.remote.<rev7>`）：同一份
+  远端内容仍落同名（可重复预检、不产生垃圾），不同内容天然不同名（**绝不覆盖**那份唯一副本），
+  并把实际落盘的相对路径回填进 `candidate_paths`，让预检报告与写回结果一致。
+
+#### 测试与验收
+
+- D7：`web/scripts/test-sync-render.mjs` 用**真实的被拒响应体**（`preparation.error_code` +
+  `recovery.error_code`）断言弹层含具体原因、且不再出现「恢复准备未完成」；变异验证（去掉查表）
+  复现旧文案。
+- D8：`tests/unit/test_sync_conflict_recovery.py::test_second_preserve_both_uses_a_revision_suffixed_sibling`
+  连做两次「保留双方」并断言两份副本内容都在；变异验证（恢复旧的 `raise`）复现
+  `status='rejected'` + `preserve_both_path_collision` + `candidate_paths=()`。
+- 门禁：`tsc` 干净、14 个前端脚本全绿、`pytest` **942 passed / 1 skipped**（覆盖率 83.47%）、
+  ruff / format / mypy / secret scan 全过。
+- 登记了本轮顺带确认的三个**能力缺口**（非缺陷，见
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §N）：界面无 `automation-primary` 接管入口、
+  无「把已有本地工作台首次发布到新远端」的路径、同步失败仍不落盘到 `~/Library/Logs`。
+
 ### 2026-09-12 · 前端拆分收尾与第二台机器接入
 
 #### 新增
