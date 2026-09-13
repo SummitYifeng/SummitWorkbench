@@ -527,6 +527,80 @@ confidential: false
 8. **`source.ref` 语义冲突**：自指本页 vs 指向原件，不能同时成立。
 9. **长 source 单篇贡献 54 块**：靠 `source_penalty` 与 `max_chunks_per_note` 兜住；`source` 的块从未进过任何一题 top-10。
 
+### Phase 3 · 库骨架（β 主线）—— 已完成
+
+**选型结论**：**β 项目管线优先**（用户 2026-09-14 拍板）；**H1 锚点策略选 A**＝扩块边界到 `#`（见 R2）。
+
+**落盘**（`_vault`，提交 `f4c3e97`，已推送远端）：
+
+| 产出 | 内容 |
+|---|---|
+| `conventions.md` | 从零重写（14 节）：β 主线、目录、frontmatter 与 **`source.ref` 语义冻结**、type 与 scope、固定区块（含**主题簇六区块**与 **decision 第 7 区块 `## 关联`**）、命名、双链、决策、索引、检索约定（**块边界＝`#` 与 `##`**）、C-lite、附件、扩展规则、**已知遗留 5 条**、来源范围 |
+| `README.md` | 库入口（`type: index`） |
+| `index/` | `projects`（2 项目 + 8 主题簇）、`decisions`（台账）、`people`、`timeline`、**`sop`**（《使用 SOP》：上传→审批→五类落点→沉淀→提问+每周维护清单） |
+| `projects/` | `hii-affairs.md`、`it-development.md`（**恒定 2 个**；四固定区块 + 关键结论/未决/时间线/主题簇/关联） |
+| 主题簇 | HII 3 个（`ip-trademark`/`royalty`/`relationships`）+ IT 5 个（`enrollment`/`portal-cms`/`local-ai`/`mobile-app`/`digitization`），均 `status: draft`（**入库前不进检索**） |
+| 骨架 | `community/community-overview.md`、`hr/hr-people.md`（`type: index`） |
+| `templates/` | 9 个：project-main / cluster / note / decision / source / meeting-note / work-log / long-form-thought / index |
+| `.gitignore` | 忽略 `_signals/`（含飞书会话等机器状态）与超大附件；**明确不忽略 `.summit-workbench/`**（workspace 身份必须随库同步） |
+
+**验证（全部真跑）**
+
+| 门 | 结果 |
+|---|---|
+| `wb vault check` | ✓ 20 篇全部通过 |
+| `wb kb index` → `wb kb status` | ✓ 12 篇 / 78 块，FTS5 可用（8 个 `draft` 簇页按设计不进索引） |
+| **新增** `scripts/kb_verify_links.py` | ✓ 20 篇 / 51 条双链 / 0 失效锚点；**并通过变异验证**（注入死链 + 坏锚点 + 坏 `路径#区块`，3 个全部被捕获，exit 1） |
+| 双机同步 | ✓ 提交已推送，远端 `main = f4c3e97`，`/api/sync/status = ready`（ahead 0 / behind 0） |
+
+**执行顺序调整（重要）**：**R2（块边界扩到 `#`）要在 Phase 4 入库之前落地**——否则 Phase 4 写入的
+`#` 级锚点在 Workbench 检索侧解析不到，锚点自检与验收都会红。R1/R3/R4/R5/R6 仍在 Phase 5。
+
+### R2 · 块边界扩到 `#` 与 `##` —— 已完成（Phase 4 前置）
+
+**改动**：`workflows/ask/chunking.py` 的 `HEADING` 由 `^##\s` 改为 `^#{1,2}\s`；`###` 及更深仍留在父块内；
+「首个标题**之前**的正文＝前言块（锚点＝笔记本身）」语义不变。提交 `303ae49`。
+
+**为什么值得改**：原始材料常用 `#` 分大章（HII IP 原件有 20 个 H1），只切 `##` 会让这些章节的正文
+并进相邻块、无法定点引用；而 Obsidian 的 `[[文件#标题]]` 本来就不区分标题级别。
+
+**验证（真跑）**
+
+| 门 | 结果 |
+|---|---|
+| 决定性实测 | 1038 行原件的 **17 个一级章节 + 2 个附录全部成为可定点锚点**（此前 0 个）；样例库块数 131 → 151 |
+| 真实库索引 | 全量重建 ✓ 12 篇 / 78 块；`conventions#工作知识库规范`、`projects/hii-affairs#HII 事宜`、`index/sop#工作知识库使用 SOP` 等 H1 锚点已生效 |
+| 单测 | 新增「一级标题是块边界」「首个标题前是前言块」两例；`test_kb_index` 的 FTS5 断言按新语义更新（H1 命中锚点：裸路径 → `笔记#一级标题`） |
+| `pytest --cov -q` | ✓ **1089 passed / 1 skipped**，覆盖率 **83.55%**（≥80） |
+| `ruff check` / `ruff format --check` / `mypy` / `secret_scan` | ✓ 全绿（顺带修掉上一提交漏跑的 3 处 E501） |
+| 打包 app 门禁 | ✓ `WB_PACKAGED_APP=… test_packaged_app.py` 1 passed |
+
+> ⚠️ **已安装的 0.4.8 bundle 落后于源码**：R2 只进了源码（CLI/venv 生效），`/Applications` 里的 app
+> 仍按旧规则切块。**GUI 侧要看到 `#` 锚点效果，必须在 Phase 5/6 重新打包并重装**（已加入 Phase 5 交付项）。
+
+### Phase 4 · 首批入库 —— 进行中（5 个执行者并行）
+
+**并行分工（文件集互不重叠，避免写冲突；共享文件由主控统一回填）**
+
+| 执行者 | 素材 | 产出 | id 号段 |
+|---|---|---|---|
+| A | HII IP 全景总结（1038 行） | 1 source + 1 分析笔记 + `ip-trademark` 簇回填 + 3 篇决策 | `a1xx` |
+| B | HII Royalty 规则与历程（1162 行） | 1 source + 1 分析笔记 + `royalty` 簇回填 + 3 篇决策 | `a2xx` |
+| C | 来华手册（869 行）+ 当前来华（568 行） | 2 source + 来华 SOP 子页 + 2 个在办个案页 + `relationships` 簇回填 + 3 篇决策 | `a3xx` |
+| D | IT 开发计划与进度（1217 行） | 1 source + 1 分析笔记 + 5 个 IT 簇回填 + 4–6 篇决策 | `a4xx` |
+| E | 智能纪要 + 2 份逐字稿 | 1 source + 3 篇会议笔记 + 2 份逐字稿 | `a5xx` |
+
+- **共享契约**：`/tmp/phase4/CONTRACT.md`（铁律、frontmatter、四类页面的写法、自检命令、汇报格式）。
+- **主控独占的文件**（执行者不得触碰）：`conventions.md`、`README.md`、`inbox.md`、`templates/`、
+  全部 `index/*.md`、`projects/*.md` —— 这些由主控在**执行者全部回收后**统一回填，避免并发写坏。
+- **执行者必须真跑**：逐字比对（source ↔ 原件，差异必须为 0）、单文件 schema 校验、
+  `scripts/kb_verify_links.py`（只修自己文件的问题）。
+- **主控收尾（Phase 4 后半）**：`index/{projects,decisions,people,timeline}.md` 回填、
+  两个 `projects/*.md` 的关键结论/未决/时间线/决策记录回填、跨执行者的双链补全、
+  幂等检查（`source.ref` + `hash` 去重）、全库锚点与逐字终检、git 提交与推送。
+- **关键纪律**：执行者不得使用先验知识补全事实；原文没写的必须写「原文未明确」；
+  决策只在原件确有「明确决定」时建页，`## 选项` 不得事后补编。
+
 ### Phase 1 发现的问题（必须进 Phase 5 的代码修复清单）
 
 **BUG-1 · 0.4.8「首次发布到远端」（G2）在全新 workspace 上必然失败**
