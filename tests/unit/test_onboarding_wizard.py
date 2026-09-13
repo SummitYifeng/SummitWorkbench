@@ -83,3 +83,44 @@ def test_empty_install_renders_recoverable_wizard_and_api(tmp_path: Path, monkey
     assert rejected.status_code == 422
     assert "canary-secret" not in rejected.text
     assert client.delete("/api/onboarding/draft").json()["ok"] is True
+
+
+def test_draft_expands_tilde_paths_against_the_given_home(tmp_path: Path) -> None:
+    """D5：草稿里的 `~/…` 必须展开成给定 home 下的绝对路径。
+
+    向导把表单原文存进草稿，而同一份草稿里的 work_root 是服务端展开后的绝对路径；
+    两者不一致时，任何按路径消费草稿的地方都会把 `~` 当普通目录名。
+    """
+    home = tmp_path / "home"
+    draft = OnboardingDraft(
+        flow="connect-existing",
+        step="welcome",
+        git_mode="remote",
+        work_root="~/Documents/Rehearsal",
+        vault_dir="~/Documents/Rehearsal/_vault",
+        git_username="alice",
+    )
+    save_onboarding_draft(draft, home=home)
+    loaded = load_onboarding_draft(home=home)
+    assert loaded is not None
+    assert loaded.work_root == str(home / "Documents/Rehearsal")
+    assert loaded.vault_dir == str(home / "Documents/Rehearsal/_vault")
+    # 已经是绝对路径的字段不动
+    assert not loaded.vault_dir.startswith("~")
+
+
+def test_wizard_clears_the_draft_when_entering_the_workbench(tmp_path: Path, monkeypatch) -> None:
+    """D5：此前向导从不 DELETE 草稿，`step:'done'` 会一直留着。
+
+    后果是同一台机器下次出现空安装时，向导会从 `done` 恢复、直接停在「设置完成」而不是
+    第 1 步「选择工作区」。这里断言清除发生在 enterWorkbench 里（而不是别处的偶然调用）。
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    app = create_app(None, static_dir=tmp_path / "missing-static")
+    page = TestClient(app).get("/").text
+    import re
+
+    body = re.search(r"function enterWorkbench\(\)\s*\{.*?\}", page, re.S)
+    assert body is not None, "向导里找不到 enterWorkbench"
+    assert "method:'DELETE'" in body.group(0)
+    assert "/api/onboarding/draft" in body.group(0)

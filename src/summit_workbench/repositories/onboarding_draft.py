@@ -68,10 +68,30 @@ def load_onboarding_draft(home: Path | None = None) -> OnboardingDraft | None:
         raise OnboardingDraftError("onboarding 草稿损坏，请重新开始") from exc
 
 
+def _expand_user_path(value: str | None, home: Path | None) -> str | None:
+    """把 ``~/…`` 展开成**给定 home** 下的绝对路径。
+
+    ``Path.expanduser()`` 用的是进程 HOME，而这里的 home 是显式传入的（隔离安装/测试）。
+    向导把表单原文（可能是 ``~/Documents/Rehearsal/_vault``）直接存进草稿，而同一份草稿里
+    ``work_root`` 是服务端展开后的绝对路径——两者不一致，将来任何按路径消费草稿的地方都会
+    把 ``~/…`` 当成相对路径（``Path("~/…").is_dir()`` 恒为 False，见 D5）。
+    """
+    if not value or not value.startswith("~"):
+        return value
+    base = home if home is not None else Path.home()
+    suffix = value[1:].lstrip("/")
+    return str(base / suffix) if suffix else str(base)
+
+
 def save_onboarding_draft(draft: OnboardingDraft, *, home: Path | None = None) -> Path:
     """原子保存安装级草稿，强制移除 workspace id 并写入 0600 文件。"""
     safe = draft.model_copy(
-        update={"workspace_id": None, "updated_at": datetime.now(UTC).isoformat()}
+        update={
+            "workspace_id": None,
+            "updated_at": datetime.now(UTC).isoformat(),
+            "work_root": _expand_user_path(draft.work_root, home),
+            "vault_dir": _expand_user_path(draft.vault_dir, home),
+        }
     )
     path = onboarding_draft_path(home)
     atomic_write_text(
