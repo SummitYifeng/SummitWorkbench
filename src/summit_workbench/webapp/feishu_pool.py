@@ -92,9 +92,6 @@ class _FeishuClientPool:
     def user_client(self) -> object:
         return self._get("user")
 
-    def tenant_client(self) -> object:
-        return self._get("tenant")
-
     def close(self) -> None:
         with self._lock:
             clients = tuple(self._clients.values())

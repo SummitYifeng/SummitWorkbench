@@ -247,4 +247,3 @@ def create_app(
     register_sync_routes(dependencies, runtime=runtime)
 
     return app
-    return app

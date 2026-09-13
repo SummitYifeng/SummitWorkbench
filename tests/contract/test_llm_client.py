@@ -119,7 +119,7 @@ def test_retry_after_header_is_honored():
     assert slept == [9.0]
 
 
-def test_api_key_not_in_error(capfd):
+def test_api_key_not_in_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "bad"})
 
