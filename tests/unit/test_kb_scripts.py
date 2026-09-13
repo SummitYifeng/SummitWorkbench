@@ -210,3 +210,144 @@ def test_verify_quotes_cli_flags_a_fabricated_quote(tmp_path: Path) -> None:
     )
     assert result.returncode == 1
     assert "来源中找不到该逐字引用" in result.stdout
+
+
+# ---- 决策台账聚合（kb_index_decisions）----
+
+decisions_index = _load("kb_index_decisions")
+
+PAGE_TEMPLATE = """---
+id: 2026-09-14-c021
+title: 决策台账
+area: work
+workstream: cross
+project: global
+type: index
+domain: system
+status: active
+created: 2026-09-14
+updated: 2026-09-14
+date: 2026-09-14
+summary: 跨项目的决策台账。
+tags: [index, decisions]
+---
+
+# 决策台账
+
+> 本页是跨项目台账。
+
+## 生效中
+
+_（暂无。）_
+
+## 待复核
+
+_（暂无。）_
+
+## 已被替代
+
+_（暂无。）_
+
+## 维护规则
+
+- 一决策一篇。
+"""
+
+
+def _decision_vault(tmp_path: Path) -> Path:
+    vault = tmp_path / "_vault"
+    (vault / "index").mkdir(parents=True)
+    (vault / "decisions").mkdir(parents=True)
+    (vault / "index/decisions.md").write_text(PAGE_TEMPLATE, encoding="utf-8")
+    return vault
+
+
+def _decision(vault: Path, stem: str, **meta: object) -> None:
+    base: dict[str, object] = {
+        "id": "2026-09-14-a900",
+        "title": f"决定：{stem}",
+        "area": "work",
+        "workstream": "hii",
+        "project": "hii-affairs",
+        "type": "decision",
+        "status": "active",
+        "decision_status": "effective",
+        "decided_on": "2026-03-24",
+        "created": "2026-09-14",
+        "updated": "2026-09-14",
+        "date": "2026-03-24",
+        "summary": f"{stem} 的一句话摘要",
+    }
+    base.update(meta)
+    front = "\n".join(
+        f"{key}: {json.dumps(value, ensure_ascii=False)}"
+        if isinstance(value, str)
+        else f"{key}: {value}"
+        for key, value in base.items()
+    )
+    path = vault / "decisions" / f"{stem}.md"
+    path.write_text(f"---\n{front}\n---\n\n# 决定：{stem}\n\n## 背景\n", encoding="utf-8")
+
+
+def test_decisions_ledger_reads_yaml_dates(tmp_path: Path) -> None:
+    """回归：YAML 会把 `decided_on: 2026-03-24` 解析成 `date` 而不是 `str`。
+
+    第一版 `_text()` 只认 `str`，于是**所有决策都被渲染成「（日期未记）」**——
+    台账彻底失去按时间排序与复核能力，而且不会有任何报错。这条测试就是为了钉住它。
+    """
+    vault = _decision_vault(tmp_path)
+    _decision(vault, "20260324-sample-decision")
+    page = vault / "index/decisions.md"
+
+    body = decisions_index.render(
+        decisions_index._split_frontmatter(page.read_text(encoding="utf-8"))[2],
+        decisions_index.collect(vault / "decisions", today="2026-09-14"),
+    )
+    assert "- 2026-03-24 " in body
+    assert "（日期未记）" not in body
+
+
+def test_decisions_ledger_keeps_page_frontmatter_and_rules(tmp_path: Path) -> None:
+    """台账页的 frontmatter（含 id/area/workstream/summary）与「维护规则」不得被脚本抹掉。
+
+    这是与旧 `kb_index_people.py` 的关键差别：那个脚本自造 frontmatter，会把新规范的
+    叠加必填字段整段删掉（见 PLAN 的 Phase 5 遗留项）。
+    """
+    vault = _decision_vault(tmp_path)
+    _decision(vault, "20260324-sample-decision")
+    assert decisions_index.main(["--vault", str(tmp_path)]) == 0
+    text = (vault / "index/decisions.md").read_text(encoding="utf-8")
+    for needle in (
+        "id: 2026-09-14-c021",
+        "area: work",
+        "workstream: cross",
+        "summary: 跨项目的决策台账。",
+    ):
+        assert needle in text
+    assert "## 维护规则" in text and "- 一决策一篇。" in text
+    assert "20260324-sample-decision" in text
+
+
+def test_decisions_ledger_groups_by_status_and_check_flags_stale(tmp_path: Path) -> None:
+    """三组分流 + `--check` 必须能判过期。"""
+    vault = _decision_vault(tmp_path)
+    _decision(vault, "20260101-effective")
+    _decision(vault, "20260102-superseded", decision_status="superseded", status="superseded")
+    _decision(vault, "20260103-review", decision_status="under-review")
+
+    # 页面还没重生成 → --check 必须红
+    assert decisions_index.main(["--vault", str(tmp_path), "--check"]) == 1
+    assert decisions_index.main(["--vault", str(tmp_path), "--today", "2026-09-14"]) == 0
+
+    body = decisions_index._split_frontmatter(
+        (vault / "index/decisions.md").read_text(encoding="utf-8")
+    )[2]
+    effective = body.split("## 生效中", 1)[1].split("## 待复核", 1)[0]
+    review = body.split("## 待复核", 1)[1].split("## 已被替代", 1)[0]
+    superseded = body.split("## 已被替代", 1)[1]
+    assert "20260101-effective" in effective and "20260103-review" not in effective
+    assert "20260103-review" in review
+    assert "20260102-superseded" in superseded
+
+    # 重生成后再查一次：必须绿（否则「可再生成」是空话）
+    assert decisions_index.main(["--vault", str(tmp_path), "--check", "--today", "2026-09-14"]) == 0
