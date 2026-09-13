@@ -838,6 +838,8 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 
 ### 本轮发现的产品缺陷（D1–D8 **已修**，D9 待修）
 
+> 后续：D9 已在 **build 34** 修复，见 §R。
+
 修复提交：D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205` /
 D7 `fd19603` / D8 `fd19603`。其中 D6 是用户可见的新增能力（顶部栏「⇅ 立即同步」+ 空闲自动拉取），
 其余是缺陷修复；D4 随 build 28，D1/D2/D3/D5/D6 随 **build 29** 出包。
@@ -964,7 +966,7 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 「远端或本机在上次读取之后又变了：请关掉本弹层、重新打开「查看冲突详情」再试。」
 渲染本身由 `web/scripts/test-sync-render.mjs` 的断言 + 变异验证兜底。
 
-### P.3 新发现 D9：恢复提交后的 push 被误判为非快进（**未修，待排期**）
+### P.3 新发现 D9：恢复提交后的 push 被误判为非快进（**未修，待排期** → build 34 已修，见 §R）
 
 真机复验里顺带撞到：`push_after_commit` 报告
 `远端已有新提交，需要处理分叉（non-fast-forward）`，但这一对提交其实是**干净快进**。
@@ -1037,7 +1039,7 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 
 复原本机（清空 Application Support → 向导「连接已有工作台」→ 指回 `~/Documents/Work/_vault`）时又撞到两条。
 
-### Q.1 D10 · 「连接已有工作台」把设备角色一律写成 secondary（**已定界，未修**）
+### Q.1 D10 · 「连接已有工作台」把设备角色一律写成 secondary（**已定界，未修** → build 34 已修，见 §R）
 
 - **现象**：`_vault` 的 `.summit-workbench/automation-primary.json` 里 `device_id` 正是本机
   （`51885d3d-…`，generation 1），但向导走完后 profile 的 `device_role = "secondary"`。
@@ -1124,6 +1126,8 @@ App 找不到档案就停在向导）；本机 vault 只剩一个空的 `_vault/
 
 ### Q.5 Phase 6 收尾（Studio）
 
+> 当时的保留项（`b25`/`b33`、两个演练仓库）已在 build 34 本轮清理中处理，见 §R.4 / §R.6。
+
 - 保留：`dist/releases-local-v0.4.7-b25/`（内置飞书凭据的原始出处）、`b33/`（当前日常包）；
   两个演练仓库 `SummitYifeng/summitworkbench-rehearsal{,-2}` 按使用者要求暂留。
 - 清除：`~/Documents/Rehearsal{,_2}`、`SummitWorkbench.rehearsal-final-bak`、
@@ -1147,3 +1151,142 @@ App 找不到档案就停在向导）；本机 vault 只剩一个空的 `_vault/
 
 这条同时验证了：Air 的克隆凭据可用、两台共用一个 workspace、D6 的「立即同步」在真实工作台上按预期拉取、
 以及同步后内容一致。**多设备同步收官。**
+
+## R. build 34 交付与仓库清理（2026-09-13）
+
+按 `docs/implementation/HANDOFF-NEXT-DELIVERY-AND-CLEANUP.md` 执行（该文档已归档到
+`docs/archive/plans/HANDOFF-NEXT-DELIVERY-AND-CLEANUP.md`）。使用者通过选择题对齐的范围：
+**D9 + D10 + G1 + G2（中等：绑定已有远端并首次推送）+ G3（独立服务日志）**，并做
+**①磁盘产物 + ②过期文档归档 + ③删死代码**的清理；交付包内置飞书凭据、装 Studio，
+Air 由使用者 AirDrop，**本轮不再跑双机往返冒烟**。
+
+本轮提交（全部 `[skip ci]`）：
+
+| 提交 | 内容 |
+|---|---|
+| `ce34c12` | D9：图可达性复核 + 单 refspec 强推 |
+| `5ce07cc` | D10：connect/clone 按主设备声明决定角色 |
+| `398e717` | G1：接管/降级入口（后端 + 设置页） |
+| `fb08798` | G2：首次发布到空远端 |
+| `36ebffd` | G3：独立服务日志 |
+| `d4f43f8` | 指南/PROJECTDESC 同步 |
+| `8b7767d` | 前端构建产物（`frontend_build = v2026.09.13-8b7767d-ae564ff2`） |
+| `1ff1f5b` | 清理：文档归档 + 三处死代码 |
+
+### R.1 交付包 build 34
+
+| 项 | 值 |
+|---|---|
+| 版本 / build / 架构 / 分发 | `0.4.7` / **34** / `arm64` / `INTERNAL-DEV` |
+| 源码提交 | `8b7767dcbb7268994ef2a6d1639d0fc9e130e7c8` |
+| `frontend_build` | `v2026.09.13-8b7767d-ae564ff2` |
+| DMG | `dist/releases-local-v0.4.7-b34/0.4.7/arm64/SummitWorkbench-0.4.7-arm64-INTERNAL-DEV.dmg`（50 306 094 B） |
+| DMG SHA-256 | `3ca3aae74577264e2c106e81599bb32d272eddf80725c29264c8cb7a8a4fa73d` |
+| `.app` SHA-256 | `fd702441093ba670837a0e26e6dbeffae47461c61a6413b626854be38066a829` |
+| 内置飞书凭据 | **有**（`Contents/Resources/feishu-defaults.json`，构建时经 `WB_FEISHU_*` 环境变量从 b25 传入；结构校验 `✓ 内置飞书凭据结构正确`） |
+| 出包命令 | `REQUIRE_BUNDLED_FEISHU=true BUILD_NUMBER=34 ARCH=arm64 RELEASE_OUTPUT_DIR=dist/releases-local-v0.4.7-b34 scripts/release-macos.sh`（退出码 0） |
+| 附产物 | `release-metadata.json`、`SBOM.json`、`SHA256SUMS`、`test-manifest.json`、`notary-log.json` |
+
+### R.2 Studio 真机核验（build 34，2026-09-13T03:20Z）
+
+安装：`osascript -e 'quit app "SummitWorkbench"'` → `scripts/install-macos-app.sh dist/…/SummitWorkbench.app`。
+安装脚本**再次**打印 `✗ App 已安装但服务未在 readiness 窗口内启动`（已知假失败），按配方以
+`runtime.json` + 接口探针为准，实际服务正常。
+
+| 检查 | 证据 |
+|---|---|
+| `runtime.json` | `workspace_id=bf22c8d2-ef62-4bd3-9917-e76fdd3f7f0f`、`device_id=51885d3d-6f75-49ca-8896-9f46288474e8`、`frontend_build=v2026.09.13-8b7767d-ae564ff2`、`pid=71210`、`port=56495`、`server_instance=4a97c25f-…`、`started_at=2026-09-13T03:20:38Z` |
+| `GET /api/sync/status` | `state=ready`、`ahead=0`、`behind=0`、`pending_commits=0`、`branch=main`、`remote_host=github.com`、`repo_states=["_vault:ready"]`、`automation_primary_device_id=51885d3d-…`、`automation_primary_generation=1` |
+| `POST /api/settings/acceptance-preflight` | **11/11 PASS**：`app/build`（`build=34`、`frontend_build=v2026.09.13-8b7767d-ae564ff2`、`git_revision=8b7767d`、`production backend=dulwich`）、`production-backend`、`remote-scheme`（`https://github.com`）、`credentials`、`dirty-consistency`、`fetch`、`branch/upstream`（`ahead=0;behind=0`）、`ahead-behind`、`schema-path`、`backup-writable`、`automation-role=automation-primary` |
+| `POST /api/sync/run` | `ok=true`、`state=ready`、`_vault:ready`（走真实 HTTPS 远端 fetch→ff→push 路径） |
+| 真实 vault | 工作树 `clean`，`HEAD=448869b wb: capture […]` |
+| 新路由存在 | `POST /api/sync/primary/downgrade`、`POST /api/settings/git/remote/publish` 用 GET 探针得 **405**（存在、方法不符），证明新端点已随包上线 |
+| G1 冲突路径（真机） | `POST /api/sync/primary/claim {device_id:"00000000-0000-4000-8000-000000000000", takeover:false}` ⇒ **409 `primary_already_claimed`**；`automation-primary.json` SHA-256 **前后不变**，vault 仍 clean（证明"别的设备不 takeover 绝不抢占"） |
+| G2 错误面（真机） | `POST /api/settings/git/remote/publish {candidate_url:"git@github.com:owner/repo.git", pat:"probe-…"}` ⇒ **409 `remote_scheme_unsupported`**，无副作用（证明只接受 HTTPS、且拒绝发生在写 Keychain/远端之前） |
+| G3 服务日志（真机） | `~/Library/Logs/summitworkbench-server.log` 存在、`-rw-------`（**0600**）、284 B，首行 `{"component":"server","event":"server_started","app_version":"0.4.7","frontend_build":"v2026.09.13-8b7767d-ae564ff2","has_workspace":true}`，无 URL/路径/凭据 |
+
+**Air 侧**：由使用者 AirDrop 同一个 DMG 后按既有流程安装（本轮未远程操作 Air，也未再跑双机
+往返冒烟——这是对齐时明确的可选项）。两台机器的版本一致性待 Air 安装后由 `frontend_build` 核对。
+
+### R.3 五项交付的测试与变异验证
+
+| 项 | 行为测试 | 变异验证（去掉修复必须让测试失败） |
+|---|---|---|
+| **D9** | `tests/unit/test_git_backends.py::test_push_succeeds_when_remote_parent_committer_time_is_newer`（两跳时钟偏差，**前置断言** `can_fast_forward(base, head) is False` 确认落在 dulwich 坏区，再断言 push 成功、远端 ref 前进、`ahead/behind=0/0`）；`::test_push_rejects_true_divergence_even_when_graph_check_runs`（真分叉仍是 `GitNonFastForward` 且远端不动） | 去掉 `_push_confirmed_fast_forward` 调用 ⇒ 前者 `GitNonFastForward` 失败；`_is_ancestor` 恒 `True` ⇒ 后者 DID-NOT-RAISE 失败（远端会被覆盖） |
+| **D10** | `test_onboarding.py` 三例（marker 指本机⇒`AUTOMATION_PRIMARY` 且 `automation_gate=PRIMARY_OK`；指别设备⇒`SECONDARY`、声明与 generation 不变、无 takeover 的 claim 得 `primary_already_claimed`；无 marker⇒`SECONDARY` 且不新造声明）；`test_remote_onboarding.py` 两例（clone 确认后角色按声明） | 恒 `SECONDARY` ⇒ 两个"本机变 primary"用例失败；恒 `AUTOMATION_PRIMARY` ⇒ 三个 secondary/无声明用例失败 |
+| **G1** | `tests/unit/test_primary_role_api.py` 四例（claim 同步 profile 角色并在响应回传；别设备不改本机角色 + `primary_already_claimed` + generation 冲突；downgrade 只改本机 profile、声明不变、幂等；无 active workspace ⇒ `workspace_not_configured`）；前端 `test-settings-render.mjs`（三种状态渲染、未勾选不发请求、请求体含 `expected_generation`、POST+JSON 头）与 `test-browser-contract.mjs`（入口 + 派发分支锚点） | 去掉 `_sync_local_role` ⇒ 角色用例失败；downgrade 顺带删声明 ⇒ 声明不变用例失败；去掉 `data-generation`/勾选框 ⇒ 前端渲染用例失败；动作不校验勾选 ⇒ 未勾选用例失败 |
+| **G2** | `tests/unit/test_remote_publish.py` 六例（成功路径断言"预检真推过一次 + 真 vault 只推一次 + upstream 写入 + PAT 不在任何落盘文件里"；非空远端零副作用；非 HTTPS；已有 origin；dirty/unborn；push 失败回滚 origin/profile/凭据）；`test_remote_publish_api.py` 两例（端点契约与稳定码）；`test_git_backends.py` 新增两后端 `add_remote`/`set_upstream`/`remove_remote` 一致性；前端渲染 + 请求体 + 契约锚点 | 去掉空远端校验 ⇒ 非空用例失败；去掉回滚 ⇒ 回滚用例失败；绕过 HTTPS 校验 ⇒ 6 例失败；前端隐藏区块/清空请求体/删派发分支 ⇒ 对应用例失败 |
+| **G3** | `tests/unit/test_server_log.py` 六例（路径 + **0600**；幂等＝同实例 + 单文件；400 B 上限轮转出 `.1`；**含 URL + 凭据 + 用户路径的假异常跑一遍后断言日志文本里没有它们**、而稳定码/类名保留；原因码白名单；真跑一次失败同步后留下 `remote-scheme-unsupported`） | 不做白名单 ⇒ 泄密用例失败；不轮转 ⇒ 轮转用例失败；不接线 `log_sync_outcome` ⇒ 失败同步用例失败；改 0644 ⇒ 权限用例失败 |
+
+> D9 的**真机现场证据**仍是 §P.3（build 30 的 `can_fast_forward=False` / `merge-base=YES` /
+> 系统 git 推送成功）；本轮修复的验证方式是"在单测里精确复现同一坏区（两跳、时钟倒挂）+
+> 变异验证"。真 vault 本轮不处于该状态，因此没有再造一次真机分叉。
+
+### R.4 清理（等价、不改行为）
+
+**① 磁盘产物与缓存**（全部在 `.gitignore` 内，仓库内容零变化；`git status` 清理前后均 clean）：
+
+- 删除 `dist/` 下 14 个 `releases-local-v0.4.4*`、`releases-local-v0.4.7-b25`（凭据已先留档到
+  仓库外）、`releases-local-v0.4.7-b33`、`SummitWorkbench-0.4.6-arm64-INTERNAL-DEV.dmg`；
+- 删除 `.coverage`、`htmlcov/`、`.mypy_cache/`、`.pytest_cache/`、`.ruff_cache/`、`.hypothesis/`、
+  各处 `__pycache__/`、仓库内 `.DS_Store`；
+- 结果：仓库 **2.0 GB → 346 MB**，`dist/` 只剩 build 34（115 MB）。
+
+**② 过期文档归档**（证据：对 `docs/` 下每个非归档文档统计全仓入引用，含 CHANGELOG/README/
+PROJECTDESC/ADR/tests/scripts）：
+
+- 唯一"零入引用且已被完全取代"的是**已执行完毕的本轮交接文档**，移到
+  `docs/archive/plans/` 并在原路径留一行指针；`docs/archive/README.md` 的 `plans/` 条目同步说明。
+- 其余（`LEGACY-APP-SPLIT-PLAN.md`、`LEGACY-MAIN-SPLIT-PLAN.md`、`DELIVERY-CLEANUP-HANDOFF.md`、
+  `DELIVERY-CLEANUP-REPORT.md`、`V0-4-4-UX-UI-*.md`、`UI-VERIFICATION-*`、
+  `V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`、`DUAL-DEVICE-REHEARSAL.md`）都有至少一条入引用，
+  按铁律**一律不动**（尤其是 `LEGACY-MAIN-SPLIT-PLAN.md` 被 CHANGELOG 与三个测试的注释引用）。
+- 本轮**未**拆 `CHANGELOG.md`（对齐时该选项未被选中）。
+
+**③ 冗余代码**（vulture 2.16 经 `uvx` 临时运行，**未加入 `pyproject.toml` 依赖**）：
+
+- `src+tests+scripts --min-confidence 80` 命中 4 条，逐条 `grep -rn`（含 tests/scripts/docs/native/web）
+  后删除 3 处：`webapp/legacy_app.py` 不可达的重复 `return app`、
+  `webapp/feishu_pool.py::_FeishuClientPool.tenant_client`（全仓仅定义处出现，capture/review_apply
+  只用 `user_client`，无 getattr/反射调用）、`tests/contract/test_llm_client.py` 未使用的 `capfd` 形参。
+- 保留的假阳性：`config/settings.py` 的 `dotenv_settings` / `file_secret_settings` 是
+  pydantic-settings `settings_customise_sources` 的形参，且上游是**按关键字**调用
+  （`main.py:442`），改名或删除会直接让配置加载 TypeError；`cli/*` 命令函数、
+  `webapp/request_boundary.py` / `app_shell.py` 的嵌套 handler、`domain/*` 的 pydantic validator
+  都是装饰器/反射注册，vulture 看不到调用点。
+- 前端另查：`web/src/**/index.ts` 的再导出零未使用符号；`tsc` 已开 `noUnusedLocals` /
+  `noUnusedParameters`，无新增死代码。
+- 清理后门禁全绿 + 打包冒烟通过（见下）。
+
+### R.5 本轮门禁（源码提交后、构建提交前 + 清理后各跑一次）
+
+```
+tsc --noEmit -p web/tsconfig.json                         OK
+npm --prefix web run test:frontend（14 个脚本）             OK
+.venv/bin/python -m pytest --cov -q                        971 passed / 1 skipped，覆盖率 83.54%
+ruff check / ruff format --check                           OK（435 files）
+mypy                                                        Success: no issues found in 340 source files
+python scripts/secret_scan.py                              passed
+node web/scripts/verify-build.mjs …                        Build verified: v2026.09.13-d4f43f8-ae564ff2
+WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
+  pytest tests/integration/test_packaged_app.py -q          1 passed（清理后复跑）
+```
+
+### R.6 本轮未能完成 / 仍开放
+
+1. **两个演练仓库未删除**（使用者本轮要求删除）：`gh repo delete SummitYifeng/summitworkbench-rehearsal{,-2} --yes`
+   被 **HTTP 403** 拒绝——当前 `gh` 令牌缺少 `delete_repo` scope。解除方式（需要使用者交互一次）：
+   `gh auth refresh -h github.com -s delete_repo`，然后重跑上面两条删除命令。仓库本身仍在，
+   不影响任何功能。
+2. **Air 安装**：本轮未在 Air 上安装 build 34（需使用者 AirDrop 并手动操作），
+   因此**没有**再跑双机往返冒烟（对齐时该项未被选中）。
+3. **G2 未对真实 GitHub 空仓库做端到端**：发布流程要使用者自己的 PAT 且会在其账号下**新建**
+   资源，本轮未获授权执行；已用单测 + API 测试 + 真机非 HTTPS 拒绝路径覆盖。
+   需要现场确认时：在 GitHub 新建空私有仓库（不勾选 README）→ 设置页「首次发布到远端」填
+   HTTPS/用户名/PAT → 应显示「已发布到 …」，随后「⇅ 立即同步」得 `ready`。
+4. **G1 的接管按钮未在真 vault 上点击**（会递增 generation、转移定时自动化归属，属破坏性动作）；
+   已用单测 + API 测试 + 真机 `primary_already_claimed` 拒绝路径覆盖。
+5. `/Applications/SummitWorkbench.app.previous`（安装脚本自动保留的旧包）仍在，属可选清理，
+   不影响使用；需要时 `rm -rf` 即可。
+6. 服务日志会按 5 MiB ×（1 + 3 个轮转）自我限制，长期运行无需人工清理；`logs/` 在 vault 内的
+   是**工作台内容**，与机器日志无关。

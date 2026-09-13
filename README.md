@@ -87,6 +87,10 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PR
 - 未经用户确认的会议提取项不得写入项目状态或创建飞书任务。
 - **不建云端服务端、常驻守护进程、向量库或 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。
 - 凭据只进入 macOS Keychain 或运行时环境，禁止进入 Git、vault、日志、fixture 和模型上下文。
+- **本机机器日志与工作台内容分开**：同步/推送失败只写稳定原因码、计数与异常类名到
+  `~/Library/Logs/summitworkbench-server.log`（JSONL、0600、5 MiB 轮转，见
+  `observability/server_log.py`）；机器日志**绝不写进 vault**——vault 里的 `logs/` 是被同步、
+  会被提交的**工作台内容**。
 
 ## 安装与使用
 
@@ -124,7 +128,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。定时任务安装见 [deploy/launchd/README.md](deploy/launchd/README.md)，桌面 App 打包见 [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)。
 
-质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.7` 的本地门禁已通过：**925 passed / 1 skipped、覆盖率 82.77%**，ruff、ruff format、mypy strict、`npm run build`（含 `verify-build.mjs` 与前端契约测试）全部通过，`scripts/release-macos.sh` 完整跑通并产出 DMG。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
+质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.7` 的本地门禁已通过：**971 passed / 1 skipped、覆盖率 83.54%**，ruff、ruff format、mypy strict、`npm run build`（含 `verify-build.mjs` 与前端契约测试）、打包冒烟（`WB_PACKAGED_APP=…/SummitWorkbench.app`）全部通过，`scripts/release-macos.sh` 完整跑通并产出 build 34 DMG（内置飞书凭据）。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
 
 建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
 
@@ -132,4 +136,4 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 ## 版本
 
-`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版）→ `v0.4.5`（交付前清理 + 指南重写）→ `v0.4.6`（指南版本标记改为抗漂移，build 20）→ `v0.4.7`（分发版：内置飞书默认凭据，同事点一下即可完成授权）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。
+`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版）→ `v0.4.5`（交付前清理 + 指南重写）→ `v0.4.6`（指南版本标记改为抗漂移，build 20）→ `v0.4.7`（分发版：内置飞书默认凭据，同事点一下即可完成授权；build 34 收口 D9/D10 并新增主设备接管、首次发布到远端与本机服务日志）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。

@@ -170,6 +170,84 @@
 
 ## [Unreleased]
 
+### 2026-09-13 · 交付包 build 34：D9/D10/G1/G2/G3 收口 + 仓库与冗余代码清理
+
+> 按 `docs/implementation/HANDOFF-NEXT-DELIVERY-AND-CLEANUP.md`（已归档到
+> `docs/archive/plans/`）执行：先修完未决项，再打交付包，最后做等价清理。
+> 交付包 **build 34**（`0.4.7` / arm64 / `INTERNAL-DEV`，源码 `8b7767d`，
+> `frontend_build = v2026.09.13-8b7767d-ae564ff2`，DMG SHA-256
+> `3ca3aae74577264e2c106e81599bb32d272eddf80725c29264c8cb7a8a4fa73d`，
+> app SHA-256 `fd702441093ba670837a0e26e6dbeffae47461c61a6413b626854be38066a829`，
+> **内置飞书凭据**、`REQUIRE_BUNDLED_FEISHU=true`）。真机逐条核验证据见
+> `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R。
+
+#### 修复
+
+- **D9 · 恢复提交后的 push 被误判为非快进**：dulwich 的 `graph.can_fast_forward` 用
+  **commit_time 剪枝**挑公共祖先，远端父提交比本地提交新（跨机时钟偏差）时会把真快进判成分叉
+  （`porcelain.DivergedBranches` ⇒ `non-fast-forward`）。现在 `DulwichGitBackend.push` 捕获它之后
+  用**不看时间戳的图可达性**（`_is_ancestor`，只沿 parents 做 BFS）复核：确认远端 tip 是本地 head
+  的祖先时，才用 `_push_refspec`（远端 ref 取 `branch.<name>.merge`）**只对这一个分支**显式强推一次；
+  复核不通过仍是 typed `GitNonFastForward`。**绝不无条件 force。** 测试构造两跳时钟偏差（恢复+审计）
+  并前置断言确实落在 dulwich 的坏区，另加真分叉对照用例；变异验证：去掉图复核 ⇒ 前者失败，
+  `_is_ancestor` 恒 True ⇒ 后者失败（远端被覆盖）。
+- **D10 · 「连接已有工作台」把角色一律写成 secondary**：`connect-local` 与 remote clone 都无条件写
+  `secondary`，而 `automation_gate` 只在 profile 为主设备且 claim 匹配时放行定时 writer ⇒ marker
+  指定的主设备上定时自动化根本不跑，界面又没有改角色的入口。新增
+  `automation_primary.connect_device_role`：声明 device 是本机 ⇒ `AUTOMATION_PRIMARY`；声明属于
+  别的设备 ⇒ `SECONDARY`（**绝不抢占**）；无声明/损坏/异 workspace ⇒ 沿用既有默认 `SECONDARY`。
+  变异验证：恒 `SECONDARY` / 恒 `AUTOMATION_PRIMARY` 分别让对应用例失败。
+
+#### 新增
+
+- **G1 · 主设备的声明/接管与降级入口**：设置页「高级与维护」新增「定时自动化主设备」区块——
+  显示本机 device id、当前主设备 + generation、本机角色；尚无声明⇒「声明本机为主设备」，
+  别的设备持有⇒**勾选确认 + 二次确认 + `expected_generation`** 才能「接管主设备」，
+  本机角色为主设备⇒「降级为备用设备」。后端 `/api/sync/primary/claim` 成功后同步本机 profile 的
+  `device_role`，并新增 `POST /api/sync/primary/downgrade`（只改本机 profile，vault 内的声明不动）；
+  route contract 快照随之重新生成。失败按稳定错误码映射成人话
+  （`primary_already_claimed` / `primary_generation_conflict` / `primary_state_corrupt` …）。
+- **G2 · 首次发布到空远端**：没有任何 origin 的工作台此前只能手工 `git remote add` / push。
+  新增「首次发布到远端」区块与 `POST /api/settings/git/remote/publish`：只接受 HTTPS 与**空**远端，
+  先在临时克隆里 `ls_remote` 核对并真推一次证明可推送，再 `add origin` → 首次 push → 写
+  profile/Keychain → 最后写 upstream；push 之前失败一律 `remove_remote` 回到"没有远端"。
+  为此给 `GitBackend` 增加 `remove_remote` / `set_upstream`（等价 `git remote remove` / `push -u`），
+  dulwich 与 system 两个后端行为一致并有 conformance 覆盖。
+- **G3 · 同步失败落盘**：新增 `observability/server_log.py`，把同步/推送失败写进
+  `~/Library/Logs/summitworkbench-server.log`（JSONL、0600、5 MiB 轮转，与 launcher 的 panel 日志
+  分开）。只写稳定原因码、计数与异常**类名**；事件名/reason 分别经 snake_case、kebab-case 白名单，
+  不合形状的替换为占位符并只报"丢了几条"；日志写入 best-effort（只吞 `OSError`）。D9 的
+  "图复核通过 ⇒ 强推成功"也落一行。**绝不写进 vault**。测试用一个含 URL + 凭据 + 用户路径的假异常
+  跑一遍并断言日志文本里没有它们。
+
+#### 变更（清理，等价、不改行为）
+
+- **磁盘产物**：删除 `dist/releases-local-v0.4.4*`（14 个）、`b25`、`b33` 与
+  `SummitWorkbench-0.4.6-arm64-INTERNAL-DEV.dmg`，以及 `.coverage`/`htmlcov`/`.mypy_cache`/
+  `.pytest_cache`/`.ruff_cache`/`.hypothesis`/`__pycache__`/`.DS_Store`。仓库 2.0 GB → 346 MB，
+  `dist/` 只剩 build 34。b25 里的 `feishu-defaults.json` 已先留档到仓库外
+  （`~/Library/Application Support/SummitWorkbench/secrets-backup/feishu-defaults.json`，0600）。
+- **文档**：已执行完毕的交接文档归档到 `docs/archive/plans/` 并在原路径留一行指针；其余实现/验收
+  文档仍有 CHANGELOG/README/PROJECTDESC/ADR/测试注释的入引用，按铁律不动（逐文档引用统计见
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R）。
+- **冗余代码**：vulture 2.16（经 `uvx` 临时运行，未写入依赖）在 src+tests+scripts 命中 4 条 @80%，
+  逐条 grep 后删除三处：`legacy_app.py` 不可达的重复 `return app`、
+  `_FeishuClientPool.tenant_client`（全仓零引用）、`test_llm_client.py` 未使用的 `capfd`。
+  `config/settings.py` 的两个"未使用变量"是 pydantic-settings 的**按关键字**调用形参，保留。
+
+#### 发布
+
+- 门禁：`tsc`、14 个前端脚本、`pytest --cov`（**971 passed / 1 skipped，覆盖率 83.54%**）、
+  `ruff check`、`ruff format --check`、`mypy`（340 files）、`scripts/secret_scan.py`、
+  `web/scripts/verify-build.mjs`、打包冒烟（`WB_PACKAGED_APP=/Applications/SummitWorkbench.app`）
+  全绿；`scripts/release-macos.sh` 完整跑通并产出 DMG（含内置凭据结构校验）。
+- 真机（Studio）：安装 build 34 后 `runtime.json.frontend_build` 为新包、
+  `/api/sync/status` = `ready` / ahead-behind `0/0`、`acceptance-preflight` **11/11 PASS**
+  （含 `automation-role: automation-primary`）、`POST /api/sync/run` 对真实 HTTPS 远端成功、
+  两个新路由存在、服务日志按 0600 落盘。Air 侧由使用者 AirDrop 安装同一 DMG。
+- **未完成**：两个演练仓库（`SummitYifeng/summitworkbench-rehearsal{,-2}`）本应删除，但当前
+  `gh` 令牌缺少 `delete_repo` scope，删除被 403 拒绝；解除方式见 §R 的开放项。
+
 ### 2026-09-13 · 双机复跑发现的缺陷修复（D1–D6）
 
 > Studio + Air 现场复跑「第二台机器接入 + 冲突恢复」时逐个撞出来的问题，全部已修并逐个做了
@@ -310,12 +388,13 @@ Studio 与 Air 都回到**真实工作台**（`bf22c8d2-…` / `YifengWorkKnowle
 DMG SHA-256 `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5`。
 **生产包要用 `REQUIRE_BUNDLED_FEISHU=true` 构建**，缺凭据就直接失败，而不是悄悄出一个不能授权飞书的包。
 
-### 2026-09-13 · 待修：恢复提交后的 push 可能被误判为非快进（D9）
+### 2026-09-13 · 已修（build 34）：恢复提交后的 push 可能被误判为非快进（D9）
 
 > 只在 build 30 真机复验时暴露：**dulwich 判定"能否快进"用的是提交时间戳剪枝，不是图可达性**。
 > 当远端父提交的 committer time 晚于本地恢复提交（跨机时钟偏差，或任何把提交时间写晚的来源），
 > 恢复本身成功、推送却被拒，workspace 卡在 `diverged-protected`，而 git 自己的
-> `merge-base --is-ancestor` 认为这是一次干净快进。**尚未修复**，排期处理。
+> `merge-base --is-ancestor` 认为这是一次干净快进。**已在 build 34 修复**（图可达性复核 +
+> 单 refspec 显式强推，见本文件顶部 2026-09-13 build 34 块）。
 
 - **复现（build 30 真机）**：远端父 `09aebd7`（`commit_time = 01:50:00Z`）、本地恢复提交
   `001df9a`（`01:47:21Z`）+ 审计 `f0a51bc`（`01:47:22Z`）⇒
