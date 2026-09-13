@@ -670,13 +670,16 @@ def runtime_diagnostic() -> dict[str, object]:
     """在**当前解释器**里实测索引层能力，供打包后的包内探针调用。
 
     为什么必须有它：开发机 venv 的 SQLite 支持 FTS5+trigram，并不代表冻结进 App 的解释器
-    也支持。这个函数只做只读探测（临时目录里造一篇探针笔记），回答三个问题：
+    也支持。这个函数只做只读探测（临时目录里造一篇探针笔记），回答四个问题：
 
     1. 当前 SQLite 版本是多少、FTS5/trigram 是否可用；
     2. FTS5 可用时，块级检索是否真的命中 `路径#区块`；
-    3. FTS5 不可用时，自建 BM25 兜底路径是否仍然命中。
+    3. **把 FTS 强制关掉**（`fts_ok=False`，即打包环境真的缺 FTS5 时的分支）后
+       `search` 是否如实返回 ``None``——而不是抛异常；
+    4. 此时自建 BM25 兜底是否仍然命中同一块。
 
-    绝不触碰使用者的真实 vault（临时目录 + 临时索引库）。
+    第 3/4 条是刻意在同一进程里强制走兜底分支的：只报告「FTS5 可用」无法证明
+    「FTS5 不可用时的路径在这台机器上也活着」。绝不触碰使用者的真实 vault（临时目录 + 临时库）。
     """
     import tempfile
 
@@ -699,5 +702,12 @@ def runtime_diagnostic() -> dict[str, object]:
                 report["fts_hit"] = None
             fallback = bm25_scores(index.all_chunks(), "zz-probe-anchor")
             report["bm25_fallback_hit"] = [hit.anchor for hit in fallback]
+
+            # 强制走「FTS5 不可用」分支：search 必须返回 None（交给上层兜底），而不是抛异常。
+            index.fts_ok = False
+            report["forced_no_fts_search_is_none"] = index.search("zz-probe-anchor") is None
+            forced = bm25_scores(index.all_chunks(), "zz-probe-anchor")
+            report["forced_no_fts_bm25_hit"] = [hit.anchor for hit in forced]
     report["chunk_level_ok"] = bool(report["fts_hit"]) or bool(report["bm25_fallback_hit"])
+    report["bm25_fallback_ok"] = bool(report["forced_no_fts_bm25_hit"])
     return report

@@ -278,3 +278,21 @@ def test_broken_fts_shadow_table_falls_back_to_bm25(vault: Path, tmp_path: Path)
             assert hits is None or hits
         else:  # pragma: no cover - 本机 FTS5 可用
             assert index.search("商标共识规范") is None
+
+
+def test_runtime_diagnostic_proves_both_paths_in_this_interpreter() -> None:
+    """包内探针的判定逻辑：FTS5 可用与否都要证明块级检索活着，且兜底分支真的被执行到。
+
+    这个函数就是 `SummitWorkbenchServer --kb-diagnostic` 的实现，因此它的语义必须有单测：
+    只打印「FTS5 可用」不足以证明「FTS5 不可用时还能用」。
+    """
+    report = kb.runtime_diagnostic()
+    assert report["sqlite_version"]
+    assert report["chunk_level_ok"] is True
+    assert report["bm25_fallback_ok"] is True
+    assert report["forced_no_fts_search_is_none"] is True
+    assert any("#" in anchor for anchor in report["forced_no_fts_bm25_hit"])
+    if report["fts5_trigram"]:
+        assert any("#" in anchor for anchor in report["fts_hit"])
+    else:  # pragma: no cover - 本机 FTS5 可用
+        assert report["fts_hit"] is None

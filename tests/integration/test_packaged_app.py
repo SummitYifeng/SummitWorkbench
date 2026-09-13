@@ -51,6 +51,7 @@ def _run_kb_diagnostic(executable: Path, environment: dict[str, str]) -> dict[st
     开发机 venv 支持不算数——这条必须对**已构建的包**跑（见 OPEN-VERIFICATION-ITEMS §S）。
     两种结果都算通过，前提是块级检索确实可用：
     FTS5 可用 → 必须命中 `路径#区块`；不可用 → 自建 BM25 必须命中。
+    另外无论哪种结果，**强制关掉 FTS 的兜底分支**都必须在包里活着。
     """
     result = subprocess.run(
         [str(executable), "--kb-diagnostic"],
@@ -69,6 +70,10 @@ def _run_kb_diagnostic(executable: Path, environment: dict[str, str]) -> dict[st
         assert any("#" in anchor for anchor in anchors), "命中的必须是块级锚点"
     else:
         assert cast(list[str], payload["bm25_fallback_hit"]), "FTS5 不可用时 BM25 兜底必须命中"
+    # 强制 FTS 不可用的分支（打包环境真的缺 FTS5 时走的那条）也必须在包里成立
+    assert payload["forced_no_fts_search_is_none"] is True, payload
+    assert cast(list[str], payload["forced_no_fts_bm25_hit"]), "强制关掉 FTS 后 BM25 必须命中"
+    assert payload["bm25_fallback_ok"] is True, payload
     return payload
 
 
