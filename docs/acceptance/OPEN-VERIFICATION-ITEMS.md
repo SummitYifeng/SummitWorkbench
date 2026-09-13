@@ -797,6 +797,9 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 
 ## N. A6 / A7 双机现场复跑（2026-09-13，build 28 / `2b534e0`）
 
+> build 29 上的逐条复核（D1/D2/D5/D6 的判据）、第二轮冲突恢复与 D7/D8 的现场发现、以及收尾收敛状态，
+> 见下面的 **§O**。
+
 两台机器：Studio（automation-primary）+ Air（secondary，全新空安装），装**同一个** DMG
 （`SummitWorkbench-0.4.7-arm64-INTERNAL-DEV.dmg`，build 28，SHA-256
 `1b8e9815023ee7f5abe3292cb464ab54abbc1f35228229f90ad5ea1bd8c2d953`）。
@@ -859,3 +862,57 @@ D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_co
 | G1 | 界面没有 `automation-primary` 的**显式接管**入口 | `POST /api/sync/primary/claim`（`routers/sync.py:398`）全仓只有后端定义，前端只**显示** `automation_primary_device_id`（`features/sync/banner.ts:35`），没有任何调用点 | 主设备代数变更只能靠命令行/直接调 API；换机或主设备丢失时需要人工介入 |
 | G2 | 界面没有把**已有本地工作台首次发布到新远端**的路径 | 设置页的 remote 区块只做**规范化**（preview 要求已存在 `origin` + `upstream`，`routers/settings.py:808`）；向导的 remote 模式只做 **clone**（已有远端 → 本地） | 本地已存在、远端还没建的工作台必须手工 `git init` / `git remote add` / 首次 push（本轮 §A7 第 4 步就是这么绕的） |
 | G3 | 同步/面板日志缺少失败细节 | D3 只解决了**状态可读性**（稳定错误码 + 脱敏原因进 `sync-state.json` 与横幅）；`workflows/sync_coordinator.py` 与 `domain/sync.py` 里**没有任何 logger 调用**，`~/Library/Logs/summitworkbench-panel.log` 至今只有 `component: "launcher"` 记录 | 排查"昨晚为什么没同步"只能去翻 API 内存快照或重启 App 触发一次；日志文件本身永远不含同步失败 |
+
+## O. build 29 的 D1–D8 闭环复验与收尾（2026-09-13）
+
+设备与产物：Studio（本机，automation-primary）+ Air（secondary），装同一个 **build 29**
+（DMG SHA-256 `bfe7fb504f94afe5803493bf8be8d34b9e554b2c6d6d49cab0c3a44647e1de2b`，源码 `d2b07bd`，
+`frontend_build = v2026.09.13-d2b07bd-888c2b62`——运行中进程的 `runtime.json` 与
+`/Applications/SummitWorkbench.app/Contents/Resources/web/static/build-meta.json` 都可复核）。
+用到两个一次性工作台：
+
+- **Rehearsal**（`5ead7279-ddaa-43b5-a9c3-fda17b6b2566` / `~/Documents/Rehearsal` /
+  远端 `SummitYifeng/summitworkbench-rehearsal`）——A6 冲突路径、D3/D6，以及 §N 第一轮恢复。
+- **Rehearsal2**（`b10865d4-45c7-4328-9d2f-2d44bd65f28d` / `~/Documents/Rehearsal2` /
+  远端 `SummitYifeng/summitworkbench-rehearsal-2`）——D1/D2/D5 的"全新工作台"路径。
+
+> §N 记的是 build 28 的第一轮（`39611ca` + `1c06e43`）；本节是 build 29 的第二轮加 D1–D6 的逐条复核。
+
+### O.1 逐条现场复核
+
+| 缺陷 | 判据与证据 | 结果 |
+|---|---|---|
+| D1 | Rehearsal2 由向导「新建」产生（`workspace.json.created_at = 2026-09-13T01:07:15Z`，`min_reader/writer_version = 0.4.7`），`git reflog` 首条为 `7e1c275 HEAD@{01:07:15}: commit: wb: onboarding create`，`git rev-parse --abbrev-ref HEAD` = `main`（不是 dulwich 的默认 `master`）。随后设置页在**这个新仓库**上「预览 HTTPS 转换」成功（不再 `500 internal_error`）并落盘 `remote-normalization.json`（`status: applied`） | ✅ |
+| D2 | 上一条转换在 **01:16:02Z** 把 `git_username = Yifeng93` 写进 profile；**同一个服务进程内** 01:16:25Z 的 `sync-state.json` 已经是 `state: ready`、`ahead/behind 0/0`、`last_sync_at = 01:16:25Z`（下一次启动是 01:17:26Z，所以这次成功同步发生在重启**之前**）。build 28 的同一动作必然 `error`，只有重启才好（见 §N D2 行） | ✅ |
+| D3 | Phase 1–3 现场（Air 侧断网抓取）：横幅给出稳定原因码与中文短句、`detail` 非空，且不含 URL / 主机 / 路径原文 | ✅ 现场观察 |
+| D5 | Rehearsal2 走完向导并进入工作台后，其 Application Support（现为 `SummitWorkbench.rehearsal2-bak`）里**没有** `onboarding-draft.json`；对照 build 28 时期建的 Rehearsal 目录，草稿仍残留 `step: "done"`、`work_root: "~/Documents/Rehearsal"`（未展开） | ✅ |
+| D6 | ① 按钮确实在包里：`.../web/static/assets/*.js` 中 `btn-sync` 与「立即同步」各命中 1 处（build 29 的 bundle）。② 自动拉取：窗口在 01:29:23Z 被呈现（日志 `reopen_received` + `window_presented`），此后 `/api/sync/status` 的 `last_sync_at` 走到 **01:33:46Z**、`state: ready`、`ahead/behind 0/0`，而本机**没有任何写入** —— 可见时的空闲自动拉取按要求生效 | ✅ |
+| D7/D8 | 现场撞到并被 D8 逼成有损选择（下一节）；修完只以测试收口。build 29 的 bundle 里 `RECOVERY_FAILURE_HINTS` **不存在**、「恢复准备未完成」**存在**，可直接复核"这两个修复还没出包" | ✅ 已修（未出包） |
+
+### O.2 第二轮冲突恢复：D7/D8 的现场发现（代价：丢了一条捕捉）
+
+1. Air 离线捕捉 `离线-A2` → 联网 push `f013de6`；Studio 同时捕捉 `离线-B2`（`d5630cd`）。
+2. Studio 打开冲突详情后点「预检并写入」→ `conflict_snapshot_stale`（详情打开之后本地 revision 又变了，
+   报错本身是对的）。
+3. 重新打开详情、对 `inbox.md` 选「**保留双方副本**」→ **被拒**：`preserve_both_path_collision`（D8）。
+   根因是 §N 第一轮恢复已经把远端副本落在 `inbox.md.remote`，而恢复不允许覆盖那份唯一副本；
+   界面此时只说「恢复准备未完成。」（D7），没有任何可执行信息。
+4. 改用「**保留本机**」→ `e049aaa`（**parents = 2**：本地 `d5630cd` + 远端 `f013de6`）+ 审计 `ed820ed`。
+   `e049aaa` 的树与本地父 `d5630cd` **完全相同**（`git diff --stat d5630cd e049aaa` 为空），提交信息为
+   `wb: sync recovery events=0 views=0 paths=0`。
+5. **代价（单独记一笔）**：选「保留本机」意味着远端那条 `离线-A2` 不进工作树——
+   `grep -rl 离线-A2`（排除 `.git`）在 Rehearsal 工作台里**找不到**；它只存在于第二父提交 `f013de6`
+   （`git log --all -S 离线-A2` 只命中这一条）。也就是说：**D8 把用户从"无损的保留双方"逼到了
+   "有损的保留本机"**，唯一的安全网是恢复提交的双父结构本身。这就是 D8 必须修的理由。
+6. 修完后的预期行为（源码已改、单元/契约测试与变异验证已覆盖、**尚未出包**）：第二次点「保留双方副本」
+   会落到 `inbox.md.remote.<rev7>`，两份内容都在工作树里。
+
+### O.3 收尾收敛状态（2026-09-13T01:35Z）
+
+| 检查 | 结果 |
+|---|---|
+| Studio 工作台 HEAD | `ed820ed`（`wb: sync recovery audit`） |
+| `refs/remotes/origin/main` | `ed820ed` |
+| 远端 `main`（`gh api repos/SummitYifeng/summitworkbench-rehearsal`，**远端权威**） | `ed820ed` |
+| 工作树 / 状态 | clean，`ahead/behind 0/0`，`state: ready` |
+| 最后一次同步 | 01:33:46Z（窗口可见时的自动拉取，未人工点击） |
