@@ -50,7 +50,7 @@
 - **A6 与 A7 已于 2026-09-13 在 Studio + Air 上现场通过**（当前 build `2b534e0` / build 28），
   证据逐条见 §N；A 组至此全部关闭。
 - **当前开放项：1 项（F1，非缺陷，明确超出 `INTERNAL-DEV` 交付范围）**，另有**本轮复跑发现的
-  6 个产品缺陷（D1–D6，均未修）**：D1 新工作台不 `git init` / D2 转换后仍用启动快照导致同进程同步必失败 /
+  6 个产品缺陷（**D4 已随 build 28 修复，其余 5 个未修**）**：D1 新工作台不 `git init` / D2 转换后仍用启动快照导致同进程同步必失败 /
   D3 同步失败原因被吞成裸 error / D4 私有 clone 失败被兜底吞掉 / D5 向导草稿收尾不干净 /
   D6 干净工作区没有任何"主动拉取"入口。证据、复现与修法方向见
   [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」。
@@ -833,7 +833,7 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 > [`../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)；
 > 本轮是"差异点抽查 + 一条端到端闭环"，把结论落在当前 build 上。
 
-### 本轮发现的产品缺陷（D1–D6，均未修）
+### 本轮发现的产品缺陷（D4 已随 build 28 修复；D1–D3、D5、D6 未修）
 
 见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」：D1 新工作台不 `git init`
 （预览 500 + 写回留痕静默失效）、D2「确认并转换」后仍用启动快照（同进程同步必失败、重启才恢复）、
