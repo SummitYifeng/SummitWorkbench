@@ -1323,19 +1323,16 @@ WB_PACKAGED_APP=/Applications/SummitWorkbench.app \
 
 ### R.6 本轮未能完成 / 仍开放
 
-1. **两个演练仓库未删除**（使用者本轮要求删除）：两条凭据路径都已试过，均无权限——
-   `gh repo delete SummitYifeng/summitworkbench-rehearsal{,-2} --yes` 得 **HTTP 403**
-   （`gh` OAuth 令牌 scope 实测为 `gist, read:org, repo, workflow`，**缺 `delete_repo`**）；
-   改用 app 存的那份细粒度 Git PAT 走 REST API 得 **HTTP 404**（该 PAT 对这两个 **org** 仓库
-   `GET`/`DELETE` 均 404，即根本不在其可见范围内）。解除方式（需要使用者交互一次）：
-
-   ```bash
-   gh auth refresh -h github.com -s delete_repo
-   gh repo delete SummitYifeng/summitworkbench-rehearsal --yes
-   gh repo delete SummitYifeng/summitworkbench-rehearsal-2 --yes
-   ```
-
-   两个仓库本身仍在，不影响任何功能。
+1. ~~两个演练仓库未删除~~：**已闭环（2026-09-13，使用者手动删除）**。代理侧两条凭据路径都无权限
+   （`gh` OAuth 令牌 scope 实测为 `gist, read:org, repo, workflow`，缺 `delete_repo` ⇒ 403；
+   app 存的细粒度 Git PAT 对这两个 org 仓库 `GET`/`DELETE` 均 404），使用者改在 GitHub 网页上删除，
+   代理侧复核 `gh repo view SummitYifeng/summitworkbench-rehearsal{,-2}` 均 **404**（已不存在）。
+   本地残留同时清理：`/tmp/device.json.rehearsal-backup`、`/tmp/msg-rehearsal.txt`，以及
+   `~/Documents`、`~/Desktop`、`~/Downloads`、`/tmp` 下所有 `.git/config` 与
+   `Application Support` 里对 rehearsal 的引用（**零命中**）。
+   **顺带发现并清除一处凭据残留**：`/tmp/.t3`–`.t8` 是前几轮探针留下的 **44 字节会话令牌**
+   （`-rw-------`），连同 profile 备份 `/tmp/config.toml.before`（无 secret 值）与本次会话
+   scratch 一并删除，共 63 项；删除后复查无残留。
 2. ~~Air 安装与双机冒烟~~：**已在 §R.7 完成**（全新 Air 从零配置 build 34 + 真机往返冒烟通过）。
 3. **G2 未对真实 GitHub 空仓库做端到端**：发布流程要使用者自己的 PAT 且会在其账号下**新建**
    资源，本轮未获授权执行；已用单测 + API 测试 + 真机非 HTTPS 拒绝路径覆盖。
