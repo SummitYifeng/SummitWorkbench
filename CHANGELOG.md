@@ -254,8 +254,11 @@
   复核 ⇒ `HEAD == origin/main == 598a285`、`ahead/behind 0/0`、`pending 0`、vault 工作树 clean、
   线性快进无保护态；Studio 的主设备声明未被改写（仍为 `51885d3d-…` / generation 1）。
   逐条证据见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §R.7。
-- **未完成**：两个演练仓库（`SummitYifeng/summitworkbench-rehearsal{,-2}`）本应删除，但当前
-  `gh` 令牌缺少 `delete_repo` scope，删除被 403 拒绝；解除方式见 §R 的开放项。
+- **开放项（已闭合）**：两个演练仓库由使用者在 GitHub 网页删除，代理复核 `gh repo view` 均 404，
+  本地残留（含 `/tmp` 里前几轮遗留的会话令牌 `.t3`–`.t8`）一并清除，见 §R.6.1。
+- **开放项（使用者明确决定不做）**：G2 的"真实 GitHub 空仓库 → 绑定 → 首次 push"成功分支未做
+  端到端（其余已覆盖：单测 + API 契约 + 真机非 HTTPS 拒绝路径 + 两后端一致性）；需要时按
+  §R.6.3 的 4 步现场确认。
 - 真机（Air ⇄ Studio，G1 接管闭环，**通过**）：Air 在界面里勾选接管（必须先勾选，未勾选被拒）
   ⇒ generation 1→2、Air 变主设备 ⇒ Studio 侧自动化被门控关掉（`not-primary`，零写入、声明哈希不变）
   ⇒ Studio 用**过期** generation 接管被拒（409 `primary_generation_conflict`、零写入）⇒ 用当前
