@@ -199,6 +199,9 @@ modal.querySelectorAll = (selector: string) => {
 let statusFails = false;
 let statusState = 'local-ahead';
 let prepareFails = false;
+// D7 的第二条泄漏路径：selection/validate 返回 ok:false + selection.error_code
+// 时**不带** reason，真机复验里用户看到的就是裸的 conflict_snapshot_stale。
+let selectionFails = false;
 const calls: Array<{ url: string; method: string; body: any }> = [];
 const detailsPath = 'notes/a.md';
 const binaryPath = 'notes/b.bin';
@@ -225,7 +228,18 @@ globalThis.fetch = async (url: any, init: any) => {
       },
     });
   }
-  if (target === '/api/sync/conflict/selection/validate') return jsonResponse({ ok: true, selection: {} });
+  if (target === '/api/sync/conflict/selection/validate') {
+    if (selectionFails) {
+      return jsonResponse({
+        ok: false, available: true, state: 'diverged-protected',
+        selection: {
+          status: 'stale', ok: false, missing_paths: [], unexpected_paths: [],
+          invalid_paths: [], error_code: 'conflict_snapshot_stale',
+        },
+      });
+    }
+    return jsonResponse({ ok: true, selection: {} });
+  }
   if (target === '/api/sync/conflict/recover') {
     if (!body?.confirmed && prepareFails) {
       return jsonResponse({
@@ -354,6 +368,13 @@ prepareFails = true;
 await previewSyncConflictRecovery();
 export const recoveryFailureMessage = modal.innerHTML;
 
+// D7 第二条泄漏路径：selection/validate 先返回 stale（不带 reason）时，
+// 弹层必须显示同一句人话，而不是裸的 conflict_snapshot_stale。
+prepareFails = false;
+selectionFails = true;
+await previewSyncConflictRecovery();
+export const selectionFailureMessage = modal.innerHTML;
+
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -467,6 +488,11 @@ try {
   assert.match(flow.recoveryFailureMessage, /已存在上次保留的远端副本/);
   assert.match(flow.recoveryFailureMessage, /改选「保留本机」或「采用远端」/);
   assert.doesNotMatch(flow.recoveryFailureMessage, /恢复准备未完成/);
+
+  // D7（第二条路径）：`selection/validate` 先返回 stale，且响应里**没有** reason。
+  assert.match(flow.selectionFailureMessage, /远端或本机在上次读取之后又变了/);
+  assert.doesNotMatch(flow.selectionFailureMessage, /conflict_snapshot_stale/);
+  assert.doesNotMatch(flow.selectionFailureMessage, /人工选择未通过校验/);
 
   console.log('Sync conflict recovery request tests passed');
 } finally {

@@ -62,7 +62,7 @@ export function renderSyncConflictModal(): void {
     ? '<div class="conflict-preflight"><strong>' + (preparation.ok ? '临时预检通过' : '临时预检未通过') + '</strong>' +
       '<span>事件 ' + preparation.event_count + ' · 聚合 ' + preparation.aggregate_count +
       ' · 重建视图 ' + preparation.rebuilt_view_count + ' · 候选文件 ' + preparation.candidate_path_count + '</span>' +
-      (preparation.error_code ? '<span class="hint">原因：' + esc(preparation.error_code) + '</span>' : '') + '</div>' : '';
+      (preparation.error_code ? '<span class="hint">原因：' + esc(RECOVERY_FAILURE_HINTS[preparation.error_code] ?? preparation.error_code) + '</span>' : '') + '</div>' : '';
   activateConflictModal('<h3>同步冲突详情</h3>' +
     '<p class="hint">当前处于保护态。这里只读取已存在的分叉快照，不展示正文；确认前不会修改 vault。</p>' +
     '<div class="conflict-revisions"><span>共同基线 <code>' + esc(conflictRevision(details.base_revision)) + '</code></span>' +
@@ -163,6 +163,20 @@ const RECOVERY_FAILURE_HINTS: Record<string, string> = {
   remote_content_missing: '远端那一侧缺少该文件内容：请重新打开冲突详情再试。',
 };
 
+/**
+ * 把稳定原因码翻成可执行的一句话；后端的 `reason`（若给了）优先。
+ *
+ * **三条失败路径都要过这里**（D7 第一版只接了 recover 那条，真机复验时在弹层里
+ * 看到的是裸的 `conflict_snapshot_stale`——因为 `/api/sync/conflict/selection/validate`
+ * 返回 `{ok:false, selection:{error_code}}` 时**不带** `reason`，而这条分支直接
+ * 把 `error_code` 当消息显示了）。
+ */
+function recoveryFailureMessage(reason: string | null | undefined, code: string | null | undefined, fallback: string): string {
+  if (reason) return reason;
+  if (!code) return fallback;
+  return RECOVERY_FAILURE_HINTS[code] ?? ('恢复准备未通过（' + code + '）：请重新打开冲突详情后重试。');
+}
+
 export async function previewSyncConflictRecovery(): Promise<void> {
   if (!conflictDetails || conflictBusy) return;
   const missing = missingConflictSelections();
@@ -182,7 +196,7 @@ export async function previewSyncConflictRecovery(): Promise<void> {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(conflictSelectionRequest()) },
       );
       if (!selection.ok) {
-        conflictMessage = selection.reason ?? selection.selection?.error_code ?? '人工选择未通过校验。';
+        conflictMessage = recoveryFailureMessage(selection.reason, selection.selection?.error_code, '人工选择未通过校验。');
         conflictBusy = false;
         renderSyncConflictModal();
         return;
@@ -196,9 +210,7 @@ export async function previewSyncConflictRecovery(): Promise<void> {
       conflictMessage = '预检完成。请确认后才会写回并创建提交。';
     } else {
       const code = data.preparation?.error_code ?? data.recovery?.error_code ?? null;
-      conflictMessage = data.reason ?? (code
-        ? RECOVERY_FAILURE_HINTS[code] ?? ('恢复准备未通过（' + code + '）：请重新打开冲突详情后重试。')
-        : '恢复准备未完成。');
+      conflictMessage = recoveryFailureMessage(data.reason, code, '恢复准备未完成。');
     }
   } catch (err) {
     conflictMessage = String(err);
@@ -235,7 +247,11 @@ export async function applySyncConflictRecovery(): Promise<void> {
       await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
       return;
     }
-    conflictMessage = data.reason ?? '恢复未提交：' + (data.recovery?.error_code ?? data.recovery?.status ?? '未知原因');
+    conflictMessage = recoveryFailureMessage(
+      data.reason,
+      data.recovery?.error_code ?? data.recovery?.status,
+      '恢复未提交：未知原因',
+    );
   } catch (err) {
     conflictMessage = String(err);
   } finally {
