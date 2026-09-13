@@ -330,6 +330,29 @@ def test_api_review_source_is_read_only_and_vault_scoped(tmp_path: Path) -> None
     assert inbox.text == "# inbox\n\n记录。"
 
 
+def test_api_sources_read_accepts_work_knowledge_roots(tmp_path: Path) -> None:
+    """方案 A（工作线主线）的新根必须能作为知识来源打开。
+
+    否则 `路径#区块` 引用在来源面板点开会 400/404——引用可点开是本轮验收的硬要求。
+    负例护栏：未加入白名单的顶层目录（`notes/`）仍必须被拒（白名单不得被顺手放宽）。
+    """
+    client, vault = _client(tmp_path, seed_review=False)
+    for root in ("hii", "it", "community", "hr", "decisions", "index"):
+        target = vault / root / "sample.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"---\ndate: 2026-09-13\ntype: note\nstatus: active\n---\n\n# {root}\n\n正文。",
+            encoding="utf-8",
+        )
+        response = client.get("/api/sources/read", params={"source_id": f"{root}/sample"})
+        assert response.status_code == 200, (root, response.status_code)
+
+    stray = vault / "notes" / "stray.md"
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_text("# stray", encoding="utf-8")
+    assert client.get("/api/sources/read", params={"source_id": "notes/stray"}).status_code == 400
+
+
 def test_api_sources_read_marks_truncated_body(tmp_path: Path) -> None:
     from summit_workbench.webapp.legacy_app import SOURCE_BODY_DISPLAY_CHARS
 

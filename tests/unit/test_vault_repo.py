@@ -76,6 +76,34 @@ def test_check_vault_flags_bad_and_skips_signals(tmp_path):
     assert good in files and bad in files and sig not in files
 
 
+def test_templates_dir_is_skipped_by_check_and_iter(tmp_path):
+    """库内 `templates/` 是骨架模板，占位符 frontmatter 既不该被校验也不该被索引。
+
+    模板里的 `date: {{date}}` 过不了 `YYYY-MM-DD` 校验；若不过滤，`wb vault check` 会在
+    任何带模板的库上变红，检索也会把骨架当成知识笔记召回（变异验证：把 `templates` 从
+    `_SKIP_DIRS` 移除，本用例必须变红）。
+    """
+    tpl = tmp_path / "templates" / "note-template.md"
+    tpl.parent.mkdir()
+    tpl.write_text(
+        "---\ndate: {{date}}\ntype: note\nstatus: active\n---\n\n# {{title}}\n",
+        encoding="utf-8",
+    )
+    real = tmp_path / "index" / "projects.md"
+    real.parent.mkdir()
+    real.write_text(
+        "---\ndate: 2026-09-13\ntype: index\nstatus: active\nproject: global\n---\n\n# 项目索引\n",
+        encoding="utf-8",
+    )
+
+    results = check_vault(tmp_path)
+    assert tpl not in results  # 模板不参与 schema 校验
+    assert real not in results
+
+    files = list(iter_markdown_files(tmp_path))
+    assert real in files and tpl not in files
+
+
 def test_load_note_reports_non_utf8_instead_of_raising(tmp_path):
     """非 UTF-8 文件（例如误放进 vault 的二进制）必须走 parse_error 通道。
 

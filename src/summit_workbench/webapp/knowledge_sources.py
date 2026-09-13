@@ -29,6 +29,14 @@ KNOWLEDGE_SOURCE_ROOTS = frozenset(
         "daily",
         "reviews",
         "insights",
+        # ---- 工作知识库（方案 A：工作线主线）新增根 ----
+        # 不加这些根，`路径#区块` 引用点开会 404（来源面板与审批只读入口共用本白名单）。
+        "hii",
+        "it",
+        "community",
+        "hr",
+        "decisions",
+        "index",
     }
 )
 

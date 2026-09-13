@@ -39,6 +39,8 @@ class NoteTypeSpec:
       - ``single``：绑定单一项目，必须有 ``project: <id>``，禁止 ``projects``。
       - ``multi`` ：可关联多个项目，必须有非空 ``projects: [...]``，禁止 ``project``。
       - ``global``：系统级笔记，必须 ``project: global``，禁止 ``projects``。
+      - ``free`` ：工作知识库笔记；``project`` / ``projects`` 二者只能出现一个、也可都不出现，
+        但**不得同时出现**（工作线层面的笔记常常不属于任何单一项目）。
     required_blocks: 正文中必须存在的固定二级标题（Agent 依赖其定位，不得改名）。
     """
 
@@ -79,6 +81,46 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
     "inbox": NoteTypeSpec(scope="global"),
     "conventions": NoteTypeSpec(scope="global"),
     "approval-page": NoteTypeSpec(scope="global"),
+    # ---- 工作知识库（work knowledge base）新增类型 ----
+    # 全部为**加法**：不删改上面任何既有 type 的行为，旧 vault 校验结果不变。
+    # 线索主页（`hii/hii-loyalty.md` 等）：工作线层面的入口页，不属于任何单一项目。
+    "workstream": NoteTypeSpec(
+        scope="global",
+        required_blocks=(
+            "## 现在在哪",
+            "## 关键结论",
+            "## 未决问题",
+            "## 决策记录",
+            "## 时间线",
+            "## 关联",
+        ),
+    ),
+    # 一般知识笔记：正文结构自由，不设固定区块（粒度由入库样例决定）。
+    "note": NoteTypeSpec(scope="free"),
+    # 决策记录（集中在 `decisions/`）：固定六段，供「决策支持」检索定点取块。
+    "decision": NoteTypeSpec(
+        scope="free",
+        required_blocks=(
+            "## 背景",
+            "## 选项",
+            "## 决定",
+            "## 理由",
+            "## 影响",
+            "## 证据",
+        ),
+    ),
+    # 原始材料笔记：正文尽量不改写原文，改写产物放对应 note。
+    "source": NoteTypeSpec(
+        scope="free",
+        required_blocks=("## 来源", "## 要点", "## 关联"),
+    ),
+    # 导航层（MOC）：只提供导航与简短说明，不复制正文。
+    "index": NoteTypeSpec(scope="global"),
+    # 工作思考长文：沿用 MyKnowledge 的三段式。
+    "long-form-thought": NoteTypeSpec(
+        scope="free",
+        required_blocks=("## 问题缘起", "## 思考展开", "## 当前结论"),
+    ),
 }
 
 
@@ -153,6 +195,13 @@ def _check_project_scope(spec: NoteTypeSpec, meta: Mapping[str, object]) -> list
             issues.append(ValidationIssue("projects 必须是数组", field="projects"))
         if has_project:
             issues.append(ValidationIssue("多项目笔记不得同时出现 project", field="project"))
+    elif spec.scope == "free":
+        # 工作线层面的笔记：绑定单一项目、多个项目、或都不绑定都可以，
+        # 唯一硬规则仍是二者不得同时出现（与 single/multi 保持同一不变量）。
+        if has_project and has_projects:
+            issues.append(ValidationIssue("不得同时出现 project 与 projects", field="projects"))
+        if has_projects and not isinstance(meta.get("projects"), list):
+            issues.append(ValidationIssue("projects 必须是数组", field="projects"))
     else:  # global
         if meta.get("project") != "global":
             issues.append(ValidationIssue("系统级笔记必须 project: global", field="project"))

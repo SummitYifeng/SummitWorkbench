@@ -17,8 +17,9 @@ from summit_workbench.domain.vault import ValidationIssue, validate_note
 
 _FM_DELIM = "---"
 
-# 校验时跳过的目录：非笔记内容或构建/隐藏物。
-_SKIP_DIRS = {".git", ".obsidian", "_signals"}
+# 校验时跳过的目录：非笔记内容或构建/隐藏物。``templates`` 是骨架模板，其 frontmatter
+# 含 ``{{date}}`` 之类占位符，既不该进 schema 校验，也不该进知识索引与双链。
+_SKIP_DIRS = {".git", ".obsidian", "_signals", "templates"}
 
 
 @dataclass(frozen=True)
