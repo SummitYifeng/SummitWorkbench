@@ -809,7 +809,7 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 | # | 证据 | 结果 |
 |---|---|---|
 | 1 | Air profile：`workspace_id` 与 Studio 相同（`5ead7279-…`）、**`device_role = "secondary"`**、`git_username` 与 `git_remote_url` 已回填 | ✅ |
-| 2 | Air 界面可见 Studio 先前捕捉的 `演练-A`（克隆确实带过来了） | ✅ |
+| 2 | Air 界面可见 Studio 先前捕捉的那条（实际输入为 `测试的`，即 `a21c8e5` 提交；克隆确实带过来了） | ✅ |
 | 3 | workspace 级 Keychain 凭据存在（`com.summitworkbench.credentials.5ead7279-…` / 账户 `git:github.com:Yifeng93`，值为 `github_pat_…`） | ✅ |
 | 4 | 草稿文件**不含任何秘密**（`grep -c github_pat` = 0；字段白名单由 `OnboardingDraft` 的 `extra="forbid"` 保证） | ✅ |
 | 5 | 仓库历史**不含 PAT**（`git log -p \| grep -c github_pat_` = 0） | ✅ |

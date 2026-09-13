@@ -152,7 +152,7 @@ Keychain 都不动。**
    ```
    期望 `device_role = "secondary"`，`git_remote_url` 就是那个 HTTPS 仓库。
    同时界面「工作台切换」里能看到该工作台、徽标为它的工作区短码。
-2. Air 的 vault 里能看到 Studio 第 5 步捕捉的内容（克隆真的带过来了）。
+2. Air 的 vault 里能看到 Studio 第 5 步捕捉的内容（克隆真的带过来了；本例实际输入为 `测试的`）。
 3. Air 的 Keychain 里有该 workspace 的 Git 凭据，且**值是那份 PAT**：
    ```sh
    security find-generic-password \
