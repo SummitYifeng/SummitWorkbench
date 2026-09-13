@@ -45,19 +45,75 @@ class Weights:
     # 导航型区块（`## 关联` / `## 维护规则` / `## 证据索引`）只是脚手架，
     # 命中了也不该被当成事实引用（实测会被模型写成「事实」）
     nav_block_penalty: float = 0.4
+    # 结论型区块（`## 关键结论` / `## 决定` / `## 选项` / `## 一句话回答…`）：命中即加权。
+    # 2026-09-14 实测：不加权时同一篇里 `## 理由` / `## 影响` / `## 背景` 会压过
+    # `## 决定` / `## 选项`
+    # （支持型段落的正文命中分本来就高，乘子小了跨不过去），块级命中率只有 25%。
+    conclusion_boost: float = 2.8
+    # 支持型区块（`## 背景` / `## 理由` / `## 影响` / `## 证据`）：是答案的上下文，不是答案本身。
+    # 只轻降权——「为什么这么做」这类问题仍需要 `## 理由`。
+    support_penalty: float = 0.8
+    # 笔记引言块（heading 为空 = 文首标题+引言那段）：它是「这篇讲什么」，不是答案，降权。
+    preamble_penalty: float = 0.45
     # 单篇笔记最多贡献几个块进上下文：防止一篇长文独占预算
     max_chunks_per_note: int = 3
 
 
-# 只承担导航作用的区块标题：命中即降权（它们几乎总会因为「原文/关联/索引」这类词而命中）
-NAV_HEADINGS = frozenset({"关联", "维护规则", "证据索引", "规范", "列表"})
+# 支持型区块标题：答案的上下文（降权但不排除）
+SUPPORT_HEADINGS = frozenset({"背景", "理由", "影响", "证据", "要点"})
 
-# 类型权威度：索引与线索主页最高，结论类其次，证据/流水最低
+
+# 结论型区块的标题前缀（区块标题常带后缀，如 `决定：「活满」与…`，故用前缀匹配）。
+CONCLUSION_HEADING_PREFIXES: tuple[str, ...] = (
+    "关键结论",
+    "决定",
+    "选项",
+    "一句话回答",
+    "结论",
+    "现在在哪",
+    "未决问题",
+    "下一步",
+    "阻塞",
+    "已形成决策",
+    "事实与进展",
+    "明确行动项",
+)
+
+# 只承担导航/脚手架作用的区块标题：命中即降权
+# （它们几乎总会因为「原文/关联/索引」这类词而命中，且不该被当成事实引用）。
+NAV_HEADINGS = frozenset(
+    {
+        "关联",
+        "维护规则",
+        "证据索引",
+        "主题簇",
+        "决策记录",
+        "时间线",
+        "来源",
+        "规范",
+        "列表",
+        "索引",
+        "摘要",
+        # README / SOP / people 等导航页的区块
+        "怎么用",
+        "目录速览",
+        "三条铁律",
+        "一图流",
+        "人物",
+        "组织",
+        "生效中",
+        "待复核",
+        "已被替代",
+    }
+)
+
+# 类型权威度：项目入口页与决策最高（它们是被蒸馏过的答案），索引页只是导航，证据/流水最低。
 TYPE_AUTHORITY: dict[str, float] = {
-    "index": 1.0,
-    "workstream": 0.95,
-    "decision": 0.9,
-    "project-main": 0.85,
+    "project-main": 0.95,
+    "decision": 0.95,
+    "workstream": 0.9,
+    # 索引页是**导航**不是内容：早先给 1.0 会让 `index/people`、`README#怎么用` 挤掉答案块
+    "index": 0.45,
     "note": 0.7,
     "meeting-note": 0.7,
     "weekly-review": 0.6,
@@ -70,6 +126,23 @@ TYPE_AUTHORITY: dict[str, float] = {
     "project-inbox": 0.3,
     "qa-insight": 0.2,
 }
+
+
+def _block_role(heading: str) -> str:
+    """块的语义角色：``conclusion`` / ``nav`` / ``preamble`` / ``plain``。
+
+    R1 的核心：把「同一篇笔记里哪个块更可能是答案」变成可测的加权信号。
+    空 heading 是「笔记引言块」（文首标题 + 引言），只是「这篇讲什么」，不是答案。
+    """
+    if not heading:
+        return "preamble"
+    if heading in NAV_HEADINGS:
+        return "nav"
+    if heading in SUPPORT_HEADINGS:
+        return "support"
+    if heading.startswith(CONCLUSION_HEADING_PREFIXES):
+        return "conclusion"
+    return "plain"
 
 
 @dataclass(frozen=True)
@@ -218,7 +291,17 @@ def fuse(
         if info.type == "source":
             score *= weights.source_penalty
             why.append("证据层降权（source）")
-        if hit.heading in NAV_HEADINGS:
+        role = _block_role(hit.heading)
+        if role == "conclusion":
+            score *= weights.conclusion_boost
+            why.append("结论型区块加权")
+        elif role == "support":
+            score *= weights.support_penalty
+            why.append("支持型区块降权")
+        elif role == "preamble":
+            score *= weights.preamble_penalty
+            why.append("笔记引言块降权")
+        elif role == "nav":
             score *= weights.nav_block_penalty
             why.append("导航型区块降权")
 
@@ -252,6 +335,8 @@ def fuse(
         for seed in seeds:
             for target, heading in index.anchor_hints(seed.source_id).items():
                 hints.setdefault(target, heading)
+        # 邻居 → 最强种子（避免同一邻居被多个种子重复加成）
+        best_seed: dict[str, RankedChunk] = {}
         for seed in seeds:
             if seed.note_type == "source":
                 continue
@@ -259,55 +344,69 @@ def fuse(
                 info = notes.get(neighbour)
                 if info is None:
                     continue
+                # R3：双链扩展必须重复应用与初始召回**相同**的过滤，否则按项目过滤得不到
+                # 纯净视图（实测：过滤后仍混进 `project: global` 的导航页）。
+                if project and project not in info.projects:
+                    dropped.append((neighbour, f"项目过滤（双链扩展）：不属于 {project}"))
+                    continue
+                if workstream and info.workstream != workstream:
+                    dropped.append((neighbour, f"工作线过滤（双链扩展）：不属于 {workstream}"))
+                    continue
+                # 每个邻居只记**最强**的那个种子，后面只应用一次加成。
+                # 2026-09-14 实测：按种子逐个累加会让同一个邻居被加成 2–4 次
+                # （`## 选项` 正文相关度 0.29，却被顶到 41.05），链接信号彻底盖过正文相关度。
+                strongest = best_seed.get(neighbour)
+                if strongest is None or seed.score > strongest.score:
+                    best_seed[neighbour] = seed
+
+        # 链接信号是**小的乘性加成**，而且永远不能盖过正文相关度：
+        # 「A 链接了 B」只说明 B 值得看一眼，不说明 B 就是答案（答案由正文命中与区块角色决定）。
+        link_factor = 1.0 + weights.link * weights.link_seed_ratio
+        for neighbour, seed in sorted(best_seed.items()):
+            info = notes.get(neighbour)
+            if info is None:  # pragma: no cover - best_seed 来自同一 notes 表
+                continue
+            previous = position.get(neighbour)
+            if previous is not None:
+                existing_score, existing = scored[previous]
+                new_score = existing_score * link_factor
+                scored[previous] = (
+                    new_score,
+                    replace(
+                        existing,
+                        score=new_score,
+                        why=(*existing.why, f"双链扩展（来自 {seed.source_id}）"),
+                        via_link=seed.source_id,
+                    ),
+                )
+            else:
+                # 纯链接邻居（正文完全没命中）：只给很小的基础分，
+                # 并用 `[[文件#区块]]` 提示定位到具体块。
+                hinted = index.chunk_at(neighbour, hints.get(neighbour, ""))
+                chunk = hinted or index.representative_chunk(neighbour)
+                if chunk is None:
+                    continue
                 base = weights.link * TYPE_AUTHORITY.get(info.type, 0.3) + weights.authority * 0.2
-                # 这一跳**不看目标类型**：链接本身才是信号（"我链接了它"）。
-                # 早先按类型加权的结果是：线索主页链接的 5 个项目页凭 5% 的类型差
-                # 把真正回答问题的笔记挤出了候选（2026-09-13 实测）。
-                promoted = max(base, seed.score * weights.link_seed_ratio)
                 if info.type == "source":
-                    promoted *= weights.source_penalty
-                previous = position.get(neighbour)
-                if previous is not None:
-                    existing_score, existing = scored[previous]
-                    if promoted <= existing_score:
-                        continue
-                    scored[previous] = (
-                        promoted,
+                    base *= weights.source_penalty
+                position[neighbour] = len(scored)
+                scored.append(
+                    (
+                        base,
                         RankedChunk(
-                            anchor=existing.anchor,
-                            source_id=existing.source_id,
-                            heading=existing.heading,
-                            text=existing.text,
-                            score=promoted,
-                            note_type=existing.note_type,
-                            title=existing.title,
-                            why=(*existing.why, f"双链扩展（来自 {seed.source_id}）"),
+                            anchor=chunk.anchor,
+                            source_id=chunk.source_id,
+                            heading=chunk.heading,
+                            text=chunk.text,
+                            score=base,
+                            note_type=info.type,
+                            title=info.title,
+                            why=("双链扩展", f"来自 {seed.source_id}"),
                             via_link=seed.source_id,
                         ),
                     )
-                else:
-                    hinted = index.chunk_at(neighbour, hints.get(neighbour, ""))
-                    chunk = hinted or index.representative_chunk(neighbour)
-                    if chunk is None:
-                        continue
-                    position[neighbour] = len(scored)
-                    scored.append(
-                        (
-                            promoted,
-                            RankedChunk(
-                                anchor=chunk.anchor,
-                                source_id=chunk.source_id,
-                                heading=chunk.heading,
-                                text=chunk.text,
-                                score=promoted,
-                                note_type=info.type,
-                                title=info.title,
-                                why=("双链扩展", f"来自 {seed.source_id}"),
-                                via_link=seed.source_id,
-                            ),
-                        )
-                    )
-                expanded.append((neighbour, seed.source_id))
+                )
+            expanded.append((neighbour, seed.source_id))
 
     scored.sort(key=lambda item: (-item[0], item[1].anchor))
     ranked = _dedupe_same_origin(

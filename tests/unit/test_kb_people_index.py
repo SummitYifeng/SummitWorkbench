@@ -138,6 +138,43 @@ def test_check_flags_a_stale_page_and_passes_once_regenerated(tmp_path: Path) ->
     assert "已过期" in again.stderr
 
 
+def test_write_keeps_the_pages_existing_frontmatter(tmp_path: Path) -> None:
+    """回归：写入时不得用自己的最小 frontmatter 覆盖页面已有字段。
+
+    `render()` 自带的 frontmatter 只有 date/type/status/project/updated/title/aliases；
+    直接写盘会把新规范要求的 `id` / `area` / `workstream` / `summary` 整段抹掉
+    （2026-09-14 实测发现）。写入必须保留既有 frontmatter、只替换正文。
+    """
+    vault = _vault(tmp_path)
+    _note(vault, "n/a.md", people="[甲]")
+    target = vault / "index" / "people.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "---\nid: 2026-09-14-c022\ntitle: 人物与组织索引\narea: work\nworkstream: cross\n"
+        "project: global\ntype: index\ndomain: system\nstatus: active\n"
+        "updated: 2026-09-14\ndate: 2026-09-14\nsummary: 由 frontmatter 聚合。\n---\n\n"
+        "# 人物与组织索引\n\n## 人物\n\n_（待回填）_\n\n## 组织\n\n## 维护规则\n\n- 手工规则\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "kb_index_people.py"), "--vault", str(vault)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    text = target.read_text(encoding="utf-8")
+    for needle in (
+        "id: 2026-09-14-c022",
+        "area: work",
+        "workstream: cross",
+        "summary: 由 frontmatter 聚合。",
+    ):
+        assert needle in text, f"写入把既有 frontmatter 抹掉了：缺 {needle}"
+    assert "- **甲**：[[a|a]]" in text
+
+
 def test_refuses_a_directory_that_is_not_a_work_vault(tmp_path: Path) -> None:
     """给错目录时必须拒绝，而不是在任意目录下写一个 people.md。"""
     result = subprocess.run(

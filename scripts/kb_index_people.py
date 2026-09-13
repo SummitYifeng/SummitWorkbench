@@ -163,6 +163,22 @@ def _body(text: str) -> str:
     return text[end + len("\n---") :].lstrip("\n")
 
 
+def _frontmatter_raw(text: str) -> str | None:
+    """既有页面的 frontmatter 原文（含围栏）；没有则 None。
+
+    为什么需要它：`render()` 会自带一份最小 frontmatter（只有 date/type/status/project/
+    updated/title/aliases）。直接写盘会把页面已有的 `id` / `area` / `workstream` /
+    `summary` 等**新规范要求的字段整段抹掉**（2026-09-14 发现）。写入时必须保留既有
+    frontmatter，只替换正文——与 `kb_index_decisions.py` 同一约定。
+    """
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end == -1:
+        return None
+    return text[: end + len("\n---")]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="从 frontmatter 重生成 index/people.md")
     default_vault = os.environ.get("WORK_ROOT", str(Path.home() / "Documents" / "Work"))
@@ -212,7 +228,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(rendered, encoding="utf-8")
+    existing = target.read_text(encoding="utf-8") if target.is_file() else ""
+    front = _frontmatter_raw(existing)
+    text = f"{front}\n\n{_body(rendered)}" if front else rendered
+    target.write_text(text, encoding="utf-8")
     print(f"✓ 已写入 {target}（{len(people)} 位人物，{len(orgs)} 个组织）")
     return 0
 

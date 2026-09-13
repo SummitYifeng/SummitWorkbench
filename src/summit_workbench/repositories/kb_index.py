@@ -230,6 +230,12 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS chunks_source ON chunks(source_id);
 """
 
+# FTS5 `bm25()` 的参数。`b` 是长度归一化强度，取 0.3 而不是默认的 0.75：
+# 本库的结论块天然很长（主题簇页的 `## 关键结论` 是逐条清单），默认强度会把它们压到几乎零分，
+# 让「短而泛」的块赢（2026-09-14 实测：块级命中率 25%，降到 0.3 后答案块才排得上来）。
+FTS_K1 = 1.2
+FTS_B = 0.75
+
 _FTS_SCHEMA = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5("
     "heading, text, content='chunks', content_rowid='id', tokenize='trigram')"
@@ -567,10 +573,10 @@ class KnowledgeIndex:
             return None
         try:
             rows = self._connection.execute(
-                "SELECT c.source_id, c.heading, c.text, bm25(chunks_fts) AS rank"
+                "SELECT c.source_id, c.heading, c.text, bm25(chunks_fts, ?, ?) AS rank"
                 " FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid"
                 " WHERE chunks_fts MATCH ? ORDER BY rank LIMIT ?",
-                (expression, limit),
+                (FTS_K1, FTS_B, expression, limit),
             ).fetchall()
         except sqlite3.Error:
             # 查询期才发现 FTS 坏了（例如影子表被外部改过）：不要让整次问答失败，
@@ -616,6 +622,11 @@ def bm25_scores(hits: Iterable[Hit], query: str, *, k1: float = 1.2, b: float = 
     """纯 Python BM25（FTS5 不可用时的兜底）。
 
     只对**查询词**做子串计数，因此成本与查询词数成正比，而不是与词表大小成正比。
+
+    ``b`` 是长度归一化强度：**默认 0.35 而不是教科书的 0.75**。原因（2026-09-14 实测）：
+    本库的「结论块」天然很长（主题簇页的 `## 关键结论` 是一份逐条清单，几千字），
+    b=0.75 会把它们压到几乎零分，于是「短而泛」的块（任何一个决定页的 `## 选项`）
+    反而赢——块级命中率因此只有 25%。降低 b 让长而内容密集的块拿到它应有的分。
     """
     terms = query_terms(query)
     if not terms:

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from summit_workbench.repositories.kb_index import IndexStats
+from summit_workbench.repositories.kb_index import Hit, IndexStats, KnowledgeIndex
 from summit_workbench.repositories.vault import iter_markdown_files, load_note
 from summit_workbench.workflows.ask.fusion import Trace, Weights, fuse
 from summit_workbench.workflows.ask.router import RoutingPlan, route_query
@@ -185,6 +185,35 @@ def _degraded(
     return candidates, trace
 
 
+def _supplement_with_bm25(fts_hits: list[Hit], index: KnowledgeIndex, query: str) -> list[Hit]:
+    """把 FTS 命中与 BM25 命中合并成召回池。
+
+    为什么需要：FTS5 的 trigram 是**短语**匹配，对中文长词很挑——实测同一批材料里，
+    有的查询命中 286 块、有的只命中 10 块（2026-09-14 Q3「IT 当前的开发进度…」），
+    候选池一旦被饿死，后面再怎么调权重都只是在几个候选里排序。BM25 用同一套 3-gram
+    词表做子串计数、覆盖**全部**块，因此用来补足召回。
+
+    合并口径：两路各自按本路最高分归一，再并集去重。FTS 命中保留原有排序优势，
+    BM25 独有命中的最强块可以顶到与 FTS 最强块同档（这正是「FTS 漏掉但有内容的块」需要的）。
+    """
+    from summit_workbench.repositories.kb_index import bm25_scores
+
+    extra = bm25_scores(index.all_chunks(), query)
+    if not extra:
+        return fts_hits
+    known = {hit.anchor for hit in fts_hits}
+    fts_max = max((hit.score for hit in fts_hits), default=0.0) or 1.0
+    bm_max = max((hit.score for hit in extra), default=0.0) or 1.0
+    scale = fts_max / bm_max
+    merged = list(fts_hits)
+    merged.extend(
+        Hit(source_id=hit.source_id, heading=hit.heading, text=hit.text, score=hit.score * scale)
+        for hit in extra
+        if hit.anchor not in known
+    )
+    return merged
+
+
 def retrieve_via_index(
     vault_dir: Path,
     query: str,
@@ -228,6 +257,8 @@ def retrieve_via_index(
         hits = index.search(query)
         if hits is None:  # FTS5 不可用 / 检索词全在 3 字以下 → BM25 兜底
             hits = bm25_scores(index.all_chunks(), query)
+        else:
+            hits = _supplement_with_bm25(hits, index, query)
         ranked, trace = fuse(
             hits,
             index=index,

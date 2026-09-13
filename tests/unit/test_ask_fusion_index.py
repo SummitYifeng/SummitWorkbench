@@ -11,6 +11,7 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
 from pydantic import SecretStr
 
 from summit_workbench.prompts import Prompt
@@ -314,3 +315,157 @@ def test_per_note_chunk_cap_keeps_one_note_from_monopolising(tmp_path: Path) -> 
         counts[chunk.source_id] = counts.get(chunk.source_id, 0) + 1
     assert counts and max(counts.values()) == 1
     assert any("单篇块数上限" in reason for _anchor, reason in trace.dropped)
+
+
+# ---- R1 / R3 / 召回补足：2026-09-14 在真实库上踩到的两类 bug 的回归 ----
+
+
+def _anchor_score(ranked: Sequence[RankedChunk], anchor: str) -> float | None:
+    for chunk in ranked:
+        if chunk.anchor == anchor:
+            return chunk.score
+    return None
+
+
+def _link_vault(tmp_path: Path, *, extra_hub: bool = False) -> Path:
+    """枢纽页 + 被它链接的邻居。查询用 6 字短语（FTS trigram 能命中），各块词频不同。"""
+    root = tmp_path / "vault"
+    body = (
+        "# 枢纽\n\n## 关键结论\n\n商标共识规范 商标共识规范 商标共识规范\n\n"
+        "## 关联\n\n[[d1|邻居一]]\n"
+    )
+    _note(root, "projects/hub.md", body, type="project-main", project="hub")
+    if extra_hub:
+        _note(
+            root,
+            "projects/hub2.md",
+            "# 枢纽二\n\n## 关键结论\n\n商标共识规范 商标共识规范\n\n## 关联\n\n[[d1|邻居一]]\n",
+            type="project-main",
+            project="hub2",
+        )
+    _note(
+        root,
+        "decisions/d1.md",
+        "# 邻居一\n\n## 决定\n\n商标共识规范 商标共识规范 商标共识规范\n\n"
+        "## 理由\n\n商标共识规范\n\n## 关联\n\n[[hub|枢纽]]\n",
+        type="decision",
+    )
+    # 第二个邻居：**不同的笔记**，正文相关度更低。旧 bug 会把 d1 与 d2 抹成同一个分数。
+    _note(
+        root,
+        "decisions/d2.md",
+        "# 邻居二\n\n## 决定\n\n商标共识规范\n\n## 关联\n\n[[hub|枢纽]]\n",
+        type="decision",
+    )
+    _note(
+        root,
+        "index/global-nav.md",
+        "# 全局导航\n\n## 生效中\n\n商标共识规范\n\n## 关联\n\n[[hub|枢纽]]\n",
+        type="index",
+        project="global",
+    )
+    return root
+
+
+LINK_QUERY = "商标共识规范"
+
+
+def test_link_bonus_is_multiplicative_not_a_replacement(tmp_path: Path) -> None:
+    """回归：链接信号必须是**乘性加成**，不能覆盖邻居自己的分。
+
+    旧实现把邻居的分整体替换成 `promoted = max(base, seed.score * ratio)`——它只由种子分决定、
+    与邻居自身内容无关，于是**不同邻居**被抹成完全相同的分数、顺序退化为任意。
+    2026-09-14 在真实库实测：Q1 排名 2–10 的分数全是 25.03，`## 理由` 因此压过 `## 决定`。
+
+    做法：同一批命中分别在不扩展（hops=0）与扩展（hops=1）下跑，断言「扩展后的分 =
+    扩展前的分 × 加成系数」——这一条在「覆盖式」实现下必然不成立。
+
+    变异验证：把 `new_score = existing_score * link_factor` 换回
+    `new_score = seed.score * weights.link_seed_ratio`，本用例必须变红。
+    """
+    vault = _link_vault(tmp_path)
+    weights = Weights()
+    factor = 1.0 + weights.link * weights.link_seed_ratio
+    with KnowledgeIndex(vault, tmp_path / "kb.sqlite") as index:
+        index.build()
+        hits = index.search(LINK_QUERY) or []
+        plan = lambda hops: RoutingPlan(  # noqa: E731 - 两行内构造两个计划更易读
+            kind=QueryKind.POINT, reason="t", limit=30, hops=hops
+        )
+        without, _ = fuse(hits, index=index, query=LINK_QUERY, plan=plan(0), weights=weights)
+        with_link, _ = fuse(hits, index=index, query=LINK_QUERY, plan=plan(1), weights=weights)
+
+    baseline = {chunk.anchor: chunk.score for chunk in without}
+    linked = [
+        chunk
+        for chunk in with_link
+        if any(why.startswith("双链扩展") for why in chunk.why) and chunk.anchor in baseline
+    ]
+    assert linked, "本 fixture 应至少有一个直接命中同时被双链扩展加成"
+    for chunk in linked:
+        assert chunk.score == pytest.approx(baseline[chunk.anchor] * factor), (
+            f"{chunk.anchor} 的链接信号不是乘性加成（分数被覆盖了）"
+        )
+
+
+def test_link_expansion_is_applied_once_per_neighbour(tmp_path: Path) -> None:
+    """回归：同一个邻居被多个种子链接时，链接加成只能算一次。
+
+    旧实现按种子逐个累加，邻居可被加成 2–4 次（实测把正文相关度 0.29 的块顶到 41.05），
+    链接信号彻底盖过正文相关度。
+
+    变异验证：把应用循环改成遍历两遍（`list(best_seed.items()) * 2`），本用例必须变红。
+    """
+    vault = _link_vault(tmp_path, extra_hub=True)
+    ranked, _ = _search(vault, tmp_path, LINK_QUERY)
+    target = next((chunk for chunk in ranked if chunk.anchor == "decisions/d1#决定"), None)
+    assert target is not None
+    link_notes = [why for why in target.why if why.startswith("双链扩展")]
+    assert len(link_notes) <= 1, f"链接加成被重复应用：{link_notes}"
+
+
+def test_link_expansion_obeys_project_filter(tmp_path: Path) -> None:
+    """R3：双链扩展必须重复应用与初始召回相同的 project 过滤，否则过滤结果不纯净。
+
+    实测：按 `project=hii-affairs` 过滤后，`project: global` 的导航页仍会从双链扩展里混进来。
+    """
+    vault = _link_vault(tmp_path)
+    with KnowledgeIndex(vault, tmp_path / "kb.sqlite") as index:
+        index.build()
+        hits = index.search(LINK_QUERY) or []
+        ranked, trace = fuse(
+            hits,
+            index=index,
+            query=LINK_QUERY,
+            plan=RoutingPlan(kind=QueryKind.POINT, reason="t", limit=30, hops=1),
+            project="hub",
+        )
+    assert not any(chunk.source_id.startswith("index/") for chunk in ranked), (
+        "project 过滤后仍混入了 global 导航页"
+    )
+    assert any("双链扩展" in reason for _anchor, reason in trace.dropped)
+
+
+def test_recall_supplement_merges_bm25_only_candidates(tmp_path: Path) -> None:
+    """召回补足：FTS 的 trigram 匹配不到两字词，命中过少时必须用 BM25 补足候选池。
+
+    实测（2026-09-14）：Q3 这类查询在 FTS 层只命中 10 个块，候选池一被饿死，
+    后面再怎么调权重都只是在几个候选里排序。
+    """
+    from summit_workbench.workflows.ask.retrieval import _supplement_with_bm25
+
+    root = tmp_path / "vault"
+    _note(root, "n/with-phrase.md", "# A\n\n## 区块一\n\n商标共识规范的原文。\n", type="note")
+    _note(root, "n/bigram-only.md", "# B\n\n## 区块二\n\n商标 一词单独出现。\n", type="note")
+
+    query = "商标共识规范 商标"
+    with KnowledgeIndex(root, tmp_path / "kb.sqlite") as index:
+        index.build()
+        fts_hits = index.search(query) or []
+        merged = _supplement_with_bm25(fts_hits, index, query)
+
+    fts_anchors = {hit.anchor for hit in fts_hits}
+    merged_anchors = {hit.anchor for hit in merged}
+    assert "n/bigram-only#区块二" not in fts_anchors, "两字词不该被 FTS trigram 命中"
+    assert "n/bigram-only#区块二" in merged_anchors, "BM25 独有命中必须被补进召回池"
+    assert len(merged) > len(fts_hits)

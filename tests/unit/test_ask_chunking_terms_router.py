@@ -30,27 +30,43 @@ BODY = """# 标题
 """
 
 
-def test_chunks_split_on_level_one_and_two_headings() -> None:
+def test_leading_h1_is_the_note_title_not_a_block() -> None:
+    """文首 H1 是「笔记标题」，不切块——它下面的正文只是引言。
+
+    2026-09-14 实测：把文首 H1 也当块边界，会让「标题块」在检索里与实际内容块抢排名
+    （`it/clusters/enrollment#报名与课程生命周期` 压过 `#关键结论`），块级命中率只有 25%。
+    """
     chunks = chunk_markdown("hii/notes/foo", BODY)
-    headings = [chunk.heading for chunk in chunks]
-    assert headings == ["标题", "第一个区块", "第二个区块", "第一个区块 2"]
+    assert [chunk.heading for chunk in chunks] == ["", "第一个区块", "第二个区块", "第一个区块 2"]
+    assert chunks[0].anchor == "hii/notes/foo"  # 前言块：锚点＝笔记本身
+    assert "# 标题" in chunks[0].text
 
 
 def test_level_one_heading_is_a_block_boundary() -> None:
-    """R2：一级标题也切块——原始材料常用 `#` 分大章，只切 `##` 会让这些章节并进相邻块、
-    无法被 `路径#区块` 定点引用（2026-09-14 在 HII IP 原件上实测）。"""
+    """R2：**非文首**的一级标题切块——原始材料常用 `#` 分大章，
+    只切 `##` 会让这些章节并进相邻块、无法被 `路径#区块` 定点引用。"""
     body = (
-        "# 六、正式名称\n\n正文甲。\n\n## 6.1 登记主体\n\n正文乙。\n\n# 七、落地事项\n\n正文丙。\n"
+        "# 原文：全景总结\n"  # 文首 H1 = 笔记标题，不切块
+        "\n## 原文（逐字，未改写）\n"
+        "\n# 六、正式名称\n\n正文甲。\n"
+        "\n## 6.1 登记主体\n\n正文乙。\n"
+        "\n# 七、落地事项\n\n正文丙。\n"
     )
     chunks = chunk_markdown("hii/sources/overview", body)
-    assert [chunk.heading for chunk in chunks] == ["六、正式名称", "6.1 登记主体", "七、落地事项"]
-    assert chunks[0].anchor == "hii/sources/overview#六、正式名称"
-    assert chunks[2].anchor == "hii/sources/overview#七、落地事项"
-    assert "正文丙" in chunks[2].text
+    assert [chunk.heading for chunk in chunks] == [
+        "",
+        "原文（逐字，未改写）",
+        "六、正式名称",
+        "6.1 登记主体",
+        "七、落地事项",
+    ]
+    assert chunks[2].anchor == "hii/sources/overview#六、正式名称"
+    assert chunks[4].anchor == "hii/sources/overview#七、落地事项"
+    assert "正文丙" in chunks[4].text
 
 
 def test_text_before_first_heading_is_a_preamble_chunk() -> None:
-    """首个标题之前的正文仍是「前言块」，锚点＝笔记本身。"""
+    """首个块边界之前的正文是「前言块」，锚点＝笔记本身。"""
     body = "前言段落。\n\n## 第一个区块\n\n内容。\n"
     chunks = chunk_markdown("a/b", body)
     assert [chunk.heading for chunk in chunks] == ["", "第一个区块"]
@@ -62,7 +78,7 @@ def test_fenced_code_block_does_not_split() -> None:
     """围栏里的 `#` / `##` 不该被当成区块标题（否则示例文本会把笔记切碎）。"""
     body = "# t\n\n## 真区块\n\n```\n## 假区块\n```\n\n```\n# 假一级标题\n```\n\n尾部。\n"
     chunks = chunk_markdown("a/b", body)
-    assert [chunk.heading for chunk in chunks] == ["t", "真区块"]
+    assert [chunk.heading for chunk in chunks] == ["", "真区块"]
     # 代码块里的假标题留在「真区块」的正文里，没有被切出去
     assert "## 假区块" in chunks[1].text
     assert "# 假一级标题" in chunks[1].text
