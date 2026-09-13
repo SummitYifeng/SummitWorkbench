@@ -753,6 +753,13 @@ class DulwichGitBackend:
             )
         except Exception as inner:  # noqa: BLE001 - 跨库分类
             raise _classify_remote(inner, f"push {remote} 失败") from inner
+        # G3：把"图复核通过 ⇒ 单 refspec 强推成功"这件事写进本机服务日志
+        # （只写稳定原因码与分支名，不写 URL/主机/路径）。日志是 best-effort，绝不让
+        # 一次成功的推送因为写日志失败而变成失败。
+        from summit_workbench.observability.server_log import log_push_confirmed_fast_forward
+
+        branch_name = refspec.split(b":", 1)[0].decode("utf-8", "replace")
+        log_push_confirmed_fast_forward(branch=branch_name.removeprefix("refs/heads/"))
 
     def push(self, remote: str = "origin") -> None:
         repo = self._open()

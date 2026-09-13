@@ -20,14 +20,24 @@ def short_id(value: str | None) -> str:
 
 
 class StructuredLogger:
-    """进程安全的 JSONL logger；默认 5 MiB、保留 3 个轮转文件。"""
+    """进程安全的 JSONL logger；默认 5 MiB、保留 3 个轮转文件。
+
+    ``new_mode`` 默认 0600：日志可能出现在多人共用的 Mac 上，同步失败线索里也不该
+    留下任何比稳定原因码更多的信息。创建与每次写入都显式 chmod，避免 umask 放宽。
+    """
 
     def __init__(
-        self, path: Path | None, *, component: str, max_bytes: int = 5 * 1024 * 1024
+        self,
+        path: Path | None,
+        *,
+        component: str,
+        max_bytes: int = 5 * 1024 * 1024,
+        new_mode: int = 0o600,
     ) -> None:
         self.path = path
         self.component = component
         self.max_bytes = max_bytes
+        self.new_mode = new_mode
         self._lock = threading.Lock()
 
     def log(
@@ -74,7 +84,14 @@ class StructuredLogger:
             )
             if next_size > self.max_bytes:
                 self._rotate()
-            with self.path.open("a", encoding="utf-8") as handle:
+            # 显式 0600：os.open 的 mode 只作用于新建文件，所以创建后再 chmod 一次，
+            # 覆盖"历史文件是 0644"或 umask 放宽的情况。chmod 失败不阻断日志本身。
+            descriptor = os.open(self.path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, self.new_mode)
+            try:
+                os.chmod(self.path, self.new_mode)
+            except OSError:
+                pass
+            with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
                 handle.write(line)
                 handle.flush()
                 os.fsync(handle.fileno())

@@ -185,6 +185,20 @@ def main(argv: list[str] | None = None) -> None:
     )
     config = uvicorn.Config(application, host=args.host, port=bound_port, log_level="warning")
     server = uvicorn.Server(config)
+    # G3：服务自有日志（~/Library/Logs/summitworkbench-server.log，0600）。
+    # 启动写一行，用于回答"昨晚服务到底起没起来"；此后同步/推送失败各落一行稳定原因码。
+    # 初始化幂等：server_logger 按 home 缓存，重复调用不会产生第二个文件。
+    from summit_workbench import __version__
+    from summit_workbench.observability.server_log import log_server_event
+
+    log_server_event(
+        "server_started",
+        fields={
+            "app_version": __version__,
+            "frontend_build": frontend_build,
+            "has_workspace": active_workspace.workspace_id is not None,
+        },
+    )
     try:
         sockets = [sock, callback_sock] if callback_sock is not None else [sock]
         server.run(sockets=sockets)
@@ -193,6 +207,7 @@ def main(argv: list[str] | None = None) -> None:
         if callback_sock is not None:
             callback_sock.close()
         record_path.unlink(missing_ok=True)
+        log_server_event("server_stopped")
 
 
 if __name__ == "__main__":

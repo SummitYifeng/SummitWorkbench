@@ -34,6 +34,7 @@ from summit_workbench.domain.sync import (
     state_from_counts,
 )
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile
+from summit_workbench.observability.server_log import log_sync_outcome
 from summit_workbench.repositories.automation_primary import AutomationPrimaryClaim
 from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.git_backend import (
@@ -284,6 +285,10 @@ def sync_workspace(
         outcomes.append(("(workspace)", SyncState.ERROR))
         reasons.append(("(workspace)", "lock-busy"))
     combined = combine_repo_states([state for _, state in outcomes])
+    if combined is not SyncState.READY and combined is not SyncState.UNCONFIGURED:
+        # G3：同步失败/降级落一行本机日志（只写稳定原因码与计数），
+        # 否则"昨晚为什么没同步"只能看内存快照。
+        log_sync_outcome(state=combined.value, reasons=reasons, home=home)
     primary_repo = GitRepo(
         vault_dir,
         backend_kind=backend_kind,
@@ -375,11 +380,13 @@ def push_after_commit(
             last_sync_at=previous.last_sync_at if previous is not None else None,
         )
         return state, snapshot
+    push_reason: str | None = None
     try:
         repo.push()
         state = SyncState.READY
         snapshot = _snapshot(ws_id, state=state, pending=0, last_sync_at=_now())
     except GitAuthError:
+        push_reason = "auth-rejected"
         state = SyncState.AUTH_REQUIRED
         snapshot = _snapshot(
             ws_id,
@@ -397,6 +404,7 @@ def push_after_commit(
             last_sync_at=previous.last_sync_at if previous is not None else None,
         )
     except GitNonFastForward:
+        push_reason = "non-fast-forward"
         state = SyncState.DIVERGED_PROTECTED
         snapshot = _snapshot(
             ws_id,
@@ -415,6 +423,7 @@ def push_after_commit(
         )
     except GitError as exc:
         if is_offline_error(exc):
+            push_reason = "offline"
             state = SyncState.OFFLINE_LOCAL_AHEAD
             snapshot = _snapshot(
                 ws_id,
@@ -432,6 +441,7 @@ def push_after_commit(
                 last_sync_at=previous.last_sync_at if previous is not None else None,
             )
         else:
+            push_reason = repo_error_reason(exc)
             state = SyncState.ERROR
             snapshot = _snapshot(
                 ws_id,
@@ -450,6 +460,9 @@ def push_after_commit(
                 detail=repo_reason_detail(repo_error_reason(exc)),
                 last_sync_at=previous.last_sync_at if previous is not None else None,
             )
+    if push_reason is not None:
+        # G3：wb 提交后的中心推送失败同样落一行（push_after_commit 不经过 sync_workspace）。
+        log_sync_outcome(state=state.value, reasons=[("push", push_reason)], home=home)
     if home is not None:
         save_sync_state(snapshot, home=home)
     return state, snapshot
