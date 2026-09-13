@@ -214,3 +214,25 @@ def test_transaction_record_never_contains_pat(
     ).read_text()
     assert "pat-never-on-disk" not in record
     assert "alice" not in record
+
+
+def test_preview_reports_a_stable_code_when_the_vault_is_not_a_repository(tmp_path) -> None:
+    """历史工作台可能没有纳入版本管理：必须是可执行原因，而不是 500 internal_error。
+
+    2026-09-13 真机复跑：新建工作台点「预览 HTTPS 转换」得到
+    `ApiError: 服务内部错误 [internal_error]`，日志里是 `GitError: 不是 git 仓库`。
+    """
+    from pydantic import SecretStr
+
+    vault = tmp_path / "not-a-repo"
+    vault.mkdir()
+    with pytest.raises(workflow.RemoteNormalizationError) as exc_info:
+        workflow.preview_remote_normalization(
+            vault,
+            workspace_id=str(uuid4()),
+            username="alice",
+            pat=SecretStr("synthetic"),
+            candidate_url="https://github.com/acme/private.git",
+        )
+    assert exc_info.value.code == "vault_not_a_repository"
+    assert "版本管理" in str(exc_info.value)

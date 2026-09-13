@@ -133,8 +133,19 @@ def test_create_workspace_succeeds_with_seed_and_marker(tmp_path) -> None:
     profile = load_profile(result.workspace_id, home=home)
     assert profile is not None
     assert str(profile.vault_dir) == result.vault_dir
-    # 无任何 .git 被创建（不碰 git）
-    assert not (vault / ".git").exists()
+    # D1（2026-09-13）：新工作台必须纳入版本管理——否则「写回自动留痕」静默失效、
+    # 「设置 → Git 同步」预览直接 500。初始化只经 P0-09 backend（不跑系统 git），分支为 main。
+    from summit_workbench.repositories.git import GitRepo
+
+    repo = GitRepo(vault, backend_kind="dulwich")
+    assert repo.is_git_repo()
+    assert repo.current_branch() == "main"
+    revision = repo.head_revision()
+    assert revision is not None
+    assert repo.commit_subject(revision) == "wb: onboarding create"
+    committed = set(repo.files_changed_by(revision))
+    assert "inbox.md" in committed
+    assert ".summit-workbench/workspace.json" in committed
 
 
 def test_create_refuses_when_vault_target_already_exists(tmp_path) -> None:

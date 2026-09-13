@@ -34,6 +34,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from summit_workbench.config.app_support import PROFILE_DIR_MODE, backups_dir
+from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.domain.onboarding import (
     OnboardingFlow,
     OnboardingResult,
@@ -47,6 +48,8 @@ from summit_workbench.domain.workspace import (
     WorkspaceManifest,
     evaluate_manifest_compatibility,
 )
+from summit_workbench.repositories.autocommit import commit_paths
+from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.profile_registry import (
     drop_profile,
     ensure_device_identity,
@@ -403,6 +406,39 @@ def _rollback_created_vault(
             pass
 
 
+def _init_vault_repository(vault_dir: Path, *, workspace_id: str, home: Path | None) -> None:
+    """把新建的 vault 纳入版本管理（D1；best-effort，绝不因此让"建工作台"失败）。
+
+    此前 create-new **从不**初始化仓库，于是两个承诺都落空：
+    ``commit_paths()`` 返回 ``NOT_GIT``，"系统写回自动 git 留痕"静默失效；
+    「设置 → Git 同步 → 预览 HTTPS 转换」直接 500（``GitError: 不是 git 仓库``）。
+
+    初始化只经 P0-09 backend（不调用系统 git），与 create-new 既有约定一致；分支固定为
+    ``main``（产品约定，同步横幅/克隆对端/验收记录都按 main 写）。
+    失败只影响版本管理本身：工作台照常可用，之后点同步会得到稳定错误码而不是 500。
+    """
+    try:
+        repo = GitRepo(vault_dir, backend_kind="dulwich", workspace_id=workspace_id)
+        if repo.is_git_repo():
+            return
+        repo.backend.init()
+        profile = load_profile(workspace_id, home=home)
+        files = [
+            path
+            for path in vault_dir.rglob("*")
+            if path.is_file() and ".git" not in path.relative_to(vault_dir).parts
+        ]
+        commit_paths(
+            vault_dir,
+            files,
+            "wb: onboarding create",
+            backend_kind="dulwich",
+            author=profile_identity(profile) if profile is not None else None,
+        )
+    except Exception:  # noqa: BLE001 - 版本管理初始化失败不阻断建工作台
+        pass
+
+
 def create_workspace(
     work_root: Path,
     *,
@@ -463,6 +499,7 @@ def create_workspace(
 
             claim_automation_primary(vault_target, workspace_id, device.device_id)
         set_active_profile(workspace_id, home=home)
+        _init_vault_repository(vault_target, workspace_id=workspace_id, home=home)
         return _make_result(
             OnboardingFlow.CREATE_NEW,
             workspace_id=workspace_id,

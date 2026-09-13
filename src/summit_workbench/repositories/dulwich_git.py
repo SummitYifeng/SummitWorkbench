@@ -223,12 +223,15 @@ class DulwichGitBackend:
     def is_git_repo(self) -> bool:
         return (self._path / ".git").exists()
 
-    def init(self, *, bare: bool = False) -> None:
+    def init(self, *, bare: bool = False, default_branch: str = "main") -> None:
+        # dulwich 默认把 HEAD 指向 refs/heads/master；产品约定是 main（同步横幅、克隆对端、
+        # 验收记录都按 main 写），所以显式指定，避免新工作台一诞生就叫 master。
         self._path.mkdir(parents=True, exist_ok=True)
+        branch = default_branch.encode("utf-8")
         if bare:
-            Repo.init_bare(str(self._path))
+            Repo.init_bare(str(self._path), default_branch=branch)
         else:
-            Repo.init(str(self._path))
+            Repo.init(str(self._path), default_branch=branch)
 
     def clone(self, url: str, destination: Path) -> None:
         with _silenced() as sink:

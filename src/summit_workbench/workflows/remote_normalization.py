@@ -214,7 +214,15 @@ def preview_remote_normalization(
 ) -> RemoteNormalizationPlan:
     """Validate candidate credentials/repository without changing the local repo."""
     repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=workspace_id)
-    old_url = repo.remote_url("origin")
+    try:
+        old_url = repo.remote_url("origin")
+    except GitError as exc:
+        # 历史工作台可能没被纳入版本管理；给出可执行原因而不是 500 internal_error
+        # （2026-09-13 真机复跑：新建工作台点「预览」就是这条路径）。
+        raise RemoteNormalizationError(
+            "vault_not_a_repository",
+            "当前工作台还没有纳入版本管理：请重新创建它，或用「从另一台 Mac 克隆」接入已有工作台",
+        ) from exc
     if not old_url:
         raise RemoteNormalizationError("remote_missing", "当前工作台没有 origin remote")
     try:
@@ -265,7 +273,13 @@ def apply_remote_normalization(
     profile = load_profile(plan.workspace_id, home=home)
     if profile is None:
         raise RemoteNormalizationError("profile_missing", "当前 workspace profile 不存在")
-    current_url = repo.remote_url("origin")
+    try:
+        current_url = repo.remote_url("origin")
+    except GitError as exc:
+        raise RemoteNormalizationError(
+            "vault_not_a_repository",
+            "当前工作台还没有纳入版本管理：请重新创建它，或用「从另一台 Mac 克隆」接入已有工作台",
+        ) from exc
     if current_url != plan.old_url:
         raise RemoteNormalizationError("plan_stale", "当前 origin 已变化，请重新预览")
     if repo.is_dirty():

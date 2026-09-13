@@ -108,8 +108,8 @@ class SystemGitBackend:
     def is_git_repo(self) -> bool:
         return (self._path / ".git").exists()
 
-    def init(self, *, bare: bool = False) -> None:
-        args = ["git", "init", "--quiet"]
+    def init(self, *, bare: bool = False, default_branch: str = "main") -> None:
+        args = ["git", "init", "--quiet", f"--initial-branch={default_branch}"]
         if bare:
             args.append("--bare")
         args.append(str(self._path))
