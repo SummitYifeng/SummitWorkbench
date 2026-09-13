@@ -255,7 +255,16 @@
   无「把已有本地工作台首次发布到新远端」的路径、同步失败仍不落盘到 `~/Library/Logs`。
 - 现场代价与 build 29 的逐条复核见 §O：D8 在真机上把用户从「保留双方」逼成「保留本机」，
   远端那条捕捉最终只剩第二父提交 `f013de6` 一个副本（工作树里 `grep -rl 离线-A2` 已找不到）。
-- **真机复验（build 30，见 §P）**：在装好的 build 30 上重造分叉（本地 `wb: capture [d8-local-verify]`
+- **D7 第一版只接了一条路径（真机复验当场发现，`7bfe40b` 修）**：恢复失败有**三条**路径——
+  `selection/validate` 的拒绝（不带 `reason`，第一版直接把 `error_code` 当消息显示，使用者在弹层里
+  看到的就是裸的 `conflict_snapshot_stale`）、`recover` 的预检分支、apply 分支的
+  `恢复未提交：<code>`。现在三条共用 `recoveryFailureMessage(reason, code, fallback)`，
+  弹层「临时预检未通过 · 原因：」也显示同一句人话；`web/scripts/test-sync-render.mjs` 为 selection
+  路径补了真实响应形状的 stub + 断言（变异验证：改回裸码形态立刻渲染出
+  `<div class="msg err">conflict_snapshot_stale</div>`）。修复随 **build 31** 出包
+  （`frontend_build = v2026.09.13-7bfe40b-9517f794`，DMG SHA-256
+  `0cff5d1c5633d296515203894801beeedfc5183af0fbad25ac5fe211fad36b3c`），并在真机上复验通过。
+- **真机复验（build 30/31，见 §P）**：在装好的 build 30 上重造分叉（本地 `wb: capture [d8-local-verify]`
   vs 远端 `wb: capture [d8-remote-verify]`，且 vault 里本来就躺着第一轮的 `inbox.md.remote`），
   走真实恢复接口选「保留双方副本」：预检 `status=validated / error_code=null`（不再被拒），
   写回 `applied_paths = ["inbox.md.remote.09aebd7"]`，第一轮的 `inbox.md.remote` 哈希不变

@@ -922,7 +922,10 @@ D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_co
 产物：**build 30**（`0.4.7` / arm64 / `INTERNAL-DEV`，源码 `b31c3ac`，
 `frontend_build = v2026.09.13-b31c3ac-c7517c5a`，DMG SHA-256
 `8a87044ba839ba2c291013a5b6d373b7834e9f1596259da9fa89fda0a131b645`，app SHA-256
-`063bab4b569ef2a090de48ea33f70e8df6e508264de645535a87b84a4db552a1`）。
+`063bab4b569ef2a090de48ea33f70e8df6e508264de645535a87b84a4db552a1`）与
+**build 31**（源码 `7bfe40b`，`frontend_build = v2026.09.13-7bfe40b-9517f794`，DMG SHA-256
+`0cff5d1c5633d296515203894801beeedfc5183af0fbad25ac5fe211fad36b3c`，app SHA-256
+`21be67b9ddd504f49cef8d050a3120949c750cc9f6946dbe166701893e72bf86`）。
 装到 Studio 后，运行中进程的 `runtime.json` 与包内 `build-manifest.json` 的 `frontend_build` 一致；
 包内 bundle 能搜到提示表文案 `改选「保留本机」或「采用远端」`，而 build 29 的 bundle 里
 只有「恢复准备未完成」——"D7/D8 是否进了这个包"可以就地复核。
@@ -939,6 +942,12 @@ D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_co
 | 预检（`selections={"inbox.md":"preserve-both"}`，`confirmed=false`） | `preparation.status = validated`、`ok = true`、`candidate_path_count = 1`、**`error_code = null`** —— build 29 在这一步必然 `rejected` + `preserve_both_path_collision` |
 | 写回（`confirmed=true`） | `recovery.status = committed`、`revision = 001df9a`、**`applied_paths = ["inbox.md.remote.09aebd7"]`**、`audit.status = committed` |
 | 工作树 | 新增 `inbox.md.remote.09aebd7`（958 B，尾部是远端那条 `D8-远端验证`）；`inbox.md` 保留本机内容（`D8-本机验证`）；**第一轮的 `inbox.md.remote` 哈希仍是 `13bfc790…`，未被覆盖** |
+
+**同一结论又在 UI 里独立复现了一次**（build 30，使用者亲自点的「保留双方副本」＋「确认恢复并创建提交」）：
+审计行 `applied_paths: ["inbox.md.remote.ca88ebd"]`、`selections: {"inbox.md":"preserve-both"}`、
+`status: committed`，恢复提交 `3c1a8f0` 双父 = `de99557`（本机）+ `ca88ebd`（远端），审计提交 `a597709`；
+App 随后 `ready`、`ahead/behind 0/0`，远端 main = 本机 HEAD（**push 成功**——正好反证 §P.3 的 D9，
+那次失败只来自客户端时间戳误判，不是远端拒绝）。
 
 ### P.2 D7 对齐（前端拿到的是带原因的错误码）
 
@@ -978,3 +987,33 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 - **修法方向**：`DulwichGitBackend.push` 捕获 `porcelain.DivergedBranches` 后，用不依赖时间戳的
   图可达性复核（从本地头沿 parents 走到远端 ref）；只有确认真快进时，才对该 ref 显式
   `force=True` 重推一次，并把"图复核通过"写进状态原因。不做无条件 force。
+
+### P.4 D7 第一版只接了一条路径（真机复验当场发现，**已修** `7bfe40b`）
+
+- **怎么发现的**：build 30 上按 §P.2 复现"快照过期"，弹层显示的却是**裸的
+  `conflict_snapshot_stale`**，不是提示表里的人话——说明第一版（`fd19603`）没有覆盖到用户真正走的那条
+  路径。事后核对：恢复失败有**三条**路径，第一版只接了第二条。
+  1. `/api/sync/conflict/selection/validate` 返回 `{ok:false, selection:{error_code}}` 时**不带**
+     `reason`，前端却是 `selection.reason ?? selection.error_code` ⇒ 直接把码当消息显示；
+  2. `/api/sync/conflict/recover` 的预检分支（第一版已接）；
+  3. apply 分支的 `恢复未提交：<code>`（同样只显示码）。
+- **修法**：三条路径统一走 `recoveryFailureMessage(reason, code, fallback)`（`reason` 优先、未知码退化
+  为「恢复准备未通过（<code>）：…」），弹层的「临时预检未通过 · 原因：」也显示同一句人话
+  （错误码仍留在"复制诊断"里）。
+- **回归锚点**：`web/scripts/test-sync-render.mjs` 为 selection 路径补了一个**真实响应形状**的 stub
+  （`status: stale` + 无 `reason`）与断言（必须出现「远端或本机在上次读取之后又变了」、必须**不**出现
+  `conflict_snapshot_stale` 与「人工选择未通过校验」）。**变异验证**：把这条分支改回裸码形态，渲染结果
+  立刻变回 `<div class="msg err">conflict_snapshot_stale</div>`——与真机所见逐字一致。
+- **build 31 真机复验（通过）**：装 build 31 后在仍打开的弹层里制造快照过期，使用者看到的是
+  「**远端或本机在上次读取之后又变了：请关掉本弹层、重新打开「查看冲突详情」再试。**」
+  ——不再是 build 30 上那个裸码。
+- **教训**：同一个错误码会在多条路径上露出；只修"我看到的这一条"等于没修。真机复验的价值正在这里：
+  单元/契约测试当时是绿的（它们只覆盖了 `recover` 那条），是**人眼在弹层里看到了裸码**才把它揪出来。
+
+### P.5 收尾状态（2026-09-13T02:09Z）
+
+第三轮验证完成后由接口收敛（`preserve-both`）：恢复提交 `5675da4`、审计 `18227e8`、
+`applied_paths = ["inbox.md.remote.e25dceb"]`、`push.ok = true`；App `state = ready`、`ahead/behind 0/0`、
+工作树 clean、HEAD = `origin/main`。工作台里同时留着五份可辨认的文件：
+`inbox.md`（本机）+ 四个远端兄弟副本 `inbox.md.remote`（第一轮）、`.remote.09aebd7`、
+`.remote.ca88ebd`、`.remote.e25dceb` ——**没有任何一次「保留双方」覆盖过别人**。

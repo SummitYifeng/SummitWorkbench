@@ -360,6 +360,11 @@ Keychain 都不动。**
   两个字段虽在类型里、却从未被使用（`grep -c error_code` 在前端仅出现在类型声明）。
 - **修法**：按错误码给一张**可执行**的提示表（`RECOVERY_FAILURE_HINTS`），未知码退化为
   「恢复准备未通过（<code>）：请重新打开冲突详情后重试。」；`data.reason` 仍然优先。
+- **补充（真机复验发现，`7bfe40b`）**：**失败有三条路径，第一版只接了 `recover` 那条**——
+  `selection/validate` 拒绝时返回的 `{ok:false, selection:{error_code}}` **不带** `reason`，
+  而前端直接把它当消息显示，使用者因此在弹层里看到裸的 `conflict_snapshot_stale`；
+  apply 分支的 `恢复未提交：<code>` 同样只有码。现在三条路径共用
+  `recoveryFailureMessage(reason, code, fallback)`，弹层「原因：」也显示人话。
   回归锚点：`web/scripts/test-sync-render.mjs` 用真实的被拒响应体断言弹层文案含具体原因、
   且**不再**出现「恢复准备未完成」；变异验证（去掉提示表查表）能复现旧文案。
 
@@ -381,12 +386,15 @@ Keychain 都不动。**
   + `preserve_both_path_collision`。
 
 > **D7/D8 的产物状态**：两者都在 build 29 的真机复跑中撞到，修完随 **build 30**
-> （`frontend_build = v2026.09.13-b31c3ac-c7517c5a`，DMG SHA-256
-> `8a87044ba839ba2c291013a5b6d373b7834e9f1596259da9fa89fda0a131b645`）出包，
-> 并已在装好的 build 30 上真机复验：**D8 通过**（重造分叉 + vault 里已有第一轮
-> `inbox.md.remote`，选「保留双方副本」→ 预检 `validated`、写回
-> `applied_paths = ["inbox.md.remote.09aebd7"]`、第一轮兄弟文件哈希不变、两份内容同时在位）；
-> **D7 对齐**（"快照过期"响应带 `error_code`，命中的是具体原因而不是「恢复准备未完成」）。
+> （`frontend_build = v2026.09.13-b31c3ac-c7517c5a`）与 **build 31**
+> （`frontend_build = v2026.09.13-7bfe40b-9517f794`，DMG SHA-256
+> `0cff5d1c5633d296515203894801beeedfc5183af0fbad25ac5fe211fad36b3c`）出包，并逐个真机复验：
+> **D8 通过**（重造分叉 + vault 里已有第一轮 `inbox.md.remote`，选「保留双方副本」→ 预检
+> `validated`、写回 `applied_paths = ["inbox.md.remote.09aebd7"]`、第一轮兄弟文件哈希不变、
+> 两份内容同时在位；同一条路径在使用者亲手点的 UI 上又独立复现了一次）；
+> **D7 两次**——build 30 上先暴露"提示表只接了一条路径"（弹层显示裸的
+> `conflict_snapshot_stale`），`7bfe40b` 补齐三条路径后随 build 31 出包，同场景复验显示
+> 「远端或本机在上次读取之后又变了：请关掉本弹层、重新打开「查看冲突详情」再试。」
 > 复现步骤 = §A6.2 第 5 步连点两次「保留双方副本」，第 1 次成功、第 2 次应成功并落成
 > `*.remote.<rev7>`；若被拒，提示语必须带具体原因而不是笼统的"恢复准备未完成"。
 > 完整证据见 [`OPEN-VERIFICATION-ITEMS.md`](OPEN-VERIFICATION-ITEMS.md) §P。
