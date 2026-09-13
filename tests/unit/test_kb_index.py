@@ -134,10 +134,16 @@ def test_fts5_search_returns_block_level_hits(vault: Path, tmp_path: Path) -> No
         pytest.skip("本解释器的 SQLite 不支持 FTS5")
     with _build(vault, tmp_path) as index:
         index.build()
-        # 关键词只出现在一级标题里 → 命中的是「前言块」，锚点就是笔记本身
+        # R2：关键词出现在**一级标题**里 → 一级标题也是块边界，命中的是那一块，
+        # 锚点从「笔记本身」变成「笔记#一级标题」（Obsidian 的 [[文件#标题]] 同样不区分级别）。
+        # 只有首个标题**之前**的正文才是「前言块」（锚点＝笔记本身），见
+        # tests/unit/test_ask_chunking_terms_router.py 的
+        # test_text_before_first_heading_is_a_preamble_chunk
         title_hits = index.search("商标共识规范")
         assert title_hits, "FTS5 应能命中中文子串"
-        assert "hii/notes/20260912-trademark-consensus" in {hit.anchor for hit in title_hits}
+        assert "hii/notes/20260912-trademark-consensus#HII–HIC 商标共识规范" in {
+            hit.anchor for hit in title_hits
+        }
 
         # 关键词出现在某个 `##` 区块里 → 命中的是**那一块**，锚点带区块标题
         block_hits = index.search("和夫曼之旅")

@@ -30,26 +30,42 @@ BODY = """# 标题
 """
 
 
-def test_chunks_split_on_level_two_headings() -> None:
+def test_chunks_split_on_level_one_and_two_headings() -> None:
     chunks = chunk_markdown("hii/notes/foo", BODY)
     headings = [chunk.heading for chunk in chunks]
-    assert headings == ["", "第一个区块", "第二个区块", "第一个区块 2"]
+    assert headings == ["标题", "第一个区块", "第二个区块", "第一个区块 2"]
 
 
-def test_preamble_anchor_is_the_note_itself() -> None:
-    chunks = chunk_markdown("hii/notes/foo", BODY)
-    assert chunks[0].anchor == "hii/notes/foo"
-    assert chunks[1].anchor == "hii/notes/foo#第一个区块"
+def test_level_one_heading_is_a_block_boundary() -> None:
+    """R2：一级标题也切块——原始材料常用 `#` 分大章，只切 `##` 会让这些章节并进相邻块、
+    无法被 `路径#区块` 定点引用（2026-09-14 在 HII IP 原件上实测）。"""
+    body = (
+        "# 六、正式名称\n\n正文甲。\n\n## 6.1 登记主体\n\n正文乙。\n\n# 七、落地事项\n\n正文丙。\n"
+    )
+    chunks = chunk_markdown("hii/sources/overview", body)
+    assert [chunk.heading for chunk in chunks] == ["六、正式名称", "6.1 登记主体", "七、落地事项"]
+    assert chunks[0].anchor == "hii/sources/overview#六、正式名称"
+    assert chunks[2].anchor == "hii/sources/overview#七、落地事项"
+    assert "正文丙" in chunks[2].text
+
+
+def test_text_before_first_heading_is_a_preamble_chunk() -> None:
+    """首个标题之前的正文仍是「前言块」，锚点＝笔记本身。"""
+    body = "前言段落。\n\n## 第一个区块\n\n内容。\n"
+    chunks = chunk_markdown("a/b", body)
+    assert [chunk.heading for chunk in chunks] == ["", "第一个区块"]
+    assert chunks[0].anchor == "a/b"
+    assert chunks[1].anchor == "a/b#第一个区块"
 
 
 def test_fenced_code_block_does_not_split() -> None:
-    """围栏里的 `##` 不该被当成区块标题（否则示例文本会把笔记切碎）。"""
-    body = "# t\n\n## 真区块\n\n```\n## 假区块\n```\n\n尾部。\n"
-    headings = [chunk.heading for chunk in chunk_markdown("a/b", body)]
+    """围栏里的 `#` / `##` 不该被当成区块标题（否则示例文本会把笔记切碎）。"""
+    body = "# t\n\n## 真区块\n\n```\n## 假区块\n```\n\n```\n# 假一级标题\n```\n\n尾部。\n"
     chunks = chunk_markdown("a/b", body)
-    assert headings == ["", "真区块"]  # "" 是 `## 真区块` 之前的前言块
+    assert [chunk.heading for chunk in chunks] == ["t", "真区块"]
     # 代码块里的假标题留在「真区块」的正文里，没有被切出去
     assert "## 假区块" in chunks[1].text
+    assert "# 假一级标题" in chunks[1].text
 
 
 def test_third_level_heading_stays_inside_its_block() -> None:

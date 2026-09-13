@@ -3,7 +3,8 @@
 
 校验两件事：
 
-1. 正文里的 `[[目标]]` / `[[目标#区块]]`（含 `[[目标|中文名]]` 形式）能否解析到真实文件、锚点是否是真实标题；
+1. 正文里的 `[[目标]]` / `[[目标#区块]]`（含 `[[目标|中文名]]` 形式）能否解析到真实文件、
+   锚点是否是真实标题；
 2. 反引号里的 `路径#区块` 引用（检索答案与 `## 证据` 区的引用格式）能否解析到真实文件与真实标题。
 
 为什么需要它：`路径#区块` 是我们与 Obsidian 共用的引用契约，而**标题层级一变锚点就会静默失效**
@@ -11,7 +12,7 @@
 
 用法：
 
-    .venv/bin/python scripts/kb_verify_links.py                    # 默认校验 settings 解析出的 vault
+    .venv/bin/python scripts/kb_verify_links.py        # 默认校验 settings 解析出的 vault
     .venv/bin/python scripts/kb_verify_links.py <vault 路径>
     .venv/bin/python scripts/kb_verify_links.py <vault 路径> --quiet
 
@@ -29,7 +30,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 # 机器目录与模板不参与双链（与 conventions.md §0 一致）。
-SKIP_DIRS = frozenset({".git", ".obsidian", "_signals", ".summit-workbench", "templates", "node_modules"})
+SKIP_DIRS = frozenset(
+    {".git", ".obsidian", "_signals", ".summit-workbench", "templates", "node_modules"}
+)
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+?)(?:#([^\]|]+?))?(?:\|[^\]]*)?\]\]")
 PATH_REF = re.compile(r"`([^`\n]+?)#([^`\n]+?)`")
@@ -152,7 +155,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.quiet:
         print(f"vault：{vault}")
-        print(f"扫描：{len(files)} 篇 Markdown｜双链 {link_count} 条｜`路径#区块` 引用 {ref_count} 条")
+        print(
+            f"扫描：{len(files)} 篇 Markdown｜双链 {link_count} 条｜`路径#区块` 引用 {ref_count} 条"
+        )
     if problems:
         print(f"✗ 发现 {len(problems)} 个问题：")
         for item in problems:
