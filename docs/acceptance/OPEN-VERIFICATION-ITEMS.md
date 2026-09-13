@@ -1032,3 +1032,63 @@ build 30 的前端读 `preparation?.error_code ?? recovery?.error_code` ⇒ 命�
 工作树 clean、HEAD = `origin/main`。工作台里同时留着五份可辨认的文件：
 `inbox.md`（本机）+ 四个远端兄弟副本 `inbox.md.remote`（第一轮）、`.remote.09aebd7`、
 `.remote.ca88ebd`、`.remote.e25dceb` ——**没有任何一次「保留双方」覆盖过别人**。
+
+## Q. Phase 6 复原 Studio 时发现的问题（2026-09-13）
+
+复原本机（清空 Application Support → 向导「连接已有工作台」→ 指回 `~/Documents/Work/_vault`）时又撞到两条。
+
+### Q.1 D10 · 「连接已有工作台」把设备角色一律写成 secondary（**已定界，未修**）
+
+- **现象**：`_vault` 的 `.summit-workbench/automation-primary.json` 里 `device_id` 正是本机
+  （`51885d3d-…`，generation 1），但向导走完后 profile 的 `device_role = "secondary"`。
+- **证据链**：`workflows/onboarding.py::connect_workspace()` **没有** `device_role` 形参，
+  落到 `_ensure_profile(..., DeviceRole.SECONDARY)` 默认值；对照 `create_workspace()` /
+  `upgrade_workspace()` 都收 `device_role` 并在为 primary 时顺带
+  `claim_automation_primary()`。全仓**没有任何**更新既有 profile `device_role` 的入口
+  （`grep -rn "device_role" src/` 只有 onboarding 写入点与读取点），界面也没有 claim 入口（§N 的 G1）。
+- **后果不是显示问题**：`workflows/sync_coordinator.py::automation_gate()` 只在
+  `profile.device_role is DeviceRole.AUTOMATION_PRIMARY` 且 claim 设备匹配时返回
+  `PRIMARY_OK` ⇒ **定时自动化（简报等 writer）在这台机器上不会跑**，而这台机器正是共享
+  marker 指定的主设备。用户按界面操作无法自救。
+- **本次的处置（绕行）**：用 App 自己的写入器改 profile（不是手改文本）——
+  `load_profile()` → `model_copy(update={"device_role": DeviceRole.AUTOMATION_PRIMARY})` →
+  `save_profile()`（`[feishu]` / `[models]` 段原样保留），重启后核验：
+  `profile.device_role = automation-primary`、`automation_gate(require_claim=True) = primary-ok`、
+  `/api/sync/status` 的 `automation_primary_device_id` 正是本机。
+- **修法方向**：connect 流程读 marker——`marker.device_id == 本机 device_id` ⇒ 直接建为
+  `automation-primary`（并在 profile 里记下 claim）；否则 secondary。配套把 §N 的 G1（界面无
+  claim 入口）一起补上，让角色可改、可解释。
+
+### Q.2 D11 · 已 typed 的远端错误被文本兜底重新分类（**已修** `f560d2e`）
+
+- **现象**：转换 HTTPS/写凭据之前，`/api/sync/status` 给的是
+  `"_vault：未分类的同步失败（unclassified）"`，而真实原因是**本机缺 workspace 级 Git 凭据**
+  ——正是 D3 想让界面说清楚的那一类。
+- **根因（可复现）**：`fetch()`/`push()` 在 `try` 里调用 `transport_kwargs()`，后者抛
+  `GitCredentialsUnavailable`；该异常被同一个 `except Exception` 接住并送进
+  `_classify_remote()`，而它**只按异常文本匹配**、不检查"是不是已经是我们自己的稳定类型"，
+  于是落进兜底 `GitBackendRuntimeError` ⇒ `repo_error_reason()` = `unclassified`。
+  复现：`GitRepo(vault, workspace_id=<不存在的 workspace>, username=…)` → `fetch()` →
+  `GitBackendRuntimeError` / 原因码 `unclassified`（修好后为 `GitCredentialsUnavailable` /
+  `credentials-missing`）。
+- **修法**：`_classify_remote()` 开头 `if isinstance(exc, GitError): return exc`。两个新测试 +
+  变异验证（去掉守卫即失败）：typed 错误原样返回且原因码为 `credentials-missing` /
+  `AUTH_REQUIRED`；注入会抛 `GitCredentialsUnavailable` 的 resolver 后 `fetch()` 仍是
+  `credentials-missing`。
+- **同源观察（未修，不是阻塞）**：`_vault` 的 `[remote "origin"]` 有**三条 `url`**
+  （SSH 在前 + 两条 HTTPS）。dulwich 的 `config.get(("remote","origin"), "url")` 取**最后**一条
+  ⇒ App 认为"已是 HTTPS"，`预览 HTTPS 转换` 因此报 `old_url == new_url` 而不修；而系统
+  `git remote -v` 的 fetch 走**第一条**（SSH）。两边各自能用，但"转换成功却什么都没改"这件事
+  会误导排查。修法方向：规范化时把多值 `url` 一并处理（或明确拒绝多值并要求先清理），
+  并在预览里回报"读到的是哪一条"。
+
+### Q.3 复原后的验收状态（Studio）
+
+| 检查 | 结果 |
+|---|---|
+| active workspace | `bf22c8d2-ef62-4bd3-9917-e76fdd3f7f0f`（`_vault`），`work_root = ~/Documents/Work` |
+| device / 角色 | `51885d3d-…`（与 marker 一致）/ `automation-primary`（Q.1 修正后），`automation_gate = primary-ok` |
+| 同步 | `state = ready`、`ahead/behind 0/0`、`remote_host = github.com`、`last_sync_at` 有值 |
+| 凭据 | profile `git_username = Yifeng93`、`git_remote_url = https://…/YifengWorkKnowledge.git`；Keychain 有 `git:github.com:Yifeng93` |
+| 工作树 | clean、`main`、与 `origin/main` 同步 |
+| 模型 / 飞书 | profile `[models.shared]` = deepseek-v4-flash；`[feishu]` app_id/redirect/scopes 就位（build 32 内置 app_secret） |

@@ -270,6 +270,20 @@
   写回 `applied_paths = ["inbox.md.remote.09aebd7"]`，第一轮的 `inbox.md.remote` 哈希不变
   （`13bfc790…`），本机与远端两份内容同时在位。
 
+### 2026-09-13 · 修复：已 typed 的远端错误不再被文本兜底重分类（D11）
+
+`_classify_remote()` 只按异常**文本**匹配，从不检查传入的是不是已经是我们自己的稳定类型。
+于是 `fetch()`/`push()` 里 `transport_kwargs()` 抛出的 `GitCredentialsUnavailable`
+（"缺少 workspace-scoped Git 凭据配置"）被同一个 `except Exception` 接住后重新包装成
+`GitBackendRuntimeError` ⇒ 原因码 `unclassified`、状态裸 `error`，界面只说
+「未分类的同步失败（unclassified）」——**恰好把 D3 想说的"本机缺凭据"说没了**。
+（2026-09-13 复原机器时实测到：`/api/sync/status` 就是这个文案。）
+
+修法：`_classify_remote()` 开头 `if isinstance(exc, GitError): return exc`——已经脱敏且已分类的
+错误原样抛出，只有真正的未知异常才走文本映射与兜底。两个新测试（typed 原样返回 +
+`credentials-missing`/`AUTH_REQUIRED`；注入抛 `GitCredentialsUnavailable` 的 resolver 后
+`fetch()` 仍是 `credentials-missing`）都做过变异验证（去掉守卫即失败）。
+
 ### 2026-09-13 · 内部产物 build 32（补回内置飞书凭据）
 
 `build 27–31` 为测试包，构建时未导出 `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET`，也没有
