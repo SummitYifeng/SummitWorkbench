@@ -1760,3 +1760,105 @@ Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 s
   「已暂停 / 已归档」仍为空。
 - 双机（Studio / Air）本轮未重走完整配方。
 - `review/_intake/hii-royalty-visits.md` 是否清理仍待使用者决定。
+
+## U. tag 发布 v0.4.8 与之后的实测（2026-09-13，本轮收尾）
+
+### U.1 tag 触发 `release.yml`
+
+`v0.4.8` 打在 `c46aff1203d34bfddf013c9d0a10bc8eeecd9048`（远端 CI run `34751018721`
+在该提交上四个 job 全绿之后才打），已推送。
+
+- **run id**：`34751154512`（`push: v0.4.8`）
+- **URL**：https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34751154512
+- **首次结果：失败**，卡在 `Prepare protected update configuration`。
+
+失败原因**不是代码**：release job 的 `environment: release` 里，仓库变量 `UPDATE_DOWNLOAD_URL`
+仍指向 **v0.4.7** 的 DMG，而工作流会断言它必须等于「本次 tag 推导出的 URL」，于是报
+`UPDATE_DOWNLOAD_URL must be https://…/download/v0.4.8/SummitWorkbench-0.4.8-arm64-INTERNAL-DEV.dmg`。
+这是每次发版都要人工推进的一项受保护配置。
+
+处理：把该环境变量更新为 v0.4.8 的 URL。注意 `PUT`（更新）在本 token 下返回 404，而
+`POST`（新建）/`DELETE` 正常，因此采用 **删除后重建**；过程中建的探针变量已删除，环境里
+最终只有 `UPDATE_DOWNLOAD_URL` / `UPDATE_FEED_URL` / `WB_FEISHU_APP_ID` 三项（值未打印）。
+随后 `gh run rerun --failed`：**全绿**，含
+`Build signed internal arm64 DMG`、`Run packaged integration tests`、
+`Run P1-07D dual-device acceptance gate`、`Publish complete public update release`。
+
+### U.2 已发布的产物
+
+- 发布页：https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.8
+  （`draft: false`、`prerelease: false`，即**稳定**渠道；`latest` feed 随之指向 0.4.8）
+- 资产：`SummitWorkbench-0.4.8-arm64-INTERNAL-DEV.dmg`、`update-feed.json`、`SHA256SUMS`、
+  `release-metadata.json`、`SBOM.json`、`notary-log.json`、`test-manifest.json`
+- **已发布 DMG 的 SHA-256**：`3958d446d5f439e1e8bb6a1d705d930ba4959ed6c38c33d015599cd4605a5815`
+  （下载后按已发布的 `SHA256SUMS` 复核：**OK**）
+- `update-feed.json` 指向 v0.4.8、`build 22`、`minimum_macos 13.0`，带 Ed25519 签名与公钥
+- ⚠️ CI 产物是 **build 22**，本地按 §T.4 构建的是 **build 35**：两者同源（tag 提交）、同一构建脚本，
+  但 build number 与 DMG 字节都不同（CI 用 run 号做 BUILD_NUMBER）。本节以下用
+  「**已发布包（build 22）**」与「**本地包（build 35）**」区分。
+
+### U.3 已发布包的独立探针（A.2 的迁移验证）
+
+把已发布 DMG 下载、`hdiutil attach`、取出 App 后，在 `env -i`（无仓库 Python、无 PATH）下跑
+`SummitWorkbenchServer --kb-diagnostic`：
+
+```json
+{"sqlite_version": "3.49.1", "fts5_trigram": true,
+ "fts_hit": ["probe/probe#检索目标"], "chunk_level_ok": true,
+ "forced_no_fts_search_is_none": true,
+ "forced_no_fts_bm25_hit": ["probe/probe#检索目标"], "bm25_fallback_ok": true}
+```
+
+**这就是包内探针存在的理由**：同一份源码，CI 冻结出来的 SQLite 是 **3.49.1**，
+而开发机 venv 是 **3.53.1** ——不探一下根本不知道分发环境是什么。两者 FTS5+trigram 都可用，
+强制关掉 FTS 的兜底分支也都活着。
+
+### U.4 已发布包的「真机问两题」**未能完成**（本轮遗留，如实记录）
+
+装好已发布包（build 22，`/api/version` 回报 `server_version 0.4.8 / build 22 / git_revision c46aff1`）
+之后，`/api/ask` 与本机一切**要读 `~/Documents/Work/_vault` 的接口**都**永久挂起**：
+
+| 请求 | 结果 |
+| --- | --- |
+| `GET /api/version`（不碰 vault） | 200，0.005s |
+| `POST /api/ask`（模型 + vault） | 挂起（240s 无响应） |
+| `GET /api/state`（读 vault） | 挂起（12s 无响应） |
+| `GET /api/sources/read?source_id=../../etc/passwd`（白名单早退） | 400，0.008s |
+| `GET /api/sources/read?source_id=it/it-roadmap`（真的读文件） | 挂起 |
+| 同一台机器上 CLI 直接读 `_vault/conventions.md` | 正常 |
+
+排查排除项（都实测过）：远端 CI 与 API 可达（5.8s 走完一次真实问答）；workspace 锁未被持有
+（外部 `flock LOCK_EX|LOCK_NB` 直接拿到）；Keychain 可读（`security find-generic-password` 秒回）；
+服务进程无出站连接、无 `security` 子进程、无 `SecurityAgent`、线程全在 idle；
+`flock`/`fcntl` 阻塞栈为空；服务 stdout 落到 `~/Library/Logs/summitworkbench-panel.log`，无异常。
+
+**最可能的原因（推断，未能直接证实）**：`~/Documents` 是 macOS TCC 保护目录，而 ad-hoc 签名**每次
+构建都不同**——对新签名的 App，macOS 把首次访问 `~/Documents` 视为新应用的请求，需要一次
+「允许访问「文稿」文件夹」。本会话既没有屏幕录制权限（`screencapture` 报
+`could not create image from display`），也没有 GUI 自动化权限（System Events 取不到任何窗口），
+**无法点掉这个授权框**，于是文件访问在 App 进程里一直等，表现为接口挂起；而 CLI 所在的终端
+早已被授权，所以命令行读同一个文件毫无问题（`UserNotificationCenter` 进程确实在跑，
+与「有等待中的系统提示」一致）。
+
+**因此**：§T.5 的两题验收是对**本地包（build 35，同一份源码、同一脚本）**做的，不是对已发布包做的。
+已发布包只完成了 U.3 的包内探针与版本/清单核验。**这一步需要使用者本人操作一次**：
+打开 App → 在弹出的「允许访问「文稿」文件夹」上选**允许** → 再问那两题。
+这是**本轮唯一未闭环的验收项**，不当作已完成。
+
+### U.5 本轮新发现、未修的缺陷
+
+- **`GET /api/sources/read?source_id=`（空值）返回 500，而不是代码意图的 400**：
+  `Path("")` 得到 `PosixPath('.')`，`''.suffix != '.md'` 于是走 `Path('.').with_suffix('.md')`，
+  抛 `ValueError: PosixPath('.') has an empty name`，在 `if not raw_id ... return 400` 之前就炸了。
+  复现：`curl -H "X-WB-Session-Token: …" "http://127.0.0.1:$PORT/api/sources/read?source_id="` → 500。
+  属错误码语义（公开契约范畴），**故意不在发版后偷改**：需要连同错误码快照/测试一起改并重跑 CI，
+  留作下一个提交的第一件事。
+- 卸载/重启 App 时旧 server 进程偶尔不会被回收（本轮实测一度同时存在 3 个 `SummitWorkbenchServer`）。
+  观察到的触发场景是客户端在请求中途被强杀；未定位到确定机理，也未修。
+
+### U.6 本机当前状态
+
+`/Applications/SummitWorkbench.app` = **已发布包 0.4.8 / build 22**（`codesign --verify --deep --strict` 通过）。
+其上首次读取 vault 仍需使用者点一次「允许访问「文稿」文件夹」（见 U.4）。
+本地另一份 build 35 产物保留在 `dist/releases/0.4.8/arm64/`，被取代的 `fbf735b` 产物保留在
+`dist/releases/0.4.8.superseded-fbf735b/`（均未删除）。

@@ -87,6 +87,19 @@ scripts/release-macos.sh
 把对应架构的 DMG 拖入 `/Applications`，首次启动后按图形化向导新建或连接 workspace。
 同事的完整首次流程只有三步：**新建/连接工作区 → 粘贴 DeepSeek API Key → 点「授权飞书」**
 （前提是管理员已在飞书开放平台把该同事加入应用「可用范围」）。
+
+### 升级后第一次打开要允许访问「文稿」
+
+vault 建在 `~/Documents` 下，而 `~/Documents` 是 macOS 的 **TCC 保护目录**。内部包是
+**ad-hoc 签名**，每次构建的签名都不同，macOS 因此把「换了新签名的 App」当成新应用：
+升级安装后**第一次**读取 vault 时，系统会弹一次
+「"SummitWorkbench" 想访问「文稿」文件夹中的文件」，必须点**允许**。
+
+这一步没法绕过也没法预授予（这是 TCC 的设计）。**没点之前，界面会表现为问答/首页一直转圈**：
+服务本身是活的（`/api/version` 秒回），但任何要读 vault 的接口都会一直等。
+若误点了「不允许」，去 **系统设置 → 隐私与安全性 → 文件与文件夹**（或「完全磁盘访问权限」）
+里为 SummitWorkbench 打开再重试。2026-09-13 装 build 22 时实测踩到，详见
+`docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §U.4。
 升级替换 App 不删除 profile、vault 或 Keychain；删除 App 也不会删除用户数据。若要
 清理本机数据，须在 App 外另行备份并明确删除 `~/Library/Application Support/
 SummitWorkbench`、日志目录和用户选择的 vault，不能把卸载 App 当成数据删除操作。
