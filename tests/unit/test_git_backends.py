@@ -311,6 +311,40 @@ def test_push_rejects_true_divergence_even_when_graph_check_runs(tmp_path: Path)
     assert DulwichGitBackend(bare).head_revision() == remote_head
 
 
+@pytest.mark.parametrize("kind", KINDS)
+def test_backend_remote_bind_and_unbind_roundtrip(kind: str, tmp_path: Path) -> None:
+    """G2 依赖的 remote 原语在两个后端上语义一致：add_remote / set_upstream / remove_remote。
+
+    ``set_upstream`` 等价 ``git push -u``：写 branch.<name>.remote/merge，使 @{u} 与
+    ahead/behind 可用；``remove_remote`` 幂等（本来没有就是 no-op）。
+    """
+    bare = tmp_path / "remote.git"
+    _backend(kind, bare).init(bare=True)
+    repo = _backend(kind, tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / "f.txt").write_text("x", encoding="utf-8")
+    repo.add(["f.txt"])
+    repo.commit("wb: x", author=ID)
+    head = repo.head_revision()
+
+    repo.add_remote("origin", str(bare))
+    assert repo.has_remote("origin")
+    assert repo.remote_url("origin") == str(bare)
+    assert not repo.has_upstream()
+
+    repo.push()
+    repo.fetch()
+    repo.set_upstream("origin")
+    assert repo.has_upstream()
+    assert repo.upstream_revision() == head
+
+    repo.remove_remote("origin")
+    assert not repo.has_remote("origin")
+    assert repo.remote_url("origin") is None
+    repo.remove_remote("origin")  # 幂等
+    assert not repo.has_remote("origin")
+
+
 def test_identity_and_revert_message_recorded(tmp_path: Path) -> None:
     """author 由调用方显式传入并写入 commit 对象（system/dulwich 一致）。"""
     from dulwich.repo import Repo

@@ -14,6 +14,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -32,7 +33,6 @@ from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
     GitAuthError,
-    GitBackend,
     GitError,
     GitRemoteSchemeUnsupported,
     GitTlsError,
@@ -40,6 +40,9 @@ from summit_workbench.repositories.git_backend import (
 from summit_workbench.repositories.profile_registry import load_profile, save_profile
 from summit_workbench.repositories.workspace_manifest import load_workspace_manifest
 from summit_workbench.workflows.remote_onboarding import validate_remote_url
+
+if TYPE_CHECKING:
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
 
 
 class RemoteNormalizationError(RuntimeError):
@@ -122,7 +125,14 @@ def load_transaction(workspace_id: str, home: Path | None) -> RemoteNormalizatio
         ) from exc
 
 
-def _candidate_backend(path: Path, workspace_id: str, username: str, pat: SecretStr) -> GitBackend:
+def credential_scoped_backend(
+    path: Path, workspace_id: str, username: str, pat: SecretStr
+) -> DulwichGitBackend:
+    """带本次调用凭据的 Dulwich backend（PAT 只进短生命周期 callback，不落盘）。
+
+    远端转换与 G2 的"首次发布"共用它：两处都必须只经 workspace 作用域的显式 resolver
+    拿凭据，绝不把 PAT 写进 URL、配置或日志。
+    """
     from summit_workbench.repositories.dulwich_git import DulwichGitBackend
 
     def resolve(_workspace_id: str, host: str, _username: str) -> GitCredentials:
@@ -160,7 +170,7 @@ def _validate_candidate(
     parent = Path(tempfile.mkdtemp(prefix=".summit-workbench-remote-check-"))
     clone_path = parent / "clone"
     try:
-        backend = _candidate_backend(clone_path, workspace_id, username, pat)
+        backend = credential_scoped_backend(clone_path, workspace_id, username, pat)
         try:
             backend.clone(safe_url, clone_path)
             manifest = load_workspace_manifest(clone_path)
@@ -421,6 +431,7 @@ __all__ = [
     "RemoteNormalizationPlan",
     "RemoteNormalizationTransaction",
     "apply_remote_normalization",
+    "credential_scoped_backend",
     "load_transaction",
     "preview_remote_normalization",
     "rollback_remote_normalization",

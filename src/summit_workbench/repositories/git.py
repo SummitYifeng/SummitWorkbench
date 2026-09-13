@@ -100,6 +100,18 @@ class GitRepo:
     def set_remote_url(self, url: str, name: str = "origin") -> None:
         self._backend.set_remote_url(url, name)
 
+    def add_remote(self, name: str, url: str) -> None:
+        """新增 remote（G2 首次发布用；调用方负责失败回滚）。"""
+        self._backend.add_remote(name, url)
+
+    def remove_remote(self, name: str = "origin") -> None:
+        """删除 remote 配置段（幂等；不碰 refs 与工作树）。"""
+        self._backend.remove_remote(name)
+
+    def set_upstream(self, remote: str = "origin", branch: str | None = None) -> None:
+        """写 branch.<name>.remote/merge（等价 ``git push -u``），只改本机配置。"""
+        self._backend.set_upstream(remote, branch)
+
     def current_branch(self) -> str:
         return self._backend.current_branch()
 

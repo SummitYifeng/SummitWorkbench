@@ -153,6 +153,14 @@ assert.match(
   'the toolbar exposes 立即同步, not only the banner retry',
 );
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
+// G2: a workspace with no origin had no in-app path to bind one (only manual git commands);
+// the publish entry point and its dispatch must both exist.
+assert.match(
+  settingsSource,
+  /data-action="git-remote-publish"/,
+  'the settings page exposes the first-publish entry point',
+);
+assert.match(source, /action === 'git-remote-publish'/, 'first-publish dispatch is wired');
 // G1: the automation-primary claim/takeover endpoint existed but nothing in the UI could reach it,
 // so a machine whose profile said `secondary` could never become primary (and never downgrade).
 assert.match(

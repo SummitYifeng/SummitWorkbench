@@ -472,6 +472,20 @@
     "method": [
       "POST"
     ],
+    "path": "/api/settings/git/remote/publish",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "GitRemoteNormalizationPayload",
+    "response_status": 200,
+    "error_codes": [
+      "workspace_not_configured"
+    ]
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/settings/git/remote/rollback",
     "request_fields": [
       "payload"

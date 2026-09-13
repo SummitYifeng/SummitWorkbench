@@ -10,6 +10,7 @@ export {
   downgradeAutomationPrimary,
   migrateWorkspace,
   previewGitRemoteNormalization,
+  publishWorkspaceToRemote,
   removeProfile,
   renderSettingsView,
   reopenOnboarding,

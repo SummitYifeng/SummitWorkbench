@@ -938,6 +938,54 @@ def register_settings_routes(
             "note": "origin/profile 已恢复；未提交、未推送、未修改 vault 内容",
         }
 
+    @app.post("/api/settings/git/remote/publish", response_model=None)
+    def settings_git_remote_publish(
+        request: Request, payload: GitRemoteNormalizationPayload
+    ) -> dict[str, object] | JSONResponse:
+        """G2：把还没有 origin 的本地工作台首次发布到一个空的 HTTPS 远端。
+
+        与「预览 HTTPS 转换」互补：那条路径要求工作台**已有** origin+upstream；
+        这条路径用于"本地已存在、远端尚未创建"的工作台。校验远端为空且可推送后，
+        add origin → 首次 push → 写 profile/Keychain；push 之前失败会移除 origin。
+        """
+        if ctx.active_workspace is None or ctx.workspace_id is None:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="workspace_not_configured",
+                    message="只有 active workspace 可以首次发布到远端",
+                    operation_id=dependencies.operation_id(request),
+                ),
+            )
+        try:
+            from pydantic import SecretStr
+
+            from summit_workbench.workflows.remote_publish import publish_workspace_to_remote
+
+            result = publish_workspace_to_remote(
+                ctx.vault_dir,
+                workspace_id=ctx.workspace_id,
+                username=payload.git_username,
+                pat=SecretStr(payload.pat),
+                candidate_url=payload.candidate_url,
+                home=ctx.active_workspace.home,
+                backend_kind=ctx.git_backend_kind or "dulwich",
+            )
+        except RemoteNormalizationError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
+                ),
+            )
+        return {
+            "ok": True,
+            "remote_url": result.remote_url,
+            "branch": result.branch,
+            "head": result.head,
+            "note": "origin 与 upstream 已绑定并完成首次推送；未修改 vault 内容",
+        }
+
     @app.post("/api/settings/profile/prepare", response_model=None)
     def settings_profile_prepare(payload: ProfileSwitchPayload) -> dict[str, object]:
         try:

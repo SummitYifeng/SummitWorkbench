@@ -302,6 +302,37 @@ class DulwichGitBackend:
         )
         config.write_to_path()
 
+    def remove_remote(self, name: str = "origin") -> None:
+        """删除 remote 配置段（幂等：本来就没有时为 no-op）。
+
+        G2 的"首次发布"在失败回滚时用它把刚加的 origin 抹掉；绝不动 refs 与工作树。
+        """
+        repo = self._open()
+        section = (b"remote", name.encode("utf-8"))
+        if self._config_get(repo, section, b"url") is None:
+            return
+        config = repo.get_config()
+        config.pop(section, None)
+        config.write_to_path()
+
+    def set_upstream(self, remote: str = "origin", branch: str | None = None) -> None:
+        """写 ``branch.<name>.remote/merge``（等价 ``git push -u``）。
+
+        只写配置：@ {u}、ahead/behind 与"有 upstream"判定都依赖它；不碰 refs 或工作树。
+        """
+        repo = self._open()
+        if branch is None:
+            ref_name = self._branch_ref(repo)
+            name = ref_name[len(b"refs/heads/") :]
+        else:
+            name = branch.encode("utf-8")
+            ref_name = b"refs/heads/" + name
+        config = repo.get_config()
+        section = (b"branch", name)
+        config.set(section, b"remote", remote.encode("utf-8"))
+        config.set(section, b"merge", ref_name)
+        config.write_to_path()
+
     def _head_ref_name(self, repo: Repo) -> bytes | None:
         """HEAD 符号引用最终指向的分支 ref（detached HEAD → None）。"""
         raw = repo.refs.read_ref(b"HEAD")

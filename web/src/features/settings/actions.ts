@@ -162,6 +162,70 @@ export async function downgradeAutomationPrimary(): Promise<void> {
   }
 }
 
+/** G2：首次发布的稳定错误码 → 用户能照做的短句。 */
+const PUBLISH_FAILURE_HINTS: Record<string, string> = {
+  remote_not_empty: '目标远端已有提交：请新建一个空仓库（不要勾选 README / .gitignore）。',
+  remote_unreachable: '无法访问目标远端：检查地址、网络或代理设置。',
+  git_auth_failed: 'GitHub 用户名或访问令牌不正确（令牌需要 repo 权限）。',
+  git_tls_failed: 'HTTPS 证书校验失败：检查系统时间或代理证书。',
+  remote_url_userinfo: '地址里不要写用户名或密码，凭据填在下面的输入框里。',
+  remote_scheme_unsupported: '只支持 https:// 开头的仓库地址。',
+  remote_already_configured: '本工作台已经有远端了；如需更换请用「预览 HTTPS 转换」。',
+  dirty_tree: '工作台有未提交改动：请先同步或提交后再发布。',
+  vault_has_no_commits: '本工作台还没有任何提交，没有可发布的内容。',
+  vault_not_a_repository: '本工作台还没有纳入版本管理：请重新创建工作台，或从另一台 Mac 克隆。',
+  remote_publish_failed: '目标远端不可推送：检查令牌权限与仓库设置。',
+  remote_publish_rolled_back: '发布失败，已恢复到没有远端的状态，可以修改后重试。',
+  git_username_invalid: 'GitHub 用户名不能为空。',
+  git_credential_missing: '访问令牌不能为空。',
+};
+
+function publishFailureMessage(err: unknown): string {
+  const code = (err as { code?: string | null } | null)?.code ?? null;
+  if (code && PUBLISH_FAILURE_HINTS[code]) return PUBLISH_FAILURE_HINTS[code];
+  return String(err);
+}
+
+function showPublishResult(message: string, ok: boolean): void {
+  const output = document.getElementById('publish-result');
+  if (output) output.innerHTML = '<div class="' + (ok ? 'success' : 'error') + '">' + esc(message) + '</div>';
+}
+
+/**
+ * G2：把还没有远端的工作台绑定到一个新建的空远端并首次推送。
+ *
+ * 只走 HTTPS；令牌一次性交给后端，由后端写进本机 Keychain（不进 vault、不进提交）。
+ */
+export async function publishWorkspaceToRemote(): Promise<void> {
+  const candidate = (document.getElementById('publish-remote-url') as HTMLInputElement | null)?.value.trim() ?? '';
+  const username = (document.getElementById('publish-github-username') as HTMLInputElement | null)?.value.trim() ?? '';
+  const patInput = document.getElementById('publish-github-pat') as HTMLInputElement | null;
+  const pat = patInput?.value ?? '';
+  if (!candidate || !username || !pat) {
+    toast('请填写 HTTPS 地址、GitHub 用户名和访问令牌', 'err');
+    return;
+  }
+  if (!window.confirm('确认把本工作台发布到这个远端？会在远端新建分支并推送当前历史，不会 force。')) return;
+  try {
+    const result = await api<{ remote_url: string; branch: string }>('/api/settings/git/remote/publish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate_url: candidate, git_username: username, pat }),
+    });
+    if (patInput) patInput.value = '';
+    showPublishResult(
+      '已发布到 ' + result.remote_url + '（branch ' + result.branch + '）：origin 与 upstream 已绑定，接下来可以点「立即同步」。',
+      true,
+    );
+    toast('首次发布完成', 'ok');
+    void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
+  } catch (err) {
+    const message = publishFailureMessage(err);
+    showPublishResult(message, false);
+    toast(message, 'err');
+  }
+}
+
 export async function runAcceptancePreflight(): Promise<void> {
   try {
     const result = await api<AcceptancePreflightPayload>('/api/settings/acceptance-preflight', {

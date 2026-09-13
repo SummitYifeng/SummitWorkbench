@@ -101,6 +101,7 @@ import {
   migrateWorkspace,
   mountSettings,
   previewGitRemoteNormalization,
+  publishWorkspaceToRemote,
   removeProfile,
   renderSettingsView,
   reopenOnboarding,
@@ -533,6 +534,10 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'git-remote-rollback') {
     void rollbackGitRemoteNormalization();
+    return;
+  }
+  if (action === 'git-remote-publish') {
+    void publishWorkspaceToRemote();
     return;
   }
   if (action === 'acceptance-preflight') {

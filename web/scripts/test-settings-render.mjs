@@ -21,6 +21,7 @@ import {
   runAcceptancePreflight,
   claimAutomationPrimary,
   downgradeAutomationPrimary,
+  publishWorkspaceToRemote,
 } from './features/settings';
 
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -210,6 +211,51 @@ await renderSettings(primaryOwnView, {
 });
 export const primaryOwnHtml = primaryOwnView.innerHTML;
 
+// G2：没有远端时必须给出可执行的首次发布入口；已经有远端时不再显示。
+const publishHiddenView = makeView();
+await renderSettings(publishHiddenView, {
+  api: (url) => {
+    if (url === '/api/settings/profiles') {
+      return Promise.resolve({ profiles: [{ ...primaryProfile('secondary'), remote_url: 'https://github.com/example/existing.git' }], current_device_id: 'dev-local' });
+    }
+    if (url === '/api/settings/automation') return Promise.resolve({ jobs: {} });
+    if (url === '/api/sync/status') return Promise.resolve({});
+    return Promise.resolve({ status: { feishu_auth: { needs_reauthorize: false } } });
+  },
+  mutation: (work) => work(), toast: () => {}, refresh: () => {},
+});
+export const publishHiddenHtml = publishHiddenView.innerHTML;
+
+fields['publish-remote-url'] = { value: 'https://github.com/example/new-repo.git' };
+fields['publish-github-username'] = { value: 'example' };
+fields['publish-github-pat'] = { value: 'synthetic-publish-pat' };
+fields['publish-result'] = makeView();
+const publishCalls = [];
+mountSettings({
+  api: (url, options) => {
+    if (url === '/api/settings/git/remote/publish') {
+      publishCalls.push({ body: JSON.parse(String(options?.body ?? '{}')), options });
+      return Promise.resolve({ ok: true, remote_url: 'https://github.com/example/new-repo.git', branch: 'main' });
+    }
+    return recordingApi(url, options);
+  },
+  mutation: (work) => work(),
+  toast: (message, kind) => { toasts.push({ message, kind }); },
+  refresh: () => {},
+  workspaceId: () => 'ws-1',
+  clearDraftSnapshot: () => {}, disposeApiClient: () => {}, disposeWorkspaceStore: () => {},
+});
+await publishWorkspaceToRemote();
+export const publishPatValueAfter = fields['publish-github-pat'].value;
+export const publishProbe = {
+  calls: publishCalls.map((call) => ({
+    body: call.body,
+    method: call.options?.method,
+    contentType: call.options?.headers?.['Content-Type'],
+  })),
+  resultHtml: fields['publish-result'].innerHTML,
+};
+
 // G1 写请求：未勾选确认时一个请求都不发；勾选后必须带回 device_id/takeover/expected_generation。
 fields['primary-claim-result'] = makeView();
 fields['primary-takeover-ack'] = { checked: false };
@@ -308,6 +354,17 @@ try {
     'removing the active workspace must say a restart is required',
   );
 
+  // G2：没有远端 ⇒ 首次发布入口；已有远端 ⇒ 不再显示（避免必然失败的按钮）。
+  assert.match(mod.finalHtml, /首次发布到远端/, 'a workspace without a remote gets a publish entry point');
+  assert.match(mod.finalHtml, /id="publish-remote-url"/, 'the publish form collects an HTTPS URL');
+  assert.match(mod.finalHtml, /data-action="git-remote-publish"/, 'the publish button is rendered');
+  assert.doesNotMatch(
+    mod.publishHiddenHtml,
+    /data-action="git-remote-publish"/,
+    'a workspace that already has a remote is not offered first publish',
+  );
+  assert.doesNotMatch(mod.publishHiddenHtml, /首次发布到远端/, 'the publish card disappears once bound');
+
   // G1：没有声明时给"声明"入口；别的设备持有时给"勾选确认 + 接管 + generation"与降级入口。
   assert.match(mod.finalHtml, /尚未声明/, 'settings says when no primary is declared yet');
   assert.match(mod.finalHtml, /声明本机为主设备/, 'settings offers the first claim entry point');
@@ -340,6 +397,18 @@ try {
     assert.equal(call.method, 'POST', call.url + ' must be POSTed');
     assert.equal(call.contentType, 'application/json', call.url + ' must send a JSON body');
   }
+
+  // G2 写请求：一次 POST、JSON 头、表单值原样进 body、成功后清空令牌输入框。
+  assert.equal(mod.publishProbe.calls.length, 1, 'publishing issues exactly one request');
+  assert.deepEqual(mod.publishProbe.calls[0].body, {
+    candidate_url: 'https://github.com/example/new-repo.git',
+    git_username: 'example',
+    pat: 'synthetic-publish-pat',
+  });
+  assert.equal(mod.publishProbe.calls[0].method, 'POST');
+  assert.equal(mod.publishProbe.calls[0].contentType, 'application/json');
+  assert.equal(mod.publishPatValueAfter, '', 'the PAT input must be cleared after a successful publish');
+  assert.match(mod.publishProbe.resultHtml, /origin 与 upstream 已绑定/, 'the publish result explains what changed');
 
   console.log('Settings render race tests passed');
 } finally {

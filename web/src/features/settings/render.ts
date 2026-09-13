@@ -173,6 +173,22 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
     const removeHint = response.profiles.some((profile) => profile.active)
       ? '<p class="hint">移除只影响这台 Mac：vault、远端仓库和 Keychain 凭据都不动。移除当前工作台后，需要重启工作台才会生效。</p>'
       : '';
+    // G2：还没有远端的工作台此前只能手工 git remote add / push。这里给一条可执行的发布路径：
+    // 先在 GitHub 建**空**仓库（不勾选 README），再把 HTTPS 地址 + 用户名 + 令牌填进来。
+    const publishSection = active && !active.remote_url
+      ? '<section class="block"><h3 class="section-title">首次发布到远端</h3>' +
+        '<p class="hint">本工作台还没有远端，所以无法在多台 Mac 之间同步。先到 GitHub 新建一个<strong>空</strong>仓库' +
+        '（不要勾选 README / .gitignore / license），再把它的 HTTPS 地址填到下面。' +
+        '发布只会新建分支并推送当前历史，<strong>不会</strong> force，也不会改动工作台里的文件。</p>' +
+        '<div class="settings-path"><span class="meta">即将发布：' + esc(active.path) + '</span></div>' +
+        '<form id="git-remote-publish-form"><div class="grid2">' +
+        '<label>HTTPS 仓库地址<input id="publish-remote-url" placeholder="https://github.com/用户名/仓库.git"></label>' +
+        '<label>GitHub 用户名<input id="publish-github-username"></label>' +
+        '<label>访问令牌（仅本次使用）<input id="publish-github-pat" type="password"></label></div>' +
+        '<p class="hint">令牌只写入这台 Mac 的 Keychain，不会进 vault、不会进提交。</p>' +
+        '<div class="row"><button class="primary" type="button" data-action="git-remote-publish">绑定并首次发布</button></div></form>' +
+        '<div id="publish-result"></div></section>'
+      : '';
     const advanced = '<details class="settings-advanced-block"><summary><span class="bf-chev">›</span>高级与维护（多工作台 · Git 同步 · 诊断）</summary>' +
       '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + removeHint + '</section>' +
       '<section class="block"><h3 class="section-title">Git 同步</h3><p class="hint">需要多台设备同步时再使用。系统会先验证，不会把访问令牌写进 vault。</p>' +
@@ -180,6 +196,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<label>GitHub 用户名<input id="remote-github-username"></label><label>访问令牌（仅本次使用）<input id="remote-github-pat" type="password"></label></div>' +
       '<div class="row"><button class="primary" type="button" data-action="git-remote-preview">预览 HTTPS 转换</button><button class="ghost" type="button" data-action="git-remote-rollback">回滚最近一次转换</button></div></form><div id="remote-normalization-result"></div></section>' +
       primaryRoleHtml(response.current_device_id, active?.device_role, sync?.automation_primary_device_id, sync?.automation_primary_generation) +
+      publishSection +
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
     view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid">' +

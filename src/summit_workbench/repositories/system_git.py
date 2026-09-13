@@ -138,6 +138,16 @@ class SystemGitBackend:
     def add_remote(self, name: str, url: str) -> None:
         self._must("remote", "add", name, url)
 
+    def remove_remote(self, name: str = "origin") -> None:
+        if name not in self._run("remote").stdout.split():
+            return  # 幂等
+        self._must("remote", "remove", name)
+
+    def set_upstream(self, remote: str = "origin", branch: str | None = None) -> None:
+        name = branch or self.current_branch()
+        self._must("config", f"branch.{name}.remote", remote)
+        self._must("config", f"branch.{name}.merge", f"refs/heads/{name}")
+
     def current_branch(self) -> str:
         return self._must("rev-parse", "--abbrev-ref", "HEAD")
 
