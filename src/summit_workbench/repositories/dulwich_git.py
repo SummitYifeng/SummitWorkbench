@@ -65,7 +65,15 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
     顺序重要：证书 → TLS 握手 → 认证 → 代理 → 网络，避免宽泛标记互相吞并。
     未命中任何已知标记的异常归为 :class:`GitBackendRuntimeError`，绝不伪装成
     远端不可达（便于 acceptance preflight 区分「后端 bug」与「网络/凭据/TLS」）。
+
+    **已经是我们自己的 typed error 时原样抛出**：否则它的类型会被下面的文本匹配抹掉。
+    2026-09-13 真机复现——恢复机器后还没做 HTTPS 转换时，``transport_kwargs()`` 抛
+    :class:`GitCredentialsUnavailable`（"缺少 workspace-scoped Git 凭据配置"），却被这段
+    兜底重新包成 ``GitBackendRuntimeError`` ⇒ 原因码落成 ``unclassified``，界面只说
+    「未分类的同步失败」，正好把 D3 想要的"缺凭据"说没了。
     """
+    if isinstance(exc, GitError):
+        return exc
     text = f"{type(exc).__name__}: {exc}".casefold()
     if any(
         marker in text

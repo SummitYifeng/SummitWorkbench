@@ -415,6 +415,60 @@ def test_classify_remote_proxy_credentials_runtime() -> None:
     assert isinstance(dulwich_git._classify_remote(unknown, "m"), GitBackendRuntimeError)
 
 
+def test_classify_remote_preserves_already_typed_errors() -> None:
+    """已分类的错误不得被文本兜底重包（否则缺凭据会显示 unclassified）。
+
+    2026-09-13 真机复现：恢复机器后、HTTPS 转换之前，`transport_kwargs()` 抛
+    `GitCredentialsUnavailable`，被 `_classify_remote` 的兜底重新包成
+    `GitBackendRuntimeError` ⇒ 原因码 `unclassified`、界面只说「未分类的同步失败」。
+    """
+    from summit_workbench.domain.sync import SyncState, classify_repo_error, repo_error_reason
+    from summit_workbench.repositories import dulwich_git
+    from summit_workbench.repositories.git_backend import (
+        GitCredentialsUnavailable,
+        GitProxyError,
+        GitTlsError,
+    )
+
+    for typed in (
+        GitCredentialsUnavailable("缺少凭据"),
+        GitTlsError("tls"),
+        GitProxyError("proxy"),
+    ):
+        assert dulwich_git._classify_remote(typed, "m") is typed
+
+    missing = dulwich_git._classify_remote(GitCredentialsUnavailable("缺少凭据"), "m")
+    assert repo_error_reason(missing) == "credentials-missing"
+    assert classify_repo_error(missing) is SyncState.AUTH_REQUIRED
+
+
+def test_fetch_keeps_typed_credential_error(tmp_path: Path) -> None:
+    """fetch 里缺凭据必须落成 credentials-missing，而不是被包装成 unclassified。"""
+    from dulwich.repo import Repo
+
+    from summit_workbench.domain.sync import repo_error_reason
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+    from summit_workbench.repositories.git_backend import GitCredentialsUnavailable
+
+    path = tmp_path / "vault"
+    path.mkdir(parents=True, exist_ok=True)
+    Repo.init(str(path))
+    repo = Repo(str(path))
+    config = repo.get_config()
+    config.set((b"remote", b"origin"), b"url", b"https://github.com/example/private.git")
+    config.write_to_path()
+
+    def resolver(*_args: object) -> None:
+        raise GitCredentialsUnavailable("缺少 workspace-scoped Git 凭据配置")
+
+    backend = DulwichGitBackend(
+        path, workspace_id="ws", username="Yifeng93", credential_resolver=resolver
+    )
+    with pytest.raises(GitCredentialsUnavailable) as caught:
+        backend.fetch()
+    assert repo_error_reason(caught.value) == "credentials-missing"
+
+
 def test_classify_git_error_stable_codes() -> None:
     """classify_git_error 返回稳定脱敏码（auth/tls/cert/proxy/credential/network/runtime）。"""
     from summit_workbench.repositories.git_backend import (
