@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -291,8 +292,11 @@ def test_runtime_diagnostic_proves_both_paths_in_this_interpreter() -> None:
     assert report["chunk_level_ok"] is True
     assert report["bm25_fallback_ok"] is True
     assert report["forced_no_fts_search_is_none"] is True
-    assert any("#" in anchor for anchor in report["forced_no_fts_bm25_hit"])
+    # runtime_diagnostic 返回 dict[str, object]（要 JSON 序列化），取列表时显式收窄
+    forced = cast(list[str], report["forced_no_fts_bm25_hit"])
+    assert any("#" in anchor for anchor in forced)
     if report["fts5_trigram"]:
-        assert any("#" in anchor for anchor in report["fts_hit"])
+        fts_hits = cast(list[str], report["fts_hit"])
+        assert any("#" in anchor for anchor in fts_hits)
     else:  # pragma: no cover - 本机 FTS5 可用
         assert report["fts_hit"] is None

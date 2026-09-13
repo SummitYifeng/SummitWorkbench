@@ -205,3 +205,42 @@ def test_only_the_two_acceptance_questions_call_the_model() -> None:
         "Q1 商标共识规范（决策）",
         "Q2 IT 进度与下一阶段（点查）",
     ]
+
+
+# --------------------------------------------------------------- 已安装 App 的口径
+# `scripts/kb_acceptance_installed.py` 通过**装到 /Applications 之后的** App 自己的服务发问。
+# 它必须用与 Swift 侧 `RuntimeRecord.candidateURLs` 相同的候选集合找 runtime record——
+# 只查 `profiles/**` 会让打包 App（记录写在 app_support 根）永远找不到（同一类错误让
+# `install-macos-app.sh` 误报过 readiness 失败）。
+
+
+def _installed_module() -> ModuleType:
+    return _load("kb_acceptance_installed")
+
+
+def test_installed_harness_finds_the_record_at_the_app_support_root(tmp_path: Path) -> None:
+    module = _installed_module()
+    root = tmp_path / "SummitWorkbench"
+    root.mkdir()
+    (root / "runtime.json").write_text("{}", encoding="utf-8")
+    assert module.runtime_records(root) == [root / "runtime.json"]
+
+
+def test_installed_harness_finds_the_record_under_profiles(tmp_path: Path) -> None:
+    module = _installed_module()
+    root = tmp_path / "SummitWorkbench"
+    record = root / "profiles" / "ws-1" / "runtime" / "runtime.json"
+    record.parent.mkdir(parents=True)
+    record.write_text("{}", encoding="utf-8")
+    assert module.runtime_records(root) == [record]
+
+
+def test_installed_harness_returns_both_locations_with_root_first(tmp_path: Path) -> None:
+    module = _installed_module()
+    root = tmp_path / "SummitWorkbench"
+    (root / "profiles" / "ws-1" / "runtime").mkdir(parents=True)
+    (root / "runtime.json").write_text("{}", encoding="utf-8")
+    (root / "profiles" / "ws-1" / "runtime" / "runtime.json").write_text("{}", encoding="utf-8")
+    found = module.runtime_records(root)
+    assert found[0] == root / "runtime.json"
+    assert root / "profiles" / "ws-1" / "runtime" / "runtime.json" in found

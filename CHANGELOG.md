@@ -43,9 +43,25 @@
 - **人员索引再生成脚本**（`scripts/kb_index_people.py`）：`index/people.md` 正文写着「由聚合脚本
   重生成，不需要手工维护条目」，但那个脚本当时写在 `/tmp`、没有进仓库，页面因此不可复现。
   现在固化进 `scripts/` 并有 `--check`（页面与 frontmatter 不一致即非零退出）。
+- **已安装 App 的端到端验收脚本**（`scripts/kb_acceptance_installed.py`）：通过**装到
+  `/Applications` 之后那个 App 自己的本地服务**（`POST /api/ask`，即「第二大脑」面板调用的同一
+  路由）发问，并用 `/api/sources/read` 逐条打开返回的 `路径#区块` 引用，验的是「装完到底能不能用」
+  而不是「源码能不能跑」。会话令牌由 App 自己持有（原生启动器注入 bundle server），脚本从
+  server 进程环境读取，**绝不打印、绝不落盘**。因为面板是受管 WKWebView、脚本无法可靠驱动，
+  这条 API 口径是等价且可重复的替代（面板只负责渲染 `/api/ask` 的返回）。
 
 ### 修复
 
+- **`install-macos-app.sh` 的 readiness 假失败与安全检查失效**（安装 build 35 时实测踩到；
+  归档文档 §6.2 曾把它记为「踩过的坑」但一直没修）。打包 App 的 runtime record 落在
+  `<app_support>/runtime.json`（原生启动器经 `WB_RUNTIME_RECORD` 注入，见
+  `native/SummitWorkbench/RuntimeRecord.swift`），而 `wb web` CLI 落在
+  `<app_support>/profiles/*/runtime/runtime.json`；脚本**三处**都只查后者，导致
+  ① App 正在运行时检测不到，会绕过安全检查直接替换运行中的 App；
+  ② 服务其实已就绪却误报「服务未在 readiness 窗口内启动」，退出码 1 并把
+  `SummitWorkbench.app.previous` 留在原地。现在统一走 `runtime_records()`（与 Swift 侧
+  `RuntimeRecord.candidateURLs` 同口径），readiness 遍历所有候选记录并在成功时打印实际使用的
+  record 路径。真机复验：运行中拒绝安装（EXIT 1）、退出后干净安装（EXIT 0 且清理 `.previous`）。
 - **损坏的索引库不再让问答直接崩**（`repositories/kb_index.py` / `workflows/ask/retrieval.py`）。
   实测复现：索引文件是垃圾内容时 `KnowledgeIndex.__init__` 抛
   `sqlite3.DatabaseError: file is not a database`，而模块文档承诺的是「索引损坏时降级检索」。

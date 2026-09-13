@@ -1575,3 +1575,188 @@ G1 的「降级为备用设备」就是给这种状态提供对齐入口的（�
 `hints` 机制，并有测试覆盖。
 
 **粒度政策已写入规范**：`_vault/conventions.md` §13.1（含各类材料的文件数预期与引用方式）。
+
+## T. 攻击性测试收口 · 最后一遍 CI · 对外发布 0.4.8（2026-09-13，本轮）
+
+本轮不新增功能，只做三件事：**攻击上一轮的新代码**、**真跑一遍远端 CI**、**把 0.4.8 发出去**。
+前两轮的提交都带 `[skip ci]`，远端从未在它们上跑过，所以「最后一遍 CI」是真跑而非复跑。
+
+### T.1 攻击测试的结论（§A 清单）
+
+| # | 攻击点 | 结论 |
+| --- | --- | --- |
+| A.1 | 损坏的索引库让问答直接崩 | **真实缺陷，已修**（见下） |
+| A.2 | 打包环境是否真支持 FTS5 | **实测支持**；且强制关掉 FTS 的分支在包内也活着 |
+| A.3 | `index/people.md` 生成脚本没进仓库 | **已固化**，再生成做到逐字节一致 |
+| A.4 | `kb_acceptance.py` 自己没有单测 | **已重构为可测纯函数 + 16 条断言** |
+| A.5 | prompt 已 v2 但没有测试锁版本 | **已对齐 + 加版本锁** |
+| A.6 | 只有 2 题做回归 | **扩到 8 题**（①回溯/②决策/⑤回顾 + 点查/综合） |
+| A.7 | 65→5 迁移未独立复核 | **已复核：1296 行逐行 0 丢失，94 个区块锚点 0 悬空** |
+
+**A.1 的缺陷与修法**。实测复现：索引文件是垃圾内容时 `KnowledgeIndex.__init__` 抛
+`sqlite3.DatabaseError: file is not a database`，而模块文档承诺的是「索引缺失/损坏时退化为纯
+Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 sqlite3 的栈直接抛给使用者。
+现在三种失败形态分开处理：
+
+- 垃圾文件 → **删掉重建**（索引是纯派生数据，删了不丢任何资产）；
+- 旧版本残留 / 表结构不匹配 → **删表重建**（`CREATE TABLE IF NOT EXISTS` 修不了已存在的错表）；
+- 库根本建不出来（只读目录、路径不可写）→ 抛 `IndexUnavailableError`，`retrieve_via_index` 外层兜底
+  **退回纯 Markdown 子串扫描**，并在 `Trace.degraded` 写明原因（问答页同步渲染）。
+
+额外实测的两条边界（都能安全降级，无栈抛出）：
+
+- 索引文件只读 + vault 已变 → `OperationalError: attempt to write a readonly database` 被外层接住，
+  降级结果与子串扫描基线**逐条一致**；
+- FTS 影子表被外部改坏 → 查询期退化为自建 BM25，不再抛。
+
+**A.2 的探针**。新增 `SummitWorkbenchServer --kb-diagnostic`（+ `kb_index.runtime_diagnostic()`），
+在**已构建的包**里、`env -i`（无仓库 Python、无 PATH）下实测：
+
+```json
+{"sqlite_version": "3.53.1", "fts5_trigram": true,
+ "fts_hit": ["probe/probe#检索目标"], "chunk_level_ok": true,
+ "forced_no_fts_search_is_none": true,
+ "forced_no_fts_bm25_hit": ["probe/probe#检索目标"], "bm25_fallback_ok": true}
+```
+
+即：包内 SQLite 3.53.1、FTS5+trigram **可用**、命中是**块级**的；并且把 FTS 在同一进程里强制关掉后
+`search()` 如实返回 `None`、自建 BM25 仍命中同一块——**「FTS5 不可用」这条分支在真实包里也活着**。
+集成测试对两种结果都断言，因此不会因为换机器而静默退化。
+
+**A.3**：`scripts/kb_index_people.py` 固化进仓库，`--check` 可判定页面是否过期。用它再生成真实
+`index/people.md` 得到**逐字节一致**的结果（排序＝条目数降序 + 名字升序；前 4 篇预览 + `（共 N 篇）`）。
+校验过程中先误改了 vault 页面，已用 `git checkout -- index/people.md` 从 HEAD 恢复并比对确认
+（该文件在 vault 仓库里是干净的，未动历史）。
+
+**A.4**：`kb_acceptance.py` 的裁决逻辑抽成 `audit_case` / `evidence_chains` 两个纯函数并补单测。
+证据层**只认** `meeting-transcript` 与 `source`：会议笔记是派生摘要，早先版本把它算作证据层，
+于是「笔记 → 会议笔记」这条链就能让验收通过，看起来走到了证据、其实停在摘要上。
+
+**A.5**：`prompts/qa-answer.md` 已是 v2 而 `test_ask_workflow.py` 仍写 `Prompt(version=1)`。
+已对齐为 v2，并新增断言锁住 `qa-answer@v2` 与 v2 的 `路径#区块标题` 契约、以及 stub 与文件同版本。
+
+**A.6**：回归清单从 2 题扩到 **8 题**，覆盖 ① 回溯 / ② 决策 / ⑤ 回顾，外加点查与综合。断言
+「关键证据被召回 + 引用是块级 + ≤2 跳走到证据层」。只有 Q1/Q2 真调模型，其余只验检索，
+**不增加 token 成本**。为进 CI，另加 `tests/unit/test_ask_regression_questions.py`：同样 8 题跑在
+合成 vault 上，问题清单**直接取自 `kb_acceptance.CASES`** 并有守卫测试防两组清单漂移。
+（注意：`_guarantee_link_context` 并不存在——当时验证不了就删掉了，本轮没有引入它。）
+
+**A.7**：独立复核 C-lite 迁移，证据 `evidence/kb-migration-recheck-20260913.txt`：
+65 篇被删 → 5 篇分析笔记；**1296 行逐行校验只有 5 处差异，且全部是链接目标重写**
+（展示文字一字不差，只把 `[[已删原子笔记]]` 换成 `[[分析笔记#区块]]`）→ **逐字内容 0 丢失**；
+全库 310 条双链中 94 条带 `#区块`，**94 条全部可解析、0 悬空**（另 7 条解析不到的都定性为
+语法示例 / HTML 注释里的模板，不是真实引用）。
+
+### T.2 本轮本地门禁（全绿，逐条真跑）
+
+| 门禁 | 结果 |
+| --- | --- |
+| `ruff check` / `ruff format --check` | All checks passed / 462 files already formatted |
+| `mypy` | Success: no issues found in 355 source files |
+| `pytest --cov` | **1083 passed**, 1 skipped（需 `WB_PACKAGED_APP` 的打包 smoke）, 覆盖率 **83.43%**（门 80%） |
+| `tsc --noEmit -p web/tsconfig.json` | 通过 |
+| `npm --prefix web run test:frontend` | 15 组前端契约/纯渲染测试全部通过 |
+| `npm --prefix web run build` + `verify-build.mjs` | Build verified: `v2026.09.13-67616fd-ae564ff2` |
+| `scripts/secret_scan.py` | secret scan passed |
+| `scripts/verify-workflows.sh`（actionlint） | 通过 |
+| `scripts/check-action-refs.sh` | 通过（pre-push-gate 内） |
+| `scripts/pre-push-gate.sh` | ✓ 本地门禁全部通过（push 时钩子又跑了一遍） |
+
+测试数从上一轮 **1051 → 1083**（新增 32 条，全部对应 §A 的攻击点）。
+
+### T.3 远端 CI（手动触发，全绿）
+
+- **run id**：`34750517716`
+- **URL**：https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34750517716
+- **触发**：`gh workflow run ci.yml --ref main`（`workflow_dispatch`）
+- **headSha**：`fbf735b1d145185de34c06b95737186f134c9925`（`conclusion: success`）
+- **job 级结果**：`workflow-lint` ✓ 12s ｜ `quality-gate` ✓ 1m58s ｜
+  `macOS arm64 contract` ✓ 1m44s ｜ `macOS x86_64 contract` ✓ 47s
+
+说明：push `main` 时的自动 run（`34750511241`）被同一 concurrency 组的手动 run 取消，
+因此以手动 run 为准——这也正是使用者的要求（手动触发而不是靠 push）。
+
+### T.4 构建与产物（0.4.8 / build 35）
+
+- 命令：`REQUIRE_BUNDLED_FEISHU=true WB_FEISHU_APP_ID=… WB_FEISHU_APP_SECRET=… BUILD_NUMBER=35 ARCH=arm64 scripts/release-macos.sh`
+- 版本定版：`pyproject.toml` `0.4.7 → 0.4.8`；`CHANGELOG.md` 的 `[未发布]` 改为 `[0.4.8] - 2026-09-13`
+- 产物目录：`dist/releases/0.4.8/arm64/`
+
+| 项 | 值 |
+| --- | --- |
+| 版本 / build / 架构 | `0.4.8` / `35` / `arm64`（INTERNAL-DEV，ad-hoc，min macOS 13.0） |
+| 构建来源提交 | `455c8977073987ad356d319ccb7798a3609107a6` |
+| 前端 build identity | `v2026.09.13-455c897-ae564ff2` |
+| DMG | `SummitWorkbench-0.4.8-arm64-INTERNAL-DEV.dmg`（50,449,158 bytes） |
+| **DMG SHA-256** | `d707449612bcaaed55f7203ffe917202e0e28be042fa9f2dec81c642bb96c90b` |
+| App SHA-256 | `a21d1675e52e579489c1b051ebd850f9a7e55715764c9a5d5cf1b7d4a54ee0da` |
+| `scripts/verify-macos-release.sh` | **EXIT 0**（签名/清单/隐私卫生/离线启动全过；内置凭据结构正确，值不打印） |
+| 内置飞书凭据 | 已内置（`REQUIRE_BUNDLED_FEISHU=true`），`verify-macos-release.sh` 结构化校验通过 |
+
+密钥从未写入仓库：`git ls-files | grep feishu-defaults` 为空，`secret_scan.py` 通过。
+首次构建（`fbf735b`）的产物已改名为 `dist/releases/0.4.8.superseded-fbf735b/` **保留而非删除**，
+因为随后给包内探针补了「强制关掉 FTS」的分支，需要按新提交重建。
+
+### T.5 真机验收（已安装 App：0.4.8 / build 35）
+
+安装：`scripts/install-macos-app.sh dist/releases/0.4.8/arm64/SummitWorkbench.app` → ✓
+安装后 `/api/version` 回报 `server_version 0.4.8`、`build 35`、`git_revision 455c897`、
+`mode production`、`frontend_build v2026.09.13-455c897-ae564ff2`——**装上去的就是新代码**。
+
+**两个真实问题**（逐字保留，未改写）通过已安装 App 自己的 `POST /api/ask`（即「第二大脑」面板
+调用的同一路由）提问，脚本 `scripts/kb_acceptance_installed.py`：
+
+| 题 | 路由 | 进入上下文 | 事实引用 | 追溯链 |
+| --- | --- | --- | --- | --- |
+| Q1 商标共识规范 | `decision` | 6 条 | 4 条 **全部块级** | 18 条，含走到逐字稿 |
+| Q2 IT 进度与下一阶段 | `point` | 6 条 | 4 条 **全部块级** | 19 条，含走到逐字稿（本题要求） |
+
+结论 **✓ 2/2 通过**（判定与源码口径完全一致：非 unanswerable、有带出处事实、引用块级且锚点真实
+存在、≤2 跳走到证据层、该有逐字稿的题确实走到了逐字稿）。
+完整报告（含面板会渲染的 HTML 与「检索轨迹」）：`evidence/kb-gui-installed-build35.txt`。
+
+**引用真的点得开**：用已安装 App 的 `/api/sources/read` 逐条打开问答给出的引用，**6/6 成功**，
+且每条都返回了正确的 `anchor` / `heading`（含会议笔记与逐字稿）。
+
+**Obsidian 侧人工核对**：把两题答案的 **21 条主张**逐条对回 `_vault/` 里的原文，
+**21/21 命中、0 条编造**（含「尚未确认」项确实在原文标为待确认，没有被写成已定事实）。
+证据：`evidence/kb-gui-obsidian-crosscheck-build35.txt`。
+⚠️ 本会话拿不到屏幕录制权限（`screencapture` 报 `could not create image from display`），
+**没能截 Obsidian / 面板窗口的图**；核对方式是直接读同一批 `.md` 字节（Obsidian 渲染的就是它们）
++ 已安装 App 自己的 API。这是本轮**唯一没有做到的验收形式**，如实记录。
+
+### T.6 本轮额外发现并修掉的缺陷：`install-macos-app.sh` 的 readiness 假失败
+
+装 build 35 时**实测踩到**（旧的已归档文档 §6.2 把它记为「踩过的坑」，但一直没修）：
+
+- 打包 App 的 runtime record 落在 `<app_support>/runtime.json`
+  （原生启动器经 `WB_RUNTIME_RECORD` 注入，见 `native/SummitWorkbench/RuntimeRecord.swift:25`），
+  而 `wb web` CLI 落在 `<app_support>/profiles/*/runtime/runtime.json`；
+- `install-macos-app.sh` **三处**都只查后者，于是：
+  1. App 正在运行时**检测不到**，会绕过安全检查直接替换正在运行的 App；
+  2. 服务其实已就绪却在 readiness 窗口结束后**误报「服务未启动」**，退出码 1 并把
+     `SummitWorkbench.app.previous` 留在原地（实测就发生了）。
+
+修法：加 `runtime_records()` 助手（与 Swift 侧 `RuntimeRecord.candidateURLs` 同口径：先查根、
+再查 `profiles/**`），三处统一改用它；readiness 循环遍历所有候选记录，任一端口就绪即成功，
+并打印实际使用的 record 路径。修的过程中我自己又踩了一个 bash 坑——`$DEST_APP（` 里的多字节
+字符被当作变量名的一部分（`set -u` 下报 `DEST_APP…: unbound variable`），已改成 `${DEST_APP}`；
+两处都在真机上复验过：**运行中拒绝安装（EXIT 1）**、**退出后干净安装（EXIT 0 且清理 .previous）**。
+
+注意：该脚本不进 App bundle，因此上面的 DMG 内容不受此修复影响（`git_commit` 仍是 `455c897`），
+修复随其后的仓库提交进入版本库。
+
+### T.7 仍未覆盖 / 仍开放
+
+- **没有 GUI 截图**：会话无屏幕录制权限（见 T.5）。GUI 侧的证据是「已安装 App 自己的
+  `/api/ask` + `/api/sources/read` + 同一批 vault 字节」，不是鼠标点击的截图。
+- **tag 触发的 `release.yml`（往 `yifeng93/SummitWorkbench-Updates` 发更新 feed）**：
+  需要 `secrets.UPDATE_REPO_TOKEN` 与受保护的签名私钥；内部 ad-hoc 包按 `RELEASING.md`
+  不走在线签名门。tag 是否推送及 release run 结果见 §U。
+- `_vault` 的远端推送仍未成功：本地 `~/Documents/Work/_vault` 停在 `7380425`，
+  HTTPS 远端（`github.com/yifeng93/WorkKnowledge.git`）当时网络异常（非鉴权问题）。
+  本轮的真机验收**只读本地 vault**，不需要它同步，因此按使用者指示未重试。
+- `community/`、`hr/` 与 `index/timeline.md` 跨期大事记仍是诚实占位；`index/projects.md` 的
+  「已暂停 / 已归档」仍为空。
+- 双机（Studio / Air）本轮未重走完整配方。
+- `review/_intake/hii-royalty-visits.md` 是否清理仍待使用者决定。

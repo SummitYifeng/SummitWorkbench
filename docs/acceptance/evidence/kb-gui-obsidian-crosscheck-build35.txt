@@ -1,0 +1,72 @@
+SummitWorkbench · 已安装 App（build 35）两题答案 → _vault 原文逐条核对
+库根：~/Documents/Work　笔记：_vault/　（Obsidian 渲染的就是这些 .md 文件）
+
+说明：本会话拿不到屏幕录制权限，无法截 Obsidian 窗口；核对方式是直接读同一批
+      `_vault/*.md`（与 Obsidian 显示的是同一份字节）逐条比对答案主张的原文出处。
+==============================================================================
+  ✓ [Q1] 所有相关 registrations 登记在 HII 名下（不是 Hoffman China / HIF）
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：所有相关 registrations **登记在 HII 名下**，不是 Hoffman China，也不是 Hoffman Institute Foundation
+  ✓ [Q1] 正式英文名 HOFFMAN INSTITUTE INTERNATIONAL, INC.
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：HOFFMAN INSTITUTE INTERNATIONAL, INC.
+  ✓ [Q1] 正式中文名 霍夫曼研究所国际股份有限公司
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：霍夫曼研究所国际股份有限公司
+  ✓ [Q1] 登记地址 1299 FOURTH STREET…
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：1299 FOURTH STREET, 6TH FLOOR SAN RAFAEL
+  ✓ [Q1] 「活满」归 HIC 且已注册
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：| 活满 / Huoman | 中国品牌商标 | **HIC**；已注册 |
+  ✓ [Q1] 「和夫曼之旅」归 HII 且正在注册
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：| 和夫曼之旅 | Hoffman Process 中文品牌名 | **HII**；正在注册 |
+  ✓ [Q1] 部分中文商标状态「尚未确认」（没有把待确认写成已定）
+        ← hii/notes/20260912-hii-hic-ip-analysis.md
+          原文：具体状态待确认
+  ✓ [Q1] 决定笔记同口径：登记在 Hoffman Institute International, Inc. 名下
+        ← decisions/20260623-registration-entity-is-hii.md
+          原文：相关 registrations 均应登记在 **Hoffman Institute International, Inc.** 名下
+  ✓ [Q1] 例外条款：历史任职机构按史实保留（Liza Ingrasci 例）
+        ← decisions/20260623-registration-entity-is-hii.md
+          原文：former CEO
+  ✓ [Q2] IT 当前处于 Phase 2
+        ← it/it-roadmap.md
+          原文：Phase 2
+  ✓ [Q2] 主办人：韩文博接管；何鲁敏已退出日常 IT
+        ← it/it-roadmap.md
+          原文：韩文博
+  ✓ [Q2] 报名系统「已正式运行」
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：已正式运行
+  ✓ [Q2] 门户 / CMS「已投入业务使用」
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：已投入业务使用
+  ✓ [Q2] 手机端「尚未开发」
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：尚未开发
+  ✓ [Q2] 9 月：稳定与治理月 + 关键词
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：### 9 月｜稳定与治理月
+  ✓ [Q2] 9 月 P0：清理何鲁敏权限 / 梳理管理员与支付账户 / API Token
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：完成何鲁敏全部权限清理；梳理公司重要管理员账户
+  ✓ [Q2] 10 月：标准化与新项目启动（AI 知识库 V0.1、手机端产品设计）
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：### 10 月｜标准化与新项目启动
+  ✓ [Q2] 11 月：进入真实产品阶段
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：### 11 月｜进入真实产品阶段
+  ✓ [Q2] 12 月：年度收口
+        ← it/notes/20260912-hic-it-roadmap-analysis.md
+          原文：12 月｜
+  ✓ [Q2] 会议笔记：张凌紫 / 庄廷婷参与支付测试
+        ← meetings/notes/20260824-enrollment-payment-test.md
+          原文：张凌紫
+  ✓ [Q2] 会议笔记：支付测试与问卷分支
+        ← meetings/notes/20260824-enrollment-payment-test.md
+          原文：支付
+==============================================================================
+共核对 21 条主张，未在原文找到的：0 条
+结论：两题答案的每条主张都能在 _vault 原文里逐字定位，未发现模型编造。

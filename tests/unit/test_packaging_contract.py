@@ -58,6 +58,28 @@ def test_build_and_install_scripts_are_self_contained_and_atomic() -> None:
     assert "--replace-running" in install
 
 
+def test_install_script_finds_runtime_records_where_the_app_writes_them() -> None:
+    """runtime record 有两个合法落点，安装脚本必须都查。
+
+    打包 App 写 `<app_support>/runtime.json`（原生启动器经 `WB_RUNTIME_RECORD` 注入），
+    `wb web` CLI 写 `<app_support>/profiles/*/runtime/runtime.json`。安装脚本一度只查后者，
+    后果是：正在运行的 App 检测不到（绕过安全检查直接替换运行中的 App），以及服务其实已就绪
+    却误报「未在 readiness 窗口内启动」并把 `.previous` 留在原地（2026-09-13 装 build 35 实测）。
+    """
+    install = (_ROOT / "scripts/install-macos-app.sh").read_text(encoding="utf-8")
+    swift = (_ROOT / "native/SummitWorkbench/RuntimeRecord.swift").read_text(encoding="utf-8")
+    # Swift 侧的候选集合：先根、再 profiles/**
+    assert "candidateURLs" in swift
+    assert 'appendingPathComponent("profiles")' in swift
+    # bash 侧必须提供同口径的候选集合，且各处调用点都用它
+    assert "runtime_records()" in install
+    assert '"$RUNTIME_ROOT/runtime.json"' in install
+    assert 'find "$RUNTIME_ROOT/profiles"' in install
+    # 旧的「只查 profiles 下一处」的写法不得回归
+    assert 'RUNTIME_FILE="$(find "$RUNTIME_ROOT/profiles"' not in install
+    assert install.count("runtime_records") >= 4  # 定义 1 处 + 调用点
+
+
 def test_p013_release_contract_is_versioned_arm64_internal_safe() -> None:
     build = (_ROOT / "scripts/build-macos-app.sh").read_text(encoding="utf-8")
     release = (_ROOT / "scripts/release-macos.sh").read_text(encoding="utf-8")

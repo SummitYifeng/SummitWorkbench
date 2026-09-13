@@ -33,12 +33,16 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases-local-v0.4.4-brief-fix-df4ba1f/0.4.4/arm64/SummitWorkbench-0.4.4-arm64-INTERNAL-DEV.dmg`
+`dist/releases/0.4.8/arm64/SummitWorkbench-0.4.8-arm64-INTERNAL-DEV.dmg`
 
-SHA-256：`d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`
+SHA-256：`d707449612bcaaed55f7203ffe917202e0e28be042fa9f2dec81c642bb96c90b`
 
-对应前端 build identity 为 `v2026.09.10-df4ba1f-1cb9c2eb`。发布目录同时包含
-`SHA256SUMS`、`release-metadata.json`、`SBOM.json` 和本地验证摘要。
+版本 `0.4.8`、build `35`，构建来源提交 `455c8977073987ad356d319ccb7798a3609107a6`，
+对应前端 build identity 为 `v2026.09.13-455c897-ae564ff2`，
+并已内置飞书默认凭据（`REQUIRE_BUNDLED_FEISHU=true`）。发布目录同时包含
+`SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`notary-log.json`、`test-manifest.json`
+和本地验证摘要。安装后经已安装 App 自己的 `/api/ask` 验过两个真实问题，详见
+`docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §T。
 
 脚本会执行临时目录构建、ad-hoc 签名、DMG、checksum、SBOM、动态端口离线 smoke 和
 完整性验证，不会访问飞书或 Apple 网络服务。

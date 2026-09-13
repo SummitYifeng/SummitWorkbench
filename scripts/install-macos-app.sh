@@ -23,7 +23,22 @@ STATIC="$SOURCE_APP/Contents/Resources/web/static"
 }
 
 RUNTIME_ROOT="$HOME/Library/Application Support/SummitWorkbench"
-if [[ "$REPLACE_RUNNING" != true && -n "$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)" ]]; then
+
+# runtime record 有两个合法落点，必须都查（与 native/SummitWorkbench/RuntimeRecord.swift 的
+# candidateURLs 同口径）：
+#   1. <app_support>/runtime.json              —— 打包 App 走这条：原生启动器把它作为
+#      WB_RUNTIME_RECORD 交给 bundle server（ServiceSupervisor.swift）；
+#   2. <app_support>/profiles/*/runtime/runtime.json —— `wb web` CLI 走这条。
+# 只查第 2 条会造成两个真问题（2026-09-13 装 build 35 时实测踩到）：把正在运行的 App 当成没在跑
+# 而直接替换；以及服务其实已就绪却在 readiness 窗口结束后误报失败、把 .previous 留在原地。
+runtime_records() {
+  if [[ -f "$RUNTIME_ROOT/runtime.json" ]]; then
+    printf '%s\n' "$RUNTIME_ROOT/runtime.json"
+  fi
+  find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f 2>/dev/null || true
+}
+
+if [[ "$REPLACE_RUNNING" != true && -n "$(runtime_records)" ]]; then
   echo "✗ 检测到 SummitWorkbench runtime record；请先退出 App，或明确传入 --replace-running" >&2
   exit 1
 fi
@@ -59,9 +74,9 @@ if [[ "$REPLACE_RUNNING" == true && -n "$LEGACY_LAUNCHER_PID" ]]; then
 fi
 
 if [[ "$REPLACE_RUNNING" == true ]]; then
-  RUNTIME_FILE="$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)"
-  if [[ -n "$RUNTIME_FILE" ]]; then
-  read -r SERVICE_PID < <("$REPO_ROOT/.venv/bin/python" - "$RUNTIME_FILE" <<'PY'
+  while IFS= read -r RUNTIME_FILE; do
+    [[ -n "$RUNTIME_FILE" ]] || continue
+    read -r SERVICE_PID < <("$REPO_ROOT/.venv/bin/python" - "$RUNTIME_FILE" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -69,18 +84,18 @@ from pathlib import Path
 record = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 print(record.get("pid", ""))
 PY
-  )
-  for pid in "$SERVICE_PID"; do
-    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
-      command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-      if [[ "$command_line" == *"SummitWorkbench"* ]]; then kill -TERM "$pid"; fi
-    fi
-  done
-  for _ in {1..40}; do
-    if ! kill -0 "${SERVICE_PID:-0}" 2>/dev/null; then break; fi
-    sleep 0.25
-  done
-  fi
+    )
+    for pid in "$SERVICE_PID"; do
+      if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+        command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        if [[ "$command_line" == *"SummitWorkbench"* ]]; then kill -TERM "$pid"; fi
+      fi
+    done
+    for _ in {1..40}; do
+      if ! kill -0 "${SERVICE_PID:-0}" 2>/dev/null; then break; fi
+      sleep 0.25
+    done
+  done < <(runtime_records)
 fi
 
 INSTALL_ROOT="$(mktemp -d "/tmp/summitworkbench-install.XXXXXX")"
@@ -107,27 +122,26 @@ fi
 
 open "$DEST_APP"
 for _ in {1..40}; do
-  RUNTIME_FILE="$(find "$RUNTIME_ROOT/profiles" -path '*/runtime/runtime.json' -type f -print -quit 2>/dev/null || true)"
-  PORT=""
-  if [[ -n "$RUNTIME_FILE" ]]; then
+  while IFS= read -r RUNTIME_FILE; do
+    [[ -n "$RUNTIME_FILE" ]] || continue
     PORT="$($REPO_ROOT/.venv/bin/python - "$RUNTIME_FILE" <<'PY'
 import json
 import sys
 print(json.loads(open(sys.argv[1], encoding="utf-8").read())["port"])
 PY
     )"
-  fi
-  # Production API routes require the App-owned session token, which is not
-  # available to this installer.  The runtime record binds this port to the
-  # launched workspace service; the native App separately verifies /api/version
-  # with its token before navigating.  Probe the public shell here only for
-  # HTTP readiness, rather than treating an expected 401 as a startup failure.
-  if [[ "$PORT" =~ ^[0-9]+$ ]] && curl -fsS --max-time 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
-    # 安装成功即不再保留本轮备份（被替换的旧版），下次安装无需手动清理。
-    rm -rf "$BACKUP_APP" || true
-    echo "✓ 已安装并启动 $DEST_APP"
-    exit 0
-  fi
+    # Production API routes require the App-owned session token, which is not
+    # available to this installer.  The runtime record binds this port to the
+    # launched workspace service; the native App separately verifies /api/version
+    # with its token before navigating.  Probe the public shell here only for
+    # HTTP readiness, rather than treating an expected 401 as a startup failure.
+    if [[ "$PORT" =~ ^[0-9]+$ ]] && curl -fsS --max-time 1 "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then
+      # 安装成功即不再保留本轮备份（被替换的旧版），下次安装无需手动清理。
+      rm -rf "$BACKUP_APP" || true
+      echo "✓ 已安装并启动 ${DEST_APP}（runtime record：${RUNTIME_FILE}）"
+      exit 0
+    fi
+  done < <(runtime_records)
   sleep 0.25
 done
 echo "✗ App 已安装但服务未在 readiness 窗口内启动；旧 App 保留在 $BACKUP_APP" >&2

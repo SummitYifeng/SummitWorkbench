@@ -1,0 +1,126 @@
+SummitWorkbench · 已安装 App 的第二大脑验收
+runtime record：/Users/yifengstudio/Library/Application Support/SummitWorkbench/runtime.json
+frontend_build：v2026.09.13-455c897-ae564ff2
+/api/version：{"api_protocol": 2, "build": "35", "device_id": "51885d3d-6f75-49ca-8896-9f46288474e8", "frontend_build": "v2026.09.13-455c897-ae564ff2", "git_revision": "455c897", "mode": "production", "port": 63633, "product_id": "com.summitworkbench.panel", "server_instance": "a8a8a277-33d8-4bc4-aaf2-4dac100d4173", "server_version": "0.4.8", "started_at": "2026-09-13T10:02:19.336639Z", "workspace_id": "bf22c8d2-ef62-4bd3-9917-e76fdd3f7f0f"}
+题目数：2（两题模型口径）
+
+==============================================================================
+【Q1 商标共识规范（决策）】
+问：根据之前和 HII 的沟通，请告诉我当前我们达成的商标共识规范是什么？
+------------------------------------------------------------------------------
+回答：根据现有来源，HII–HIC 的商标共识核心是：所有相关 registrations 统一登记在 Hoffman Institute International, Inc.（霍夫曼研究所国际股份有限公司）名下，而非 Hoffman China 或 Hoffman Institute Foundation；同时「HII 授权品牌资产」与「HIC 自有品牌资产」必须分开管理——「活满」归 HIC，「和夫曼之旅」等 HII 核心商标归 HII。但部分事项（如 Hoffman Process 中文商标的最新申请/注册状态、「和夫曼之旅」的具体商标文字）来源标注为尚未确认。
+  • 所有相关 registrations 登记在 HII 名下，不是 Hoffman China，也不是 Hoffman Institute Foundation。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 登记正式写法：英文 Name 为 HOFFMAN INSTITUTE INTERNATIONAL, INC.，中文为霍夫曼研究所国际股份有限公司，地址英文为 1299 FOURTH STREET, 6TH FLOOR SAN RAFAEL, CALIFORNIA 94901 UNITED STATES OF AMERICA，中文为美国加利福尼亚州94901圣拉斐尔第四街1299号6层。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 相关 registrations 均应登记在 Hoffman Institute International, Inc. 名下，中文写作霍夫曼研究所国际股份有限公司；不是 Hoffman China，也不是 Hoffman Institute Foundation。
+      ← decisions/20260623-registration-entity-is-hii#决定
+  • 例外条款：Hoffman Institute Foundation 作为历史任职机构时按历史事实保留，例如 Hoffman Institute Foundation former CEO（Liza Ingrasci），不得改写成 HII。
+      ← decisions/20260623-registration-entity-is-hii#决定
+  • 必须分开管理的一对：HII 授权品牌资产（Hoffman Process、和夫曼之旅、其他 HII 核心商标/符号）与 HIC 自有品牌资产（活满、后续 HIC 自行开发的新品牌）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • Hoffman Institute Foundation（HIF）不是处处都要删：作为版权主体/权利声明时统一写成 HII；但作为历史任职机构时按历史事实保留。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 尚未确认：Hoffman Process 及其它中文相关商标的最新申请/注册状态。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 尚未确认：「和夫曼之旅」的具体商标文字仍建议以最终 filing document 核对（邮件未直接写出该中文词组）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范
+  • 「活满」与「和夫曼之旅」必须从此分开管理，材料称其为「最值得立即执行的一项」；状态表中「活满归 HIC」已确认，「活满未来品牌定位」未确认。
+      ← decisions/20260912-huoman-separate-from-hefuman#证据
+  • HII 与 HIC 的双轨 IP 体系已由 HIC 管理层确认口径；当前整体卡在事实状态补齐，包括各商标 filing 的最新状态、4 vs 8 filings 的律师口径，以及「活满」的品牌定位决策。
+      ← hii/hii-loyalty#现在在哪
+
+检索轨迹里的路由：decision
+进入上下文的来源：6 条
+事实引用：4 条，其中块级 4 条
+追溯到证据层：decisions/20260623-registration-entity-is-hii → hii/sources/20260912-hii-hic-ip-overview（共 18 条）
+其中走到逐字稿：decisions/20260623-registration-entity-is-hii → meetings/transcripts/2026-08-24-luo-yifeng-video-meeting-1-transcript
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>根据现有来源，HII–HIC 的商标共识核心是：所有相关 registrations 统一登记在 Hoffman Institute International, Inc.（霍夫曼研究所国际股份有限公司）名下，而非 Hoffman China 或 Hoffman Institute Foundation；同时「HII 授权品牌资产」与「HIC 自有品牌资产」必须分开管理——「活满」归 HIC，「和夫曼之旅」等 HII 核心商标归 HII。但部分事项（如 Hoffman Process 中文商标的最新申请/注册状态、「和夫曼之旅」的具体商标文字）来源标注为尚未确认。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>所有相关 registrations 登记在 HII 名下，不是 Hoffman China，也不是 Hoffman Institute Foundation。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>登记正式写法：英文 Name 为 HOFFMAN INSTITUTE INTERNATIONAL, INC.，中文为霍夫曼研究所国际股份有限公司，地址英文为 1299 FOURTH STREET, 6TH FLOOR SAN RAFAEL, CALIFORNIA 94901 UNITED STATES OF AMERICA，中文为美国加利福尼亚州94901圣拉斐尔第四街1299号6层。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>相关 registrations 均应登记在 Hoffman Institute International, Inc. 名下，中文写作霍夫曼研究所国际股份有限公司；不是 Hoffman China，也不是 Hoffman Institute Foundation。 <span class='wikilink'>[[decisions/20260623-registration-entity-is-hii#决定]]</span></li>
+<li>例外条款：Hoffman Institute Foundation 作为历史任职机构时按历史事实保留，例如 Hoffman Institute Foundation former CEO（Liza Ingrasci），不得改写成 HII。 <span class='wikilink'>[[decisions/20260623-registration-entity-is-hii#决定]]</span></li>
+<li>必须分开管理的一对：HII 授权品牌资产（Hoffman Process、和夫曼之旅、其他 HII 核心商标/符号）与 HIC 自有品牌资产（活满、后续 HIC 自行开发的新品牌）。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>Hoffman Institute Foundation（HIF）不是处处都要删：作为版权主体/权利声明时统一写成 HII；但作为历史任职机构时按历史事实保留。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>尚未确认：Hoffman Process 及其它中文相关商标的最新申请/注册状态。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>尚未确认：「和夫曼之旅」的具体商标文字仍建议以最终 filing document 核对（邮件未直接写出该中文词组）。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]</span></li>
+<li>「活满」与「和夫曼之旅」必须从此分开管理，材料称其为「最值得立即执行的一项」；状态表中「活满归 HIC」已确认，「活满未来品牌定位」未确认。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#证据]]</span></li>
+<li>HII 与 HIC 的双轨 IP 体系已由 HIC 管理层确认口径；当前整体卡在事实状态补齐，包括各商标 filing 的最新状态、4 vs 8 filings 的律师口径，以及「活满」的品牌定位决策。 <span class='wikilink'>[[hii/hii-loyalty#现在在哪]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>若需要对外正式表述，建议同时引用分析笔记的「登记主体」与决定笔记的决定条款，二者口径一致，可相互印证。</li>
+<li>对「负向之爱综合征」「Hoffman Process 中文商标」等标注为待确认的项，宜在最终 filing document 出具后再定稿披露，避免把未确认状态当成已定事实。</li>
+<li>「活满」归属 HIC 已确认，但其未来品牌定位未确认，涉及品牌对外使用时应暂缓定性。</li>
+<li>如需法律正式文本，可参考美国律师 reference HOFF-23737-TM-CN（Quadrinity Symbol）作为对应线索。</li>
+</ul>
+<p class="not-actionable">召回来源：[[hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范]]、[[decisions/20260623-filing-before-license-execution#背景]]、[[decisions/20260623-registration-entity-is-hii#决定]]、[[decisions/20260912-huoman-separate-from-hefuman#证据]]、[[hii/hii-loyalty#现在在哪]]、[[hii/notes/20260911-hic-hii-royalty-analysis#Royalty 完整计算公式（HIC 当前执行版八步）]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>decision</code>（命中关键词 共识、规范）</p><p>检索词：根据之前和、HII、的沟通、请告诉、告诉我、诉我当、我当前、当前我、前我们、我们达、们达成、达成的、成的商、的商标、商标共、标共识、共识规、识规范、规范是、范是什、是什么</p><p>双链扩展：</p><ul><li><code>decisions/20260623-filing-before-license-execution</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>decisions/20260623-registration-entity-is-hii</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>decisions/20260912-huoman-separate-from-hefuman</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>hii/hii-loyalty</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>hii/notes/20260911-hic-hii-royalty-analysis</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>hii/sources/20260912-hii-hic-ip-overview</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>index/people</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>hii/notes/20260913-hic-hii-china-visit-playbook-analysis</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>hii/sources/20260913-hic-hii-china-visit-manual</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>index/decisions</code> ← decisions/20260913-china-visit-three-stage-sop</li></ul><p>已排除：</p><ul><li><code>review/kb-intake#2. 我写的笔记的双链候选（HII 全景总结 / IT / 会议 / 项目）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#二、来华接待手册（`hii/sources/20260913-hic-hii-china-visit-manual.md`）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#三、当前来华事项（`hii/sources/20260913-hic-hii-current-visits-danny-nita-crystal.md`）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#一、Royalty 规则（`hii/sources/20260911-hic-hii-royalty-rules.md`）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#0. 已落盘的改名映射（英文 kebab-case + 中文 title/aliases）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#3. 子代理负责的三份材料（Royalty / 来华接待手册 / 当前来华）的候选</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#4. 已经写进正文的「结构性」链接（请确认或否决）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#6. 本轮质量门（已真跑）</code>：类型 approval-page 不进初始召回</li><li><code>review/kb-intake#5. 入库过程中发现的数据质量问题（**未自行裁决，请你定**）</code>：类型 approval-page 不进初始召回</li><li><code>hii/sources/20260912-hii-hic-ip-overview#十六、建议的下一阶段行动清单</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-china-visit-manual#来源</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#来源</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>hii/notes/20260912-hii-hic-ip-analysis#HII–HIC 商标共识规范</code>（note）：正文命中（19.30）；区块标题命中 5；标题命中 1；类型权威 note=0.70；查询点名了这篇笔记；元数据命中 1</li><li><code>decisions/20260623-filing-before-license-execution#背景</code>（decision）：正文命中（0.45）；类型权威 decision=0.90；路由优先类型；元数据命中 1；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li><li><code>decisions/20260623-registration-entity-is-hii#决定</code>（decision）：正文命中（0.38）；类型权威 decision=0.90；路由优先类型；元数据命中 1；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li><li><code>decisions/20260912-huoman-separate-from-hefuman#证据</code>（decision）：正文命中（0.41）；类型权威 decision=0.90；路由优先类型；元数据命中 1；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li><li><code>hii/hii-loyalty#现在在哪</code>（workstream）：正文命中（0.47）；标题命中 1；类型权威 workstream=0.95；路由优先类型；元数据命中 1；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li><li><code>hii/notes/20260911-hic-hii-royalty-analysis#Royalty 完整计算公式（HIC 当前执行版八步）</code>（note）：正文命中（0.22）；标题命中 1；类型权威 note=0.70；元数据命中 1；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li></ul></details>
+
+==============================================================================
+【Q2 IT 进度与下一阶段（点查）】
+问：IT 当前的开发进度是什么，下一个阶段该怎么做？
+------------------------------------------------------------------------------
+回答：IT 当前处于 Phase 2（把业务放进系统，2026 年 8 月—年底），Phase 1 已基本完成（韩文博 8 月初全职加入接管代码、部署与开发流程，何鲁敏已退出日常 IT 工作）。各系统状态：报名系统与门户/CMS 已生产运行，权限体系、IT 账户治理、本地 AI、部门业务电子化（财务先行）仍在建设中，企业知识库已明确方向，手机端尚未开发。下一阶段的落地节奏按 9–12 月 Roadmap：9 月做稳定与治理，10 月启动 AI 知识库 V0.1 与手机端产品设计、财务电子化继续标准化，11 月 AI 进入内部可用版本、手机端开始正式开发，12 月年度收口。
+  • IT 当前处于 Phase 2（把业务放进系统，2026 年 8 月—年底）；Phase 1（把系统做出来、把核心系统的开发与维护能力重新收回公司内部）已基本完成。
+      ← it/it-roadmap#现在在哪
+  • 韩文博 8 月初全职加入并接管代码、部署与开发流程，何鲁敏已退出日常 IT 工作。
+      ← it/it-roadmap#现在在哪
+  • 当前各系统状态：报名系统 🟢 正式生产运行；门户 / CMS 🟢 已投入业务使用；权限体系 🟡 持续建设；IT 账户治理 🟡 刚形成体系；本地 AI 🟡 模型可运行；企业知识库 🔵 已明确方向；部门业务电子化 🟡 财务先行；手机端 ⚪ 尚未开发。
+      ← it/it-roadmap#现在在哪
+  • 9 月为「稳定与治理月」，关键词是把已经做出来的东西管起来。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 9 月 P0：完成何鲁敏全部权限清理；梳理公司重要管理员账户；梳理支付相关账户；梳理 API Token / Secret。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 9 月 P1：报名系统——权限颗粒度继续优化、相关方培训、账户管理、真实业务反馈修正；门户——CMS 权限优化、招生/运营反馈处理。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 10 月为标准化与新项目启动：启动 AI 知识库 V0.1（知识源＝Process / 课程资料；用户＝罗艺峰 + 韩文博）；启动手机端产品设计（产品定位、用户路径、信息架构、V1 范围、原型；围绕报名 + 内容/社区 + 营销）；财务电子化继续完成流程标准化并判断哪些进入系统。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 11 月进入真实产品阶段：AI 进入内部可用版本并准备小范围全员测试；手机端开始正式开发；报名系统继续将其他项目逐渐纳入统一架构；财务形成第一版业务电子化模板 / 方法论。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 12 月年度收口：报名系统从开发项目变成稳定运营系统；门户实现业务自主维护；手机端进入正式开发阶段；AI 达到 AI Chat + Process 知识库内部 Beta；业务电子化——财务形成较完整样板，是否启动第二部门根据财务试点结果再决定。
+      ← it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）
+  • 报名系统方面：韩文博已把测试邀请发给张凌紫；罗艺峰提出若不涉及支付当天即可上线，但实际当天会有支付，因此韩文博当天部署支付；支付测试可先用 1 元、2 元这类小额，并在群里跟庄廷婷、张凌紫说明具体要做什么与时间线；罗艺峰把张凌紫拉进「报名系统改造」。
+      ← meetings/notes/20260824-enrollment-payment-test#事实与进展
+  • 两位老师在此前两个项目结束后提出课后问卷的新需求，罗艺峰在 enrollment 报名系统开一个分支，把「任何要发问卷、以及在哪个时期发问卷」的具体内容与题目做出来，再合并到主轨，由韩文博拉取查看。
+      ← meetings/notes/20260824-enrollment-payment-test#事实与进展
+  • IT 开发是四条工作线之一（`it/`），内容为 HIC 内部 IT 系统的开发计划、进度与阶段目标，主页为 `it/it-roadmap.md`。
+      ← index/workstreams#四条工作线
+
+检索轨迹里的路由：point
+进入上下文的来源：6 条
+事实引用：4 条，其中块级 4 条
+追溯到证据层：index/workstreams → hii/sources/20260912-hii-hic-ip-overview（共 19 条）
+其中走到逐字稿：it/it-roadmap → meetings/transcripts/2026-08-24-luo-yifeng-video-meeting-1-transcript
+本题要求走到逐字稿：是
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>IT 当前处于 Phase 2（把业务放进系统，2026 年 8 月—年底），Phase 1 已基本完成（韩文博 8 月初全职加入接管代码、部署与开发流程，何鲁敏已退出日常 IT 工作）。各系统状态：报名系统与门户/CMS 已生产运行，权限体系、IT 账户治理、本地 AI、部门业务电子化（财务先行）仍在建设中，企业知识库已明确方向，手机端尚未开发。下一阶段的落地节奏按 9–12 月 Roadmap：9 月做稳定与治理，10 月启动 AI 知识库 V0.1 与手机端产品设计、财务电子化继续标准化，11 月 AI 进入内部可用版本、手机端开始正式开发，12 月年度收口。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>IT 当前处于 Phase 2（把业务放进系统，2026 年 8 月—年底）；Phase 1（把系统做出来、把核心系统的开发与维护能力重新收回公司内部）已基本完成。 <span class='wikilink'>[[it/it-roadmap#现在在哪]]</span></li>
+<li>韩文博 8 月初全职加入并接管代码、部署与开发流程，何鲁敏已退出日常 IT 工作。 <span class='wikilink'>[[it/it-roadmap#现在在哪]]</span></li>
+<li>当前各系统状态：报名系统 🟢 正式生产运行；门户 / CMS 🟢 已投入业务使用；权限体系 🟡 持续建设；IT 账户治理 🟡 刚形成体系；本地 AI 🟡 模型可运行；企业知识库 🔵 已明确方向；部门业务电子化 🟡 财务先行；手机端 ⚪ 尚未开发。 <span class='wikilink'>[[it/it-roadmap#现在在哪]]</span></li>
+<li>9 月为「稳定与治理月」，关键词是把已经做出来的东西管起来。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>9 月 P0：完成何鲁敏全部权限清理；梳理公司重要管理员账户；梳理支付相关账户；梳理 API Token / Secret。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>9 月 P1：报名系统——权限颗粒度继续优化、相关方培训、账户管理、真实业务反馈修正；门户——CMS 权限优化、招生/运营反馈处理。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>10 月为标准化与新项目启动：启动 AI 知识库 V0.1（知识源＝Process / 课程资料；用户＝罗艺峰 + 韩文博）；启动手机端产品设计（产品定位、用户路径、信息架构、V1 范围、原型；围绕报名 + 内容/社区 + 营销）；财务电子化继续完成流程标准化并判断哪些进入系统。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>11 月进入真实产品阶段：AI 进入内部可用版本并准备小范围全员测试；手机端开始正式开发；报名系统继续将其他项目逐渐纳入统一架构；财务形成第一版业务电子化模板 / 方法论。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>12 月年度收口：报名系统从开发项目变成稳定运营系统；门户实现业务自主维护；手机端进入正式开发阶段；AI 达到 AI Chat + Process 知识库内部 Beta；业务电子化——财务形成较完整样板，是否启动第二部门根据财务试点结果再决定。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</span></li>
+<li>报名系统方面：韩文博已把测试邀请发给张凌紫；罗艺峰提出若不涉及支付当天即可上线，但实际当天会有支付，因此韩文博当天部署支付；支付测试可先用 1 元、2 元这类小额，并在群里跟庄廷婷、张凌紫说明具体要做什么与时间线；罗艺峰把张凌紫拉进「报名系统改造」。 <span class='wikilink'>[[meetings/notes/20260824-enrollment-payment-test#事实与进展]]</span></li>
+<li>两位老师在此前两个项目结束后提出课后问卷的新需求，罗艺峰在 enrollment 报名系统开一个分支，把「任何要发问卷、以及在哪个时期发问卷」的具体内容与题目做出来，再合并到主轨，由韩文博拉取查看。 <span class='wikilink'>[[meetings/notes/20260824-enrollment-payment-test#事实与进展]]</span></li>
+<li>IT 开发是四条工作线之一（`it/`），内容为 HIC 内部 IT 系统的开发计划、进度与阶段目标，主页为 `it/it-roadmap.md`。 <span class='wikilink'>[[index/workstreams#四条工作线]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>按 Roadmap 的时间顺序，下一步（9 月）的优先级是先完成何鲁敏全部权限清理与管理员/支付账户、API Token 梳理，再着手报名系统权限颗粒度优化与门户 CMS 权限优化。</li>
+<li>10 月同时启动 AI 知识库 V0.1 与手机端产品设计，可能需要提前确定这两项与 9 月治理工作的衔接，以免治理工作被新项目挤占。</li>
+<li>报名系统中的问卷分支属于具体项目需求，可与 9–12 月 Roadmap 中「报名系统继续将其他项目逐渐纳入统一架构」的安排对照，确认何时合并主轨。</li>
+</ul>
+<p class="not-actionable">召回来源：[[it/it-roadmap#现在在哪]]、[[meetings/notes/20260824-enrollment-payment-test#事实与进展]]、[[index/workstreams#四条工作线]]、[[hii/notes/20260911-hic-hii-royalty-analysis#Royalty 收入基数口径（不含 VAT）]]、[[index/people]]、[[it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>point</code>（命中关键词 是什么、当前、进度）</p><p>检索词：当前的、前的开、的开发、开发进、发进度、进度是、度是什、是什么、下一个、一个阶、个阶段、阶段该、段该怎、该怎么、怎么做、IT</p><p>双链扩展：</p><ul><li><code>index/people</code> ← it/it-roadmap</li><li><code>it/notes/20260912-hic-it-roadmap-analysis</code> ← it/it-roadmap</li><li><code>meetings/notes/20260803-it-alignment</code> ← it/it-roadmap</li><li><code>meetings/notes/20260907-portal-permission-alignment</code> ← it/it-roadmap</li><li><code>projects/hic-business-digitization</code> ← it/it-roadmap</li><li><code>projects/hic-enrollment</code> ← it/it-roadmap</li><li><code>projects/hic-internal-ai</code> ← it/it-roadmap</li><li><code>projects/hic-mobile-app</code> ← it/it-roadmap</li><li><code>projects/hic-portal-cms</code> ← it/it-roadmap</li><li><code>it/it-roadmap</code> ← meetings/notes/20260824-enrollment-payment-test</li><li><code>meetings/transcripts/2026-08-24-luo-yifeng-video-meeting-1-transcript</code> ← meetings/notes/20260824-enrollment-payment-test</li><li><code>community/community-overview</code> ← index/workstreams</li></ul><p>已排除：</p><ul><li><code>review/kb-intake#1. ⚠️ 这条链接是本轮验收的硬依赖（请优先确认）</code>：类型 approval-page 不进初始召回</li><li><code>it/sources/20260912-hic-it-roadmap-progress#三十、HIC IT 的三个发展阶段</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#一、Executive Summary</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#五、课程内容与中文本地化：实际合作规则</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260911-hic-hii-royalty-rules#二、Royalty 最终计算逻辑</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260911-hic-hii-royalty-rules#十二、沟通历程 Timeline</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>it/it-roadmap#现在在哪</code>（workstream）：正文命中（6.10）；标题命中 1；类型权威 workstream=0.95；元数据命中 1</li><li><code>meetings/notes/20260824-enrollment-payment-test#事实与进展</code>（meeting-note）：正文命中（5.39）；类型权威 meeting-note=0.70；元数据命中 1</li><li><code>index/workstreams#四条工作线</code>（index）：正文命中（5.68）；类型权威 index=1.00</li><li><code>hii/notes/20260911-hic-hii-royalty-analysis#Royalty 收入基数口径（不含 VAT）</code>（note）：正文命中（4.83）；类型权威 note=0.70</li><li><code>index/people</code>（index）：双链扩展；来自 it/it-roadmap</li><li><code>it/notes/20260912-hic-it-roadmap-analysis#2026 年 9–12 月 IT Roadmap（分月）</code>（note）：双链扩展；来自 it/it-roadmap</li></ul></details>
+
+==============================================================================
+✓ 已安装 App 验收通过：2 题全部合格。
