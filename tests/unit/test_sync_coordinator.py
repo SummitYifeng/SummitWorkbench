@@ -401,3 +401,65 @@ def test_push_after_commit_detail_is_sanitized(monkeypatch, tmp_path) -> None:
     assert snapshot is not None
     assert "unclassified" in snapshot.detail
     assert "canary-secret" not in snapshot.detail
+
+
+def test_sync_uses_the_on_disk_git_username_not_the_startup_snapshot(monkeypatch, tmp_path) -> None:
+    """D2：git_username 由「确认并转换」写入磁盘 profile，而 context 在启动时冻结。
+
+    真机症状：转换成功后同一进程内点「立即重试」必然失败（凭据查找用了空用户名），
+    重启 App 才恢复。
+    """
+    from uuid import uuid4
+
+    from summit_workbench.config.profiles import resolve_active_workspace
+    from summit_workbench.domain.workspace import LocalProfile, WorkspaceManifest
+    from summit_workbench.repositories.profile_registry import save_profile, set_active_profile
+    from summit_workbench.workflows import sync_coordinator
+
+    home = tmp_path / "home"
+    vault = tmp_path / "work" / "_vault"
+    vault.mkdir(parents=True)
+    workspace_id = str(uuid4())
+    write_workspace_manifest(
+        vault,
+        WorkspaceManifest.model_validate(
+            {
+                "schema_version": 2,
+                "workspace_id": workspace_id,
+                "display_name": "d2",
+                "created_at": "2026-09-05T00:00:00Z",
+                "min_reader_version": "0.1.0",
+                "min_writer_version": "0.1.0",
+            }
+        ),
+    )
+    profile = LocalProfile.model_validate(
+        {
+            "schema_version": 1,
+            "workspace_id": workspace_id,
+            "display_name": "d2",
+            "work_root": str(vault.parent),
+            "vault_dir": str(vault),
+            "device_role": DeviceRole.SECONDARY.value,
+            "created_at": "2026-09-05T00:00:00Z",
+        }
+    )
+    save_profile(profile, home=home)
+    set_active_profile(workspace_id, home=home)
+
+    context = resolve_active_workspace(home=home)
+    assert context.profile is not None
+    assert context.profile.git_username is None, "启动时 profile 还没有 git_username"
+
+    # 模拟「确认并转换」：只改磁盘上的 profile（本进程的 context 不会更新）。
+    save_profile(profile.model_copy(update={"git_username": "alice"}), home=home)
+
+    seen: dict[str, object] = {}
+
+    def fake_single(path, *, backend_kind=None, workspace_id=None, username=None):
+        seen["username"] = username
+        return SyncState.READY, ""
+
+    monkeypatch.setattr(sync_coordinator, "_sync_single_repo", fake_single)
+    sync_coordinator.sync_workspace(vault, context=context)
+    assert seen["username"] == "alice", "同步必须用磁盘上的当前 git_username"

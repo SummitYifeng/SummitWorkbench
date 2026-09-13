@@ -79,6 +79,26 @@ def pending_wb_commits(
         return 0
 
 
+def _fresh_git_username(context: ActiveWorkspaceContext) -> str | None:
+    """取**磁盘上当前**的 git_username。
+
+    profile 是可变的本地状态：「确认并转换」、保存 provider 设置都会改写它；而
+    ``ActiveWorkspaceContext`` 在本进程启动时冻结。同步若继续用快照里的值，同一个进程内
+    刚写入的 ``git_username`` 永远看不到，凭据查找会退化成空用户名并失败
+    （2026-09-13 真机：转换成功后「立即重试」必失败，重启才恢复，见 D2）。
+    读不到时退回快照值——不因为一次读取失败让同步崩掉。
+    """
+    if context.profile is None or context.workspace_id is None:
+        return None
+    try:
+        from summit_workbench.repositories.profile_registry import load_profile
+
+        fresh = load_profile(context.workspace_id, home=context.home)
+    except Exception:  # noqa: BLE001 - 读取失败回退快照
+        fresh = None
+    return (fresh or context.profile).git_username
+
+
 def _snapshot(
     workspace_id: str,
     *,
@@ -239,7 +259,7 @@ def sync_workspace(
         home = context.home
         workspace_id = context.workspace_id
         backend_kind = backend_kind or "dulwich"
-        username = username or context.profile.git_username
+        username = username or _fresh_git_username(context)
     work_root = work_root or vault_dir.parent
     repo_paths = [vault_dir] + [
         p for p in _discover(work_root) if p != vault_dir and (p / ".git").exists()
@@ -332,7 +352,7 @@ def push_after_commit(
         home = context.home
         workspace_id = context.workspace_id
         backend_kind = backend_kind or "dulwich"
-        username = username or context.profile.git_username
+        username = username or _fresh_git_username(context)
     ws_id = workspace_id or _workspace_id_of(vault_dir)
     repo = GitRepo(
         vault_dir,
@@ -486,7 +506,7 @@ def current_snapshot(
         home = context.home
         workspace_id = context.workspace_id
         backend_kind = backend_kind or "dulwich"
-        username = username or context.profile.git_username
+        username = username or _fresh_git_username(context)
     ws_id = workspace_id or _workspace_id_of(vault_dir)
     saved = load_sync_state_if_available(ws_id, home)
     repo = GitRepo(
