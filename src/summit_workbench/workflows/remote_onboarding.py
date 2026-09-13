@@ -19,7 +19,6 @@ from summit_workbench.config.git_credentials import GitCredentials
 from summit_workbench.domain.onboarding import OnboardingFlow, OnboardingResult
 from summit_workbench.domain.workspace import (
     Compatibility,
-    DeviceRole,
     LocalProfile,
     WorkspaceManifest,
     evaluate_manifest_compatibility,
@@ -244,6 +243,13 @@ def confirm_remote_clone(
         os_replace(staged.staging_dir, staged.target_vault)
         moved = True
         device = ensure_device_identity(home, device_name=device_name)
+        # D10：克隆下来的 vault 自带 automation-primary 声明；角色以它为准，
+        # 不再无条件写 secondary（否则主设备上的定时自动化永远不放行）。
+        from summit_workbench.repositories.automation_primary import connect_device_role
+
+        device_role = connect_device_role(
+            staged.target_vault, staged.workspace_id, device.device_id
+        )
         profile = LocalProfile.model_validate(
             {
                 "schema_version": 1,
@@ -251,7 +257,7 @@ def confirm_remote_clone(
                 "display_name": display_name or marker.display_name,
                 "work_root": str(staged.target_vault.parent),
                 "vault_dir": str(staged.target_vault),
-                "device_role": DeviceRole.SECONDARY.value,
+                "device_role": device_role.value,
                 "created_at": marker.created_at.isoformat(),
                 "user_email": user_email,
                 "git_username": staged.username,

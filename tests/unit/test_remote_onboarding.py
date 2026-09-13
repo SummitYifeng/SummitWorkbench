@@ -16,7 +16,7 @@ from summit_workbench.repositories.git_backend import (
     CommitIdentity,
     GitCredentialsUnavailable,
 )
-from summit_workbench.repositories.profile_registry import load_profile
+from summit_workbench.repositories.profile_registry import ensure_device_identity, load_profile
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.workflows.remote_onboarding import (
     RemoteCloneError,
@@ -164,6 +164,78 @@ def test_remote_clone_staging_confirm_creates_secondary_profile(tmp_path) -> Non
     assert profile.git_remote_url == "https://github.com/acme/private.git"
     assert target.is_dir()
     assert not staged.staging_dir.exists()
+
+
+def _write_claim(staging: Path, workspace_id: str, device_id: str, generation: int = 1) -> None:
+    """把 vault 内的 automation-primary 声明写进 staging（模拟远端已有主设备）。"""
+    import json
+
+    marker_dir = staging / ".summit-workbench"
+    marker_dir.mkdir(parents=True, exist_ok=True)
+    (marker_dir / "automation-primary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "workspace_id": workspace_id,
+                "device_id": device_id,
+                "generation": generation,
+                "claimed_at": "2026-09-13T00:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _stage_with_claim(tmp_path: Path, home: Path, device_id: str):
+    target = tmp_path / "work" / "_vault"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    workspace_id = str(uuid4())
+    staged = stage_remote_clone(
+        "https://github.com/acme/private.git",
+        target,
+        workspace_id=workspace_id,
+        username="alice",
+        home=home,
+        backend_factory=_factory(_manifest(workspace_id)),
+    )
+    _write_claim(staged.staging_dir, workspace_id, device_id)
+    return staged, workspace_id
+
+
+def test_remote_clone_confirm_uses_primary_marker_role_for_this_device(tmp_path) -> None:
+    """D10：远端 vault 的声明指向本机时，clone 确认后角色必须是 automation-primary。
+
+    变异验证：把 ``connect_device_role`` 改成恒返回 SECONDARY，本用例失败。
+    """
+    from summit_workbench.domain.workspace import DeviceRole
+
+    home = tmp_path / "home"
+    device_id = ensure_device_identity(home, device_name="Air").device_id
+    staged, workspace_id = _stage_with_claim(tmp_path, home, device_id)
+
+    confirm_remote_clone(staged, home=home, display_name="Remote", device_name="Air")
+
+    profile = load_profile(workspace_id, home=home)
+    assert profile is not None
+    assert profile.device_role is DeviceRole.AUTOMATION_PRIMARY
+
+
+def test_remote_clone_confirm_stays_secondary_when_marker_is_another_device(tmp_path) -> None:
+    """D10：声明属于别的设备时 clone 确认后仍是 secondary，且声明不被改写。"""
+    from summit_workbench.repositories.automation_primary import load_automation_primary
+
+    home = tmp_path / "home"
+    other_device = str(uuid4())
+    staged, workspace_id = _stage_with_claim(tmp_path, home, other_device)
+
+    confirm_remote_clone(staged, home=home, display_name="Remote", device_name="Air")
+
+    profile = load_profile(workspace_id, home=home)
+    assert profile is not None
+    assert profile.device_role.value == "secondary"
+    claim = load_automation_primary(staged.target_vault)
+    assert claim is not None
+    assert (claim.device_id, claim.generation) == (other_device, 1)
 
 
 def test_stage_remote_clone_forwards_pat_credential_resolver(tmp_path) -> None:

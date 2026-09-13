@@ -8,6 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError
 
+from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.workspace_manifest import load_workspace_manifest
 
@@ -46,6 +47,29 @@ def load_automation_primary(vault_dir: Path) -> AutomationPrimaryClaim | None:
         raise AutomationPrimaryError(
             "primary_state_corrupt", "automation-primary 声明损坏"
         ) from exc
+
+
+def connect_device_role(vault_dir: Path, workspace_id: str, device_id: str) -> DeviceRole:
+    """D10：connect/clone 时按 vault 内的主设备声明决定本机角色。
+
+    此前 connect-local 与 remote clone 都无条件写 ``secondary``，导致
+    ``automation_gate`` 在 marker 指定的主设备上也不放行定时自动化，而界面又没有
+    改角色的入口。这里以 vault 内的声明为唯一依据：
+
+    - 声明里的 device 就是本机 ⇒ ``AUTOMATION_PRIMARY``（声明本已存在，无需再 claim）；
+    - 声明属于**别的设备** ⇒ ``SECONDARY``（绝不在这里抢占；接管要走 G1 的显式入口）；
+    - 没有声明、声明损坏或属于另一个 workspace ⇒ 沿用连接流程既有的默认 ``SECONDARY``
+      （connect 不因一个坏 marker 而失败；修理由设置页的声明/接管入口完成）。
+    """
+    try:
+        claim = load_automation_primary(vault_dir)
+    except AutomationPrimaryError:
+        return DeviceRole.SECONDARY
+    if claim is None or claim.workspace_id != workspace_id:
+        return DeviceRole.SECONDARY
+    if claim.device_id == device_id:
+        return DeviceRole.AUTOMATION_PRIMARY
+    return DeviceRole.SECONDARY
 
 
 def claim_automation_primary(

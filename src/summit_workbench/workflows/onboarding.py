@@ -630,7 +630,12 @@ def connect_workspace(
 
     try:
         device = ensure_device_identity(home, device_name=device_name)
-        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home)
+        # D10：角色由 vault 内的 automation-primary 声明决定，不再一律写 secondary
+        # （否则 marker 指定的主设备上定时自动化永远不放行，且界面没有改角色的入口）。
+        from summit_workbench.repositories.automation_primary import connect_device_role
+
+        device_role = connect_device_role(vault_dir, workspace_id, device.device_id)
+        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home, device_role)
         set_active_profile(workspace_id, home=home)
         return _make_result(
             OnboardingFlow.CONNECT_LOCAL,

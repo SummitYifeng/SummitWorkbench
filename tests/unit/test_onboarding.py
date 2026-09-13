@@ -15,7 +15,7 @@ import pytest
 
 from summit_workbench.config.app_support import backups_dir, registry_file
 from summit_workbench.domain.onboarding import OnboardingFlow
-from summit_workbench.domain.workspace import Compatibility
+from summit_workbench.domain.workspace import Compatibility, DeviceRole
 from summit_workbench.repositories.profile_registry import (
     active_profile_id,
     load_profile,
@@ -321,6 +321,109 @@ def test_connect_local_reads_marker_and_builds_profile(tmp_path) -> None:
     assert profile is not None
     assert str(profile.vault_dir) == str(vault)
     assert profile.workspace_id == manifest.workspace_id
+
+
+def _maker_vault_with_claim(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """造一个由"另一台机器"创建、带 automation-primary 声明的 vault，并拷贝到共享位置。
+
+    返回 ``(maker_home, air_home, copied_vault)``。
+    """
+    maker_home = tmp_path / "maker-home"
+    air_home = tmp_path / "air-home"
+    create_workspace(
+        tmp_path / "maker-work",
+        home=maker_home,
+        templates_dir=_templates(tmp_path),
+        day=DAY,
+        app_version=APP_VERSION,
+        device_name="Maker",
+    )
+    vault = tmp_path / "shared-vault"
+    shutil.copytree(tmp_path / "maker-work" / "_vault", vault)
+    return maker_home, air_home, vault
+
+
+def test_connect_local_marker_pointing_at_this_device_becomes_primary(tmp_path) -> None:
+    """D10：marker 指定的设备连接自己的 vault 时必须是 automation-primary。
+
+    修复前 connect 一律写 secondary ⇒ ``automation_gate`` 在 marker 指定的主设备上也不
+    放行定时自动化，而界面没有改角色的入口（真机绕行见 §Q.1）。
+    变异验证：把 ``connect_device_role`` 改成恒返回 SECONDARY，本用例失败。
+    """
+    from summit_workbench.domain.sync import AutomationOutcome
+    from summit_workbench.repositories.automation_primary import (
+        load_automation_primary,
+    )
+    from summit_workbench.workflows.sync_coordinator import automation_gate
+
+    maker_home, _, vault = _maker_vault_with_claim(tmp_path)
+    # 同一台机器（同一 home ⇒ 同一 device id）重新连接自己创建的工作台
+    result = connect_workspace(vault, home=maker_home, app_version=APP_VERSION)
+    profile = load_profile(result.workspace_id, home=maker_home)
+    assert profile is not None
+    assert profile.device_role is DeviceRole.AUTOMATION_PRIMARY
+    claim = load_automation_primary(vault)
+    assert claim is not None and claim.device_id == result.device_id
+    assert (
+        automation_gate(profile, claim=claim, device_id=result.device_id, require_claim=True)
+        is AutomationOutcome.PRIMARY_OK
+    )
+
+
+def test_connect_local_marker_pointing_at_other_device_stays_secondary(tmp_path) -> None:
+    """D10 的另一半：marker 属于别的设备时连接者只能是 secondary，且**不得抢占**。
+
+    变异验证：把 ``connect_device_role`` 改成恒返回 AUTOMATION_PRIMARY，本用例的
+    角色断言与"claim 不失败"断言都会失败（等于 connect 偷偷接管了主设备）。
+    """
+    from summit_workbench.domain.sync import AutomationOutcome
+    from summit_workbench.repositories.automation_primary import (
+        AutomationPrimaryError,
+        claim_automation_primary,
+        load_automation_primary,
+    )
+    from summit_workbench.workflows.sync_coordinator import automation_gate
+
+    _, air_home, vault = _maker_vault_with_claim(tmp_path)
+    before = load_automation_primary(vault)
+    assert before is not None
+
+    result = connect_workspace(vault, home=air_home, app_version=APP_VERSION)
+    profile = load_profile(result.workspace_id, home=air_home)
+    assert profile is not None
+    assert profile.device_role is DeviceRole.SECONDARY
+    assert result.device_id != before.device_id
+
+    after = load_automation_primary(vault)
+    assert after is not None
+    # 声明没被连接流程改写：仍是原设备、原 generation
+    assert (after.device_id, after.generation) == (before.device_id, before.generation)
+    with pytest.raises(AutomationPrimaryError) as ei:
+        claim_automation_primary(
+            vault, result.workspace_id, result.device_id, expected_generation=after.generation
+        )
+    assert ei.value.code == "primary_already_claimed"
+    assert (
+        automation_gate(profile, claim=after, device_id=result.device_id, require_claim=True)
+        is AutomationOutcome.NOT_PRIMARY
+    )
+
+
+def test_connect_local_without_primary_marker_keeps_secondary_default(tmp_path) -> None:
+    """D10：没有主设备声明时沿用连接流程既有语义（secondary），不新造声明。"""
+    from summit_workbench.repositories.automation_primary import (
+        automation_primary_path,
+        load_automation_primary,
+    )
+
+    _, air_home, vault = _maker_vault_with_claim(tmp_path)
+    automation_primary_path(vault).unlink()
+
+    result = connect_workspace(vault, home=air_home, app_version=APP_VERSION)
+    profile = load_profile(result.workspace_id, home=air_home)
+    assert profile is not None
+    assert profile.device_role is DeviceRole.SECONDARY
+    assert load_automation_primary(vault) is None
 
 
 def test_connect_requires_marker_and_rejects_cannot_open(tmp_path) -> None:
