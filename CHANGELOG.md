@@ -170,6 +170,51 @@
 
 ## [Unreleased]
 
+### 2026-09-13 · 双机复跑发现的缺陷修复（D1–D6）
+
+> Studio + Air 现场复跑「第二台机器接入 + 冲突恢复」时逐个撞出来的问题，全部已修并逐个做了
+> 变异验证；A6/A7 的现场结论与证据见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §N。
+> 内部产物 **build 29**（`0.4.7` / arm64 / `INTERNAL-DEV`，源码 `d2b07bd`，DMG SHA-256
+> `bfe7fb504f94afe5803493bf8be8d34b9e554b2c6d6d49cab0c3a44647e1de2b`）。
+
+#### 新增
+
+- **顶部栏「⇅ 立即同步」+ 空闲自动拉取（D6）**：此前 `/api/sync/run` 只能从同步横幅的
+  「立即重试」触发，而横幅在状态 ready 时是隐藏的 ⇒ 干净、只读为主的设备**没有任何拉取入口**，
+  会一直显示旧数据，且它下次写入时必然撞上分叉。现在顶部栏按钮随时可点；启动时、切回窗口时
+  以及每分钟都会在**工作树干净且无保护态**时自动拉一次（脏工作树绝不自动合并的既有保护不变）。
+  按钮与自动拉取共用在途守卫，连点不会撞 workspace 锁。
+
+#### 修复
+
+- **新工作台纳入版本管理（D1）**：`新建我的工作台` 此前从不 `git init`，导致「系统写回自动
+  git 留痕」静默失效（`commit_paths` 返回 `NOT_GIT`），且设置页「预览 HTTPS 转换」直接
+  `500 internal_error`（日志为 `GitError: 不是 git 仓库`）。现在创建时经 P0-09 backend 初始化
+  仓库并落一个 `wb: onboarding create` 提交；分支固定 `main`（不再继承 dulwich 的 `master`）。
+  历史非 git 工作台会得到稳定错误码 `vault_not_a_repository` 与可执行说明，而不是 500。
+- **转换 remote 后无需重启（D2）**：`ActiveWorkspaceContext` 在启动时冻结，而 `git_username`
+  是「确认并转换」写进磁盘 profile 的 ⇒ 同一进程内点「立即重试」必然失败（凭据按空用户名查找），
+  只有重启才好。同步现在从磁盘读当前 `git_username`（读不到回退快照）。
+- **同步失败会说原因（D3）**：拉取路径此前 `detail` 恒为空、写路径把 `str(exc)` 原文写进状态，
+  而 `GitCredentialsUnavailable` 没有分类分支 ⇒ 缺凭据与代理故障都表现为裸 `error`。现在每个
+  失败给一个**稳定原因码**（`credentials-missing` / `proxy-unreachable` / `tls-failed` /
+  `auth-rejected` / `non-fast-forward` / `offline` …）与中文短句，写进 `sync-state.json` 与横幅；
+  原始文本（可能含 URL/主机/路径）绝不落盘；缺凭据归类为 `auth-required`。
+- **向导收尾干净（D5）**：进入工作台时清掉安装级草稿（此前从不 DELETE，`step:'done'` 会留着，
+  同一台机器下次空安装会停在第 3 步）；草稿里的 `~/…` 路径按给定 home 展开成绝对路径，不再与
+  同一份草稿里的 `work_root` 不一致。
+- （D4 随 build 28）私有 clone 的失败原因此前被兜底吞掉：`GitCredentialsUnavailable` /
+  `GitProxyError` 无分支、兜底只给「请检查凭据、网络或 TLS」；现在各有稳定码，兜底带异常类名，
+  向导也会显示 `details.reasons`。
+
+#### 测试与验收
+
+- 每个缺陷都配了行为测试与**变异验证**（去掉修复即失败）：D1 创建后 `is_git_repo()`、
+  D2 同步用磁盘用户名、D3 失败码可见且无原文泄漏、D5 路径展开与草稿清除、D6 只在 ready 时
+  自动同步且连点只发一次。
+- 门禁：`tsc` 干净、14 个前端脚本全绿、`pytest` **941 passed / 1 skipped**
+  （覆盖率 83.46%）、ruff / format / mypy / secret scan 全过。
+
 ### 2026-09-12 · 前端拆分收尾与第二台机器接入
 
 #### 新增
