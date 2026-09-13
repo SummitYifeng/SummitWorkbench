@@ -610,8 +610,12 @@ def prepare_manual_recovery(
                 else:
                     target = staging / f"{item.path}.remote"
                     if target.exists():
-                        raise ValueError("preserve_both_path_collision")
-                    candidate_paths.add(f"{item.path}.remote")
+                        # 上一次恢复已经把远端副本落在同名兄弟路径上，而那是那份内容的**唯一**
+                        # 副本，绝不能覆盖。改用带远端 revision 短码的确定性名字：既不丢数据，
+                        # 也不再让整次恢复失败（D8：第二次对同一路径选「保留双方副本」曾必然报
+                        # preserve_both_path_collision，而界面只说"恢复准备未完成"）。
+                        target = staging / f"{item.path}.remote.{details.remote.revision[:7]}"
+                    candidate_paths.add(target.relative_to(staging).as_posix())
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(remote_data)
 

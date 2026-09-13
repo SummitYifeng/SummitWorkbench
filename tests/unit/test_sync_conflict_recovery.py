@@ -539,3 +539,45 @@ def test_remote_only_preserve_both_keeps_original_path(tmp_path: Path) -> None:
         assert (prepared.staging_dir / "attachment.bin").read_text() == "remote\n"
         assert not (prepared.staging_dir / "attachment.bin.remote").exists()
         assert prepared.candidate_paths == ("attachment.bin",)
+
+
+def test_second_preserve_both_uses_a_revision_suffixed_sibling(tmp_path: Path) -> None:
+    """D8：上一次恢复留下的 `<path>.remote` 不能让第二次「保留双方副本」必然失败。
+
+    真机复跑实测：第一次演练在同一路径上选过「保留双方副本」，vault 里留下了
+    `inbox.md.remote`；第二次再选同一项就被 `preserve_both_path_collision` 直接拒绝，
+    而界面只说「恢复准备未完成」，用户完全不知道该怎么办。
+    """
+    remote = tmp_path / "remote.git"
+    GitRepo(remote).backend.init(bare=True)
+    root = tmp_path / "root"
+    repo = GitRepo(root)
+    repo.backend.init()
+    _commit(repo, root, "base.md", "base\n", "wb: base")
+    # 第一次恢复留下的远端副本：已提交，所以两侧都有，不是本次分叉路径。
+    _commit(repo, root, "attachment.bin.remote", "first-pass\n", "wb: previous remote copy")
+    repo.backend.add_remote("origin", str(remote))
+    repo.push()
+    other = tmp_path / "other"
+    other_repo = GitRepo(other)
+    other_repo.backend.clone(str(remote), other)
+    _commit(repo, root, "attachment.bin", "remote\n", "wb: remote binary")
+    repo.push()
+    _commit(other_repo, other, "attachment.bin", "local\n", "wb: local binary")
+    other_repo.fetch()
+
+    details = inspect_divergence(other)
+    suffix = details.remote.revision[:7]
+    with prepare_manual_recovery(
+        other,
+        details,
+        workspace_id="workspace-1",
+        selections={"attachment.bin": SelectionChoice.PRESERVE_BOTH},
+    ) as prepared:
+        assert prepared.ready is True, prepared.error_code
+        assert prepared.staging_dir is not None
+        assert (prepared.staging_dir / "attachment.bin").read_text() == "local\n"
+        # 上一轮的副本原样保留，新副本用远端 revision 短码区分（确定性、不覆盖、不丢数据）。
+        assert (prepared.staging_dir / "attachment.bin.remote").read_text() == "first-pass\n"
+        assert (prepared.staging_dir / f"attachment.bin.remote.{suffix}").read_text() == "remote\n"
+        assert f"attachment.bin.remote.{suffix}" in prepared.candidate_paths

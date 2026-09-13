@@ -146,6 +146,23 @@ export function conflictSelectionRequest(): Record<string, unknown> {
   };
 }
 
+/**
+ * 恢复失败的稳定原因码 → 用户能照着做的一句话（D7）。
+ *
+ * 这条路径此前只显示「恢复准备未完成」：后端把原因放在 `preparation.error_code`
+ * / `recovery.error_code` 里，而前端只读 `data.reason`（那种分支不返回它），于是
+ * 用户既不知道发生了什么、也不知道下一步做什么（2026-09-13 双机复跑实测）。
+ */
+const RECOVERY_FAILURE_HINTS: Record<string, string> = {
+  conflict_snapshot_stale: '远端或本机在上次读取之后又变了：请关掉本弹层、重新打开「查看冲突详情」再试。',
+  current_worktree_dirty: '工作树里还有未提交改动：请先提交或撤销它们，再重新打开冲突详情。',
+  manual_selection_incomplete: '还有文件没有选择处理方式：请逐个选完再预检。',
+  manual_selection_invalid: '选择不合法：未知派生视图与二进制文件只能选「保留双方副本」。',
+  preserve_both_path_collision: '同目录已存在上次保留的远端副本：请改选「保留本机」或「采用远端」。',
+  event_projection_failed: '恢复暂存阶段的投影重建失败：请导出冲突包后反馈。',
+  remote_content_missing: '远端那一侧缺少该文件内容：请重新打开冲突详情再试。',
+};
+
 export async function previewSyncConflictRecovery(): Promise<void> {
   if (!conflictDetails || conflictBusy) return;
   const missing = missingConflictSelections();
@@ -175,9 +192,14 @@ export async function previewSyncConflictRecovery(): Promise<void> {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
     });
     conflictPreparation = data.preparation ?? null;
-    conflictMessage = data.preparation?.ok
-      ? '预检完成。请确认后才会写回并创建提交。'
-      : data.reason ?? '恢复准备未完成。';
+    if (data.preparation?.ok) {
+      conflictMessage = '预检完成。请确认后才会写回并创建提交。';
+    } else {
+      const code = data.preparation?.error_code ?? data.recovery?.error_code ?? null;
+      conflictMessage = data.reason ?? (code
+        ? RECOVERY_FAILURE_HINTS[code] ?? ('恢复准备未通过（' + code + '）：请重新打开冲突详情后重试。')
+        : '恢复准备未完成。');
+    }
   } catch (err) {
     conflictMessage = String(err);
   } finally {

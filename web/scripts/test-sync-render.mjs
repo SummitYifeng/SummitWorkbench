@@ -198,6 +198,7 @@ modal.querySelectorAll = (selector: string) => {
 
 let statusFails = false;
 let statusState = 'local-ahead';
+let prepareFails = false;
 const calls: Array<{ url: string; method: string; body: any }> = [];
 const detailsPath = 'notes/a.md';
 const binaryPath = 'notes/b.bin';
@@ -226,6 +227,17 @@ globalThis.fetch = async (url: any, init: any) => {
   }
   if (target === '/api/sync/conflict/selection/validate') return jsonResponse({ ok: true, selection: {} });
   if (target === '/api/sync/conflict/recover') {
+    if (!body?.confirmed && prepareFails) {
+      return jsonResponse({
+        ok: false, available: true, state: 'diverged-protected',
+        preparation: {
+          status: 'rejected', ok: false, event_count: 0, aggregate_count: 0,
+          generated_view_count: 0, rebuilt_view_count: 0, candidate_path_count: 0,
+          staging_ready: false, error_code: 'preserve_both_path_collision',
+        },
+        recovery: { status: 'preparation-not-ready', error_code: 'preserve_both_path_collision' },
+      });
+    }
     if (body?.confirmed) {
       return jsonResponse({
         ok: true,
@@ -336,6 +348,12 @@ export const afterApply = {
   applyCall: calls.find((call) => call.url === '/api/sync/conflict/recover' && call.body?.confirmed === true),
   toasts: toasts.children.map((child: any) => child.textContent),
 };
+
+// D7：预检被拒时必须显示**可执行**的原因（而不是没头没尾的「恢复准备未完成」）。
+prepareFails = true;
+await previewSyncConflictRecovery();
+export const recoveryFailureMessage = modal.innerHTML;
+
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -444,6 +462,11 @@ try {
     'a failed status read must not trigger an automatic sync',
   );
   assert.equal(flow.autoSyncProbe.guardDelta, 1, 'a double click issues exactly one sync');
+
+  // D7：后端把原因放在 preparation/recovery.error_code 里，前端必须翻成能照做的一句话。
+  assert.match(flow.recoveryFailureMessage, /已存在上次保留的远端副本/);
+  assert.match(flow.recoveryFailureMessage, /改选「保留本机」或「采用远端」/);
+  assert.doesNotMatch(flow.recoveryFailureMessage, /恢复准备未完成/);
 
   console.log('Sync conflict recovery request tests passed');
 } finally {
