@@ -325,3 +325,20 @@ Keychain 都不动。**
   所以只是数据卫生问题；一旦将来有别的消费者按路径使用它，`Path("~/…").is_dir()` 会是 False。
 - **修法**：进入工作台时显式清一次草稿（或让后端在 confirm 后标记完成、`persist()` 不再写回）；
   向导持久化前对路径做 `expanduser()` 规范化。
+
+### D6 · 干净工作区没有任何"主动拉取"入口（影响日常多设备使用）
+
+- **证据**：全仓只有 `/api/sync/run` 会调用 `sync_coordinator.sync_workspace()`（`grep -rn
+  "sync_workspace(" src/summit_workbench/webapp/routers/` 只有 `routers/sync.py:445` 一处）；而
+  `/api/sync/run` 在前端**只由同步横幅的「立即重试」按钮触发**，横幅在状态 `ready` 时是**隐藏**的
+  （`banner.ts`：`shouldShow = state !== 'ready' && state !== 'unconfigured'`）。60 秒轮询只调
+  `refreshSyncBanner()`（读 `/api/sync/status`，即**内存快照**）与 `checkVersion`；
+  `GET /api/state` 等读路径**完全不 fetch**。写路径用的是 `push_after_commit()`（**只 push、不 fetch**）。
+- **实测后果**：Air 恢复成功并 push 后，Studio 处于"干净且 ready"，**界面上没有任何按钮能拉取**——
+  本轮是直接调 `POST /api/sync/run`（与按钮同一端点）才完成快进的。对日常使用意味着：
+  1. **只读为主的那台设备会一直显示旧数据**（简报/inbox 都是上一次同步时的内容），直到它自己写一次；
+  2. 而它一旦写，`push_after_commit` 只推不拉 → 必然非快进 → 直接进入冲突保护态。也就是说
+     "对端推送过 + 本机没及时拉" 会把一次本该无感的 fast-forward 变成一次人工冲突恢复。
+- **修法方向**（择一或组合）：顶部栏加一个「立即同步」按钮；把 60 秒轮询在**工作树 clean 且非保护态**
+  时升级为一次真正的 `sync_workspace()`；或在窗口获得焦点/变为可见时跑一次拉取（当前只有
+  `checkVersion` + 状态刷新）。注意要保留"脏工作树绝不自动合并"的现有保护。

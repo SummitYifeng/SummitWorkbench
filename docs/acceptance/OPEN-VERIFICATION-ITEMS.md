@@ -47,10 +47,14 @@
 - **ADR 0041 措辞更正**：该 ADR 写「Air『连接已有工作台』向导新增 PAT 输入与 `connect-remote`
   预检流」，与代码不符——历次提交中向导从未有过 PAT 输入（`connect-remote` 只作为 connect-existing
   位置步的预检 flow 存在，见 `f9060a0`）。PAT 输入是本轮才接上的，因此 A7 不是回归而是首次验证。
-- **当前开放项：3 项，且均不阻塞交付** —— A6（**已在 build 29 双机验收通过，待按差异点抽查
-  重新锚定到当前 build**）、A7（从未现场复跑，需第二台机器）、F1（**非缺陷**，明确超出
-  `INTERNAL-DEV` 交付范围）。**UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**
-- **本轮双机复跑发现 3 个产品缺陷（D1 新工作台不初始化 git 仓库 / D2 转换后仍用启动快照导致同步必失败 / D3 同步失败原因被吞成裸 error）**，均未修；证据、复现与修法方向见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」。
+- **A6 与 A7 已于 2026-09-13 在 Studio + Air 上现场通过**（当前 build `2b534e0` / build 28），
+  证据逐条见 §N；A 组至此全部关闭。
+- **当前开放项：1 项（F1，非缺陷，明确超出 `INTERNAL-DEV` 交付范围）**，另有**本轮复跑发现的
+  6 个产品缺陷（D1–D6，均未修）**：D1 新工作台不 `git init` / D2 转换后仍用启动快照导致同进程同步必失败 /
+  D3 同步失败原因被吞成裸 error / D4 私有 clone 失败被兜底吞掉 / D5 向导草稿收尾不干净 /
+  D6 干净工作区没有任何"主动拉取"入口。证据、复现与修法方向见
+  [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」。
+  **UI 层（B/C/D/E 组）开放项已于第七、八轮全部清零。**
 - 判定口径：**「历史某个 build 上验证过」不等于「当前代码已验证」**，见 A 组；但"当前 build 的
   相关代码确实变了吗"要实测，不能只按时间推断——A6 就是先量差异再决定复跑范围。
 
@@ -58,8 +62,7 @@
 
 | # | 项 | 说明 |
 |---|---|---|
-| A6 | 当前 build 上的双设备冲突恢复 | 已在 build 29 双机验收通过（[P2-02 runbook](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)）；待按[差异点抽查](DUAL-DEVICE-REHEARSAL.md)重新锚定到当前 build |
-| A7 | 第二台机器上的「从另一台 Mac 克隆」向导旅程 | 从未现场复跑，需要第二台机器（MacBook Air）；装包 → 克隆 → 确认 → 本机为 secondary → 模型/飞书；步骤见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) |
+| — | **A 组已全部关闭** | A1–A5 见 §L；**A6（双设备冲突恢复）与 A7（第二台机器的向导接入）于 2026-09-13 现场通过，见 §N** |
 
 > **双机历史轮次（都已做过并有记录，供 A6/A7 复用）**
 >
@@ -437,11 +440,6 @@ Ref refs/heads/wb-acceptance-probe updated
 
 ### 仍待人工
 
-- **A6**：完整流程已在 build 29 双机验收通过（见上表与 P2-02 runbook）；当前只需按
-  [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) §A6 做一次**差异点抽查**
-  （同步横幅读取失败保护态 + 一条分歧→恢复→push→快进的闭环）。
-- **A7**：在第二台机器上装包并走「从另一台 Mac 克隆」向导（真实私有 HTTPS 仓库 + 真实 PAT），
-  确认本机 profile 为 secondary、PAT 只出现在 Keychain、草稿与仓库里都没有 PAT。
 - A3/A4 的**面板点击路径**（一键完成、行内编辑、会议行内编辑）由产品所有者复核；本轮已验证其
   底层 PATCH/创建在真实飞书上正确工作。
 
@@ -796,3 +794,49 @@ B4（临时 `HOME` 隔离配方已查明，未执行）。
 | B4 packaged App / WKWebView 黑盒 | 2026-09-11 | 第七轮：临时 `HOME` + `WORK_ROOT` + `WB_RUNTIME_RECORD` 启动原生 App，设置页显示工作区 `work` / `/tmp/swb-app-v5-6ib3gW/work/_vault`（**临时路径，非真实工作区**）；六页签（今日/审批/第二大脑/项目/指南/设置）全部可达；重启后显示「界面 v2026.09.11-6e6e0c91 · 服务 0.4.4 · 已同步」；收尾后真实 `runtime.json` 为 `absent`。详见 §M 第七轮 |
 | C4「新建会议（个人日程）」落点 | 2026-09-12 | 第八轮，真实飞书日历端到端（隔离 vault，真实 workspace_id 以命中 Keychain，无远端）：候选 `目标：unresolved · 落点：新建会议`，「✓ 批准 → 新建会议」**可用**；预演 `DRY-RUN（零写入）` 且日历仍为空；写回 `批准写回=1 失败=0`；回读事件 `444bb8ea-…` 标题与候选一致、`start=1789264800 / end=1789268400`（Asia/Shanghai，即 10:00–11:00）；删除后该事件 `status=cancelled`、当日时间窗无活动事件。详见 §M 第八轮 |
 | 原生层未显式传 runtime 记录路径（隐式假设 `NSHomeDirectory() == $HOME`） | 2026-09-12 | `ServiceSupervisor.swift` 子进程环境新增 `environment["WB_RUNTIME_RECORD"] = RuntimeRecord.url.path`，消除该假设；服务端本就支持该变量（`server_entry.py:88`）且子进程继承 App 环境。新增契约测试 `test_service_supervisor_pins_runtime_record_path_for_the_child`（**变异检查**：删掉该行即失败），原生源码 `swiftc -typecheck` 通过。**需重新打包 App 才在产物中生效** |
+
+## N. A6 / A7 双机现场复跑（2026-09-13，build 28 / `2b534e0`）
+
+两台机器：Studio（automation-primary）+ Air（secondary，全新空安装），装**同一个** DMG
+（`SummitWorkbench-0.4.7-arm64-INTERNAL-DEV.dmg`，build 28，SHA-256
+`1b8e9815023ee7f5abe3292cb464ab54abbc1f35228229f90ad5ea1bd8c2d953`）。
+演练用一次性私有仓库 `SummitYifeng/summitworkbench-rehearsal` 与工作台 `~/Documents/Rehearsal`，
+**全程未触真实 vault**（两台的真实 profile 目录在演练期间改名存放，事后原样恢复）。
+操作步骤与铁律见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md)。
+
+### A7 · 第二台机器「从另一台 Mac 克隆」首次现场通过
+
+| # | 证据 | 结果 |
+|---|---|---|
+| 1 | Air profile：`workspace_id` 与 Studio 相同（`5ead7279-…`）、**`device_role = "secondary"`**、`git_username` 与 `git_remote_url` 已回填 | ✅ |
+| 2 | Air 界面可见 Studio 先前捕捉的 `演练-A`（克隆确实带过来了） | ✅ |
+| 3 | workspace 级 Keychain 凭据存在（`com.summitworkbench.credentials.5ead7279-…` / 账户 `git:github.com:Yifeng93`，值为 `github_pat_…`） | ✅ |
+| 4 | 草稿文件**不含任何秘密**（`grep -c github_pat` = 0；字段白名单由 `OnboardingDraft` 的 `extra="forbid"` 保证） | ✅ |
+| 5 | 仓库历史**不含 PAT**（`git log -p \| grep -c github_pat_` = 0） | ✅ |
+
+### A6 · 冲突恢复端到端闭环（当前 build）
+
+以下均为**远端权威取证**（`gh api` 读远端提交与树），不是本地推断：
+
+| 项 | 证据 |
+|---|---|
+| 分歧与保护态 | Air 离线捕捉 → Studio 联网捕捉并推送 `8bcb710` → Air 重试进入 `diverged-protected`，Air 的本地提交 `13eaeb8` 未被改写 |
+| 人工选择 | 弹层显示三方短码（base `a21c8e5` / local `13eaeb8` / remote `8bcb710`）与需选择的 `inbox.md`，选择 **`preserve-both`**；临时预检（不写入）通过后才可确认 |
+| 双父恢复提交 | **`39611ca`，`parents=2`**，消息 `wb: sync recovery events=0 views=0 paths=1` |
+| 脱敏审计提交 | **`1c06e43`**（`wb: sync recovery audit`）；`_signals/sync-conflict-recovery/log.jsonl` 仅含 revision / 计数 / 选择（`selections: {"inbox.md":"preserve-both"}`、`status: committed`），**无任何正文** |
+| preserve-both 落地 | `inbox.md` 保留本机内容（`离线-B`）、`inbox.md.remote` 存远端内容（`离线A` + `测试的`）——**两侧内容都在** |
+| 普通 push 与对端收敛 | 两个提交都在远端；Studio 由 `8bcb710` **快进**到 `1c06e43`（没有第二个冲突提交），两台同 HEAD、工作树 clean、`ahead/behind 0/0` |
+| 横幅读取失败守卫 | 无法用"关 Wi-Fi"触发（`/api/sync/status` 只读本地内存快照 + 本地文件，**不联网**）⇒ 改为自动化行为测试（非 ready 时保留横幅 + 说明行 + 「重新读取」；ready 时保持隐藏），提交 `78c514f`，变异验证通过 |
+
+> build 29 / `697c239` 的完整口径（未知视图与二进制 `preserve-both`、`conflict_snapshot_stale`、
+> `current_worktree_dirty`、审计失败分支）仍见
+> [`../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md`](../archive/acceptance/P2-02-BUILD-25-STUDIO-AIR-RUNBOOK.md)；
+> 本轮是"差异点抽查 + 一条端到端闭环"，把结论落在当前 build 上。
+
+### 本轮发现的产品缺陷（D1–D6，均未修）
+
+见 [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) 文末「附」：D1 新工作台不 `git init`
+（预览 500 + 写回留痕静默失效）、D2「确认并转换」后仍用启动快照（同进程同步必失败、重启才恢复）、
+D3 同步失败原因被吞成裸 `error`、D4 私有 clone 失败被兜底吞掉（同一意图在两层各写了同名守卫）、
+D5 向导草稿收尾不干净、D6 干净工作区没有主动拉取入口（`sync_workspace` 只被 `/api/sync/run` 调用，
+读路径与 60s 轮询都不 fetch，而该按钮只在横幅可见时存在）。
