@@ -7,7 +7,7 @@ export function mountThreads(deps: ThreadsDeps): void {
   setThreadsDeps(deps);
 }
 
-export { openLogModal } from './log-modal';
+export { openLogModal, logProjectChoices } from './log-modal';
 export { openArtifactModal, artifactStateConfirmText } from './artifact-modal';
 export type { ThreadsDeps } from './deps';
 export type { ArtifactDraft, LogDraft } from './types';

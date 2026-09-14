@@ -32,7 +32,7 @@ export async function reconcileExternalAction(operationId: string, decision: str
     toast(r.ok ? '外部写回状态已更新' : (r.message ?? '核对失败'), r.ok ? 'ok' : 'err');
     if (r.ok) await getReviewDeps()?.refreshReview();
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 export function selectedReviewEntries(): ReviewEntry[] {
@@ -70,7 +70,7 @@ export async function decide(candidateId: string, decision: string): Promise<voi
       toast(r.message, 'err');
     }
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
   // 决定变化后旧预演失效：必须重新「检查并写回」才能应用。
   reviewUi.planReady = false;
@@ -100,7 +100,7 @@ export async function batchDecide(candidateIds: string[], decision: string, note
       toast(r.message, 'err');
     }
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
   // 批量决定同样使旧预演失效。
   reviewUi.planReady = false;
@@ -159,7 +159,7 @@ export async function planApply(exec: boolean): Promise<void> {
       void getReviewDeps()?.refreshState();
     }
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
     if (planResult) planResult.innerHTML = '<div class="msg err">' + esc(String(err)) + '</div>';
   } finally {
     if (exec) reviewUi.applyBusy = false;

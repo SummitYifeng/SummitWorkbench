@@ -139,7 +139,7 @@ export function renderAsk(view: HTMLElement): void {
     '<div class="ask-layout">' +
     '<aside class="ask-side">' +
     '<div class="ask-side-head">' +
-    '<button class="primary ask-new-btn" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限，请先删除或清空一个"' : '') + '>＋ 新会话</button>' +
+    '<button class="primary ask-new-btn" data-action="ask-new"' + (full ? ' disabled title="已达 ' + ASK_MAX_THREADS + ' 个会话上限，请先删除或清空一个"' : '') + '>＋ 新会话</button>' +
     '<span class="ask-side-count">' + askThreads.length + '/' + ASK_MAX_THREADS + '</span>' +
     '</div>' +
     '<label class="ask-mobile-select">当前会话<select id="ask-thread-select"><option value="">选择会话</option>' + threadOptions + '</select></label>' +
@@ -192,7 +192,7 @@ function renderAskChat(): void {
       '<div class="ask-welcome"><h3>问第二大脑</h3>' +
       '<p>基于工作 vault 召回<strong>带来源</strong>的事实回答：做过什么、为什么这样决定、接下来最该做什么。</p>' +
       '<p class="hint">例如：「网课项目最近的决策是什么？」 · 追问如：「那后来呢？」</p>' +
-      '<button class="primary" data-action="ask-new"' + (full ? ' disabled title="已达 10 个会话上限"' : '') + '>＋ 开始新对话</button>' +
+      '<button class="primary" data-action="ask-new"' + (full ? ' disabled title="已达 ' + ASK_MAX_THREADS + ' 个会话上限"' : '') + '>＋ 开始新对话</button>' +
       '</div>';
     return;
   }
@@ -209,11 +209,16 @@ function renderAskChat(): void {
     : '';
   const scopeOptions = (askDeps?.projects() ?? [])
     .filter((p) => p.registered)
-    .map((p) =>
-      '<option value="' + esc(p.name) + '"' + (askScope === p.name ? ' selected' : '') + '>' +
-      esc(projectDisplayName(p)) + (p.is_thread ? '（线程）' : '') +
-      (projectDisplayName(p) !== p.name ? ' · ' + esc(p.name) : '') + '</option>'
-    )
+    .map((p) => {
+      // 中文显示名优先；项目 ID 收进 option 的 title（hover 可见），不再铺在可见文本里。
+      const label = projectDisplayName(p);
+      const kind = p.is_thread ? '知识线程' : '文件夹项目';
+      const hint = label === p.name ? kind : label + '（' + p.name + '）· ' + kind;
+      return '<option value="' + esc(p.name) + '"' +
+        (askScope === p.name ? ' selected' : '') +
+        ' title="' + esc(hint) + '">' +
+        esc(label) + (p.is_thread ? '（知识线程）' : '') + '</option>';
+    })
     .join('');
   main.innerHTML =
     '<div class="ask-chat" id="ask-chat">' + bubbles + errorBubble + typing + '</div>' +

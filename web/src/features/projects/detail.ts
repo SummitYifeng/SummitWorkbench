@@ -5,7 +5,7 @@ import { focusVisibleProjectLink, toast, type ShellTab } from '../shell';
 import { openArtifactModal } from '../threads';
 import { openLogModal } from '../threads';
 import { getProjectDeps } from './deps';
-import { projectDetailHtml, projectsListHtml } from './render';
+import { projectDetailHtml, projectDisplayName, projectsListHtml } from './render';
 import type { ProjectListFilter, ProjectState, ProjectView } from './types';
 
 /** 项目页装配与详情导航（原 legacy-main 逐条搬迁）。 */
@@ -38,8 +38,11 @@ export function renderProjects(view: HTMLElement, state: ProjectsSnapshot | null
     return;
   }
   if (projectDetailLoading) {
+    // 加载态显示中文显示名，而不是项目 ID（ID 在详情页里另有「档案 ID」一行）。
+    const known = state.projects.find((p) => p.name === projectDetailName);
+    const loadingName = known ? projectDisplayName(known) : projectDetailName;
     view.innerHTML = '<div class="section-head"><button class="ghost" data-action="project-detail-back">← 返回项目</button></div>' +
-      '<div class="loading">正在读取「' + esc(projectDetailName) + '」详情…</div>';
+      '<div class="loading">正在读取「' + esc(loadingName) + '」详情…</div>';
     return;
   }
   if (projectDetail) {
@@ -77,6 +80,7 @@ export function renderProjects(view: HTMLElement, state: ProjectsSnapshot | null
     '<summary class="ghost">＋ 新建知识线程</summary>' +
     '<form class="thread-create-form">' +
     '<input name="project_id" placeholder="项目 ID，如 finance-ops" required pattern="[A-Za-z0-9_-]+" title="字母/数字/下划线/连字符">' +
+    '<p class="hint">项目 ID 是文件夹 / 档案名（英文小写，别用中文）；界面上一律显示档案里的中文名。</p>' +
     '<input name="aliases" placeholder="别名（逗号分隔，可选）：财务运营, Finance Ops">' +
     '<button class="ok" type="submit">建档</button>' +
     '</form></details>' +
@@ -145,7 +149,7 @@ export function bindProjectDetail(container: HTMLElement, current: ProjectView):
           reload();
           void getProjectDeps()?.refreshState();
         }
-      }).catch((err: unknown) => toast(String(err), 'err'));
+      }).catch((err: unknown) => toast(err, 'err'));
     };
     save.addEventListener('click', commit);
     cancel.addEventListener('click', reload);

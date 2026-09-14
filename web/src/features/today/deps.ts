@@ -7,7 +7,7 @@
 export interface TodayDeps {
   api: <T>(url: string, init?: RequestInit) => Promise<T>;
   mutation: <T>(request: () => Promise<T>) => Promise<T>;
-  toast: (msg: string, kind?: 'ok' | 'err' | 'info') => void;
+  toast: (msg: unknown, kind?: 'ok' | 'err' | 'info') => void;
   refreshState: () => Promise<boolean>;
   renderToday: (view: HTMLElement) => void;
 }

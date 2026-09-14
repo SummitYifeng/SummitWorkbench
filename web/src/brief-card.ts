@@ -178,15 +178,31 @@ function briefOrphanActions(b: BriefData): BriefAction[] {
   });
 }
 
-function briefOrphanBlock(list: BriefAction[], todayIso: string): string {
+/**
+ * 出处文件的显示名：去掉目录与日期前缀，只留可读标题。
+ *
+ * 2026-09-14：界面上不再直接显示 `huoman-logistics · 2026-09-14-木子沟通.md` 这种
+ * 「英文 ID + 文件名」；完整路径仍可在「第二大脑」的来源按钮里看到。
+ */
+export function briefSourceLabel(ref: string): string {
+  if (!ref || ref.startsWith('feishu-task:')) return '';
+  const base = (ref.split('/').pop() || '').replace(/\.(md|txt)$/i, '');
+  return base.replace(/^\d{4}-?\d{2}-?\d{2}[-_]?/, '');
+}
+
+function briefOrphanBlock(
+  list: BriefAction[],
+  todayIso: string,
+  projectNames: Record<string, string>,
+): string {
   const rows = list.map((a) => {
     const pieces: string[] = [];
-    if (a.project) pieces.push(a.project);
+    if (a.project) pieces.push(projectNames[a.project] ?? a.project);
     if (a.detail) pieces.push(a.detail);
-    const refName = a.source_ref.startsWith('feishu-task:')
-      ? ''
-      : (a.source_ref.split('/').pop() || '');
-    if (refName && refName !== a.project) pieces.push(refName);
+    const refName = briefSourceLabel(a.source_ref);
+    if (refName && refName !== (a.project ? projectNames[a.project] ?? a.project : '')) {
+      pieces.push(refName);
+    }
     const meta = pieces.length
       ? '<div class="bf-act-meta">' + pieces.map(esc).join(' · ') + '</div>'
       : '';
@@ -204,14 +220,14 @@ function briefFoldBlock(label: string, count: number, rowsHtml: string): string 
     '<span class="bf-count">' + count + '</span></summary>' + rowsHtml + '</details>';
 }
 
-function briefProposalBlock(list: BriefAction[]): string {
+function briefProposalBlock(list: BriefAction[], projectNames: Record<string, string>): string {
   const rows = list.map((p) => {
     const pieces: string[] = [];
-    if (p.project) pieces.push(p.project);
-    const refName = p.source_ref.startsWith('feishu-task:')
-      ? ''
-      : (p.source_ref.split('/').pop() || '');
-    if (refName && refName !== p.project) pieces.push(refName);
+    if (p.project) pieces.push(projectNames[p.project] ?? p.project);
+    const refName = briefSourceLabel(p.source_ref);
+    if (refName && refName !== (p.project ? projectNames[p.project] ?? p.project : '')) {
+      pieces.push(refName);
+    }
     return '<div class="bf-minor-row"><span class="bf-minor-main">' + esc(p.title) + '</span>' +
       (pieces.length
         ? '<span class="bf-minor-text">' + pieces.map(esc).join(' · ') + '</span>'
@@ -227,7 +243,17 @@ function briefCompletionBlock(list: BriefCompletion[]): string {
   return briefFoldBlock('最近完成', list.length, rows);
 }
 
-export function briefCardHtml(b: BriefData, todayIso: string): string {
+/**
+ * 渲染整份简报。
+ *
+ * `projectNames` 是「项目 ID → 中文显示名」映射（由今日页从 `state.projects` 提供）：
+ * 界面上一律先给中文名，没有映射时才退回 ID。
+ */
+export function briefCardHtml(
+  b: BriefData,
+  todayIso: string,
+  projectNames: Record<string, string> = {},
+): string {
   const parts: string[] = [];
   if (b.health.level !== 'ok') {
     const tone = b.health.level === 'alert' ? 'bad' : 'warn';
@@ -237,18 +263,17 @@ export function briefCardHtml(b: BriefData, todayIso: string): string {
         ? '<span class="bf-alert-reasons">' + b.health.reasons.map(esc).join(' · ') + '</span>'
         : '') + '</div>');
   }
-  if (b.pending_review > 0) {
-    parts.push('<div class="bf-hint"><span>⏳ 另有 ' + b.pending_review +
-      ' 条会议提取结果待确认（未确认内容不计入事实）</span>' +
-      '<button class="link" data-action="go-review">去审批</button></div>');
-  }
+  // 「待确认 N 条」在今日页只保留一处（下方那张带「去处理 →」的审批卡）；
+  // 简报里再重复一遍数字只会让同一屏出现两个同样的计数（2026-09-14 去重）。
+  // 上下两块（2026-09-14）：会议在上、紧凑；待办任务在下、占满整宽。
+  // 原先左右各占一半，会议少时空半屏、待办一多就被半宽卡住。
   const schedule = briefMeetingBlock(b.meetings);
   const taskColumn: string[] = [briefTaskBlock(b, todayIso)];
   const orphans = briefOrphanActions(b);
-  if (orphans.length) taskColumn.push(briefOrphanBlock(orphans, todayIso));
-  parts.push('<div class="bf-grid"><div class="bf-col bf-col-schedule">' + schedule + '</div>' +
+  if (orphans.length) taskColumn.push(briefOrphanBlock(orphans, todayIso, projectNames));
+  parts.push('<div class="bf-stack"><div class="bf-col bf-col-schedule">' + schedule + '</div>' +
     '<div class="bf-col bf-col-tasks">' + taskColumn.join('') + '</div></div>');
-  if (b.proposals.length) parts.push(briefProposalBlock(b.proposals));
+  if (b.proposals.length) parts.push(briefProposalBlock(b.proposals, projectNames));
   if (b.completions.length) parts.push(briefCompletionBlock(b.completions));
   return parts.join('');
 }

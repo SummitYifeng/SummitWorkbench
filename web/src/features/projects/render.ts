@@ -49,6 +49,13 @@ function projectNextStepHtml(nextStep: string | null): string {
     : '';
 }
 
+/** 推进卡与项目行共用的两个快捷动作（同一批动作只维护一份文案与 DOM）。 */
+function projectQuickActions(name: string, extraClass = ''): string {
+  const cls = 'ghost' + (extraClass ? ' ' + extraClass : '');
+  return '<button class="' + cls + '" data-action="open-log" data-project="' + esc(name) + '" title="追加推进日志">✎ 日志</button>' +
+    '<button class="' + cls + '" data-action="open-artifact" data-project="' + esc(name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>';
+}
+
 function projectCard(p: ProjectState, today: string): string {
   const chips = projectChips(p, today);
   const chipsHtml = chips.length
@@ -56,10 +63,7 @@ function projectCard(p: ProjectState, today: string): string {
     : '<span class="project-clear-state">未发现同步提醒</span>';
   const step = projectNextStepHtml(p.next_step) ||
     '<div class="project-step muted-step"><span class="step-label">下一步</span><span class="step-text">主笔记还没写下一步</span></div>';
-  const quick = p.registered
-    ? '<button class="ghost card-quick" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
-      '<button class="ghost card-quick" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
-    : '';
+  const quick = p.registered ? projectQuickActions(p.name, 'card-quick') : '';
   return (
     '<div class="card project' + (p.dirty || p.behind > 0 || p.inbox_pending > 0 ? ' attention' : '') + '">' +
     '<div class="card-head"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(projectDisplayName(p)) + '</button>' + chipsHtml + '</div>' +
@@ -89,22 +93,34 @@ function projectStatusBadge(p: ProjectState): string {
 export function projectsHtml(projects: ProjectState[], today: string): string {
   const onHome = projects.filter(isOnHome);
   const fresh = projects.filter(isNewProject);
-  if (onHome.length === 0 && fresh.length === 0) return '';
+  // 2026-09-14：只有已归档项目时也要保留这一节（含「管理全部 →」入口），
+  // 否则首页会整块消失、看不到任何入口；原先的 emptyNote 在该分支永远不可达。
+  if (projects.length === 0) return '';
+  // 未建档的文件夹没有档案 title，只能显示文件夹名；加一个「（未命名文件夹）」前缀说明它是什么，
+  // 免得一屏里中文名（卡片）与英文文件夹名（横幅）混在一起看不出关系。
+  const freshRows = fresh.map((p) => {
+    const named = !!(p.title && p.title.trim());
+    return '<div class="new-project-row"><span class="project-name">' +
+      (named ? esc(projectDisplayName(p)) : '（未命名文件夹）') + '</span>' +
+      (named ? '' : '<span class="hint">' + esc(p.name) + '</span>') +
+      '<span class="row-actions">' +
+      '<button class="ok" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>' +
+      '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>' +
+      '</span></div>';
+  }).join('');
   const banner = fresh.length
     ? '<div class="new-projects"><div class="new-projects-head">' +
       '<strong>新文件夹</strong>' +
       '<span class="hint">尚未建立项目档案 · 加入工作台后才会出现在上方推进卡</span></div>' +
-      fresh.map((p) =>
-        '<div class="new-project-row"><span class="project-name">' + esc(p.name) + '</span>' +
-        '<span class="row-actions">' +
-        '<button class="ok" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>' +
-        '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>' +
-        '</span></div>'
-      ).join('') +
+      freshRows +
       '</div>'
     : '';
   const emptyNote = onHome.length === 0
-    ? '<div class="empty"><p>工作台上还没有项目——加入上方新文件夹，或在「项目」页管理。</p></div>'
+    ? '<div class="empty"><p>' +
+      (fresh.length
+        ? '工作台上还没有项目——加入上方新文件夹，或在「项目」页管理。'
+        : '当前没有在工作中显示的项目（可能都已归档）。点「管理全部 →」查看或恢复。') +
+      '</p></div>'
     : '';
   return (
     '<section class="block">' +
@@ -123,10 +139,7 @@ function projectRow(p: ProjectState, today: string): string {
   const action = isOnHome(p)
     ? '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>'
     : '<button class="ghost" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>';
-  const quick = p.registered
-    ? '<button class="ghost" data-action="open-log" data-project="' + esc(p.name) + '" title="追加推进日志">✎ 日志</button>' +
-      '<button class="ghost" data-action="open-artifact" data-project="' + esc(p.name) + '" title="把 AI 产物存入本线程/项目档案">存产物</button>'
-    : '';
+  const quick = p.registered ? projectQuickActions(p.name) : '';
   return (
     '<div class="card project-row">' +
     '<div class="project-row-main">' +
@@ -205,7 +218,20 @@ export function projectsListHtml(
   const matched = projects.filter((p) => matchesFilter(p) &&
     (!q || p.name.toLowerCase().includes(q) || projectDisplayName(p).toLowerCase().includes(q)));
   if (matched.length === 0) {
-    return '<div class="empty"><p>' + (q ? '没有匹配「' + esc(q) + '」的项目' : '暂无项目文件夹') + '</p></div>';
+    // 空状态必须说清「为什么空」：搜索无命中、筛选到某一类、还是真的没有项目。
+    const reason = q
+      ? '没有匹配「' + esc(q) + '」的项目'
+      : filter === 'archived'
+        ? '还没有已归档的项目'
+        : filter === 'new'
+          ? '没有未建档的新文件夹'
+          : filter === 'active'
+            ? '工作台上还没有项目'
+            : '暂无项目文件夹';
+    const retry = q || filter !== 'all'
+      ? '<p class="hint">可以清空搜索框，或把筛选切回「全部项目」。</p>'
+      : '';
+    return '<div class="empty"><p>' + reason + '</p>' + retry + '</div>';
   }
   const rank = (p: ProjectState): number => (isOnHome(p) ? 0 : isNewProject(p) ? 1 : 2);
   const sorted = [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));

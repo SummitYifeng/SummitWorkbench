@@ -45,7 +45,6 @@ export function mountShell(actions: ShellActions): void {
     '<button class="tab" id="tab-review" data-tab="review" aria-controls="view-review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
     '<button class="tab" id="tab-ask" data-tab="ask" aria-controls="view-ask" role="tab">第二大脑</button>' +
     '<button class="tab" id="tab-projects" data-tab="projects" aria-controls="view-projects" role="tab">项目</button>' +
-    '<button class="tab" id="tab-decisions" data-tab="decisions" aria-controls="view-decisions" role="tab">决策</button>' +
     '<button class="tab" id="tab-guide" data-tab="guide" aria-controls="view-guide" role="tab">指南</button>' +
     '<button class="tab" id="tab-settings" data-tab="settings" aria-controls="view-settings" role="tab">设置</button>' +
     '</nav></div>' +
@@ -54,7 +53,6 @@ export function mountShell(actions: ShellActions): void {
     '<section id="view-review" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-ask" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-projects" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-decisions" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-guide" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-settings" class="view" role="tabpanel" tabindex="0"></section>' +
     '</main>' +

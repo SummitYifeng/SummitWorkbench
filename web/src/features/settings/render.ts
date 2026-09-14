@@ -1,6 +1,7 @@
 /** 设置页渲染与只读数据读取（原 features/settings/index.ts，Step 8c 拆分）。 */
 import { esc } from '../../md';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
+import { syncStateLabel } from '../sync/labels';
 
 export interface ProfileSummary {
   workspace_id: string;
@@ -31,7 +32,7 @@ export interface SyncPrimaryStatus {
 export interface SettingsActions {
   api: <T>(url: string, init?: RequestInit) => Promise<T>;
   mutation: <T>(request: () => Promise<T>) => Promise<T>;
-  toast: (message: string, kind?: 'ok' | 'err' | 'info') => void;
+  toast: (message: unknown, kind?: 'ok' | 'err' | 'info') => void;
   refresh: () => void;
 }
 
@@ -58,7 +59,8 @@ function automationHtml(job: string, schedule: AutomationJob): string {
     'not-primary': '本机不是主设备', skipped: '本次跳过',
   };
   return '<form class="card automation-form" data-job="' + esc(job) + '"><div class="automation-row"><div><strong>' +
-    esc(AUTOMATION_LABELS[job] ?? job) + '</strong><div class="meta">最近：' + esc(status[schedule.last_status] ?? schedule.last_status) +
+    esc(AUTOMATION_LABELS[job] ?? job) + '</strong><div class="meta" title="内部状态码：' + esc(schedule.last_status) + '">最近：' +
+    esc(status[schedule.last_status] ?? '未知状态') +
     (schedule.last_run_at ? ' · ' + esc(schedule.last_run_at) : '') + '</div>' +
     (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') +
     '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
@@ -109,18 +111,27 @@ function primaryRoleHtml(
   const downgrade = role === 'automation-primary'
     ? '<button class="ghost" type="button" data-action="primary-downgrade">降级为备用设备</button>'
     : '';
+  // 对外不显示设备 id / generation 这类内部标识：主设备说「本机 / 另一台机器」，代际说「第 N 代」。
   const primaryLine = primaryDeviceId
-    ? esc(primaryDeviceId) + ' · generation ' + esc(generationText || '?')
+    ? (isLocalPrimary ? '本机' : '另一台机器') +
+      (generationText ? ' · 第 ' + esc(generationText) + ' 代' : '')
     : '（尚未声明：定时自动化不会在任何机器上运行）';
-  return '<section class="block"><h3 class="section-title">定时自动化主设备</h3>' +
-    '<p class="hint">同一时间只应有一台 Mac 跑定时自动化。接管会把归属转到本机、generation 递增，并需要与另一台机器沟通。</p>' +
+  // 设备标识（UUID）只在排查问题时有用 ⇒ 收进折叠区，需要时给支持人员看。
+  const idsDetail = '<details class="settings-ids"><summary>设备标识（排查问题时才需要）</summary>' +
     '<div class="settings-path"><span class="meta">本机 device id：' + esc(localId || '（未读到）') + '</span></div>' +
+    (primaryDeviceId
+      ? '<div class="settings-path"><span class="meta">当前主设备 device id：' + esc(primaryDeviceId) + '</span></div>'
+      : '') +
+    '</details>';
+  return '<section class="block"><h3 class="section-title">定时自动化主设备</h3>' +
+    '<p class="hint">同一时间只应有一台 Mac 跑定时自动化。接管会把归属转到本机、代际加一（第 N 代 → 第 N+1 代），并需要与另一台机器沟通。</p>' +
     '<div class="settings-path"><span class="meta">当前主设备：' + primaryLine + '</span></div>' +
     '<div class="settings-path"><span class="meta">本机角色：' + esc(roleLabel) + '</span></div>' +
     (primaryDeviceId && !isLocalPrimary
-      ? '<p class="hint">接管后果：定时自动化转移到本机、generation 加一，另一台机器需要重新声明或确认。</p>'
+      ? '<p class="hint">接管后果：定时自动化转移到本机、代际加一，另一台机器需要重新声明或确认。</p>'
       : '') +
-    '<div class="row">' + action + downgrade + '</div><div id="primary-claim-result"></div></section>';
+    '<div class="row">' + action + downgrade + '</div>' + idsDetail +
+    '<div id="primary-claim-result"></div></section>';
 }
 
 /**
@@ -162,8 +173,8 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<div class="settings-update"><label class="automation-enabled"><input id="auto-update-check" type="checkbox"' +
       (localStorage.getItem('wb.update.auto-check') !== 'false' ? ' checked' : '') + '>每天自动检查新版本（只提示，不自动安装）</label></div></div>';
     const profiles = response.profiles.map((profile) => '<article class="card entry ' + (profile.active ? 'ok' : '') + '"><div class="entry-top"><strong>' +
-      esc(profile.display_name) + '</strong><span class="badge">' + esc(profile.active ? '当前' : profile.workspace_short_code) + '</span></div><p class="meta">' +
-      esc(profile.path) + '</p><p class="meta">同步：' + esc(profile.sync_summary.state) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
+      esc(profile.display_name) + '</strong><span class="badge">' + esc(profile.active ? '当前' : '其他工作台') + '</span></div><p class="meta">' +
+      esc(profile.path) + '</p><p class="meta">同步：' + esc(syncStateLabel(profile.sync_summary.state)) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
       badge('feishu', profile.provider_status.feishu, feishuReauth) + '</p>' +
       (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到它</button>') +
       // 移除此 Mac 上的 profile：只删本机 profile/runtime/草稿，vault、远端与 Keychain 不动。
@@ -246,7 +257,7 @@ async function saveModel(view: HTMLElement, actions: SettingsActions): Promise<v
     actions.refresh();
   } catch (error) {
     if (result) result.innerHTML = '<div class="msg err">✗ ' + esc(String(error)) + '</div>';
-    actions.toast(String(error), 'err');
+    actions.toast(error, 'err');
   }
 }
 
@@ -259,5 +270,5 @@ async function saveAutomation(form: HTMLFormElement, actions: SettingsActions): 
     }) });
     sendNativeMessage({ type: 'automationSettingsChanged', enabled: Boolean(document.querySelector('.automation-form input[name="enabled"]:checked')) });
     actions.toast('自动化设置已保存', 'ok');
-  } catch (error) { actions.toast(String(error), 'err'); }
+  } catch (error) { actions.toast(error, 'err'); }
 }

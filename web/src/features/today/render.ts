@@ -1,6 +1,6 @@
 import { briefCardHtml } from '../../brief-card';
 import { esc, mdToHtml } from '../../md';
-import { projectsHtml } from '../projects';
+import { projectDisplayName, projectsHtml } from '../projects';
 import type { ImportReceipt, TodayRenderOptions } from './types';
 
 function reviewCard(pending: number, oldest: number | null): string {
@@ -8,7 +8,7 @@ function reviewCard(pending: number, oldest: number | null): string {
     ? '<div class="card warn"><div class="card-head"><span class="dot warn"></span><strong>待确认审批</strong>' +
       '<span class="count-badge">' + pending + ' 条待确认</span></div>' +
       '<p class="card-sub">' + (oldest != null ? '最老已等待 ' + oldest + ' 天 · ' : '') +
-      '处理完才会写回执行系统</p><button class="primary" data-action="go-review">去处理 →</button></div>'
+      '未确认的内容不计入事实；处理完才会写回执行系统</p><button class="primary" data-action="go-review">去处理 →</button></div>'
     : '<div class="card ok"><div class="card-head"><span class="dot ok"></span><strong>无待确认项</strong></div>' +
       '<p class="card-sub">当前没有需要你做决定的候选；已批准、失败或未知写回仍以审批页状态为准。</p></div>';
 }
@@ -43,8 +43,11 @@ export function todayHtml(options: TodayRenderOptions, captureValue: string): st
         '<button class="primary" data-action="retry-state" type="button">重试读取</button></div>'
       : '<div class="loading">正在连接工作台…</div>';
   }
+  // 项目 ID → 中文显示名：简报里的「需要行动 / AI 提议」只显示中文名（ID 收进来源）。
+  const projectNames: Record<string, string> = {};
+  for (const p of state.projects) projectNames[p.name] = projectDisplayName(p);
   const briefBody = state.brief
-    ? briefCardHtml(state.brief, state.day)
+    ? briefCardHtml(state.brief, state.day, projectNames)
     : state.brief_generated
       ? '<div class="brief-md-body">' + mdToHtml(state.brief_md ?? '') + '</div>'
       : '<div class="empty"><p>今日简报还没生成。</p><button class="primary" data-action="run-brief">⚡ 现在生成（约 30 秒）</button></div>';

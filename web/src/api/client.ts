@@ -39,7 +39,32 @@ export function normalizeApiError(status: number, payload: unknown): ApiError {
   // 用户才能知道是哪一项、为什么被拒（例如正文超过长度上限）。
   const detail = firstValidationDetail(value.details);
   const summary = detail ? message + '：' + detail : message;
-  return new ApiError(summary + (code ? ' [' + code + ']' : ''), status, code, operationId);
+  // 错误码是内部标识（`invalid_source_path`、`validation_error`…），保留在 `ApiError.code`
+  // 供诊断使用，但**不拼进给使用者看的文案**（2026-09-14：界面上一律中文，不混英文码）。
+  return new ApiError(summary, status, code, operationId);
+}
+
+/**
+ * 把任意异常归一化成给使用者看的一句中文。
+ *
+ * 调用点过去的写法是 `toast(String(err), 'err')`，那会直接把
+ * `TypeError: Failed to fetch` / `AbortError` 这类英文原文贴到界面上；
+ * 统一走本函数：`ApiError` 用它已经归一化过的 message，浏览器网络错误给中文兜底。
+ */
+export function errorText(error: unknown): string {
+  if (error instanceof ApiError) return error.message;
+  if (error instanceof Error) {
+    const name = error.name || '';
+    const raw = error.message || '';
+    if (/AbortError/i.test(name)) return '请求已取消';
+    if (/Failed to fetch|NetworkError|Load failed|fetch failed/i.test(raw)) {
+      return '连不上本地服务，请确认工作台还在运行';
+    }
+    if (raw.trim()) return raw;
+    return '未知错误';
+  }
+  const text = String(error ?? '').trim();
+  return text || '未知错误';
 }
 
 export interface ApiClient {

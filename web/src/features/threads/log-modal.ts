@@ -3,25 +3,43 @@ import { mutation } from '../../lifecycle/connection';
 import { clearEntityDraft, loadEntityDraft } from '../../lifecycle/drafts';
 import { esc } from '../../md';
 import { projectDisplayName } from '../projects';
+import type { ProjectState } from '../projects/types';
 import { closeModal, openModal, rejectOversizeText, toast } from '../shell';
 import { getThreadsDeps } from './deps';
 import type { LogDraft } from './types';
 
 /** 追加推进日志弹层（原 legacy-main 逐条搬迁）。 */
 
+/**
+ * 项目勾选清单的纯渲染（不碰 DOM，便于单测直接断言）。
+ *
+ * 口径（2026-09-14）：**一项一行、占满整宽**——勾选框 + 中文显示名；
+ * 英文项目 ID 与「知识线程 / 文件夹项目」只进 `title`（hover 可见）。
+ * 原先一格塞「中文名 + 英文 ID + (线程)」三段的窄网格会错行、中英挤在一起。
+ */
+export function logProjectChoices(projects: ProjectState[], selected: string[]): string {
+  return projects
+    .map((p) => {
+      const label = projectDisplayName(p);
+      const kind = p.is_thread ? '知识线程' : '文件夹项目';
+      const hint = label === p.name ? kind : label + '（' + p.name + '）· ' + kind;
+      return (
+        '<label class="log-proj" title="' + esc(hint) + '">' +
+        '<input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
+        (selected.includes(p.name) ? ' checked' : '') + '>' +
+        '<span class="log-proj-name">' + esc(label) + '</span>' +
+        '</label>'
+      );
+    })
+    .join('');
+}
+
 /** 追加推进日志弹窗：多选关联线程/项目 + 粘贴文本 → AI 消化入各线程。 */
 export function openLogModal(defaultProject: string): void {
   const registered = (getThreadsDeps()?.projects() ?? []).filter((p) => p.registered);
   const saved = loadEntityDraft<LogDraft>('log:' + defaultProject, Date.now(), getThreadsDeps()?.workspaceId());
   const selectedProjects = saved?.projects ?? (defaultProject ? [defaultProject] : []);
-  const boxes = registered
-    .map((p) =>
-      '<label class="log-proj"><input type="checkbox" name="log-proj" value="' + esc(p.name) + '"' +
-      (selectedProjects.includes(p.name) ? ' checked' : '') + '>' + esc(projectDisplayName(p)) +
-      (projectDisplayName(p) !== p.name ? ' <span class="hint">' + esc(p.name) + '</span>' : '') +
-      (p.is_thread ? ' <span class="hint">(线程)</span>' : '') + '</label>'
-    )
-    .join('');
+  const boxes = logProjectChoices(registered, selectedProjects);
   openModal(
     '<h3>追加推进日志</h3>' +
     '<p class="hint">粘贴一段推进/沟通摘录/跟进（文本即可，语音请先自行转写）。可勾选多个关联的线程或项目；' +
@@ -85,7 +103,7 @@ export async function submitLog(): Promise<void> {
     }
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   } finally {
     logSubmitting = false;
     if (submitButton) submitButton.disabled = false;

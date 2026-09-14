@@ -102,6 +102,6 @@ export async function doUndoRevert(sha: string): Promise<void> {
       void getUndoDeps()?.refreshAll();
     }
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }

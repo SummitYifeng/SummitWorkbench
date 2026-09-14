@@ -357,8 +357,8 @@ def _card(entry: ReviewEntry) -> str:
       <span class="kind">{escape(c.kind.value)}</span>
       <span class="badge {cls}">{label}</span>
       {warn}{err}
-      <div class="meta">目标：{escape(c.target_project or "unresolved")} ·
-        route：{escape(_ROUTE_LABELS.get(c.route, "（未定）") if c.route else "（未定）")} ·
+      <div class="meta">目标：{escape(c.target_project if c.target_project and c.target_project != "unresolved" else "未定")} ·
+        落点：{escape(_ROUTE_LABELS.get(c.route, "（未定）") if c.route else "（未定）")} ·
         截止：{escape(c.due_date or "—")} · 依据：{escape(c.evidence.anchor if c.evidence and c.evidence.anchor else "—")}</div>
       <div class="meta">来源：{note}</div>
       <div class="row">

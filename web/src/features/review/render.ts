@@ -64,12 +64,23 @@ function sourceLink(raw: string, label: string): string {
     '" title="打开' + esc(label) + '">' + esc(label) + ' · ' + esc(value) + '</button>';
 }
 
-function entryCard(e: ReviewEntry, today: string, selectedIds: ReadonlySet<string>): string {
+/** 目标项目的显示名：`unresolved`（内部标记）显示为「未定」，有映射就用中文名，否则退回 ID。 */
+function targetLabel(target: string | null, projectNames: Record<string, string>): string {
+  if (!target || target === 'unresolved') return '未定';
+  return projectNames[target] ?? target;
+}
+
+function entryCard(
+  e: ReviewEntry,
+  today: string,
+  selectedIds: ReadonlySet<string>,
+  projectNames: Record<string, string>,
+): string {
   const decision = DECISION_LABELS[e.decision] ?? e.decision;
   const kind = KIND_LABELS[e.kind] ?? e.kind;
   const expired = e.decision === 'pending' && !!e.due_date && !!today && e.due_date < today;
   const meta = [
-    e.target_project ? '目标：' + esc(e.target_project) : '目标：unresolved',
+    '目标：' + esc(targetLabel(e.target_project, projectNames)),
     e.route ? '落点：' + (ROUTE_LABELS[e.route] ?? e.route) : '落点：未定',
     e.due_date ? '截止：' + esc(e.due_date) + (expired ? '（已过期）' : '') : '',
     e.start_at
@@ -115,9 +126,9 @@ function entryCard(e: ReviewEntry, today: string, selectedIds: ReadonlySet<strin
     '<input type="hidden" name="candidate_id" value="' + esc(e.candidate_id) + '">' +
     '<label>正文</label><textarea name="description" rows="2">' + esc(e.description) + '</textarea>' +
     '<div class="grid2">' +
-    '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="项目 ID 或别名（如 finance-ops）；留空=全局 inbox" value="' + esc(e.target_project ?? '') + '"></div>' +
+      '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="填项目 ID 或别名（如 finance-ops）；留空 = 全局 inbox" value="' + esc(e.target_project === 'unresolved' ? '' : e.target_project ?? '') + '"></div>' +
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
-      '<div><label>沉淀目标</label><input name="sink_target" placeholder="仅「知识沉淀」用：页面路径#区块，如 hii/clusters/ip-trademark#关键结论" value="' + esc(e.sink_target ?? '') + '"></div>' +
+      '<div><label>沉淀目标</label><input name="sink_target" placeholder="仅「知识沉淀」用：填「页面路径#区块」" title="例如 hii/clusters/ip-trademark#关键结论（vault 相对路径 + 区块标题）" value="' + esc(e.sink_target ?? '') + '"></div>' +
     '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
     '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
     '<div><label>结束时间（新建会议）</label><input name="end_at" type="datetime-local" value="' + esc(e.end_at ?? '') + '"></div>' +
@@ -131,6 +142,13 @@ function entryCard(e: ReviewEntry, today: string, selectedIds: ReadonlySet<strin
     '</form></div>' +
     '</div>'
   );
+}
+
+/** 外部写回行的可读标识：「会议提取项 · 会议 2026-09-14」；内部 ID 只留在 hover。 */
+function externalCandidateLabel(a: ExternalAction): string {
+  const kind = KIND_LABELS[a.kind] ?? '会议提取项';
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(a.candidate_id);
+  return match ? kind + ' · 会议 ' + match[1] : kind;
 }
 
 function renderExternalActions(actions: ExternalAction[]): string {
@@ -149,8 +167,11 @@ function renderExternalActions(actions: ExternalAction[]): string {
     } else if (a.state === 'reconciled-not-found') {
       controls = '<button class="ghost" data-action="external-retry" data-operation="' + esc(a.operation_id) + '">确认后重试</button>';
     }
-    const detail = a.error ? ' · ' + esc(a.error) : (a.remote_id ? ' · ' + esc(a.remote_id) : '');
-    return '<div class="external-action-row"><span><strong>' + esc(label) + '</strong> · ' + esc(a.candidate_id) + detail + '</span><span class="row">' + controls + '</span></div>';
+    // 出错时保留错误原文（可执行信息）；成功/未决时不把飞书 remote_id 铺在行里——进 hover。
+    const detail = a.error ? ' · ' + esc(a.error) : '';
+    const hint = a.remote_id ? '远端记录：' + a.remote_id + '｜内部标识：' + a.candidate_id : '内部标识：' + a.candidate_id;
+    return '<div class="external-action-row" title="' + esc(hint) + '"><span><strong>' + esc(label) + '</strong> · ' +
+      esc(externalCandidateLabel(a)) + detail + '</span><span class="row">' + controls + '</span></div>';
   }).join('');
   return '<section class="external-actions"><h4>外部写回状态</h4>' + rows + '<p class="hint">结果未知时不会自动再次创建；请先核对，只有确认未创建后才能再次重试。</p></section>';
 }
@@ -165,6 +186,9 @@ export function reviewHtml(
   options: ReviewRenderOptions = { filter: 'all', selectedIds: new Set<string>() },
 ): string {
   const allEntries = review.groups.flatMap((group) => group.entries);
+  // 项目 ID → 中文显示名：审批卡里只显示中文名（ID 留给「修改」表单里填）。
+  const projectNames: Record<string, string> = {};
+  for (const p of projects) projectNames[p.name] = projectDisplayName(p);
   const filteredGroups = review.groups
     .map((group, sourceIndex) => ({
       ...group,
@@ -199,7 +223,7 @@ export function reviewHtml(
     : '';
   const groupsHtml = filteredGroups.length
     ? filteredGroups.map((g) => {
-        const cards = g.entries.map((entry) => entryCard(entry, today, options.selectedIds)).join('');
+        const cards = g.entries.map((entry) => entryCard(entry, today, options.selectedIds, projectNames)).join('');
         const groupPending = g.entries.filter((e) => e.decision === 'pending').length;
         const groupApprovable = g.entries.filter((e) => e.decision === 'pending' && e.actionable && !!e.route).length;
         const groupBlocked = groupPending - groupApprovable;

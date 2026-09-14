@@ -24,13 +24,13 @@ export async function previewGitRemoteNormalization(): Promise<void> {
     if (output) {
       output.innerHTML = '<div class="success">预览通过：候选仓库已认证、workspace marker、分支/upstream 和 fetch 均通过。' +
         '<br>当前：' + esc(result.old_url) + '<br>候选：' + esc(result.candidate_url) +
-        '<br>branch：' + esc(result.branch) + ' · ahead ' + result.candidate_ahead + ' · behind ' + result.candidate_behind +
+        '<br>分支：' + esc(result.branch) + ' · 本机领先 ' + result.candidate_ahead + ' · 远端领先 ' + result.candidate_behind +
         '<div class="row"><button class="primary" type="button" data-action="git-remote-apply" data-plan="' + esc(result.plan_id) + '">确认并转换</button>' +
         '<button class="ghost" type="button" data-action="git-remote-rollback">取消</button></div></div>';
     }
     toast('候选 remote 预览通过；尚未修改本机配置', 'ok');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -52,7 +52,7 @@ export async function applyGitRemoteNormalization(planId: string): Promise<void>
     toast('Git remote 已转换为 HTTPS', 'ok');
     void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -69,16 +69,28 @@ export async function rollbackGitRemoteNormalization(): Promise<void> {
     toast('remote 转换已回滚', 'ok');
     void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
 /** G1：后端稳定错误码 → 用户能照做的短句（绝不把原始文本直接甩给用户）。 */
+/** 自动化任务结果的中文口径：后端状态码（success / degraded…）不直接进界面。 */
+function automationStatusLabel(status: string): string {
+  const labels: Record<string, string> = {
+    success: '运行成功',
+    degraded: '降级完成',
+    failed: '运行失败',
+    'not-primary': '本机不是主设备',
+    skipped: '本次跳过',
+  };
+  return labels[status] ?? '已完成';
+}
+
 const PRIMARY_FAILURE_HINTS: Record<string, string> = {
   primary_already_claimed: '另一台 Mac 已经是主设备。要由本机接管，请先勾选确认再点「接管主设备」。',
   primary_generation_conflict: '主设备声明已经变化（另一台机器刚改过）。请刷新设置页后重新确认。',
   primary_takeover_invalid: '本机已经是主设备，不需要接管。',
-  primary_state_corrupt: 'vault 内的主设备声明已损坏，需要人工检查 .summit-workbench/automation-primary.json。',
+  primary_state_corrupt: 'vault 内的主设备声明已损坏，需要人工检查内部文件 .summit-workbench/automation-primary.json。',
   workspace_not_configured: '当前没有已连接的工作台。',
   profile_missing: '本机没有这个工作台的档案。',
 };
@@ -237,7 +249,7 @@ export async function runAcceptancePreflight(): Promise<void> {
     if (output) output.innerHTML = '<pre class="diagnostics-output">' + esc(result.report) + '</pre>';
     toast(result.ok ? '验收预检通过' : '验收预检未通过，请查看报告', result.ok ? 'ok' : 'err');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -304,11 +316,11 @@ export async function runAutomationJob(job: string): Promise<void> {
         body: JSON.stringify({ job }),
       },
     ));
-    toast(result.detail ? result.status + '：' + result.detail : '自动化任务已完成：' + result.status, result.ok ? 'ok' : 'err');
+    toast(result.detail ? result.status + '：' + result.detail : '自动化任务已完成：' + automationStatusLabel(result.status), result.ok ? 'ok' : 'err');
     const view = document.getElementById('view-settings');
     if (view) void renderSettingsView(view);
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -336,7 +348,7 @@ export async function switchProfile(workspaceId: string): Promise<void> {
 }
 
 export async function migrateWorkspace(deviceId: string): Promise<void> {
-  if (!window.confirm('迁移前必须确认同步状态 ready、工作树干净且远端可达。确定由当前 Mac 执行？')) return;
+  if (!window.confirm('迁移前必须确认同步状态正常、工作树干净且远端可达。确定由当前 Mac 执行？')) return;
   try {
     const result = await mutation(() => api<{ status: string; restart_required?: boolean }>('/api/workspace/migration', {
       method: 'POST',
@@ -347,7 +359,7 @@ export async function migrateWorkspace(deviceId: string): Promise<void> {
     if (result.status !== 'already-current' && sendNativeMessage({ type: 'quit' })) return;
     window.location.reload();
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -376,13 +388,13 @@ export function removeProfile(workspaceId: string): void {
     toast(result.restart_required ? '本机 profile 已移除；重启工作台后生效' : '本机 profile 已移除', 'ok');
     void renderSettingsView(document.getElementById('view-settings') as HTMLElement);
   })
-    .catch((err: unknown) => toast(String(err), 'err'));
+    .catch((err: unknown) => toast(err, 'err'));
 }
 
 /** data-action="settings-doctor-online"：带确认的在线检查（原派发器内联分支）。 */
 export function runSettingsDoctorOnline(): void {
   if (!window.confirm('在线检查会访问 provider，并可能轮换飞书 token。确定继续？')) return;
-  void runSettingsDoctor(true).catch((err: unknown) => toast(String(err), 'err'));
+  void runSettingsDoctor(true).catch((err: unknown) => toast(err, 'err'));
 }
 
 /** data-action="reopen-onboarding"（原派发器内联分支）。 */
@@ -398,5 +410,5 @@ export function authorizeFeishu(): void {
       if (result.state) sessionStorage.setItem(FEISHU_STATE_KEY, result.state);
       window.location.href = result.authorize_url;
     })
-    .catch((err: unknown) => toast(String(err), 'err'));
+    .catch((err: unknown) => toast(err, 'err'));
 }

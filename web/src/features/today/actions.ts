@@ -22,7 +22,7 @@ export function createTodayActions(view: HTMLElement): TodayActions {
         toast(result.message, result.ok ? 'ok' : 'err');
         return { ok: result.ok };
       } catch (err) {
-        toast(String(err), 'err');
+        toast(err, 'err');
         return { ok: false };
       } finally {
         todayUi.capturing = false;
@@ -84,7 +84,7 @@ export function createTodayActions(view: HTMLElement): TodayActions {
           toast(result.message, status === 'success' ? 'ok' : status === 'partial' ? 'info' : 'err');
         } catch (err) {
           todayUi.importResults[receiptIndex] = { fileName: file.name, bytes: file.size, status: 'error', message: String(err) };
-          toast(String(err), 'err');
+          toast(err, 'err');
         }
         renderToday(view);
       }
@@ -103,7 +103,7 @@ export async function runBrief(): Promise<void> {
     const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/run/brief', { method: 'POST' }));
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
   void refreshState();
 }
@@ -130,7 +130,7 @@ export async function completeTask(btn: HTMLElement): Promise<void> {
     }
     void refreshState();
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
     doneBtn.disabled = false;
     doneBtn.classList.remove('busy');
   }
@@ -208,7 +208,7 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
     toast(r.message, r.ok ? 'ok' : 'err');
     if (r.ok) void refreshState();
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   } finally {
     rowEditSubmitting = false;
     if (submitButton) submitButton.disabled = false;

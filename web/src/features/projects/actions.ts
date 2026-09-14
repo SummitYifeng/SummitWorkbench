@@ -15,7 +15,7 @@ export async function setProjectState(action: 'activate' | 'archive', name: stri
     }));
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
   void getProjectDeps()?.refreshAll();
 }

@@ -21,10 +21,13 @@ export function openArtifactModal(defaultProject: string): void {
   const registered = (getThreadsDeps()?.projects() ?? []).filter((p) => p.registered);
   const saved = loadEntityDraft<ArtifactDraft>('artifact:' + defaultProject, Date.now(), getThreadsDeps()?.workspaceId());
   const options = registered
-    .map((p) =>
-      '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') + '>' +
-      esc(projectDisplayName(p)) + (projectDisplayName(p) !== p.name ? '（' + esc(p.name) + '）' : '') + '</option>'
-    )
+    .map((p) => {
+      // 中文显示名优先；项目 ID 收进 option 的 title（hover 可见）。
+      const label = projectDisplayName(p);
+      const hint = label === p.name ? p.name : label + '（' + p.name + '）';
+      return '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') +
+        ' title="' + esc(hint) + '">' + esc(label) + '</option>';
+    })
     .join('');
   openModal(
     '<h3>存入 AI 产物 / 导入文档</h3>' +
@@ -167,7 +170,7 @@ export async function submitArtifact(): Promise<void> {
     closeModal();
     toast(r.message + extra, r.ok ? 'ok' : 'err');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   } finally {
     artifactSubmitting = false;
     if (submitButton) submitButton.disabled = false;

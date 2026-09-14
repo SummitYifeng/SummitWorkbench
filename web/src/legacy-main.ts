@@ -62,7 +62,6 @@ import {
 } from './features/sync';
 import { mountUndo, openUndoModal } from './features/undo';
 import { mountGuide } from './features/guide';
-import { renderDecisions, resetDecisionsForWorkspace } from './features/decisions';
 import {
   mountThreads,
   openArtifactModal,
@@ -127,7 +126,7 @@ import {
   type TodayActions,
 } from './features/today';
 
-type Tab = 'today' | 'review' | 'ask' | 'projects' | 'decisions' | 'guide' | 'settings';
+type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -315,7 +314,7 @@ async function previewDiagnostics(): Promise<void> {
     }
     toast('诊断包预览已生成', 'ok');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -336,14 +335,14 @@ async function exportDiagnostics(): Promise<void> {
     }, 1000);
     toast('诊断包已导出', 'ok');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
-async function doCheckVersion(reason: string): Promise<void> {
+async function doCheckVersion(_reason: string): Promise<void> {
   setVersionStatus('checking', remoteVersion);
   const response = await fetch('/api/version', { cache: 'no-store' });
-  if (!response.ok) throw new Error('version HTTP ' + response.status + ' (' + reason + ')');
+  if (!response.ok) throw new Error('读取版本信息失败（HTTP ' + response.status + '）');
   const remote = validateVersionPayload(await response.json());
   const instanceChanged = lastServerInstance !== null && lastServerInstance !== remote.server_instance;
   lastServerInstance = remote.server_instance;
@@ -363,7 +362,6 @@ async function doCheckVersion(reason: string): Promise<void> {
     restoredDraft = null;
     resetTodayForWorkspace();
     resetProjectsForWorkspace();
-    resetDecisionsForWorkspace();
     loadedAskWorkspace = workspaceId;
     reloadAskStore();
   }
@@ -405,8 +403,6 @@ function render(): void {
     renderReviewView();
   } else if (tab === 'projects') {
     renderProjects(viewElement('projects') as HTMLElement, state);
-  } else if (tab === 'decisions') {
-    void renderDecisions();
   } else if (tab === 'guide') {
     mountGuide(viewElement('guide') as HTMLElement);
   } else if (tab === 'settings') {
@@ -520,7 +516,7 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'profile-switch') {
     const workspaceId = btn.dataset.workspace ?? '';
-    if (workspaceId) void switchProfile(workspaceId).catch((err: unknown) => toast(String(err), 'err'));
+    if (workspaceId) void switchProfile(workspaceId).catch((err: unknown) => toast(err, 'err'));
     return;
   }
   if (action === 'workspace-migrate') {
@@ -575,7 +571,7 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'settings-doctor') {
-    void runSettingsDoctor().catch((err: unknown) => toast(String(err), 'err'));
+    void runSettingsDoctor().catch((err: unknown) => toast(err, 'err'));
     return;
   }
   if (action === 'settings-doctor-online') {
@@ -739,7 +735,7 @@ document.addEventListener('submit', (ev) => {
       toast(r.message, r.ok ? 'ok' : 'err');
       if (r.ok) form.reset();
       void refreshAll();
-    }).catch((err: unknown) => toast(String(err), 'err'));
+    }).catch((err: unknown) => toast(err, 'err'));
     return;
   }
   if (!form.classList.contains('edit-form')) return;
@@ -781,11 +777,11 @@ document.addEventListener('submit', (ev) => {
         toast(d.message, 'err');
       }
     } catch (err) {
-      toast(String(err), 'err');
+      toast(err, 'err');
     }
     void refreshReview();
     void refreshState();
-  }).catch((err: unknown) => toast(String(err), 'err'));
+  }).catch((err: unknown) => toast(err, 'err'));
 });
 
 
@@ -813,8 +809,6 @@ async function refreshState(): Promise<boolean> {
   if (tab === 'today') renderToday(document.getElementById('view-today') as HTMLElement);
   else if (tab === 'projects') {
     renderProjects(document.getElementById('view-projects') as HTMLElement, state);
-  } else if (tab === 'decisions') {
-    void renderDecisions();
   }
   return true;
 }
@@ -894,7 +888,7 @@ export function mountLegacyWorkbench(): void {
         window.setTimeout(() => window.close(), 800);
       }).catch((err: unknown) => {
         // 服务已关闭时请求可能直接失败；仍尝试关窗
-        toast(String(err), 'err');
+        toast(err, 'err');
         window.setTimeout(() => window.close(), 800);
       });
     },

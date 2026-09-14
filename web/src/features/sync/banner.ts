@@ -3,6 +3,7 @@ import { mutation } from '../../lifecycle/connection';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
 import { esc } from '../../md';
 import { toast } from '../shell';
+import { syncStateLabel } from './labels';
 import { getSyncDeps } from './state';
 import type { SyncStatusPayload } from './types';
 
@@ -23,26 +24,34 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
     const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
     el.hidden = !interesting;
     if (interesting) {
-      const rows = [
-        ['状态', data.state],
+      // 主视图只放使用者看得懂的四项；分支 / 主机 / 仓库 / 设备 id / 状态码收进「查看详情」。
+      const summaryRows: Array<[string, string]> = [
+        ['状态', syncStateLabel(data.state)],
         ['待推送', String(data.pending_commits ?? 0)],
         ['最后成功', data.last_sync_at ?? '—'],
+        ['下一步', data.next_step ?? '—'],
+      ];
+      const generation = data.automation_primary_generation;
+      const detailRows: Array<[string, string]> = [
+        ['状态码', data.state],
         ['本地领先', String(data.ahead ?? 0)],
         ['远端领先', String(data.behind ?? 0)],
         ['分支', data.branch ?? '—'],
         ['远端主机', data.remote_host ?? '—'],
         ['仓库', (data.repo_states ?? []).join('、') || '—'],
         ['主设备', data.automation_primary_device_id ?? '—'],
-        ['主设备代际', String(data.automation_primary_generation ?? '—')],
-        ['下一步', data.next_step ?? '—'],
+        ['主设备代际', generation == null ? '—' : '第 ' + String(generation) + ' 代'],
       ];
+      const grid = (rows: Array<[string, string]>): string =>
+        '<div class="sync-grid">' + rows.map(([label, value]) =>
+          '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
+        '</div>';
       const conflictAction = data.state === 'diverged-protected'
         ? '<button class="ghost" data-action="sync-conflict-details">查看冲突详情</button>' : '';
       el.innerHTML = '<div class="sync-title">同步状态</div>' +
-        '<div class="sync-grid">' + rows.map(([label, value]) =>
-          '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
-        '</div>' +
+        grid(summaryRows) +
         (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
+        '<details class="sync-more"><summary>查看详情</summary>' + grid(detailRows) + '</details>' +
         '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
         '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
     }
@@ -96,7 +105,7 @@ export async function retrySync(): Promise<void> {
     toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
     await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   } finally {
     syncBusy = false;
   }
@@ -126,7 +135,7 @@ export async function exportSyncSnapshot(): Promise<void> {
       link.remove();
     }, 1000);
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }
 
@@ -143,6 +152,6 @@ export async function exportSyncConflictPackage(): Promise<void> {
     window.setTimeout(() => { URL.revokeObjectURL(link.href); link.remove(); }, 1000);
     toast('冲突包已准备下载', 'ok');
   } catch (err) {
-    toast(String(err), 'err');
+    toast(err, 'err');
   }
 }

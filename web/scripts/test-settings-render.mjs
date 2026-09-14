@@ -371,8 +371,13 @@ try {
   assert.match(mod.primaryTakeoverHtml, /id="primary-takeover-ack"/, 'takeover requires an explicit ack checkbox');
   assert.match(mod.primaryTakeoverHtml, /data-action="primary-claim"/, 'takeover button is rendered');
   assert.match(mod.primaryTakeoverHtml, /data-generation="3"/, 'takeover carries the current generation');
-  assert.match(mod.primaryTakeoverHtml, /本机 device id：dev-local/, 'settings shows the local device id');
-  assert.match(mod.primaryTakeoverHtml, /dev-other · generation 3/, 'settings shows the current primary and generation');
+  // 2026-09-14：设备 id / generation 这类内部标识不再铺在主视图里——代际说「第 N 代」，
+  // 设备 id 收进「设备标识」折叠区（排查问题时才展开）。
+  assert.match(mod.primaryTakeoverHtml, /当前主设备：另一台机器 · 第 3 代/, 'settings shows the current primary and generation in plain Chinese');
+  assert.match(mod.primaryTakeoverHtml, /<details class="settings-ids">/, 'device ids are folded away');
+  assert.match(mod.primaryTakeoverHtml, /本机 device id：dev-local/, 'settings keeps the local device id available when expanded');
+  assert.match(mod.primaryTakeoverHtml, /当前主设备 device id：dev-other/, 'settings keeps the primary device id available when expanded');
+  assert.doesNotMatch(mod.primaryTakeoverHtml, /generation 3/, 'raw generation wording must not reach the UI');
   assert.match(mod.primaryTakeoverHtml, /接管后果/, 'takeover consequences are stated before the click');
   assert.match(mod.primaryTakeoverHtml, /data-action="primary-downgrade"/, 'downgrade entry point is rendered');
   assert.match(mod.primaryOwnHtml, /本机已是主设备/, 'an idempotent device is told it is already primary');
