@@ -45,7 +45,7 @@ final class AutomationServiceManager {
                     throw NSError(
                         domain: "SummitWorkbench.Automation",
                         code: 5,
-                        userInfo: [NSLocalizedDescriptionKey: "系统返回未知 automation 服务状态"]
+                        userInfo: [NSLocalizedDescriptionKey: "系统返回未知的自动化服务状态"]
                     )
                 }
                 logger.log(
@@ -98,7 +98,7 @@ final class AutomationServiceManager {
             throw NSError(
                 domain: "SummitWorkbench.Automation",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "缺少 automation helper"]
+                userInfo: [NSLocalizedDescriptionKey: "缺少自动化辅助程序（automation helper）"]
             )
         }
         guard let helperBundle = Bundle(url: helperURL),
@@ -110,7 +110,7 @@ final class AutomationServiceManager {
             throw NSError(
                 domain: "SummitWorkbench.Automation",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "automation helper 版本与 App 不一致"]
+                userInfo: [NSLocalizedDescriptionKey: "自动化辅助程序版本与 App 不一致"]
             )
         }
         guard let executableURL = helperBundle.executableURL,
@@ -119,7 +119,7 @@ final class AutomationServiceManager {
             throw NSError(
                 domain: "SummitWorkbench.Automation",
                 code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "automation helper 标识或可执行文件无效"]
+                userInfo: [NSLocalizedDescriptionKey: "自动化辅助程序标识或可执行文件无效"]
             )
         }
         var staticCode: SecStaticCode?
@@ -129,7 +129,7 @@ final class AutomationServiceManager {
             throw NSError(
                 domain: "SummitWorkbench.Automation",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "automation helper 签名校验失败"]
+                userInfo: [NSLocalizedDescriptionKey: "自动化辅助程序签名校验失败"]
             )
         }
     }

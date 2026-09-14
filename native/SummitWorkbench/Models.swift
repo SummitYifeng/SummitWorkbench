@@ -46,14 +46,14 @@ struct BuildManifest: Decodable {
         guard schemaVersion == 2, productID == panelProductID,
               apiProtocol >= panelAPIProtocol, !frontendBuild.isEmpty else {
             throw NSError(domain: "SummitWorkbench.Manifest", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "build manifest 字段无效"])
+                          userInfo: [NSLocalizedDescriptionKey: "构建清单（build manifest）字段无效"])
         }
     }
 
     static func load(bundle: Bundle = .main) throws -> BuildManifest {
         guard let url = bundle.url(forResource: "build-manifest", withExtension: "json") else {
             throw NSError(domain: "SummitWorkbench.Manifest", code: 2,
-                          userInfo: [NSLocalizedDescriptionKey: "缺少 Resources/build-manifest.json"])
+                          userInfo: [NSLocalizedDescriptionKey: "缺少构建清单文件（Resources/build-manifest.json）"])
         }
         let manifest = try JSONDecoder().decode(BuildManifest.self, from: Data(contentsOf: url))
         try manifest.validate()
@@ -128,12 +128,12 @@ struct AppConfiguration {
         let bundledPrompts = resources?.appendingPathComponent("prompts").path
         guard let wbBinary = environment["WB_SERVER_BINARY"] ?? bundledServer else {
             throw NSError(domain: "SummitWorkbench.Configuration", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "无法定位 bundle server"])
+                          userInfo: [NSLocalizedDescriptionKey: "找不到 App 内置的服务程序（bundle server）"])
         }
         if PanelMode.current != .developmentExternal,
            !FileManager.default.isExecutableFile(atPath: wbBinary) {
             throw NSError(domain: "SummitWorkbench.Configuration", code: 2,
-                          userInfo: [NSLocalizedDescriptionKey: "bundle server 不存在或不可执行：\(wbBinary)"])
+                          userInfo: [NSLocalizedDescriptionKey: "App 内置的服务程序不存在或无法执行（路径：\(wbBinary)）"])
         }
         let staticDirectory = environment["WB_STATIC_DIR"] ?? bundledStatic
         let promptsDirectory = environment["WB_PROMPTS_DIR"] ?? bundledPrompts

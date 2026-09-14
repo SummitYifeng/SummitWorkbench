@@ -175,7 +175,7 @@ final class LifecycleCoordinator {
         case .checking: message = "正在检查更新…"
         case .unavailable: message = "更新源未配置"
         case .current: message = "当前已是最新版本"
-        case .available(let version): message = "发现可用更新 (version)"
+        case .available(let version): message = "发现可用更新：\(version)"
         case .failed: message = "更新检查失败，可重试"
         case .downloadFailed: message = "更新下载失败，可重试"
         }
@@ -258,11 +258,31 @@ final class LifecycleCoordinator {
         }
     }
 
+    /// 服务状态的中文名。
+    ///
+    /// `SupervisorState.rawValue` 是内部标识（`crashLoop` / `degraded`…），
+    /// **不进给使用者看的弹窗**（2026-09-14 原生壳文案扫描发现这里直接贴了 rawValue）。
+    private func supervisorStateLabel(_ state: SupervisorState?) -> String {
+        switch state {
+        case .idle: return "空闲"
+        case .probing: return "正在探测服务"
+        case .starting: return "正在启动"
+        case .ready: return "已就绪"
+        case .degraded: return "降级运行"
+        case .restarting: return "正在重启"
+        case .crashLoop: return "反复启动失败"
+        case .conflict: return "端口被占用"
+        case .stopping: return "正在停止"
+        case .stopped: return "已停止"
+        case nil: return "未知"
+        }
+    }
+
     private func presentFailure() {
-        let state = supervisor?.state.rawValue ?? "unknown"
-        let detail = state == SupervisorState.conflict.rawValue
+        let current = supervisor?.state
+        let detail = current == .conflict
             ? "端口被其他服务占用，未终止未知进程。"
-            : "服务尚未就绪（状态：\(state)）。"
+            : "服务尚未就绪（\(supervisorStateLabel(current))）。"
         presentError("SummitWorkbench 暂时无法启动", detail: detail)
     }
 
