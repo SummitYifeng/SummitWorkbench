@@ -3,6 +3,11 @@
 > **本文件是「步骤与验证」的唯一真源**；需求真源是 §1 的 4 轮选择题结论。
 > 执行者读不到对齐过程的对话，因此本文件自包含。
 > 事实基线见 §2（2026-09-14 实测）。目录命名与字段定义以 §3 为准（架构由 §5 Phase 2 的样例门决定）。
+> **文档结构**：§0–§5 是计划；§6–§11 是代码清单 / 交付物 / 验收 / 边界 / 铁律 / 冻结项；
+> **§12 是唯一的滚动执行进度——看进度只看 §12**。
+> ⚠️ 2026-09-14 之前本文件曾同时存在**两份 §6–§11 与两份 §12**（其中一份是中途快照，
+> 会让人误以为 Phase 5/6/7 还没做完）。已合并为一份：两份 Phase 5 的**独有内容都保留**，
+> 只去掉逐字重复与事实已被更详细版本覆盖的行。
 
 ---
 
@@ -465,7 +470,7 @@ confidential: false
 - 旧远端：`github.com/yifeng93/WorkKnowledge`（private、224 KB、5 个提交、最后推送 2026-09-13）
 - 旧库：85 个文件 / 1.6 MB；`review/` 两个候选清单共 111 + 108 条死链
 
-### Phase 1 · 完全重装 Studio —— 进行中
+### Phase 1 · 完全重装 Studio —— 已完成（表内每一步 ✓）
 
 | 步 | 状态 | 结果 |
 |---|---|---|
@@ -493,7 +498,7 @@ confidential: false
   在块有标题时返回 `路径#区块`（例如 `conventions#0. 边界与硬约束`），**只有第一个 `##` 之前的正文前言块**才返回裸路径。
   该次提问恰好命中前言块，故显示裸路径——**符合契约，不是 bug**。
 
-### Phase 2 · 架构样例对照 —— 已完成，**待你选型**
+### Phase 2 · 架构样例对照 —— 已完成（已拍板 β：项目管线优先）
 
 对照记录：`docs/implementation/kb-spine-sample-comparison.md`（248 行，含目录树 / frontmatter / 双链清单 / 召回差异 / 逐项差异）。
 样例库：`/tmp/kb-spine-sample/{alpha,beta}`（α 15 篇 136 块；β 13 篇 131 块）。
@@ -644,384 +649,7 @@ confidential: false
 > 注：`_vault/conventions.md` 与 `inbox.md` 是 app 内置的 v2 种子（`wb: onboarding create` 提交），**Phase 3 会从零重写 conventions**；
 > `inbox.md` 契约不动。新库旧身份对照：`bf22c8d2-…`（旧）→ `fb9494a4-…`（新）。
 
-### Phase 5 · 检索与决策层改造 —— 进行中（提交 `2ec6ea8`）
-
-**度量口径**：脚本 `scripts/kb_measure.py`（2026-09-14 收进仓库；此前只在 `/tmp/phase5/measure.py`，
-重启即失、不受版本控制与门禁保护）——用使用者的 4 个验收问题 × 各自期望的**答案块**，
-对真实库跑 `retrieve_via_index`（不调模型），统计「期望块是否进入模型实际会看到的候选（plan.limit）」。
-
-| 时点 | 块级命中 |
-|---|---|
-| 改造前基线 | **4/16 = 25%** |
-| R2 修正 + 召回补足 + R1/R3 + 双链两 bug 修复后 | **6–7/16 = 38–44%** |
-
-**修掉的三个真 bug（都有回归测试 + 变异验证）**
-
-1. **双链扩展重复累加**：同一邻居被多个种子各加成一次（实测把正文相关度 0.29 的块顶到 41.05），
-   链接信号彻底盖过正文相关度 → 改为「只取最强种子、只应用一次」。
-2. **双链扩展覆盖邻居自身分**：旧实现把分整体替换成 `promoted`（只由种子分决定），
-   不同邻居被抹成完全相同分数、顺序退化为任意（Q1 排名 2–10 全是 25.03）→ 改为**乘性加成**。
-3. **候选池被 FTS 饿死**：BM25 只在 FTS 完全无结果时才用；Q3 在 FTS 层只命中 10 个块。
-   → 新增 `_supplement_with_bm25`（两路按各自最高分归一后并集），Q3 候选 10 → **321**。
-
-**已落地**：R1（块级角色加权：结论型 ×2.8 / 支持型 ×0.8 / 引言 ×0.45 / 导航 ×0.4；
-类型权威 index 1.0→0.45、project-main 与 decision →0.95）、R3（扩展重复应用 project/workstream 过滤）、
-R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保留既有 frontmatter。
-
-**数据驱动的两次回退**：BM25 `b=0.35` 与 CJK 2-gram 补词都**实测有害**（44%→31%），已撤回。
-教训记在这里：权重/词表这类改动必须先用真实问题量一遍，不能凭直觉。
-
-**Phase 5 全部完成（提交 `1ba837d`，已发布 build 39 并安装）**
-
-| 项 | 结果 |
-|---|---|
-| R1 块级角色加权 | ✓ 结论型 ×2.8 / 支持型 ×0.8 / 引言 ×0.45 / 导航 ×0.4；类型权威校准（index 1.0→0.45、project-main 与 decision →0.95） |
-| R2 块边界扩到 `#` | ✓ 且修正「文首 H1＝笔记标题不切块」（否则标题块与内容块抢排名） |
-| R3 过滤一致性 | ✓ 双链扩展重复应用 project/workstream 过滤 |
-| R4 路由补强 | ✓ 零关键词命中时按**问句形态**兜底（是否类/原因类/处置类/对比类/清单类/事实点查），不再按长度猜 |
-| R5 `decision` 第 7 区块 | ✓ `## 关联` 写进 app 契约 + 应用侧模板；线上 15 篇决策已全部含该区块 |
-| R6 `source` 索引策略 | ✓ 用数据定案：默认口径下 4 个验收问题的候选里 0 个原件块（原件只进轨迹）；改为**问「原文」时放开**证据层降权 → 实测该问法下候选出现 3 个原件块 |
-| BUG-1 首次发布 | ✓ 真 vault 的 push 也带本次凭据；失败文案暴露真因并擦除 PAT |
-| 「知识沉淀」落点 | ✓ 第 7 个 `RouteTarget`，目标显式指定 + 只接受 vault 相对路径 |
-| Workbench「决策」页 | ✓ `GET /api/decisions` + 新 tab（筛选/分面/关系/空态） |
-| 重新打包重装 | ✓ build 37 → 38 → 39，每次都在已安装 app 内真跑验证 |
-
-**检索质量（真实库，4 个验收问题的期望块；含变异验证的回归测试 12 例）**
-
-| 口径 | 改造前 | 改造后 |
-|---|---|---|
-| 全部期望块（16 个） | 4/16 = 25% | **7/16 = 44%** |
-| **答案层**（12 个非 source 块） | 4/12 = 33% | **7/12 = 58%** |
-| 证据层（4 个 source 块） | 0/4 | 0/4（**设计如此**：默认不进上下文，问「原文」时才进——见 R6） |
-
-**Q1 在已安装 app 内的真实验收**：app 回答「根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？」时，
-第一条事实就是商标共识清单（登记主体 / HIF→HII 编辑规则 / Commissioned Works / 三种年份 / 品牌分开管理…），
-逐条带 `路径#区块` 出处。⚠️ 诚实说明：它引的是 `projects/hii-affairs#关键结论`，
-而不是我度量里手写的 `hii/clusters/ip-trademark#关键结论`——两者内容等价（项目主页就是那份清单的入口版），
-但「期望块」本身不是唯一正解，这一点不应被读成「又失败了一格」。
-
-**仍存在、已知的不足（未解决，留待下一轮）**
-
-1. Q3 的 `it/clusters/enrollment#关键结论` 在加主题通道后由「同篇但块不同」变成「未召回」——那一项是退步（净效果 6→7）。
-2. 同篇多结论块互相竞争（分析笔记有 19 个 `结论N` 块），`max_chunks_per_note=3` 下具体哪 3 个进上下文仍偏字面相关度。
-3. 度量本身是 16 项二值指标，个别项会随权重微调翻转；**不要**再用它做单一目标的调参依据（本轮已有两次实证有害的回退）。
-### Phase 6 · SOP 与验收
-
-1. `_vault/sop.md` 定稿：《工作知识库使用 SOP》——上传会议纪要 → AI 分类 → 审批 → 沉淀/写回飞书 → 提问；人可读、Agent 可执行（一页）
-2. 4 个真实问题写成**可重复运行**的用例（脚本或 pytest），真跑并把输出留到 `docs/acceptance/evidence/`
-3. 本机全部门禁绿；`wb vault check` 绿；`wb kb status` 记录笔记数/块数/FTS5 可用性
-4. 提交（**`[skip ci]`**，不跑远端 CI）
-
-### Phase 7 · Air 接入（备用机器）
-
-1. Air：退出 app → 卸载 → 清 `Application Support` → 重装 0.4.8
-2. 走「从另一台 Mac 克隆」接新库；角色自动 `secondary`；Studio 的 `automation_primary_device_id` = Studio
-3. 冒烟：两机 `/api/sync/status` = `ready` / `0/0`；一次真实提交在 Air 拉取可见；Air 上第二大脑能问答
-4. 若角色显示不自洽：在另一台点一次「降级为备用设备」（既有已知行为）
-
----
-
-## §6 代码改造清单（文件级，仅 Phase 5）
-
-| 文件 | 改动 |
-|---|---|
-| `src/summit_workbench/domain/review.py` | `RouteTarget` 新增 `knowledge-note`；`route_candidate` 增加路由规则与优先级 |
-| `src/summit_workbench/webapp/review_view.py` | 审批页透出「目标管线 + 主题页 + 落点区块」 |
-| `src/summit_workbench/workflows/`（review 写回侧） | 新增 knowledge sink writer（带 `路径#区块` 出处 + `wb:` 留痕） |
-| `src/summit_workbench/webapp/routers/decisions.py`（新增） | `/api/decisions`（筛选 + 演进关系） |
-| `src/summit_workbench/webapp/app_factory.py` | 注册新路由 |
-| `src/summit_workbench/workflows/ask/retrieval.py`、`fusion.py`、`router.py` | 决策状态/主题簇过滤；权威加权校准 |
-| `src/summit_workbench/repositories/kb_index.py` | 仅在必要时扩列（优先用 `meta_json`） |
-| `scripts/kb_index_decisions.py`（新增） | 决策台账聚合/校验 |
-| `web/src/features/decisions/*`（新增） | 决策页 UI |
-| `web/src/features/review/*` | 新落点呈现 |
-| `web/src/guide.md` | 使用指南内容更新 |
-| `docs/contracts/web-route-contract.json` | 快照同步（改路由后必跑脚本） |
-| `tests/**`、`web/src/**/*.test.ts` | 新增/更新测试（含变异验证） |
-
-**硬约束**：不改公开模块名、不为整洁合并模块、绝不 `force/reset/rebase/stash`、机器日志不写进 vault、索引库不放 vault 内。
-
----
-
-## §7 交付物清单
-
-**知识资产**
-- 新 `_vault`：新 conventions / README / sop.md / templates / index / 2 个项目主页 / 3 个 HII 主题簇 + 子页 / 5 个 IT 主题簇 / 10–15 篇决策 / 8 篇 source 或逐字稿 / 会议笔记 / 社区与人事空骨架
-- 新 `workspace_id` + 新空私有远端 + Studio 主设备声明
-
-**代码资产**
-- 「知识沉淀」审批落点（含写回与留痕）
-- 决策页（API + UI）+ 决策台账聚合脚本
-- 检索过滤与权威加权校准 + 测试
-- 更新后的使用指南页
-
-**文档资产**
-- `docs/implementation/PLAN-WORK-KNOWLEDGE-BASE.md`（本文件）
-- `docs/implementation/kb-spine-sample-comparison.md`（样例对照与选型结论）
-- `docs/acceptance/evidence/`（4 个真实问题的真跑输出）
-
----
-
-## §8 验收
-
-### 8.1 四个真实问题（使用者选定 · 必须逐字保留为用例）
-
-1. 「根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？」
-2. 「Danny 来华目前还差哪些必须收口？下一步谁做什么？」
-3. 「IT 当前的开发进度是什么，下一个阶段该怎么做？」
-4. 「『活满』与『和夫曼之旅』为什么分开管理？当时还有哪些选项？」
-
-要求：在 Workbench「第二大脑」问答完成；答案逐条带 `路径#区块` 出处；能在 Obsidian 核对到同一批笔记；
-答不出时如实说明缺什么（数据缺失 / 索引缺失 / 排序融合缺失），不得用模型自身知识填空冒充通过。
-
-### 8.2 质量门
-
-| 门 | 判据 |
-|---|---|
-| `wb vault check` | 全绿（新库全部笔记） |
-| source 逐字 | 与桌面原件正文 0 差异（机械校验） |
-| 双链 | 0 broken；每条有中文别名与关系理由 |
-| 幂等 | 重复入库不增生；同 ref 不同内容报冲突退出 |
-| 索引 | `wb kb index` 增量 + 全量均可；`wb kb status` 记录笔记数/块数/FTS5 |
-| 检索 | 4 个用例真跑通过并留证 |
-| 代码 | §5 Phase 5 的全部门禁命令绿 |
-| 双机 | Studio/Air `/api/sync/status` = `ready` / `0/0`（Air 在 Phase 7 后） |
-
----
-
-## §9 明确不做（Non-goals）
-
-- 不引入向量库 / 嵌入 / RAG（第一阶段不破硬边界）；不新增第三方依赖
-- 不做跨会话长期记忆（`user_memory` 式）
-- 不做定期回顾产物（周/月回顾页）——本轮未选，留待下一轮
-- 不做重型双机验收编排（Air 接入是任务 1 的一部分，但不做多轮真机验收矩阵）
-- 不接微信 / 邮件 / Office 附件 / 内部平台
-- 不改飞书链路、双机同步语义、审批与 mutation runtime 的既有安全约束
-- 不动 `_signals/`、`.summit-workbench/` 的机器语义
-- 不把工作内容并入个人库 `MyKnowledge`，不改它与它的规范
-- 不新增 `type`（主题簇页复用 `note`）；不新增 `projects/*.md`
-
----
-
-## §10 风险与铁律
-
-1. **不可逆**：删旧库 + 删旧远端 + 不留备份 + 换新 workspace_id。执行前一次 GO，之后连续执行。
-2. **顺序**：重装在最前；Air 在最末；中间不夹其它破坏性动作。
-3. **契约不能悄悄改**：固定区块标题、`inbox.md` 格式、路由/payload 字段、`RouteTarget` 取值 —— 改动必须同步快照与测试。
-4. **写测试与文档要避开 `scripts/secret_scan.py` 的凭据形状**（URL 内嵌凭据、私钥 PEM 头、`password: "…"` 赋值）。
-5. **`install-macos-app.sh` 的 readiness 报错常是假失败**：以 `runtime.json` 与接口探针为准。
-6. **块级锚点是高危区**：source 入库时标题层级变化会让 `路径#区块` 失效（上一轮已踩），入库后必须机械自检。
-7. **`[skip ci]`**：提交带跳过 CI，但本机门禁必须全绿。
-8. **改动前先 grep 确认无引用**；删/移文件后跑全部门禁。
-
----
-
-## §11 开放项（我已按你的选择设默认值，若不认可请指出）
-
-| 项 | 默认 |
-|---|---|
-| 主题簇页文件名 | `hii/clusters/{royalty,ip-trademark,relationships}.md`；`it/clusters/{enrollment,portal-cms,local-ai,mobile-app,digitization}.md` |
-| 来华子页命名 | `hii/visits/china-visit-sop.md`、`hii/visits/danny-kim-2026-09.md`、`hii/visits/nita-crystal-2026-12.md` |
-| 决策篇数 | 10–15 篇（以「有明确决定 + 理由 + 影响」为准，凑数的一律不建） |
-| 新远端仓库名 | `yifeng93/WorkKnowledge`（**删除旧仓库后同名新建**空私有仓库，不勾 README） |
-| 社区 / 人事骨架深度 | 主页 + `clusters/` + `notes/` + `sources/`，正文一行「待材料到位」 |
-| 变体 α 是否保留 `type: workstream` | 由 Phase 2 样例选型决定（β 则不用该 type；工作线只保留为 frontmatter `workstream` 字段 + 索引页） |
-| 库内 SOP 位置 | `_vault/index/sop.md`（`type: index`、`project: global`），**不放库根**——根目录文件必须带 frontmatter |
-| `README.md` | 库根，`type: index`、`project: global`（否则 `wb vault check` 必红） |
-| `source.ref` 语义 | **冻结为「原件来源标识」**（本机绝对路径 / 飞书或邮件标识），**不自指本页**；幂等键 = `source.ref` + `source.hash`（原件 sha256），换机器后路径失效不影响去重 |
-| 待建主题簇的写法 | **只写纯文本，不写双链**（写了会立刻死链）；簇页建立后再补 `[[…]]` |
-| decision 的第 7 区块 | 新增 `## 关联`（**契约级改动**：`domain/vault.py` 的 decision 固定区块表 + 模板 + 测试 + 快照） |
-
----
-
-## §12 执行进度（滚动更新）
-### Phase 0 · 基线快照 ✓ 2026-09-14
-
-- app 0.4.8 于 `/Applications`；运行 pid 95832 / server 95835 / port 59514
-- 旧身份：`workspace_id = bf22c8d2-…`、`device_id = 51885d3d-…`（m3-studio）、generation 3
-- 旧远端：`github.com/yifeng93/WorkKnowledge`（private、224 KB、5 个提交、最后推送 2026-09-13）
-- 旧库：85 个文件 / 1.6 MB；`review/` 两个候选清单共 111 + 108 条死链
-
-### Phase 1 · 完全重装 Studio —— 进行中
-
-| 步 | 状态 | 结果 |
-|---|---|---|
-| 1 停应用 | ✓ | `pgrep -f SummitWorkbench` 已空 |
-| 2 最终 GO | ✓ | 用户确认（不留备份） |
-| 3 卸载 app | ✓ | 删除 `/Applications/SummitWorkbench.app`（71 MB） |
-| 4 清机器状态 + 旧 Keychain | ✓ | 删 `Application Support/SummitWorkbench/`（6.2 MB）；删旧 workspace 凭据 3 项（`llm:shared:shared`、`git:github.com:Yifeng93`、`feishu:cli_aa1e751a357b9bd4:refresh_token`）；**保留** CLI 共用的 git 凭据与 `gh` 登录 |
-| 5 清旧资产 | ✓ | 已清空 `_vault`（85 文件 + 5 提交 + `.git`）与 `.wb.lock`，**保留** `~/Documents/Work/.obsidian`；旧远端 `yifeng93/WorkKnowledge` 已删除并**同名重建为空私有仓库** |
-| 6 重装 0.4.8 | ✓ | `install-macos-app.sh dist/releases/0.4.8/arm64/SummitWorkbench.app --replace-running` |
-| 7a 新 workspace | ✓ | **新 `workspace_id = fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`**；新 `device_id = 0617854a-e193-4b3e-bb6d-fb5bb738937d`；`device_role = automation-primary`（Studio 主设备）；种子提交 `efe34be wb: onboarding create` |
-| 7b 飞书授权 | ✓ | `feishu-auth-state.json`：本 workspace `status: connected` |
-| 7c DeepSeek Key | ✓ | `[models.shared]`（base_url / model_id）已写；Keychain `llm:shared:shared` 已写入；真问答已返回 |
-| 8 新远端 + 绑定 | ✓ | 远端 main = `efe34be`；profile `git_username=yifeng93` + `git_remote_url` 已写；Keychain 新作用域凭据 `git:github.com:yifeng93` 已写；upstream 已设（**绕过了 0.4.8 的 publish bug，见下**） |
-| 9a 冒烟（本地） | ✓ | `wb vault check` → 2 篇通过；`wb kb index` → 2 笔记 / 18 块，FTS5 可用；`/api/onboarding/status` = `active` |
-| 9b 冒烟（同步） | ✓ | `/api/sync/status`：`state=ready`、`ahead=0`、`behind=0`、`pending_commits=0`、`branch=main`、`automation_primary_device_id = 0617854a…`（= Studio） |
-| 10 验收 | ✓ | 身份 / 远端 / 同步 / 飞书 / 模型 五项全过；`.venv/bin/wb ask "工作知识库的文件命名规则是什么？"` 真跑返回，事实带出处、事实与建议分层、含检索轨迹 |
-
-> **Phase 1 是否收尾的判据（全部满足）**：`workspace_id ≠ bf22c8d2`、`automation_primary_device_id = 0617854a…`（Studio）、
-> `/api/sync/status = ready`、飞书 `connected`、模型凭据在 Keychain、真问答能返回。
-> **Air 不在本阶段**——按 §1.4 #23，Air 要到 Phase 7 才接入。
-
-### Phase 1 已验证「不是缺口」的疑点（免得重复查）
-
-- `wb ask` 的引用可能显示成笔记级 `[[conventions]]`，看着像没到块级。实测：`kb_index.Hit.anchor`
-  在块有标题时返回 `路径#区块`（例如 `conventions#0. 边界与硬约束`），**只有第一个 `##` 之前的正文前言块**才返回裸路径。
-  该次提问恰好命中前言块，故显示裸路径——**符合契约，不是 bug**。
-
-### Phase 2 · 架构样例对照 —— 已完成，**待你选型**
-
-对照记录：`docs/implementation/kb-spine-sample-comparison.md`（248 行，含目录树 / frontmatter / 双链清单 / 召回差异 / 逐项差异）。
-样例库：`/tmp/kb-spine-sample/{alpha,beta}`（α 15 篇 136 块；β 13 篇 131 块）。
-
-**我复核过的硬事实**：`wb vault check <路径>` 两套均 exit 0（**CLI 支持指定库外路径**）；`verify.py` 0 死链 0 失效锚点；
-`wb kb index <vault> --index-file <库外>` 两套成功；`type`/`project`↔`projects`/固定区块/`id` 格式/`inbox` 契约全部合规。
-
-**检索对比结论（`use_model=False`，3 问 × 全库 / 项目过滤）**
-
-| 场景 | α 工作线优先 | β 项目管线优先 |
-|---|---|---|
-| 全库检索 | top-1 = `hii/hii-loyalty#关键结论`（`type: workstream` 权威 0.95） | top-1 = `projects/hii-affairs#关键结论`（`project-main` 权威 0.85） |
-| **加 `project=hii-affairs` 过滤** | **`hii/hii-loyalty` 整页被丢弃**（`workstream` 强制 `project: global`），Q1 top-1 退化成 `notes#未决与待确认` | `projects/hii-affairs#关键结论` 始终在场，稳定 |
-| 双链扩展 | 过滤后仍混入 `project: global` 页（`fusion.py:243-295` 未重复过滤） | 同样混入 `README` |
-
-**结构性判断**：α 的「全库略优」只是权威分 0.95 vs 0.85 的产物，**校准权重后 β 同样拿到**；
-而 β 在项目过滤下的稳定是**结构性的**（不可通过调权重补上）。⇒ 待你拍板（§11）。
-
-### Phase 2 实测暴露的问题（已并入 Phase 5 修复清单与 §11 冻结项）
-
-1. **H1 没有锚点**：原件 20 个 H1 章节（含 17 个正文节 + 附录）无法被 `路径#区块` 引用，
-   其正文被并入相邻二级块；可引用的只有 49 个 H2。这是 §10 铁律 6 的同类坑、更隐蔽。
-2. **过滤与双链扩展不一致**：过滤在 `fusion.py:174-179`，扩展在 `:243-295` 无重复过滤 → 按项目过滤得不到纯净视图。
-3. **权威加权未校准（现场证据）**：Q1 真正逐条的规范块（`clusters#关键结论`、`notes#结论二`、`decisions#决定`、`source#6.1`）
-   **全部未进 top-10**，被 `README#怎么用`（第 2 名）、`index/*`、`clusters#现在在哪` 挤掉。
-4. **路由缺口**：Q2 判成 `synthesis`、Q3 判成 `point`（都是「无关键词：按长度兜底」），`decisions/*#决定` 拿不到路由优先权重。
-5. **decision 没有放双链的区块**：六区块里无 `## 关联`，样例只能塞进 `## 影响` 末尾（4 篇），语义不符。
-6. **根目录 `README.md` / `sop.md` 必须带 frontmatter**，否则 `parse_frontmatter` 直接判「缺少 frontmatter」→ `wb vault check` 必红。
-7. **待建的主题簇不能写双链**（会立刻产生死链）。
-8. **`source.ref` 语义冲突**：自指本页 vs 指向原件，不能同时成立。
-9. **长 source 单篇贡献 54 块**：靠 `source_penalty` 与 `max_chunks_per_note` 兜住；`source` 的块从未进过任何一题 top-10。
-
-### Phase 3 · 库骨架（β 主线）—— 已完成
-
-**选型结论**：**β 项目管线优先**（用户 2026-09-14 拍板）；**H1 锚点策略选 A**＝扩块边界到 `#`（见 R2）。
-
-**落盘**（`_vault`，提交 `f4c3e97`，已推送远端）：
-
-| 产出 | 内容 |
-|---|---|
-| `conventions.md` | 从零重写（14 节）：β 主线、目录、frontmatter 与 **`source.ref` 语义冻结**、type 与 scope、固定区块（含**主题簇六区块**与 **decision 第 7 区块 `## 关联`**）、命名、双链、决策、索引、检索约定（**块边界＝`#` 与 `##`**）、C-lite、附件、扩展规则、**已知遗留 5 条**、来源范围 |
-| `README.md` | 库入口（`type: index`） |
-| `index/` | `projects`（2 项目 + 8 主题簇）、`decisions`（台账）、`people`、`timeline`、**`sop`**（《使用 SOP》：上传→审批→五类落点→沉淀→提问+每周维护清单） |
-| `projects/` | `hii-affairs.md`、`it-development.md`（**恒定 2 个**；四固定区块 + 关键结论/未决/时间线/主题簇/关联） |
-| 主题簇 | HII 3 个（`ip-trademark`/`royalty`/`relationships`）+ IT 5 个（`enrollment`/`portal-cms`/`local-ai`/`mobile-app`/`digitization`），均 `status: draft`（**入库前不进检索**） |
-| 骨架 | `community/community-overview.md`、`hr/hr-people.md`（`type: index`） |
-| `templates/` | 9 个：project-main / cluster / note / decision / source / meeting-note / work-log / long-form-thought / index |
-| `.gitignore` | 忽略 `_signals/`（含飞书会话等机器状态）与超大附件；**明确不忽略 `.summit-workbench/`**（workspace 身份必须随库同步） |
-
-**验证（全部真跑）**
-
-| 门 | 结果 |
-|---|---|
-| `wb vault check` | ✓ 20 篇全部通过 |
-| `wb kb index` → `wb kb status` | ✓ 12 篇 / 78 块，FTS5 可用（8 个 `draft` 簇页按设计不进索引） |
-| **新增** `scripts/kb_verify_links.py` | ✓ 20 篇 / 51 条双链 / 0 失效锚点；**并通过变异验证**（注入死链 + 坏锚点 + 坏 `路径#区块`，3 个全部被捕获，exit 1） |
-| 双机同步 | ✓ 提交已推送，远端 `main = f4c3e97`，`/api/sync/status = ready`（ahead 0 / behind 0） |
-
-**执行顺序调整（重要）**：**R2（块边界扩到 `#`）要在 Phase 4 入库之前落地**——否则 Phase 4 写入的
-`#` 级锚点在 Workbench 检索侧解析不到，锚点自检与验收都会红。R1/R3/R4/R5/R6 仍在 Phase 5。
-
-### R2 · 块边界扩到 `#` 与 `##` —— 已完成（Phase 4 前置）
-
-**改动**：`workflows/ask/chunking.py` 的 `HEADING` 由 `^##\s` 改为 `^#{1,2}\s`；`###` 及更深仍留在父块内；
-「首个标题**之前**的正文＝前言块（锚点＝笔记本身）」语义不变。提交 `303ae49`。
-
-**为什么值得改**：原始材料常用 `#` 分大章（HII IP 原件有 20 个 H1），只切 `##` 会让这些章节的正文
-并进相邻块、无法定点引用；而 Obsidian 的 `[[文件#标题]]` 本来就不区分标题级别。
-
-**验证（真跑）**
-
-| 门 | 结果 |
-|---|---|
-| 决定性实测 | 1038 行原件的 **17 个一级章节 + 2 个附录全部成为可定点锚点**（此前 0 个）；样例库块数 131 → 151 |
-| 真实库索引 | 全量重建 ✓ 12 篇 / 78 块；`conventions#工作知识库规范`、`projects/hii-affairs#HII 事宜`、`index/sop#工作知识库使用 SOP` 等 H1 锚点已生效 |
-| 单测 | 新增「一级标题是块边界」「首个标题前是前言块」两例；`test_kb_index` 的 FTS5 断言按新语义更新（H1 命中锚点：裸路径 → `笔记#一级标题`） |
-| `pytest --cov -q` | ✓ **1089 passed / 1 skipped**，覆盖率 **83.55%**（≥80） |
-| `ruff check` / `ruff format --check` / `mypy` / `secret_scan` | ✓ 全绿（顺带修掉上一提交漏跑的 3 处 E501） |
-| 打包 app 门禁 | ✓ `WB_PACKAGED_APP=… test_packaged_app.py` 1 passed |
-
-> ⚠️ **已安装的 0.4.8 bundle 落后于源码**：R2 只进了源码（CLI/venv 生效），`/Applications` 里的 app
-> 仍按旧规则切块。**GUI 侧要看到 `#` 锚点效果，必须在 Phase 5/6 重新打包并重装**（已加入 Phase 5 交付项）。
-
-### Phase 4 · 首批入库 —— 已完成（5 个执行者并行 + 主控收尾）
-
-**并行分工（文件集互不重叠，避免写冲突；共享文件由主控统一回填）**
-
-| 执行者 | 素材 | 产出 | id 号段 |
-|---|---|---|---|
-| A | HII IP 全景总结（1038 行） | 1 source + 1 分析笔记 + `ip-trademark` 簇回填 + 3 篇决策 | `a1xx` |
-| B | HII Royalty 规则与历程（1162 行） | 1 source + 1 分析笔记 + `royalty` 簇回填 + 3 篇决策 | `a2xx` |
-| C | 来华手册（869 行）+ 当前来华（568 行） | 2 source + 来华 SOP 子页 + 2 个在办个案页 + `relationships` 簇回填 + 3 篇决策 | `a3xx` |
-| D | IT 开发计划与进度（1217 行） | 1 source + 1 分析笔记 + 5 个 IT 簇回填 + 4–6 篇决策 | `a4xx` |
-| E | 智能纪要 + 2 份逐字稿 | 1 source + 3 篇会议笔记 + 2 份逐字稿 | `a5xx` |
-
-- **共享契约**：`/tmp/phase4/CONTRACT.md`（铁律、frontmatter、四类页面的写法、自检命令、汇报格式）。
-- **主控独占的文件**（执行者不得触碰）：`conventions.md`、`README.md`、`inbox.md`、`templates/`、
-  全部 `index/*.md`、`projects/*.md` —— 这些由主控在**执行者全部回收后**统一回填，避免并发写坏。
-- **执行者必须真跑**：逐字比对（source ↔ 原件，差异必须为 0）、单文件 schema 校验、
-  `scripts/kb_verify_links.py`（只修自己文件的问题）。
-- **主控收尾（Phase 4 后半）**：`index/{projects,decisions,people,timeline}.md` 回填、
-  两个 `projects/*.md` 的关键结论/未决/时间线/决策记录回填、跨执行者的双链补全、
-  幂等检查（`source.ref` + `hash` 去重）、全库锚点与逐字终检、git 提交与推送。
-- **关键纪律**：执行者不得使用先验知识补全事实；原文没写的必须写「原文未明确」；
-  决策只在原件确有「明确决定」时建页，`## 选项` 不得事后补编。
-
-**结果（全部真跑，vault 提交 `12c2e5e`，已推送远端）**
-
-| 项 | 结果 |
-|---|---|
-| 素材 | 8 份原件逐字入库（HII 4 + IT 4，含 2 份逐字稿）；**8 份逐行 diff 全部 = 0** |
-| 知识层 | 4 篇分析笔记 + 3 篇会议笔记 + 8 个主题簇页（全部 `draft→active`）+ 3 个来华子页（SOP + 2 个在办个案） |
-| 决策 | **15 篇**（HII 9 + IT 6），`## 证据` 逐条 `路径#区块`；`## 选项` 只写原件真实候选，无候选则明写「原件未记录候选方案」 |
-| 入口页 | `projects/{hii-affairs,it-development}` 回填当前状态 / 下一步 / 阻塞 / 决策记录 / 关键结论 / 未决 / 时间线 |
-| 索引层 | `index/{projects,decisions,people,timeline}` 回填；`decisions` 与 `people` 由脚本重生成 |
-| `wb vault check` | ✓ 52 篇全部通过 |
-| 双链与锚点 | ✓ **269 条双链 + 377 条 `路径#区块` 全部可解析**（`scripts/kb_verify_links.py`） |
-| 索引 | ✓ 全量重建：52 篇 / **679 块**，FTS5 可用 |
-| id 唯一性 | ✓ 0 重复 |
-| 幂等 | ✓ 8 份原件 → 8 个 `source`/`transcript` 页，0 重复 |
-
-**本阶段的两个额外收获（已回写规范）**
-
-1. **`kb_index_people.py` 会抹掉新规范 frontmatter**：它 `render()` 自带一份最小 frontmatter
-   （只有 date/type/status/project/updated/title/aliases），写入时把页面已有的
-   `id` / `area` / `workstream` / `summary` **整段覆盖掉**。已修为「保留既有 frontmatter、只替换正文」，
-   并补回归测试（旧测试一条未改 → 行为兼容）。
-2. **幂等键的判定范围被澄清**：派生产物（分析笔记 / 决策 / 簇页 / 个案页）**沿用**同一 `ref`+`hash`
-   以保持溯源一致，**不算冲突**；幂等只看 `source` / `meeting-transcript` 页。
-   第一次终检把派生笔记也算进去，报了 8 组「冲突」——**是我检查口径写错，不是库里真有问题**，已修正并把该口径写进 conventions §11。
-
-### Phase 1 发现的问题（必须进 Phase 5 的代码修复清单）
-
-**BUG-1 · 0.4.8「首次发布到远端」（G2）在全新 workspace 上必然失败**
-
-- 现象：`POST /api/settings/git/remote/publish` 返回 `remote_publish_rolled_back`，本地回滚到「无 origin」，
-  **但远端已被预检那次推送留下 `main`**（预检是真推，见 `remote_publish.py:156`）。
-- 根因：`_checked_publish_target()` 构造 `GitRepo(vault_dir, backend_kind=…, workspace_id=…)` **没有传 `username`/凭据回调**；
-  随后 `repo.push()`（`remote_publish.py:234`）走 dulwich 后端，而 `dulwich_git.py:560-562` 在 `not self._username` 时
-  直接抛 `GitCredentialsUnavailable` → 被 `remote_publish.py:244` 的兜底 `except Exception` 吞成
-  `remote_publish_rolled_back`，**真因完全不可见**。
-- 影响：`create-new` 新装的用户**永远无法用官方流程绑定远端**；预检却已经把提交推到真远端，留下半成品状态。
-- 本次处置：用 app 自己的模块（`store_git_credentials` + `credential_scoped_backend` + `GitRepo.set_upstream` + `save_profile`）
-  在空仓库上按官方语义补齐绑定，最终状态与官方流程一致（已用 `/api/sync/status = ready` 验证）。
-- **Phase 5 必做**：修 `_checked_publish_target`/`publish_workspace_to_remote` 把本次凭据透传给真 vault 的 backend；
-  并把被吞掉的真因暴露为可诊断的错误码；补一条「全新 workspace → publish」的回归测试（含"预检已推送、主推送失败"的变异验证）。
-
-> 注：`_vault/conventions.md` 与 `inbox.md` 是 app 内置的 v2 种子（`wb: onboarding create` 提交），**Phase 3 会从零重写 conventions**；
-> `inbox.md` 契约不动。新库旧身份对照：`bf22c8d2-…`（旧）→ `fb9494a4-…`（新）。
-
-### Phase 5 · 检索与决策层改造 —— 进行中（提交 `2ec6ea8`）
+### Phase 5 · 检索与决策层改造 —— 已完成（提交 `2ec6ea8` 起）
 
 **度量口径**：脚本 `scripts/kb_measure.py`（2026-09-14 收进仓库；此前只在 `/tmp/phase5/measure.py`，
 重启即失、不受版本控制与门禁保护）——用使用者的 4 个验收问题 × 各自期望的**答案块**，
@@ -1052,6 +680,9 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
 
 | 项 | 状态 |
 |---|---|
+| R1 块级角色加权 | ✓ 结论型 ×2.8 / 支持型 ×0.8 / 引言 ×0.45 / 导航 ×0.4；类型权威校准（index 1.0→0.45、project-main 与 decision →0.95） |
+| R2 块边界扩到 `#` | ✓ 且修正「文首 H1＝笔记标题不切块」（否则标题块与内容块抢排名） |
+| R3 过滤一致性 | ✓ 双链扩展重复应用 project/workstream 过滤 |
 | R4 路由启发式补强（Q2/Q3 落在「无关键词：按长度兜底」） | ✓ 提交 `682eb88`：`_FORM_RULES` 问句形态兜底，只在零关键词命中时生效（不与词表抢路） |
 | R5 `decision` 第 7 区块 `## 关联` 写进 app 固定区块表（契约级，含模板/测试/快照） | ✓ 提交 `78fa662`：`domain/vault.py` 固定区块表 + 模板 + 契约测试 |
 | R6 `source` 索引策略复核（证据层是否值得整篇入索引） | ✓ 提交 `682eb88`：结论是**保留整篇入索引、改用提问侧加权**——问「要原文/原话」时放开证据层降权（`EVIDENCE_REQUEST_RE`），其余时候照旧 ×0.8 降权 |
@@ -1061,7 +692,27 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
 | 新增「知识沉淀」审批落点（第 7 个 `RouteTarget`） | ✓ 提交 `c678b08`：目标显式指定（`sink_target`）、只接受 vault 相对路径（拒穿越）、目标页缺失即拒批、带出处与幂等标记；15 例新测试 + 变异验证 |
 | Workbench「决策」页（API + UI + 路由契约快照） | ✓ 提交 `6ba2f60`：`GET /api/decisions`（筛选/分面/关系解析）+ 新「决策」tab（状态分组、关系行、空态、输入防抖）；8 例后端单测 + 1 个前端纯渲染测试；已发布 build 38 并在 app 内验证（15 篇决策 / 2 管线 / 8 主题） |
 | **重新打包并重装 app** | ✓ 0.4.9 **build 40** 已构建并安装（build 37 → 38 → 39 → 40 逐轮迭代）（`dist/releases/0.4.9/arm64/`，SHA-256 `54b0b912…`）；GUI 实跑验证：R2 的一级章节锚点已可见（0.4.8 里不存在）、Danny 验收题逐条答出、前端产物含新落点「知识沉淀」 |
-| Q1 的深层短板：宽泛问题（「当前达成的商标共识规范是什么」）需要「**问题点名某主题 → 该主题簇页的 `## 关键结论` 优先**」这条路，当前只靠词项匹配还排不上来 | ☐ |
+
+
+**检索质量（真实库，4 个验收问题的期望块；含变异验证的回归测试 12 例）**
+
+| 口径 | 改造前 | 改造后 |
+|---|---|---|
+| 全部期望块（16 个） | 4/16 = 25% | **7/16 = 44%** |
+| **答案层**（12 个非 source 块） | 4/12 = 33% | **7/12 = 58%** |
+| 证据层（4 个 source 块） | 0/4 | 0/4（**设计如此**：默认不进上下文，问「原文」时才进——见 R6） |
+
+**Q1 在已安装 app 内的真实验收**：app 回答「根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？」时，
+第一条事实就是商标共识清单（登记主体 / HIF→HII 编辑规则 / Commissioned Works / 三种年份 / 品牌分开管理…），
+逐条带 `路径#区块` 出处。⚠️ 诚实说明：它引的是 `projects/hii-affairs#关键结论`，
+而不是我度量里手写的 `hii/clusters/ip-trademark#关键结论`——两者内容等价（项目主页就是那份清单的入口版），
+但「期望块」本身不是唯一正解，这一点不应被读成「又失败了一格」。
+
+**仍存在、已知的不足（未解决，留待下一轮）**
+
+1. Q3 的 `it/clusters/enrollment#关键结论` 在加主题通道后由「同篇但块不同」变成「未召回」——那一项是退步（净效果 6→7）。
+2. 同篇多结论块互相竞争（分析笔记有 19 个 `结论N` 块），`max_chunks_per_note=3` 下具体哪 3 个进上下文仍偏字面相关度。
+3. 度量本身是 16 项二值指标，个别项会随权重微调翻转；**不要**再用它做单一目标的调参依据（本轮已有两次实证有害的回退）。
 
 #### Phase 5 打包重装 · 两条操作经验（下次发布照做）
 
@@ -1082,6 +733,9 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
   功能不受影响——本次实测：重启后该文件 `items: {}`，但 `POST /api/run/brief` 返回
   「已生成今日简报（健康度 ok）」。**风险**：若界面授权徽标直接读这个文件，重启后会误显示未授权。
   待确认后决定是否改为启动时从 Keychain 重建缓存。
+  → **2026-09-14 已结案：不是 bug。** 徽标读的是 vault 内持久的 `_signals/feishu-auth.json`；
+  这个 App Support 文件只是 OAuth `state` 暂存表（`_STATE_TTL = 600s`），重启后为空**是正确行为**。
+  详见「收口轮 · 起点复核 + 文档漂移 + 条目 3 结案」第 2 节。**不需要改代码。**
 
 ### Phase 6 · SOP 与验收 —— 已完成（2026-09-14）
 
