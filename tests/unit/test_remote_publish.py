@@ -343,3 +343,86 @@ def test_publish_rolls_back_origin_profile_and_credential_on_failure(
     assert restored.git_remote_url is None
     assert spy.stored == []
     assert spy.deleted == []
+
+
+# ---- BUG-1：全新 workspace 的首次发布（2026-09-14 实测）----
+
+
+def test_fresh_workspace_publish_pushes_the_real_vault_with_credentials(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """回归 BUG-1：真 vault 的那次 push 必须**带本次凭据**。
+
+    旧实现只在预检的临时克隆里注入了凭据；真 vault 的 ``repo.push()`` 走的是
+    「只有 workspace_id、没有 username」的后端，dulwich 直接抛 ``GitCredentialsUnavailable``，
+    被兜底 except 吞成 ``remote_publish_rolled_back``——于是**全新 workspace 的首次发布必然失败**，
+    而远端已经被预检推上了 ``main``（半成品状态）。
+
+    判据：``credential_scoped_backend`` 必须被**以真 vault 路径**调用过——这一点在旧实现下
+    永远不成立（旧实现只在预检时用临时克隆路径调它）。
+
+    变异验证：把 ``_push_with_credentials`` 换回直接 ``repo.push()``，本用例必须变红。
+    """
+    workspace_id = str(uuid4())
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    home = tmp_path / "home"
+    save_profile(_profile(workspace_id, vault), home=home)
+    repo = FakeRepo(vault)
+    candidate = FakeBackend()
+    scoped_paths: list[Path] = []
+
+    def scoped(path: Path, *args: object, **kwargs: object) -> FakeBackend:
+        scoped_paths.append(Path(path))
+        return candidate
+
+    _install(monkeypatch, repo=repo, candidate=candidate, ls_remote=lambda *a, **k: {})
+    monkeypatch.setattr(workflow, "credential_scoped_backend", scoped)
+
+    workflow.publish_workspace_to_remote(
+        vault,
+        workspace_id=workspace_id,
+        username="alice",
+        pat=PAT,
+        candidate_url=HTTPS,
+        home=home,
+    )
+
+    assert vault in scoped_paths, (
+        "真 vault 的 push 没有走带凭据的后端——全新 workspace 的首次发布会失败"
+    )
+    assert repo.pushes >= 1, "真 vault 必须真的推过一次"
+
+
+def test_publish_failure_surfaces_the_underlying_cause_and_scrubs_the_pat(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """首次发布失败时必须说清**真正的原因**，而且不得把 PAT 带进错误文案。
+
+    旧实现只回一句「首次发布失败，已恢复到没有远端的状态」——BUG-1 的真因
+    （``GitCredentialsUnavailable``）因此完全不可见，只能靠读代码猜。
+    """
+    workspace_id = str(uuid4())
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    home = tmp_path / "home"
+    save_profile(_profile(workspace_id, vault), home=home)
+    secret = PAT.get_secret_value()
+    repo = FakeRepo(vault, push_error=GitError(f"认证失败（token={secret}）"))
+    _install(monkeypatch, repo=repo, candidate=FakeBackend(), ls_remote=lambda *a, **k: {})
+
+    with pytest.raises(workflow.RemotePublishError) as exc_info:
+        workflow.publish_workspace_to_remote(
+            vault,
+            workspace_id=workspace_id,
+            username="alice",
+            pat=PAT,
+            candidate_url=HTTPS,
+            home=home,
+        )
+
+    message = str(exc_info.value)
+    assert "GitError" in message, f"没有暴露底层异常类型：{message}"
+    assert "认证失败" in message, f"没有暴露底层原因：{message}"
+    assert secret not in message, "PAT 被写进了错误文案"
+    assert repo.removed == ["origin"], "失败后必须回滚掉 origin"

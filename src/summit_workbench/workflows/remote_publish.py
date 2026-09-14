@@ -174,6 +174,44 @@ def validate_publish_target(
     return RemotePublishValidation(remote_url=safe_url, workspace_id=workspace_id, branch=branch)
 
 
+def _scrub(message: str, pat: SecretStr) -> str:
+    """异常文本里若混进了 PAT（某个库把它拼进消息）就在这里抹掉再上抛。"""
+    value = pat.get_secret_value()
+    return message.replace(value, "***") if value else message
+
+
+def _push_with_credentials(
+    repo: GitRepo,
+    vault_dir: Path,
+    *,
+    workspace_id: str,
+    username: str,
+    pat: SecretStr,
+    backend_kind: str,
+) -> None:
+    """把本地工作台的历史推到 origin——**必须带本次凭据**。
+
+    BUG-1（2026-09-14 实测）：``_checked_publish_target`` 构造的 repo 只带 ``workspace_id``、
+    没有 ``username`` 与凭据回调，而 dulwich 后端在 ``not self._username`` 时直接抛
+    ``GitCredentialsUnavailable``——它又被调用点的兜底 ``except`` 吞成
+    ``remote_publish_rolled_back``。结果是**全新 workspace 的首次发布必然失败**；
+    更糟的是预检那次 push 是带凭据的，所以远端会先被推上 ``main``，留下
+    「远端有 main、本地没有 origin」的半成品状态。
+
+    ``system`` 后端走操作系统的凭据助手，不需要显式注入。
+    """
+    if backend_kind == "system":
+        repo.push()
+        return
+    scoped = GitRepo(
+        vault_dir,
+        backend_kind=backend_kind,
+        workspace_id=workspace_id,
+        backend=credential_scoped_backend(vault_dir, workspace_id, username, pat),
+    )
+    scoped.push()
+
+
 def publish_workspace_to_remote(
     vault_dir: Path,
     *,
@@ -231,7 +269,14 @@ def publish_workspace_to_remote(
     try:
         repo.add_remote("origin", safe_url)
         remote_added = True
-        repo.push()
+        _push_with_credentials(
+            repo,
+            vault_dir,
+            workspace_id=workspace_id,
+            username=username,
+            pat=pat,
+            backend_kind=backend_kind,
+        )
         save_profile(
             profile.model_copy(update={"git_username": username, "git_remote_url": safe_url}),
             home=home,
@@ -270,8 +315,12 @@ def publish_workspace_to_remote(
             raise
         if isinstance(exc, GitRemoteSchemeUnsupported):
             raise RemotePublishError("remote_scheme_unsupported", str(exc)) from exc
+        # 把真正的原因带出来：早先这里只写「已恢复到没有远端的状态」，于是 BUG-1 的真因
+        # （GitCredentialsUnavailable）在界面上完全不可见，只能靠读代码猜（2026-09-14 实测）。
+        detail = _scrub(str(exc), pat) or type(exc).__name__
         raise RemotePublishError(
-            "remote_publish_rolled_back", "首次发布失败，已恢复到没有远端的状态"
+            "remote_publish_rolled_back",
+            f"首次发布失败（{type(exc).__name__}：{detail}），已恢复到没有远端的状态",
         ) from exc
     return RemotePublishResult(
         remote_url=safe_url, workspace_id=workspace_id, branch=validation.branch, head=head

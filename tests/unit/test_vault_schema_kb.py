@@ -19,7 +19,9 @@ WORKSTREAM_BODY = "\n".join(
         "## 关联",
     ]
 )
-DECISION_BODY = "\n".join(["## 背景", "## 选项", "## 决定", "## 理由", "## 影响", "## 证据"])
+DECISION_BODY = "\n".join(
+    ["## 背景", "## 选项", "## 决定", "## 理由", "## 影响", "## 证据", "## 关联"]
+)
 SOURCE_BODY = "\n".join(["## 来源", "## 要点", "## 关联"])
 THOUGHT_BODY = "\n".join(["## 问题缘起", "## 思考展开", "## 当前结论"])
 
@@ -71,7 +73,7 @@ def test_long_form_thought_passes():
 
 def test_decision_missing_block_is_reported():
     msgs = " ".join(str(i) for i in validate_note(_base("decision"), "## 背景\n"))
-    for block in ("选项", "决定", "理由", "影响", "证据"):
+    for block in ("选项", "决定", "理由", "影响", "证据", "关联"):
         assert block in msgs
 
 
