@@ -29,7 +29,7 @@
 ## 二、环境与身份（已核实，可直接用）
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`；Python venv `.venv`；CLI `.venv/bin/wb`。
-- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**69 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
+- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**70 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
   `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
   `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
   索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`
@@ -202,9 +202,10 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 4. **首批素材已入库（2026-09-14），三线内容仍很薄——继续收素材**：社群 / 后勤 / HR 各入库 1 批。
    规范已通过第一次实战检验（粒度与落点**未需修正**；三条采集习惯问题见 `SEED-MATERIAL-SPEC.md` §10）。
    **当前缺口（下一步该收的）**：
-   - 社群：**三场活动（2025-04 杭州 Kick Off / 2025 年终 / 2026-06-07）的一手复盘——这是最缺的一项**
-     （方法论页的「验证于」只能证明用过，不能证明有效）；社群构想 / 框架类原件；
-     6/7 方案引用的《活动筹备与执行方案》《酒店备选清单》。
+   - 社群：**2025 两场活动的一手复盘**（2026-06-07 已有，且已把方法论升级为「有效 / 需调整」）；
+     社群构想 / 框架类原件；6/7 方案引用的《活动筹备与执行方案》《酒店备选清单》。
+   - ⚠️ **需使用者明确一件事**：6/7 复盘要求「将来继续让学员做，需要给出更完善的执行指南，
+     **而不是全部交出去**」——**下次下午场是否仍由学员主导尚未决定**。
    - 后勤：物料采购进展；除 1977 酒店外的酒店 / 场地 / 供应商；行政制度类原件；
      1977 酒店的合同条款（时间线写着 2026-11 签约前收口）。
    - HR：人事制度类材料；除刘玉兰外其他团队成员的沟通。
@@ -258,8 +259,11 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
   模板 14→16（`event-plan` / `conversation-minutes`）。
 - **2025 两场活动补齐（2026-09-14）**：`20250418-hangzhou-gathering`（Kick Off，含详细流程 Run of Show）与
   `20251216-year-end-gathering`（上海·音昱听堂）各入 source + 事件页 ⇒ **社群三场活动原件与事件页全部在库**；
-  方法论页的 10 个环节里有 8 个已标出「验证于哪一场」，并把环节库提升为独立 `##` 块。
-  **缺的是一手复盘**（见 §7.4）。**别重做**。
+  方法论页的 10 个环节里有 8 个已标出「验证于哪一场」，并把环节库提升为独立 `##` 块。**别重做**。
+- **2026-06-07 一手复盘入库（2026-09-14）**：260 字复盘 → `activity-playbook` 新增
+  `## 复盘教训（跨场次累积）`（6 条教训）、设计理念第 4 条按复盘修正、6/7 事件页复盘区补齐、
+  `## 可复用流程` 由 7 步扩到 10 步；规范 §3.1 场景表**新增「办完活动之后的复盘」并标为价值最高**。
+  2025 两场的一手复盘仍缺。**别重做**。
 
 ---
 
