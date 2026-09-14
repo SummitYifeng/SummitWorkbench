@@ -49,7 +49,11 @@
 - 每次改完必须过门禁（见第四节）；不许为了「变绿」放松判据。发现判据本身写错了，要**说清楚为什么**
   并保留等价强度（例：Q1 的关键证据改成「等价入口 any-of」，同时保证两个入口都没召回时仍然红）。
 - **涉及检索权重/词表的改动，必须先用真实问题量一遍再决定**（历史上有两次凭直觉的改动实测有害，
-  44%→31% 被回退）。16 项二值指标会随权重微调翻转，**不要**把它当单一调参目标。
+  44%→31% 被回退）。工具是 **`scripts/kb_measure.py`**：真库 4 问 × 16 期望块，**零 token**，
+  并且 `--set key=value` 能直接扫权重（`--set topic_step=1.2`）、**不用改代码**。
+  二值指标看不见变化，所以要连**分档**（命中 / 同篇但块不同 / 未召回）和**命中排名**一起读——
+  实测 `--set conclusion_boost=1.0` 时档位一项不变、只有排名从 #13 掉到 #16。
+  **不要**把 16 项二值当单一调参目标。
 - 关键修复要有**变异验证**：把守卫去掉后，测试必须立刻红。
 - 改动要落到真实数据上验证，而不是只看单测：既有做法是 Python `build_project_view(vault, name)` 取真实
   blocks → 用 esbuild 打包真前端渲染函数 → 统计残留标记。
@@ -79,6 +83,12 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 #    2026-09-14 修好之前，它在这一半上是 100% 误报（全库 6 个 source 页），所以没人跑它。
 .venv/bin/python scripts/kb_verify_quotes.py --vault ~/Documents/Work/_vault \
   --materials-root "/Users/yifengstudio/Desktop/当前材料"
+# 检索度量（**零 token**；动了权重 / 词表 / 分块 / 主题通道就必须先跑它，别凭直觉）
+.venv/bin/python scripts/kb_measure.py --no-rebuild
+# 扫权重实验不用改代码（未知字段会报错，不会静默忽略）：
+.venv/bin/python scripts/kb_measure.py --no-rebuild --set topic_step=1.2
+# 要量「模型有没有真的引用关键块」时加 --with-model（这一层才花 token）
+.venv/bin/python scripts/kb_measure.py --no-rebuild --with-model --only "Q3"
 ```
 
 > **教训（2026-09-14，已经踩过一次）**：归档类判据**不能只用简化 fixture 测**。
@@ -167,8 +177,13 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    - Q3 的 `it/clusters/enrollment#关键结论` 在加「主题通道」后由「同篇不同块」变成**未召回**（净效果 6→7）。
    - 同篇多结论块互相竞争：分析笔记有 19 个「结论N」块，`max_chunks_per_note=3` 下哪 3 个进上下文
      仍偏字面相关度。
-   - 度量是 16 项二值指标，个别项会随权重微调翻转 → 不适合当调参目标。
-   若要做，先建**更可信的度量**（比如按「答案里是否出现关键结论、出处是否可解析」分档），再动权重。
+   - **度量已经建好了**（2026-09-14）：`scripts/kb_measure.py` 给二值 + 分档 + 命中排名三层，
+     零 token，`--set` 可直接扫权重。新基线：二值 **7/16 = 44%**、分档 **7 / 3 / 6**、
+     排名均值 **4.4**、期望锚点自检 **16/16**。
+   - **一条现成的线索**：`--set topic_step=1.2` 把一项「未召回」变成「同篇但块不同」，
+     而二值不变、排名不变（**没有代价**）——很可能就与上面 Q3 那条相关。
+     ⚠️ **别直接改默认值**（4 题 16 项上的单点证据不够，且 `Weights.topic_step` 的注释写明
+     「不能压过正文相关度」）：先用脚本扫、把配置与读数记进 PLAN，再决定。
 3. ~~飞书授权缓存观测~~ —— **已结案，不要再查**。`~/Library/Application Support/…/feishu-auth-state.json`
    只是 OAuth `state` 的暂存表（`_STATE_TTL = 600s`），重启后为空是正确行为；界面徽标读的是 vault 内的
    `_signals/feishu-auth.json`（持久）。结论与证据见 PLAN §12「收口轮」第 2 节。
