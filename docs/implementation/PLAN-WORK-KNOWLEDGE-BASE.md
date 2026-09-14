@@ -94,19 +94,24 @@
 
 ## §3 目标形态
 
-### 3.1 三层模型（不新增项目、不新增 type）
+### 3.1 三层模型（项目页数固定 5、不新增 type）
+
+> ⚠️ **2026-09-14 更新（契约级）**：项目层由 **2 个扩至 5 个**——新增 `huoman-community`（活满社群）、
+> `huoman-logistics`（活满后勤&行政）、`hr`（公司人事）。已同步改 `_vault/conventions.md`
+> §1 / §1.1 / §2 / §3 / §13 与 `index/projects.md`、`README.md`。本节下方数字已就地校正；
+> §3.2 的 α / β 对比是**当时**的候选架构记录，保留不动。
 
 ```
-项目层（Workbench 视角 · 恒定 2）   _vault/projects/hii-affairs.md · it-development.md        type: project-main
-主题簇层（知识视角 · 可扩展 N）      _vault/<line>/clusters/*.md  +  簇下子页                 type: note, project: <2 个之一>
+项目层（Workbench 视角 · 恒定 5）   _vault/projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md   type: project-main
+主题簇层（知识视角 · 可扩展 N）      _vault/<line>/clusters/*.md  +  簇下子页                 type: note, project: <5 个之一>
 素材/证据层（只增不改）              _vault/<line>/sources/ · meetings/{notes,transcripts}/ · decisions/
-执行层（Workbench 契约不动）         daily/ logs/ review/ inbox.md inboxes/ artifacts/ insights/
-导航层                               index/{workstreams,projects,people,decisions,timeline}.md
+执行层（Workbench 契约不动）         daily/ logs/ reviews/ review/ inbox.md inboxes/ artifacts/ insights/
+导航层                               index/{projects,people,decisions,timeline,sop}.md
 ```
 
-- **永不新增 `projects/*.md`**：新增主题 = 建 `<line>/clusters/<slug>.md` → 在项目主页 `## 主题簇` 加一行 → 在 `index/projects.md` 加一行。
-- 主题簇页与子页固定区块沿用线索主页六区块：`## 现在在哪`、`## 关键结论`、`## 未决问题`、`## 决策记录`、`## 时间线`、`## 关联`（写进新 conventions §4）。
-- 会议笔记的 `projects:` 值**必须**只出现 `hii-affairs` / `it-development`，否则审批路由解析不到项目、会落全局 inbox。
+- **不新增 `projects/*.md`（当前固定 5 页）**：新增主题 = 建 `<line>/clusters/<slug>.md` → 在项目主页 `## 主题簇` 加一行 → 在 `index/projects.md` 加一行。增减项目页须**成套改**规范（conventions §13.3）。
+- 主题簇页与子页固定区块沿用线索主页六区块：`## 现在在哪`、`## 关键结论`、`## 未决问题`、`## 决策记录`、`## 时间线`、`## 关联`（写进新 conventions §4）；2026-09-14 另加「对象页」（人 / 酒店 / 供应商 / 物料）与「事件页」（活动复盘），见 conventions §4.7–§4.8。
+- 会议笔记的 `projects:` 值必须是**真实存在的项目 ID**（当前 5 个）。解析走项目注册表（`repositories/project_registry.py` 动态扫描 `projects/*.md`），**代码里没有硬编码项目名单**；ID 不存在时该条会落全局 inbox。
 
 ### 3.2 两套候选架构（Phase 2 样例的对比对象）
 
@@ -536,6 +541,10 @@ confidential: false
 **选型结论**：**β 项目管线优先**（用户 2026-09-14 拍板）；**H1 锚点策略选 A**＝扩块边界到 `#`（见 R2）。
 
 **落盘**（`_vault`，提交 `f4c3e97`，已推送远端）：
+
+> ⚠️ **下表是 `f4c3e97` 当时的形态快照**（历史记录，保留不改）。2026-09-14 起已变化：
+> 项目页由 **2 个扩至 5 个**、两个骨架页已删、库内模板由 9 个增至 **14 个**、新增顶层 `logistics/`
+> 与 `community/events/`、`hr/people/`。当前形态以 `_vault/conventions.md` 为准，变更经过见 §12。
 
 | 产出 | 内容 |
 |---|---|
@@ -1145,3 +1154,92 @@ RuntimeError: Could not determine home directory.
 2. **受限 app 与完整 app 的异常边界不该不一致**。
 3. **前端不许无条件 `.json()`**：非 JSON 响应会把任何错误变成一句浏览器方言。
 4. **分享到另一台机器时，首启流程必须真机跑一遍**——本轮正是靠使用者实机才暴露。
+
+---
+
+### 种子基线与三线升级轮 · 骨架 → 项目管线 + 素材留存规范 + 既有内容修缮 —— 已完成（2026-09-14）
+
+作业单：`NEXT-SESSION-PROMPT-SEED-INGESTION.md`。使用者把本轮的**最高价值产出**定在
+「**素材该怎么留**」的规范与模板（种子基线），而不是「入库一次」；并明确三条新线
+（活满社群 / 活满后勤&行政 / HR）的素材**尚未准备**，要求先与他探讨「该准备什么素材」。
+⇒ 本轮**不产 source/notes**（无素材），交付结构 + 规范 + 模板 + 既有内容修缮。
+
+#### 起点复核（全绿）
+
+pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff（476 文件）、mypy（360 文件）、secret_scan、
+前端 16 组；`wb vault check` 53 篇；`kb_verify_links` 272 双链 / 378 块级引用；`kb_verify_quotes` 30 条 0 问题；
+`kb_measure --no-rebuild` 二值 7/16、分档 7/3/6、排名均值 4.4、锚点 16/16（与文档一致）。
+已装 App `0.4.9 build 43`（`frontend_build v2026.09.14-73d495a`）、`/api/sync/status = ready 0/0`。
+两项调模型的验收按规范未重跑（上一提交 `42ea6d7` 为纯文档、工作树未变）。
+
+#### 交付 1 · 契约级升级：`projects/` 由 2 个扩至 5 个
+
+| 产出 | 内容 |
+|---|---|
+| 新项目页 | `projects/huoman-community.md`、`projects/huoman-logistics.md`、`projects/hr.md`（`project-main`，四固定区块 + 关键结论/未决/时间线/主题簇/关联，各 10 块） |
+| 新目录 | 顶层 `logistics/{vendors,procurement,clusters,notes,sources}`；`community/{events,notes}`；`hr/people`；补齐 `logs/`、`reviews/`、`review/` |
+| 骨架收口 | 删 `community/community-overview.md`、`hr/hr-people.md`（内容已迁入项目页），**不留双入口** |
+| 规范 | `conventions.md`：§1 目录树、§1.1 归属判定（+6 行）、§2 workstream 加 `logistics`、§3 type 表、**新增 §4.7 对象页 / §4.8 事件页**、§5 命名与模板命名、§8 机器页豁免、§13 扩展规则重写为「固定 5 页 + 成套改清单」、§14 |
+| 导航 | `index/projects.md` 重写（5 项目 + 3 个待建簇区）、`README.md`、`index/timeline.md`、`hii-affairs.md` / `it-development.md` 脚注、`index/people.md` 重生成 |
+| 仓库文档 | PLAN §3.1 就地校正 + §12 本节；`kb-spine-sample-comparison.md` §6 表述；**新增 `SEED-MATERIAL-SPEC.md`** |
+
+**代码依赖核查**：全库 grep 确认 `src/` **没有任何硬编码项目名单**（项目解析走
+`repositories/project_registry.py` 动态扫描 `projects/*.md`），所以「恒定 2 个」只是文档/库层契约，
+无代码或测试依赖、无需重建 App。PLAN §3.1 旧文「会议笔记 `projects:` 必须只出现 hii-affairs / it-development」
+是**文档漂移**（当时表述），已改正。
+
+#### 交付 2 · 种子基线（最高价值）
+
+- **`docs/implementation/SEED-MATERIAL-SPEC.md`**：唯一判据（能否被切块/寻址/溯源/不被加工污染）、
+  最小形态 7 条、反面清单、三条线粒度表、**四个场景的「留什么文件/叫什么名/至少哪几段」**、
+  30 秒自检 5 问、入库流程、格式处置（微信/录音标注为未验证）、迭代规则、已知不足。
+- **库内模板 9 → 14**：新增 `hr-person` / `event-retro` / `vendor` / `procurement` / `conversation-note`，
+  全部通过 §3 词表与 scope 手判、含对应 §4.7/§4.8 固定区块。
+- 刻意**不动**仓库 `templates/vault/` 种子（使用者选「库内模板 + 仓库规范文档」，不扩新工作台产物）；
+  两者用途不同已在 conventions §13 遗留 6 登记，避免下轮再当漂移重报。
+
+#### 交付 3 · 既有 HII / IT 内容修缮（审计驱动）
+
+用两个只读审计（HII 侧 35 篇 / 库结构侧 25 对象）定位，再机械修复：
+
+- **溯源**：给 6 篇派生物补 `source`（ip-trademark / ip-analysis / 3 篇 decision 用 IP 全景总结；
+  royalty 簇页用 Royalty 规则 V2）。`relationships` 簇页对应多份原件 → 单个 source 语义不成立，
+  已在 conventions §2.1 明确「多源可省略 source，改为在 `## 关联` 列出来源」。
+- **决策页字段顺序**：6 篇把 `decision_status`/`decided_on` 插在 `status` 与 `created` 之间，
+  与 §2/§7 冲突；**根因是 `templates/decision.template.md` 本身写错**——已同时修模板 + 6 篇，15 篇键序统一。
+- **术语**：原件 146 处全为 Royalty、0 处 Loyalty，而库内 16 处误写「Loyalty」→ 统一为 **Royalty**
+  （历史叫法留 `aliases`），涉及 9 个文件。
+- **导航**：`index/timeline.md` 12 条缺双链 → 补为 18 条（每条目标页先核实存在）；README 两处反引号改双链。
+- **交叉引用**：`index/sop.md`「§4 的入库管线」→ §11、「落点第 7 个」→ 第 6 个。
+- **事实性数字**：IT source 页 `## 要点` 声称 38 一级 / 24 二级章节，实测 **35 / 23**（原件自身 H1 不计、
+  页面自身 `## 关联` 不计），并合并重复 bullet；受影响的行号偏移说明已标注「随要点长度变化」。
+- **§4.4 合规**：6 处 `## 证据` 的逐字引用只写 `#区块` 省略路径 → 补全 `路径#区块`。
+- **契约空洞**：补齐 §10 定义的唯一审批入口 `review/meetings.md`（`REVIEW_PATH` 已核实）与 `logs/`、`reviews/`。
+
+#### 验证（全部真跑）
+
+| 门 | 结果 |
+|---|---|
+| `wb vault check` | ✓ **55 篇**全部通过（53 − 2 骨架 + 3 项目页 + 1 审批页） |
+| `kb_verify_links` | ✓ 55 篇 / **312 双链** / **388 块级引用** 全可解析（+6 来自 §4.4 补路径） |
+| `kb_verify_quotes --materials-root` | ✓ 30 条比对 0 问题（**逐字原件未被改动**：`it/sources/…roadmap-progress.md` 的 `## 原文` 区与 HEAD 逐段 `diff -q` 一致） |
+| `kb_index_people.py --check` | ✓ 与 frontmatter 一致（14 人 / 3 组织）；顺带修好旧的**索引过期**（Kate Mayer、曹木子 缺失） |
+| `kb_measure`（重建索引） | 二值 **7/16=44%**（不变）、分档 **7/3/6**（不变）、锚点 16/16；**排名均值 4.4 → 4.9** |
+| pytest / ruff / mypy / secret / 前端 | ✓ 1166 passed / 83.80%；476 文件；360 文件；passed；16 组 |
+
+#### 度量位移的原因（已定位，不调参）
+
+新增 3 个项目页各含 `## 下一步`，连同 `it-development` 共 4 个 `## 下一步` 占住 Q2 的 #8–#11，
+把 `hii/clusters/relationships#关键结论` 从 #13 挤到 **#16**；该问句字面含「下一步谁做什么」，
+与块标题「下一步」强匹配。**二值/分档不变**说明它仍在返回窗口（limit=16）内，但已贴边缘——
+再加一个项目页可能掉出。附带改善：Q4 现能召回 `projects/huoman-community#未决问题`(#4) 等新入口页。
+按铁律**不据薄证据调权重**；完整前后输出已存
+`docs/acceptance/evidence/kb-measure-2026-09-14-post-seed-baseline.txt`。
+
+#### 未做 / 遗留（诚实标注）
+
+1. **首批素材未入库**：使用者要先「探讨该准备什么素材」再去准备；三线 source/notes 一律未产。
+   因此**三条线各自的「真实问题」度量也未做**——无素材可量（只写了零 token 的路由试算作为管道自检）。
+2. `SEED-MATERIAL-SPEC.md` 是**设计稿**，尚未被真实素材检验；微信导出 / 录音转写两条路径本轮无样本。
+3. `index/people.md` 的裸双链与「别名=文件名」形态由脚本生成，已在 §8 登记为机器页豁免，未改脚本。
+4. 审计给出的「建议不动」项：`daily/`、`inbox.md` 的最小 frontmatter（已豁免）、§13 既有 R1/R2/R3/R5/R6 遗留。

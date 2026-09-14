@@ -1,0 +1,115 @@
+第二大脑检索度量 · 三条新工作线升级为项目管线之后
+生成时间：2026-09-14　工具：scripts/kb_measure.py（全零 token，--no-rebuild 复现）
+vault 状态：55 篇 / 710 块（较升级前 53 篇 / 685 块）
+
+对比基线（PLAN §12「度量工具轮」）：二值 7/16=44%、分档 7/3/6、排名均值 4.4、锚点 16/16
+本次读数：二值 7/16=44%（不变）、分档 7/3/6（不变）、排名均值 4.9（+0.5）、锚点 16/16（不变）
+
+唯一变化：Q2「Danny 来华待收口」的 expected anchor hii/clusters/relationships#关键结论 由 #13 降到 #16。
+原因（已定位）：新增 3 个项目页各含 ## 下一步 块，连同 it-development 共 4 个 ## 下一步 占住 Q2 的 #8–#11；
+该问句字面含「下一步谁做什么」，与块标题「下一步」强匹配。二值/分档未变说明它仍在返回窗口内（limit=16），
+但已贴在窗口边缘——再加一个项目页就可能掉出。属「语料变化引起的排名位移」，非权重改动；按铁律不据薄证据调权重。
+附带改善：Q4「活满 vs 和夫曼」现能召回 projects/huoman-community#未决问题(#4) 等新入口页区块。
+
+未做：三条新线各自的「真实问题」度量 —— 三线尚无任何素材入库，问句只会命中项目页骨架，
+无可衡量的期望答案块。该项留待首批素材入库后补（见 SEED-MATERIAL-SPEC §10）。
+
+--- 以下为 kb_measure.py 原始输出 ---
+索引库：/Users/yifengstudio/Library/Application Support/SummitWorkbench/kb-index.sqlite
+
+【Q1 商标共识规范】根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？
+  路由：decision（命中关键词 共识、规范）｜命中块 298｜返回 12
+     1. projects/hii-affairs#关键结论
+     2. projects/hii-affairs#阻塞
+     3. projects/hii-affairs#下一步
+     4. it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+     5. hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）
+     6. hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+     7. hii/notes/20260912-hii-hic-ip-analysis#结论一｜HII 与 HIC 是「双轨 IP 体系」，不是「全部 IP 归 HII」
+     8. index/sop#第 ⑤ 步 · 提问与引用
+     9. decisions/20260911-scholarship-discount-no-royalty#选项
+    10. decisions/20260912-huoman-separate-from-hefuman#选项
+   ★11. hii/clusters/ip-trademark#关键结论
+    12. hii/clusters/ip-trademark#未决问题
+    ✓ ip-trademark#关键结论 → 命中 #11
+    ✗ 20260623-hii-registration-entity#决定 → 未召回
+    ✗ 20260912-hii-hic-ip-analysis#结论八｜正式登记主体统一为 Hoffman Institute International, Inc.（含中英文名称与地址） → 同篇但块不同
+    ✗ 20260912-hii-hic-ip-overview#六、正式名称、登记主体与关键命名口径 → 未召回
+  双链扩展：daily/2026-09-14 ← projects/hii-affairs；decisions/20260623-hii-registration-entity ← projects/hii-affairs；decisions/20260623-ip-filing-before-license ← projects/hii-affairs；decisions/20260911-hotel-cost-gross-amount ← projects/hii-affairs
+
+【Q2 Danny 来华待收口】Danny 来华目前还差哪些必须收口？下一步谁做什么？
+  路由：point（命中关键词 谁）｜命中块 94｜返回 16
+   ★ 1. hii/visits/danny-kim-2026-09#关键结论
+   ★ 2. hii/visits/danny-kim-2026-09#未决问题
+     3. decisions/20260913-danny-work-personal-separation#决定
+     4. decisions/20260913-danny-work-personal-separation#选项
+     5. hii/visits/nita-crystal-2026-12#关键结论
+     6. hii/visits/danny-kim-2026-09#现在在哪
+     7. projects/hii-affairs#下一步
+     8. projects/hr#下一步
+     9. projects/huoman-community#下一步
+    10. projects/huoman-logistics#下一步
+    11. projects/it-development#下一步
+    12. hii/clusters/relationships#现在在哪
+    13. hii/visits/china-visit-sop#现在在哪
+    14. hii/visits/nita-crystal-2026-12#未决问题
+    15. hii/clusters/relationships#未决问题
+   ★16. hii/clusters/relationships#关键结论
+    ✓ danny-kim-2026-09#未决问题 → 命中 #2
+    ✓ danny-kim-2026-09#关键结论 → 命中 #1
+    ✓ relationships#关键结论 → 命中 #16
+    ✗ 20260913-hic-hii-current-visits#4. Danny｜当前已确认与待确认 → 未召回
+  双链扩展：decisions/20260913-china-visit-three-stage-sop ← decisions/20260913-danny-work-personal-separation；decisions/20260913-china-visit-trigger-rule ← hii/visits/danny-kim-2026-09；decisions/20260913-danny-work-personal-separation ← hii/visits/danny-kim-2026-09；hii/clusters/relationships ← hii/visits/danny-kim-2026-09
+
+【Q3 IT 进度与下一阶段】IT 当前的开发进度是什么，下一个阶段该怎么做？
+  路由：point（命中关键词 是什么、当前、进度）｜命中块 337｜返回 16
+   ★ 1. it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+     2. projects/it-development#关键结论
+     3. projects/it-development#阻塞
+     4. decisions/20260912-account-governance-p0#选项
+     5. hii/visits/china-visit-sop#现在在哪
+     6. meetings/notes/20260803-it-alignment#事实与进展
+     7. decisions/20260912-account-governance-p0#决定
+     8. decisions/20260913-china-visit-three-stage-sop#决定
+     9. decisions/20260913-china-visit-three-stage-sop#选项
+    10. hii/visits/nita-crystal-2026-12#关键结论
+    11. hii/visits/nita-crystal-2026-12#未决问题
+    12. hii/visits/nita-crystal-2026-12#现在在哪
+    13. decisions/20260912-digitization-finance-first#决定
+    14. decisions/20260913-china-visit-trigger-rule#选项
+    15. hii/visits/china-visit-sop#关键结论
+    16. hii/visits/china-visit-sop#未决问题
+    ✓ 20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做 → 命中 #1
+    ✗ 20260912-hic-it-roadmap-analysis#2026 总体优先级与 9—12 月 Roadmap → 同篇但块不同
+    ✗ enrollment#关键结论 → 未召回
+    ✗ 20260912-hic-it-roadmap-progress#二十七、2026 年 9 月—12 月建议 Roadmap → 未召回
+  双链扩展：daily/2026-09-14 ← projects/it-development；decisions/20260912-account-governance-p0 ← projects/it-development；decisions/20260912-digitization-finance-first ← it/notes/20260912-hic-it-roadmap-analysis；decisions/20260912-enrollment-redefined-as-course-lifecycle ← projects/it-development
+
+【Q4 活满 vs 和夫曼】「活满」与「和夫曼之旅」为什么分开管理？当时还有哪些选项？
+  路由：decision（命中关键词 选项）｜命中块 417｜返回 12
+   ★ 1. decisions/20260912-huoman-separate-from-hefuman#决定
+   ★ 2. decisions/20260912-huoman-separate-from-hefuman#选项
+     3. hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+     4. projects/huoman-community#未决问题
+     5. hii/clusters/ip-trademark#现在在哪
+     6. projects/huoman-community#关键结论
+     7. projects/huoman-community#下一步
+     8. meetings/notes/20260907-portal-permission-alignment#事实与进展
+     9. decisions/20260912-huoman-separate-from-hefuman#证据
+    10. projects/huoman-logistics#未决问题
+    11. projects/huoman-logistics#下一步
+    12. projects/huoman-logistics#阻塞
+    ✓ 20260912-huoman-separate-from-hefuman#选项 → 命中 #2
+    ✓ 20260912-huoman-separate-from-hefuman#决定 → 命中 #1
+    ✗ C），方向尚未决定 → 同篇但块不同
+    ✗ 20260912-hii-hic-ip-overview#4.2 「活满」 → 未召回
+  双链扩展：conventions ← hii/clusters/ip-trademark；decisions/20260623-hii-registration-entity ← decisions/20260912-huoman-separate-from-hefuman；decisions/20260623-ip-filing-before-license ← hii/notes/20260912-hii-hic-ip-analysis；decisions/20260912-huoman-separate-from-hefuman ← hii/notes/20260912-hii-hic-ip-analysis
+
+=== 命中率（全库）：全部 7/16 = 44%｜答案层 7/12=58%｜证据层 0/4（默认不进上下文，问「原文」时才进）===
+
+--- 分档（二值指标抹掉了这个区别）---
+  命中：7 项
+  同篇但块不同：3 项  ← 笔记进了上下文、答案块没进
+  未召回：6 项  ← 连笔记都没进
+  命中排名：#1、#1、#1、#2、#2、#11、#16（均值 4.9）
+  期望锚点自检：16/16 可解析

@@ -1,5 +1,11 @@
 # 种子素材入库 · 下一窗口作业单
 
+> **状态：已执行（2026-09-14）。** 本作业单的 §5 交付 1–3、5 已完成（结构升级 + `conventions.md` 契约级更新 +
+> `SEED-MATERIAL-SPEC.md` + 库内模板 + 既有 HII/IT 内容修缮 + 全门禁）；
+> **交付 4（首批 3–5 份入库）未执行**——使用者要先与 Agent 探讨「该准备什么素材」再去准备，故 source/notes 未产。
+> 执行经过见 `PLAN-WORK-KNOWLEDGE-BASE.md` §12「种子基线与三线升级轮」。
+> **本文件保留作历史作业单**，不再作为开工指令；素材准备请读 `SEED-MATERIAL-SPEC.md`。
+>
 > **用法**：新窗口把本文件交给 Agent，说「读 `docs/implementation/NEXT-SESSION-PROMPT-SEED-INGESTION.md` 并按它开工」。
 > **本文件自包含**：背景、已对齐的决策、素材规范草案、要交付什么、环境事实与门禁。
 > 配套读：`docs/implementation/NEXT-SESSION-PROMPT.md`（通用开工规范）、`_vault/conventions.md`（库规范）。

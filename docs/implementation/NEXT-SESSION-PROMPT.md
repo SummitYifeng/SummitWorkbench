@@ -2,8 +2,9 @@
 
 > **用法**：新开窗口时把本文件交给 Agent——直接说「读 `docs/implementation/NEXT-SESSION-PROMPT.md` 并按它开工」即可。
 > **本文件是活文件**：每轮收口时按实测发现校正一次，别让它又变成一份过期文档。
-> **最近校正**：2026-09-14（收口轮：起点复核、build 号漂移、条目 3 结案）。原委见
-> `PLAN-WORK-KNOWLEDGE-BASE.md` §12 的「收口轮 · 起点复核 + 文档漂移 + 条目 3 结案」一节。
+> **最近校正**：2026-09-14（种子基线与三线升级轮：`projects/` 2→5、素材留存规范 + 库内模板 9→14、
+> 既有 HII/IT 内容修缮、build 43）。原委见 `PLAN-WORK-KNOWLEDGE-BASE.md` §12 的
+> 「种子基线与三线升级轮」一节。
 
 你在 `/Users/yifengstudio/Documents/GitHub/SummitWorkbench` 里继续一个「本地优先」的 macOS 应用项目：
 原生 Swift 壳 + 打包在内的 Python FastAPI 服务 + 原生 TS 的 SPA 面板。核心用途是使用者的
@@ -28,17 +29,18 @@
 ## 二、环境与身份（已核实，可直接用）
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`；Python venv `.venv`；CLI `.venv/bin/wb`。
-- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**53 个内容页** + 9 个模板；15 篇决策 + 8 个主题簇页；
-  `index/{projects,decisions,people,timeline,sop}.md`；两条管线 `projects/hii-affairs.md`、`projects/it-development.md`）。
-  索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`（实测 53 篇 / 685 块）。
+- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**55 个内容页** + **14 个模板**；15 篇决策 + 8 个主题簇页；
+  `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
+  `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
+  索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`（实测 55 篇 / 710 块）。
 - 远端（唯一真源，私有）：`https://github.com/yifeng93/WorkKnowledge.git`，分支 `main`。
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 41**
-  （`frontend_build v2026.09.14-288f13d-4d072dbb`、`git_revision 288f13d`）；同步状态 `ready`，ahead 0 / behind 0。
-- 最近提交：`053a20e`（记录渲染修复）、`288f13d`（渲染修复本体）、`d43566a`（验收 any-of）、
-  `8889f79`（Air 作业单）、`425dff3`（截断重试 + 指南）。开工先 `git log --oneline -8` 对一眼。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 43**
+  （`frontend_build v2026.09.14-73d495a-4d072dbb`、`git_revision 73d495a`）；同步状态 `ready`，ahead 0 / behind 0。
+  Studio 与 Air **两台机器均已接入**并实测四向同步通过。
+- 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
   绝不做破坏性操作，绝不 force / reset / rebase / stash。
 
@@ -67,9 +69,9 @@
 
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
-.venv/bin/python -m pytest --cov -q          # 期望 1129 passed, 1 skipped, 覆盖率 ≥80%（当前 83.72%）
-.venv/bin/ruff check . && .venv/bin/ruff format --check .
-.venv/bin/mypy                                # 期望 359 文件无问题
+.venv/bin/python -m pytest --cov -q          # 期望 1166 passed, 1 skipped, 覆盖率 ≥80%（当前 83.80%）
+.venv/bin/ruff check . && .venv/bin/ruff format --check .   # 476 文件
+.venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
 npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测试（76 源文件）
 # 真实库验收（9 题 = 4 题真调模型 Q1–Q4 + 5 题零 token R1/R2/D1/V1/S1）
@@ -100,7 +102,8 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 ⚠️ **别写 `... | tail`**：管道会吞掉退出码，脚本真失败也会看着像成功（本轮踩过）。
 证据落到 `docs/acceptance/evidence/`：
 `kb-acceptance-2026-09-14.txt`（真实库 9 题）、
-`kb-acceptance-installed-2026-09-14-build41.txt`（**已装 build 41，4 题**，本轮新增）。
+`kb-acceptance-installed-2026-09-14-build41.txt`（已装 build 41，4 题）、
+`kb-measure-2026-09-14-post-seed-baseline.txt`（**三线升级后检索读数 + 排名位移归因**，本轮新增）。
 **只改文档、没动代码时**，不重复跑两项会调模型的验收（上一条已被本轮覆盖且工作树未变），
 在汇报里写明「未重跑及其理由」即可。
 
@@ -164,22 +167,21 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 
 ## 七、当前待办（按优先级）
 
-1. **Air 备用机接入**（需要使用者坐在那台机器上，你碰不到）：
-   照 `docs/implementation/AIR-MACHINE-HANDOFF.md` 走。要点：装**同一个 build（现在是 41）** → 首次启动向导选
-   「从另一台 Mac 克隆」→ 填 `https://github.com/yifeng93/WorkKnowledge.git` /
-   目标文件夹（**必须还不存在**）`~/Documents/Work/_vault` / GitHub 用户名 `yifeng93` / 有 Contents 读写权限的 PAT
-   → 「连接并检查」→「确认并开始使用」→ 连 DeepSeek key 与飞书一键授权。
-   合格判据：角色显示**辅助设备（secondary）**（vault 里的主设备声明是 Studio，会自动判定）、
-   `/api/sync/status = ready 0/0`、问一句真问题能答出**块级出处**、「决策」页 15 篇。
-   这条路径已在 Studio 上拿真远端真凭据跑过（暂存克隆成功、marker 在、兼容性 read-write、
-   另一设备 id 判 secondary），只有 Air 本机的 GUI 点击与权限弹窗未验证。
+1. ~~**Air 备用机接入**~~ —— **已结案（2026-09-14）**：Air 已作为辅助设备接入完成，
+   读 / 写 / 推送 / 拉取**四向实测通过**，两台机器 `/api/sync/status = ready 0/0`，
+   四条判据（secondary 角色、0/0、块级出处、决策页 15 篇）全部通过。原委见
+   `PLAN-WORK-KNOWLEDGE-BASE.md` §12 的「Phase 7」与「首启向导实机故障轮」。
+   **不要再把它当待办**；`AIR-MACHINE-HANDOFF.md` 保留作历史作业单。
 2. **已知检索不足（未解决）**：
    - Q3 的 `it/clusters/enrollment#关键结论` 在加「主题通道」后由「同篇不同块」变成**未召回**（净效果 6→7）。
    - 同篇多结论块互相竞争：分析笔记有 19 个「结论N」块，`max_chunks_per_note=3` 下哪 3 个进上下文
      仍偏字面相关度。
    - **度量已经建好了**（2026-09-14）：`scripts/kb_measure.py` 给二值 + 分档 + 命中排名三层，
-     零 token，`--set` 可直接扫权重。新基线：二值 **7/16 = 44%**、分档 **7 / 3 / 6**、
-     排名均值 **4.4**、期望锚点自检 **16/16**。
+     零 token，`--set` 可直接扫权重。**当前基线**（三线升级后重测）：二值 **7/16 = 44%**、
+     分档 **7 / 3 / 6**、排名均值 **4.9**、期望锚点自检 **16/16**。
+     （升级前排名均值为 4.4；位移已定位＝新增项目页的 `## 下一步` 与 Q2 问句字面强匹配，
+     见 §12 与 `docs/acceptance/evidence/kb-measure-2026-09-14-post-seed-baseline.txt`。
+     **Q2 的 `relationships#关键结论` 现在贴在返回窗口边缘 #16，加项目页前要留意。**）
    - **一条现成的线索**：`--set topic_step=1.2` 把一项「未召回」变成「同篇但块不同」，
      而二值不变、排名不变（**没有代价**）——很可能就与上面 Q3 那条相关。
      ⚠️ **别直接改默认值**（4 题 16 项上的单点证据不够，且 `Weights.topic_step` 的注释写明
@@ -187,20 +189,16 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 3. ~~飞书授权缓存观测~~ —— **已结案，不要再查**。`~/Library/Application Support/…/feishu-auth-state.json`
    只是 OAuth `state` 的暂存表（`_STATE_TTL = 600s`），重启后为空是正确行为；界面徽标读的是 vault 内的
    `_signals/feishu-auth.json`（持久）。结论与证据见 PLAN §12「收口轮」第 2 节。
-4. **素材尚未收完**：使用者的材料在 `/Users/yifengstudio/Desktop/当前材料`（是他自己整理过的版本，
-   原始会议记录**故意**没放进来；他也说了材料**不完整**）。入库走 C-lite 三件套：
-   1 份 `source`（逐字、不可改）+ 1 篇分析笔记（`##` 结论）+ N 篇 `decision`（6 固定区块 + 第 7 区块 `## 关联`）。
-   规范见 `_vault/conventions.md`；幂等键 `source.ref + source.hash` **只在** `source`/`meeting-transcript` 页上判。
-   `_vault` 里的内容可以删（使用者已授权）。
-   他的四条工作线是：HII 沟通（loyalty / 商标 IP / 日常人员）、IT 开发计划、活满社群 + 工作日志 + 思考、HR。
-   **已核实（2026-09-14）**：库里的 HR 与活满社群**只有骨架页**，工作日志 / 思考**只有模板**（`insights/`
-   是空的），而素材目录里**只有 HII（4 份）+ IT（4 份）**——这三类素材一份都没有。
-   ⇒ 这条**卡在素材**：使用者把材料放进目录后才谈得上开工。
-   **2026-09-14 已与使用者对齐四条决策**（逐字原件大部分有、**新增 3 个项目页**、HR 全可上云+可进索引、
-   默认粒度＝按人/对象＋按事件＋按主题）。**下一步见专门作业单：
-   `docs/implementation/NEXT-SESSION-PROMPT-SEED-INGESTION.md`**（含「优质素材长什么样」的规范与模板要求）。
-   ⚠️ 其中「新增 3 个项目页」与 `_vault/conventions.md` §1「`projects/` 恒定 2 个、永不新增」冲突，
-   属**契约级改动**，必须同步改规范。
+4. **首批素材仍未入库（唯一未开工项）**：三线的**结构、规范、模板都已就位**（2026-09-14 种子基线轮
+   已完成：`projects/` 2→5、`SEED-MATERIAL-SPEC.md`、库内模板 9→14、既有 HII/IT 内容修缮）。
+   但使用者要先与 Agent**探讨「该准备什么素材」**再去准备，所以 source/notes **一份都没产**。
+   - 素材准备清单：`docs/implementation/SEED-MATERIAL-SPEC.md`（§3.1 四个场景「留什么/叫什么/哪几段」+ §4 自检 5 问）。
+   - 库内模板：`_vault/templates/`（14 个；新增 `hr-person` / `event-retro` / `vendor` / `procurement` / `conversation-note`）。
+   - 入库仍走 C-lite 三件套（1 source + 1 分析笔记 / 对象页 / 事件页 + 0..N decision），规范见 `_vault/conventions.md` §11；
+     幂等键 `source.ref + source.hash` **只在** `source` / `meeting-transcript` 页上判。
+   - `_vault` 里的内容可以删（使用者已授权）；素材目录 `/Users/yifengstudio/Desktop/当前材料` 目前仍只有 HII 4 + IT 4。
+   **下一窗口起手式**：先读使用者新放入的素材 → 按 §3 的粒度落点建对象页 / 事件页 →
+   跑 `wb vault check` + `kb_verify_links` + `kb_verify_quotes --materials-root` → 给三线各出一个真实问题量一遍。
 
 ---
 
@@ -216,13 +214,18 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 
 ## 九、已经做完的（别再重做）
 
-- 知识库结构（β 项目管线优先：只有 2 个 `projects/*.md`，主题簇页放 `<line>/clusters/`，没有 workstream 页）。
+- 知识库结构（β 项目管线优先：**5 个** `projects/*.md`，主题簇页放 `<line>/clusters/`，
+  对象页 / 事件页见 conventions §4.7–§4.8，没有 workstream 页）。
 - 检索栈：FTS5 + trigram、问句路由器（点查/综合/回溯/决策/回顾）、多信号融合、块级 `路径#区块` 引用、
   双链扩展、同源去重；块边界为 `#`/`##`，但**文首 H1 是笔记标题、不算块边界**。
 - 审批管线 7 个落点（含「知识沉淀」第 7 个 `RouteTarget`：目标页必须存在、只接受 vault 相对路径、拒穿越）。
 - 决策页（API + UI + 路由契约快照）、Air 作业单、验收脚本与证据、SOP、App 内指南。
 - 项目档案区块的 Markdown 渲染（build 41）：段落回流、有序列表、任务清单、嵌套、表格、
   wikilink 只显示标签；「指南」页 37 处编号列表也顺带修好。
+- **种子基线轮（2026-09-14）**：三线升级为项目管线（`projects/` 2→5，删两个骨架页）；
+  素材留存规范 `docs/implementation/SEED-MATERIAL-SPEC.md` + 库内模板 9→14；
+  既有 HII/IT 内容修缮（补 `source`、决策字段顺序统一、Loyalty→Royalty、timeline 补双链、
+  §4.4 证据补路径、IT 章节数纠错、补 `review/meetings.md`）。**别重做**。
 
 ---
 
