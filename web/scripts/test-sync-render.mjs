@@ -322,7 +322,16 @@ export const bannerWithState = {
   hidden: banner.hidden,
   hasState: banner.innerHTML.includes('同步状态'),
   hasPending: banner.innerHTML.includes('待推送'),
+  // 2026-09-14 使用者反馈后收窄：可见区只有「一行短状态 + 建议句」，内部标识进折叠区。
+  visible: banner.innerHTML.split('<details')[0],
+  html: banner.innerHTML,
 };
+// 分叉态：主按钮必须是「处理冲突」，同步退为次要。
+statusState = 'diverged-protected';
+await refreshSyncBanner();
+export const bannerDiverged = { visible: banner.innerHTML.split('<details')[0] };
+statusState = 'local-ahead';
+await refreshSyncBanner();
 statusFails = true;
 await refreshSyncBanner();
 export const bannerAfterReadFailure = {
@@ -456,6 +465,18 @@ try {
   assert.equal(flow.bannerWithState.hidden, false, 'a non-ready state shows the banner');
   assert.equal(flow.bannerWithState.hasState, true);
   assert.equal(flow.bannerWithState.hasPending, true, 'the pending count is shown');
+  // 收窄后的形状：可见区一行 + 建议句，且没有 label/value 网格（网格只在折叠区里）。
+  assert.match(flow.bannerWithState.visible, /class="sync-row"/);
+  assert.match(flow.bannerWithState.visible, /同步状态：<b>/);
+  assert.doesNotMatch(flow.bannerWithState.visible, /sync-grid|sync-label/, 'the label/value grid must be folded away');
+  assert.doesNotMatch(flow.bannerWithState.visible, /sync-export/, 'export moves into the folded details');
+  // 折叠区仍然保留全部内部标识（排查问题时要用）。
+  assert.match(flow.bannerWithState.html, /<details class="sync-more">/);
+  assert.match(flow.bannerWithState.html, /状态码/);
+  assert.match(flow.bannerWithState.html, /github\.com/);
+  // 分叉态：主按钮是「处理冲突」，且只应有一个 primary。
+  assert.match(flow.bannerDiverged.visible, /class="primary" data-action="sync-conflict-details">处理冲突/);
+  assert.equal((flow.bannerDiverged.visible.match(/class="primary"/g) ?? []).length, 1);
   assert.equal(flow.bannerAfterReadFailure.hidden, false, 'a read failure must NOT hide the banner');
   assert.equal(flow.bannerAfterReadFailure.keepsState, true, 'the last known state stays visible');
   assert.match(flow.bannerAfterReadFailure.errorNote, /同步状态读取失败/);

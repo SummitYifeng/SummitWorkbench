@@ -24,13 +24,13 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
     const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
     el.hidden = !interesting;
     if (interesting) {
-      // 主视图只放使用者看得懂的四项；分支 / 主机 / 仓库 / 设备 id / 状态码收进「查看详情」。
-      const summaryRows: Array<[string, string]> = [
-        ['状态', syncStateLabel(data.state)],
-        ['待推送', String(data.pending_commits ?? 0)],
-        ['最后成功', data.last_sync_at ?? '—'],
-        ['下一步', data.next_step ?? '—'],
-      ];
+      // 形状（2026-09-14 使用者反馈「状态句太长挤在网格里 + 太高占地方」后重做）：
+      //   第 1 行 = 短状态词 + 两个短数字 + 主按钮（右侧）
+      //   第 2 行 = 后端那句中文「下一步」建议（小字）
+      //   其余全部（状态码 / 分支 / 远端 / 仓库 / 设备 id / 导出）收进折叠区。
+      const diverged = data.state === 'diverged-protected';
+      const metaBits = ['待推送 ' + String(data.pending_commits ?? 0)];
+      if (data.last_sync_at) metaBits.push('最后成功 ' + data.last_sync_at);
       const generation = data.automation_primary_generation;
       const detailRows: Array<[string, string]> = [
         ['状态码', data.state],
@@ -46,14 +46,23 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
         '<div class="sync-grid">' + rows.map(([label, value]) =>
           '<span class="sync-label">' + esc(label) + '</span><span>' + esc(value) + '</span>').join('') +
         '</div>';
-      const conflictAction = data.state === 'diverged-protected'
-        ? '<button class="ghost" data-action="sync-conflict-details">查看冲突详情</button>' : '';
-      el.innerHTML = '<div class="sync-title">同步状态</div>' +
-        grid(summaryRows) +
-        (data.detail ? '<div class="sync-detail">' + esc(data.detail) + '</div>' : '') +
-        '<details class="sync-more"><summary>查看详情</summary>' + grid(detailRows) + '</details>' +
-        '<div class="sync-actions">' + conflictAction + '<button class="ghost" data-action="sync-retry">立即重试</button>' +
-        '<button class="ghost" data-action="sync-export">导出本机副本</button></div>';
+      // 分叉是唯一「必须先看冲突」的状态：它是主按钮，同步退为次要。
+      const actions = (diverged
+        ? '<button class="primary" data-action="sync-conflict-details">处理冲突</button>'
+        : '') +
+        '<button class="' + (diverged ? 'ghost' : 'primary') + '" data-action="sync-retry">' +
+        (diverged ? '仍然重试' : '立即同步') + '</button>';
+      el.innerHTML = '<div class="sync-row">' +
+        '<span class="sync-state">同步状态：<b>' + esc(syncStateLabel(data.state)) + '</b></span>' +
+        '<span class="sync-meta">' + esc(metaBits.join(' · ')) + '</span>' +
+        '<span class="sync-actions">' + actions + '</span>' +
+        '</div>' +
+        (data.next_step ? '<p class="sync-hint">' + esc(data.next_step) + '</p>' : '') +
+        (data.detail ? '<p class="sync-hint">' + esc(data.detail) + '</p>' : '') +
+        '<details class="sync-more"><summary>查看详情（分支 / 远端 / 设备 / 状态码）</summary>' +
+        grid(detailRows) +
+        '<div class="sync-actions sync-actions-inline">' +
+        '<button class="ghost" data-action="sync-export">导出本机副本</button></div></details>';
     }
     return data;
   } catch (err) {

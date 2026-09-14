@@ -117,7 +117,7 @@ try {
 
   // ① 同步状态码：中文短句；未知码不泄漏原文。
   assert.equal(mod.labels.ready, '已同步');
-  assert.equal(mod.labels.diverged, '本机与远端都有新提交，等你决定怎么处理');
+  assert.equal(mod.labels.diverged, '本机与远端已分叉', 'the banner status word must stay short');
   assert.equal(mod.labels.unknownCode, '需要处理');
   assert.ok(!mod.labels.unknownCode.includes('some-new-state'), 'unknown sync codes must not leak');
 
