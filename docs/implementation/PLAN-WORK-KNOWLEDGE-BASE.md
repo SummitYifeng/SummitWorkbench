@@ -1617,3 +1617,40 @@ mypy（362 文件）；secret_scan；`wb vault check` 70 篇；`kb_verify_links`
 - `/api/decisions` 现在没有界面入口；确认长期不用再动 API。
 - build 45 的产物被误删（准备 46 时 `rm -rf dist/releases/0.4.9`）；代码仍可由提交 `bb02cfc` 复现。
 - 审计全表与逐条处置见 `docs/implementation/UI-AUDIT-2026-09-14.md`。
+
+### 同步横幅收窄 + hr 线回填 —— 已完成（build 48）
+
+#### 一、hr 线回填（vault 侧，提交 `eb99c83`）
+
+使用者用 App 的「追加推进日志」写了一条：刘玉兰**已返回第一轮通用问题清单**、完成第二轮中几项、
+generalization 部分基本跑完，下一步转 Overleaf 做文字修改。库里三处还写着「卡在等她确认」，
+属于「日志进了库、项目页没跟上」。
+
+- 更新 `projects/hr.md`（当前状态 / 下一步 / 阻塞 / 关键结论 / 时间线）与
+  `hr/people/liu-yulan.md`（现在在哪 / 关键结论 / 未决问题 / 时间线 / summary）；
+  `## 阻塞` 按使用者选择写成 **「当前无阻塞」**（不编造新阻塞）。
+- **不动** `hr/notes/20260914-translation-proofreading-alignment.md`（使用者选择）：
+  「结论四·当前卡点」是沟通当时的事实，按 conventions §14「过期结论不改旧文」保留；
+  且它的标题被当块锚点引用，改名会断链。
+- 顺带确认：**「追加推进日志」这条自助路线在真机上首次跑通**（App 自动提交 + 推送，
+  提交 `75add13`）——`WORKBENCH-MAINTENANCE-TODO.md` 里「尚未实跑过一轮」那条可以结掉。
+
+#### 二、同步横幅收窄（build 48）
+
+使用者的原话是「不完美，但是可以接受」，要求再收一轮；再问后他点名两条：
+**状态句太长跟标签挤在网格里很怪** + **太高太占地方**（原先 4 行 label/value 网格 + 一排置中按钮）。
+
+- 形状（`features/sync/banner.ts`）：第 1 行 `同步状态：<短状态词>` + `待推送 N · 最后成功 <时间>`
+  + 右侧主按钮；第 2 行是后端那句中文「下一步」建议（小字）；状态码 / 分支 / 远端 / 仓库 /
+  设备 id / 代际与「导出本机副本」一起进折叠区。
+- `sync/labels.ts` 的状态词收短（并注释「保持短」，长句交给 `next_step`）：
+  「本机与远端都有新提交，等你决定怎么处理」→「本机与远端已分叉」等。
+- 按钮分主次：**分叉态主按钮「处理冲突」**（同步退为「仍然重试」），其余状态主按钮「立即同步」。
+- **显示时机未改**：使用者没选「弹得太频」，所以仍是 `state !== ready && !== unconfigured`。
+
+**验证**：`test-sync-render.mjs` 新增守卫（可见区必须无 `sync-grid` / `sync-label` / `sync-export`；
+折叠区仍保留 `状态码` 与 `github.com`；分叉态全屏只有一个 primary 且是「处理冲突」）；
+**变异验证**（网格放回可见区 ⇒ 红、分叉主按钮改次要 ⇒ 红）；已装包内核对新类名在、`sync-title` 与
+旧的置中按钮排为 0。pytest 1195 passed / 1 skipped / 83.85%，ruff / format / mypy / secret_scan 全过。
+⚠️ 横幅只在非 ready 状态出现，装机时本机是 `ready` ⇒ 这一项**没有真机截图级证据**，
+只有 DOM 桩 + 真实 payload 与变异验证（已在 `RELEASING.md` 如实标注）。

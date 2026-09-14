@@ -6,7 +6,8 @@
 > 全局查找交给「提问」）；【今日页】改上下两块（会议在上紧凑、待办任务在下占满整宽）；
 > 「追加推进日志」项目勾选一项一行、英文 ID 收进 hover；全局口径「主显中文名、英文 ID 放次要位置、
 > 只有引用来源保留完整路径」；审计出的 A 类（显示）/ B 类（布局）/ C 类（信息架构）全部处置。
-> 装机 **build 47**。审计全表与逐条处置见 `docs/implementation/UI-AUDIT-2026-09-14.md`。
+> 装机 **build 48**（随后又收窄了同步横幅）。审计全表与逐条处置见
+> `docs/implementation/UI-AUDIT-2026-09-14.md`。
 > 上一轮（内容质量与「工作 vs 建库」边界）的校正见下方 §七 的结案块。
 
 你在 `/Users/yifengstudio/Documents/GitHub/SummitWorkbench` 里继续一个「本地优先」的 macOS 应用项目：
@@ -41,8 +42,8 @@
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 47**
-  （`frontend_build v2026.09.14-70c3303-b241b9ac`、`git_revision 70c3303`）；同步状态 `ready`，ahead 0 / behind 0。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 48**
+  （`frontend_build v2026.09.14-d4bf2aa-92261f7c`、`git_revision d4bf2aa`）；同步状态 `ready`，ahead 0 / behind 0。
   Studio 与 Air **两台机器均已接入**并实测四向同步通过。
 - 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
@@ -187,15 +188,20 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 > **不要再重做**；要接着做的是下面 2 / 4 两条（检索不足、继续收素材）。
 
 > 🟡 **UI 优化轮的遗留（2026-09-14，build 47）**，都不阻塞使用：
-> - B 类（排版）是**静态推断**：请在**窄窗口**里再看一眼项目详情双列、同步横幅、日志弹窗
+> - B 类（排版）是**静态推断**：请在**窄窗口**里再看一眼项目详情双列与日志弹窗
 >   （本轮已按最保守写法改：可收缩列 + `overflow-wrap` + 窄屏单列）。
 > - 审计**只覆盖 `web/src`**：原生 macOS 壳（`native/`、`packaging/`、`deploy/`）与
->   `webapp/onboarding_view.py` 内嵌页面的文案**还没扫**。
+>   `webapp/onboarding_view.py` 内嵌页面的文案**还没扫**（仍是下一轮的候选）。
 > - `/api/decisions` 现在没有界面入口（保留为契约 API + `index/decisions.md` 生成）；
 >   确认长期不用再动 API。
-> - 使用者刚写入的 `logs/2026-09-14-001.md` 说「刘玉兰已返回第一轮通用问题清单」，
->   而 `projects/hr.md` 的 `## 当前状态` 还写着「尚未确认」——**下轮问他要不要回填项目页**
->   （不要自己替他改）。
+> - ~~使用者写入的日志与 `hr` 页「当前状态」不一致~~ —— **已回填（2026-09-14 晚，vault `eb99c83`）**：
+>   hr 线三处已对齐到「清单已返回、下一步 Overleaf」，阻塞改「当前无阻塞」；
+>   分析笔记按 conventions §14 **不动**。**不要再重做**。
+> - ~~自助路线「尚未实跑过一轮」~~ —— **已结案**：「追加推进日志」在真机上跑通
+>   （App 自动提交 + 推送，提交 `75add13`）。
+> - ~~同步横幅~~ —— **已收窄（build 48）**：一行短状态 + 一句建议 + 内部标识折叠；
+>   分叉态主按钮改「处理冲突」。⚠️ 横幅只在非 ready 状态出现，装机时是 `ready`
+>   ⇒ 该项**没有真机截图级证据**，只有 DOM 桩 + 真实 payload 与变异验证。
 
 1. ~~**Air 备用机接入**~~ —— **已结案（2026-09-14）**：Air 已作为辅助设备接入完成，
    读 / 写 / 推送 / 拉取**四向实测通过**，两台机器 `/api/sync/status = ready 0/0`，
