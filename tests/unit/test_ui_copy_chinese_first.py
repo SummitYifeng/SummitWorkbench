@@ -35,10 +35,24 @@ def _swift(name: str) -> str:
 
 
 def test_update_prompt_interpolates_the_version() -> None:
-    """更新提示必须插值版本号（曾把 `(version)` 字面量打给使用者）。"""
+    """更新提示必须插值版本号（曾把 `(version)` 字面量打给使用者）。
+
+    2026-09-14 收口：文案移到 `UICopy.swift` 的纯函数，由
+    `native/tests/UICopyTests.swift` 做**功能**单测——因为这些是短中文字面量，
+    Swift 的 small-string 优化会内联进代码，二进制里搜不到（见 `UICopy.swift` 注释）。
+    """
+    copy = _swift("UICopy.swift")
+    # 只查代码行：注释里会**引用**这个错误写法作为说明（例如本文件的 docstring 与 UICopy 的注释）。
+    code = "\n".join(
+        line for line in copy.splitlines() if not line.strip().startswith(("//", "///"))
+    )
+    assert "(version)" not in code, "字面量 `(version)` 又回来了"
+    assert 'trimmed.isEmpty ? "发现可用更新" : "发现可用更新：\\(trimmed)"' in copy, (
+        "更新提示必须插值实际版本号"
+    )
     lifecycle = _swift("LifecycleCoordinator.swift")
-    assert '"发现可用更新 (version)"' not in lifecycle, "字面量 `(version)` 又回来了"
-    assert '"发现可用更新：\\(version)"' in lifecycle, "更新提示必须插值实际版本号"
+    assert "UICopy.updateAvailable(version: version)" in lifecycle, "协调器必须调用带版本号的纯函数"
+    assert "UICopy.updateChecking" in lifecycle, "其余更新文案也要走纯函数"
 
 
 def _function_body(text: str, signature: str) -> str:
@@ -74,8 +88,22 @@ def test_user_facing_alerts_never_print_raw_state() -> None:
     assert not offenders, f"弹窗文案里直接插了 rawValue：{offenders}"
 
     # 中文状态名确实在（否则上面的断言可能只是「这段被删了」）
-    assert "supervisorStateLabel" in lifecycle
-    assert '"反复启动失败"' in lifecycle
+    assert "UICopy.supervisorState(current)" in lifecycle
+    copy = _swift("UICopy.swift")
+    for label in (
+        "空闲",
+        "正在探测服务",
+        "正在启动",
+        "已就绪",
+        "降级运行",
+        "正在重启",
+        "反复启动失败",
+        "端口被占用",
+        "正在停止",
+        "已停止",
+        "未知",
+    ):
+        assert f'return "{label}"' in copy, f"UICopy 缺少状态中文名：{label}"
 
 
 def test_localized_error_messages_are_chinese_first() -> None:
