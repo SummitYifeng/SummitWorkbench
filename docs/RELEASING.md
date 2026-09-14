@@ -33,13 +33,13 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 43）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 44）
 
-SHA-256：`9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219`
+SHA-256：`c4ddda9bf885b8b36627eace2f2e655ec2cebc7a366b071fff0fbf9573825dec`
 
-版本 `0.4.9`、build `43`，构建来源提交 `73d495a`（修 Air 首启向导 `~用户名` 崩溃 +
-错误被 WebKit 那句英文盖掉），
-对应前端 build identity 为 `v2026.09.14-73d495a-4d072dbb`。
+版本 `0.4.9`、build `44`，构建来源提交 `d5fb5c3`（统一目录忽略规则：`Work/.obsidian`
+不再出现在 App【项目】），
+对应前端 build identity 为 `v2026.09.14-d5fb5c3-4d072dbb`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -53,6 +53,7 @@ SHA-256：`9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219`
 | 41 | `288f13d` | 项目档案区块渲染真 Markdown |
 | 42 | `70f6753` | 逐字保留校验真库 6/6 误报 + `sources/read` 空值/仅区块 500 |
 | 43 | `73d495a` | Air 首启向导 `~用户名` 崩溃 + 向导错误被 WebKit 盖掉 |
+| 44 | `d5fb5c3` | 统一目录忽略规则 ⇒ `Work/.obsidian` 不再出现在【项目】（三处遍历共用 `repositories/ignore.py`） |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -86,6 +87,11 @@ SHA-256：`9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219`
   `/api/onboarding/remote/stage` —— `~nosuchuser/…` 得 **400 `invalid_path`**（可读文案），
   `~/Documents/Work/_vault` 得 **409 `target_parent_missing`**（说明 `~` 已解析成功）。
   证据见 `docs/acceptance/evidence/onboarding-air-2026-09-14.txt`。
+- 目录过滤实测（build 44，2026-09-14 真库真机）：`GET /api/projects`（`/api/state` 的 `projects`）
+  只列出 5 条 vault 档案线程（`hii-affairs` / `hr` / `huoman-community` / `huoman-logistics` /
+  `it-development`），**`.obsidian` 已不出现**；同一进程下 `GET /api/projects/view?name=hr`
+  返回的 `## 当前状态` 已是有序列表块、正文里不再有「素材放 / 已示范一次 / 建对象页」这类建库内容。
+  变体验证见 `tests/unit/test_ignore_dirs.py`（去掉点开头判据 ⇒ 4 条红）。
 
 ### ⚠️ 构建前必须先提交（否则 `git_commit` 会指错）
 

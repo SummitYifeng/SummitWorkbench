@@ -1498,3 +1498,63 @@ frontmatter 里的 `{{…}}` 未加引号，在 YAML 层就是非法映射，**�
 **门禁**：pytest **1189 passed / 1 skipped / 83.84%**（较上轮 +23 条）；ruff（480 文件）；
 mypy（362 文件）；secret_scan；`wb vault check` 70 篇；`kb_verify_links` 全绿；
 模板守卫双模式全绿。
+
+### 内容质量与「工作 vs 建库」边界轮 · 5 个项目页改写 + `.obsidian` 过滤 —— 已完成（build 44）
+
+作业单：`NEXT-SESSION-PROMPT-CONTENT-QUALITY.md`。使用者原话：「其实本质上是我们入库的东西呈现出
+什么样子。我希望的是这个 work 知识库是和我本身工作更相关的知识库沉淀，而不是和编程以及
+【建知识库】相关的。」——他要的是**和他工作相关的知识沉淀**，不是**关于建库的说明**。
+
+#### 使用者报的 5 个问题
+
+① 项目详情页 `## 当前状态` 是一大段散文，阅读友好度差；
+② `## 下一步` 混进大量「交素材 / 建对象页 / 用哪个 slug / 素材放哪个目录」；
+③ 「公司人事」不是 HR 那种人事，而是「和公司每一个人的长期沟通」；
+④ App【项目】里出现 `.obsidian`；⑤ 项目页里不该出现建库类内容。
+
+#### 落成什么（6 个已对齐决策全部执行）
+
+1. **内容边界写进规范**：`conventions.md` 新增 **§0.8**（只进库＝工作事实 / 结论 / 决定 / 下一步 /
+   阻塞 / 出处；只进仓库侧＝怎么建库、目录、slug、模板、桌面素材目录、入库批次、校验脚本、Agent 步骤）
+   与 **§4.9**（`## 当前状态` 分点分层、`## 下一步` 只写工作事项且**不推断**、`## 阻塞` 只写工作阻塞、
+   禁止出现的建库类清单 + 自检口诀「这是使用者的**工作**还是 Agent 的**建库**？」）；§4.2 加了指向 §4.9 的指针。
+2. **5 个项目页全部改写**：`hii-affairs` / `it-development` / `huoman-community` / `huoman-logistics` / `hr`。
+   建库类内容按机器判据 **0 命中**；`## 当前状态` 全部分点分层（`it-development` 的六行表改为分点，
+   其余为「结论在前 + 出处」的短点）；`## 下一步` 只留工作事项，缺材料处写「（待补：等材料到位）」，
+   **没有为凑字数编造任何下一步**。
+3. **「公司人事」重新定位**（决策 3）：`title` → `公司人事（与每个人的沟通）`，`summary` / 正文定位 /
+   `aliases` 同步；**目录 `hr/` 与项目 ID `hr` 未动**（避免契约级改动）。`hr/clusters/` 的四个待建主题
+   （招聘 / 入职 / 绩效 / 离职与权限清退）删除，`index/projects.md` 与 `_vault/README.md` 目录速览同步。
+4. **建库内容不丢**：新建仓库侧 **`docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`**，
+   逐条汇总从 5 页移出的素材交付 / 目录指引 / 建页指引 / 入库批次 / Phase 引用，加上素材侧缺口与
+   待验证项。库里不出现，但下一窗口能查到。
+5. **App 目录过滤统一修**：`Work/.obsidian` 漏进【项目】的根因是
+   `project_scan.is_internal_dirname` 只挡下划线前缀，而「哪些目录不算内容」这条判据当时**散在三处**
+   （`project_scan` / `vault` / `kb_index`）各写名单。新增 `repositories/ignore.py` 作为唯一真源
+   （点开头 + 机器目录名 `templates` + 下划线前缀），三处遍历改取共享判据；Markdown 遍历只判目录部分
+   （`parts[:-1]`），文件名不误伤。
+
+#### 验证（真做）
+
+- **变异验证**：① 判据退回「只判下划线」⇒ `test_ignore_dirs.py` **4 条红**；
+  ② `MACHINE_DIRNAMES` 去掉 `templates` ⇒ **3 条红**；还原后 5/5 绿。
+- **真实数据（真库）**：`Work` 根目录下修复前 `scan_projects` 返回 `['.obsidian']`，修复后 `[]`；
+  `scan_all_projects` 正常给出 5 条 vault 档案线程。
+- **已装 App 实测（build 44）**：`GET /api/state` 的 `projects` 只有 5 条线程、**`.obsidian` 已不出现**；
+  `GET /api/projects/view?name=hr` 的 `## 当前状态` 返回有序列表块，正文无「素材放 / 已示范一次 / 建对象页」。
+- **门禁**：pytest **1194 passed / 1 skipped / 83.85%**（+5 条）；ruff（484 文件）、ruff format、
+  mypy（364 文件）、secret_scan 全过；`wb vault check` 70 篇全过；`kb_verify_links` 465 双链 /
+  427 块级引用全解析；`kb_verify_quotes` 两个素材根各 37 条 **0 问题**；
+  `kb_index_people --check` 与 `frontmatter` 一致（36 人 / 4 组织）；模板守卫 keep 16/16、substitute 13/13。
+- **顺带修掉一处文档与实际不一致**（§13 缺陷判据第 ③ 类）：`index/projects.md` 写「三场均缺一手复盘」，
+  实际 2026-06-07 已有 ⇒ 改为「2025 两场缺」。
+
+#### 已知不足 / 未验证
+
+- **`## 下一步` 变薄是刻意的**：`huoman-community` / `huoman-logistics` / `hr` 各只剩 1–2 条，
+  因为原条目大半是建库待办。**没有补编**——等工作侧材料到位再长回来。
+- **`ignore.py` 的机器目录名是显式清单**（目前仅 `templates`）：将来新增无前缀机器目录时必须登记。
+  点开头目录已由前缀规则自动覆盖（`.obsidian` / `.git` / `.summit-workbench`）。
+- **未重跑**：两轮调模型的验收（`kb_acceptance*.py`）与 `kb_measure.py`——本轮只动内容边界与目录过滤，
+  未触碰检索权重 / 词表 / 分块，按规范记「未重跑及其理由」。
+- **App 首次读 vault 的 TCC 弹窗**：ad-hoc 签名包替换后第一次读文稿文件夹会弹授权，需使用者点允许。

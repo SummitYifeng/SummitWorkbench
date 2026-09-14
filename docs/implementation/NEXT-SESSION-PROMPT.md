@@ -2,9 +2,10 @@
 
 > **用法**：新开窗口时把本文件交给 Agent——直接说「读 `docs/implementation/NEXT-SESSION-PROMPT.md` 并按它开工」即可。
 > **本文件是活文件**：每轮收口时按实测发现校正一次，别让它又变成一份过期文档。
-> **最近校正**：2026-09-14（种子基线与三线升级轮：`projects/` 2→5、素材留存规范 + 库内模板 9→14、
-> 既有 HII/IT 内容修缮、build 43）。原委见 `PLAN-WORK-KNOWLEDGE-BASE.md` §12 的
-> 「种子基线与三线升级轮」一节。
+> **最近校正**：2026-09-14（内容质量与「工作 vs 建库」边界轮：`conventions.md` 新增 §0.8 内容边界
+> 与 §4.9 项目页区块写法、5 个项目页改写（删净建库类内容、`## 当前状态` 分点分层）、
+> 「公司人事」重新定位、App 目录过滤统一修 `.obsidian` 泄漏、build 44）。
+> 移出 vault 的建库事项汇总在 **`docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`**。
 
 你在 `/Users/yifengstudio/Documents/GitHub/SummitWorkbench` 里继续一个「本地优先」的 macOS 应用项目：
 原生 Swift 壳 + 打包在内的 Python FastAPI 服务 + 原生 TS 的 SPA 面板。核心用途是使用者的
@@ -38,8 +39,8 @@
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 43**
-  （`frontend_build v2026.09.14-73d495a-4d072dbb`、`git_revision 73d495a`）；同步状态 `ready`，ahead 0 / behind 0。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 44**
+  （`frontend_build v2026.09.14-d5fb5c3-4d072dbb`、`git_revision d5fb5c3`）；同步状态 `ready`，ahead 0 / behind 0。
   Studio 与 Air **两台机器均已接入**并实测四向同步通过。
 - 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
@@ -70,7 +71,7 @@
 
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
-.venv/bin/python -m pytest --cov -q          # 期望 1166 passed, 1 skipped, 覆盖率 ≥80%（当前 83.80%）
+.venv/bin/python -m pytest --cov -q          # 期望 1194 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # 全过（文件数随未跟踪产物浮动，别写死）
 .venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
@@ -174,11 +175,14 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 
 ## 七、当前待办（按优先级）
 
-> ⚠️ **最新一轮（2026-09-14）另有一份专门作业单，优先做它**：
-> `docs/implementation/NEXT-SESSION-PROMPT-CONTENT-QUALITY.md`
-> —— 主题是「**库里的内容 = 我的工作知识，而不是建库说明**」：改写 5 个项目页（去掉建库类内容、
-> `## 当前状态` 分点分层）、把「公司人事」重新定位为「与每个人的长期沟通记录」、
-> 修 App【项目】里漏出的 `.obsidian`（需重建装机）。含使用者原话、6 个已对齐决策与已取证事实。
+> ✅ **内容质量与「工作 vs 建库」边界轮（2026-09-14）已结案**：
+> 原作业单 `docs/implementation/NEXT-SESSION-PROMPT-CONTENT-QUALITY.md` 的 5 项交付全部完成——
+> ① `_vault/conventions.md` 新增 **§0.8 内容边界** + **§4.9 项目页 / 对象页区块写法**；
+> ② 5 个项目页改写（建库类内容 **0 命中**、`## 当前状态` 全部分点分层、`## 下一步` 只留工作事项）；
+> ③「公司人事」重新定位为「与每个人的沟通」（目录与项目 ID `hr` 未动）；
+> ④ 移出 vault 的建库事项汇总在 **`docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`**；
+> ⑤ App 目录过滤统一为 `repositories/ignore.py`，`Work/.obsidian` 不再漏进【项目】（build 44 已装机）。
+> **不要再重做**；要接着做的是下面 2 / 4 两条（检索不足、继续收素材）。
 
 1. ~~**Air 备用机接入**~~ —— **已结案（2026-09-14）**：Air 已作为辅助设备接入完成，
    读 / 写 / 推送 / 拉取**四向实测通过**，两台机器 `/api/sync/status = ready 0/0`，
@@ -292,6 +296,15 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
   2025 两场的一手复盘仍缺。**别重做**。
 
 ---
+
+- **内容质量与「工作 vs 建库」边界轮（2026-09-14）**：`conventions.md` 新增 §0.8（内容边界）与
+  §4.9（项目页 / 对象页区块写法）；5 个项目页删净建库类内容并改成 `## 当前状态` 分点分层、
+  `## 下一步` 只留工作事项（「下一步」只从材料 / 决定提炼，不推断）；「公司人事」重新定位为
+  「与每个人的沟通」（`title` / `summary` / `aliases` / 正文，目录与项目 ID 未动），
+  `hr/clusters/` 四个待建主题及 `index/projects.md` / `README.md` 同步删除；
+  App 目录过滤统一为 `repositories/ignore.py`（点开头 + 机器目录名 + 下划线前缀），
+  `Work/.obsidian` 不再出现在【项目】（build 44 已装机）。
+  **移出 vault 的建库事项**见 `docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`。**别重做**。
 
 ## 十、怎么开始
 
