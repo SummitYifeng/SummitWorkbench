@@ -150,6 +150,30 @@ def test_routes_synthesis_questions() -> None:
     assert _kind("HIC 目前有哪些 IT 系统，分别是什么状态") is QueryKind.SYNTHESIS
 
 
+def test_unmatched_questions_fall_back_to_question_form_not_length() -> None:
+    """R4：一个关键词都没命中时，按**问句形态**判，而不是按长度瞎猜。
+
+    2026-09-14 实测：不判形态时「HII 与 HIF 是同一个主体吗？内部编辑时怎么处理？」
+    落到 synthesis（理由「无关键词：按长度兜底」），而它其实是个是否类点查；
+    「…为什么分开管理？」落到 point，而它其实该走决策。
+    """
+    assert _kind("HII 与 HIF 是同一个主体吗？内部编辑时怎么处理？") is QueryKind.POINT
+    assert _kind("这两份材料是一致吗") is QueryKind.POINT
+    assert _kind("「活满」与「和夫曼之旅」为什么分开管理？") is QueryKind.DECISION
+    assert _kind("这个口径不一致的话该怎么处理") is QueryKind.DECISION
+    assert _kind("这两套材料有什么不同？") is QueryKind.SYNTHESIS
+    # 兜底理由必须可读（不能只说「按长度」）
+    _kind_hit, reason = heuristic_route("「活满」与「和夫曼之旅」为什么分开管理？")
+    assert "问句形态" in reason, reason
+
+
+def test_form_fallback_never_overrides_a_keyword_hit() -> None:
+    """形态兜底只在无关键词时生效：有关键词时仍以关键词为准（不改变既有路由）。"""
+    assert _kind("根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？") is QueryKind.DECISION
+    assert _kind("Danny 来华目前还差哪些必须收口？下一步谁做什么？") is QueryKind.POINT
+    assert _kind("IT 当前的开发进度是什么，下一个阶段该怎么做？") is QueryKind.POINT
+
+
 def test_route_plan_carries_retrieval_mix() -> None:
     plan = route_query("IT 开发的来龙去脉")
     assert plan.kind is QueryKind.RETROSPECT

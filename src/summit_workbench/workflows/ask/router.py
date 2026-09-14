@@ -176,10 +176,32 @@ def heuristic_route(query: str) -> tuple[QueryKind, str]:
     best = max(scores, key=lambda kind: (scores[kind], -_ORDER.index(kind)))
     hits = hits_by_kind[best]
     if not hits:
-        # 无关键词：疑问句且很短 → 点查；否则按综合处理（宁可多召回）
+        # 无关键词：**先按问句形态判**，再按长度兜底。
+        # 2026-09-14 实测：不判形态时，「HII 与 HIF 是同一个主体吗？内部编辑时怎么处理？」
+        # 落到 synthesis、「…为什么分开管理？」落到 point，理由都写着「无关键词：按长度兜底」——
+        # 而问句长度与「在问什么形状的答案」其实无关。
+        for pattern, kind, label in _FORM_RULES:
+            if pattern.search(query):
+                return kind, f"无关键词，按问句形态：{label}"
         kind = QueryKind.POINT if len(query) <= 20 else QueryKind.SYNTHESIS
         return kind, "无关键词：按长度兜底"
     return best, "命中关键词 " + "、".join(hits[:4])
+
+
+# 问句形态兜底：只在**一个关键词都没命中**时使用，按「这个问题在问什么形状的答案」判。
+# 顺序即优先级（先判是否类与原因类，再判清单类）。
+_FORM_RULES: tuple[tuple[re.Pattern[str], QueryKind, str], ...] = (
+    (re.compile(r"(是不是|是否|同一个|一样吗|一致吗|对吗|有没有)"), QueryKind.POINT, "是否类"),
+    (re.compile(r"(为什么|为何|原因是什么|理由是)"), QueryKind.DECISION, "原因类"),
+    (
+        re.compile(r"(怎么处理|如何处理|怎么办|怎么弄|如何应对|怎么解决)"),
+        QueryKind.DECISION,
+        "处置类",
+    ),
+    (re.compile(r"(区别|差别|差异|有什么不同)"), QueryKind.SYNTHESIS, "对比类"),
+    (re.compile(r"(哪些|都有|分别|几个|列举)"), QueryKind.SYNTHESIS, "清单类"),
+    (re.compile(r"(什么时候|几点|多少人|多久|在哪|哪里|是谁|谁负责)"), QueryKind.POINT, "事实点查"),
+)
 
 
 # 同分时的优先级（越靠前越优先）：点查 > 决策 > 回溯 > 回顾 > 综合

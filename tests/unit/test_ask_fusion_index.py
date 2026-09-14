@@ -469,3 +469,26 @@ def test_recall_supplement_merges_bm25_only_candidates(tmp_path: Path) -> None:
     assert "n/bigram-only#区块二" not in fts_anchors, "两字词不该被 FTS trigram 命中"
     assert "n/bigram-only#区块二" in merged_anchors, "BM25 独有命中必须被补进召回池"
     assert len(merged) > len(fts_hits)
+
+
+def test_evidence_request_lifts_the_source_penalty(tmp_path: Path) -> None:
+    """R6：问「原文怎么写的」时必须把**原件块**放进上下文；不问时不放（默认仍降权）。
+
+    2026-09-14 实测：默认口径下（source_penalty × same_origin_penalty ≈ 0.19），
+    4 个验收问题的候选里一个原件块都没有——原件只出现在检索轨迹里。对「结论是什么」这是对的，
+    但问「原文怎么写的 / 条款原文 / 逐字怎么说的」时，模型手里没有原文就只能说「库里没有」。
+
+    变异验证：把 fuse 里的 `EVIDENCE_REQUEST_RE` 判断删掉，本用例必须变红。
+    """
+    vault = _vault(tmp_path)
+    plain, _ = _search(vault, tmp_path, "商标共识规范")
+    asked, _ = _search(vault, tmp_path, "商标共识规范，原文里是怎么写的？")
+
+    plain_sources = [chunk for chunk in plain if chunk.source_id.startswith("hii/sources/")]
+    asked_sources = [chunk for chunk in asked if chunk.source_id.startswith("hii/sources/")]
+
+    assert plain_sources or asked_sources, "fixture 应至少让原件块在某个口径下进候选"
+    # 注意：`why` 是**元组**，`"x" in tuple` 是元素全等比较（不是子串）——用精确元素。
+    assert all("证据层降权（source）" in chunk.why for chunk in plain_sources)
+    assert asked_sources, "问题明确要原文时，原件块必须进候选"
+    assert all("证据层降权（source）" not in chunk.why for chunk in asked_sources)

@@ -62,6 +62,11 @@ class Weights:
 # 支持型区块标题：答案的上下文（降权但不排除）
 SUPPORT_HEADINGS = frozenset({"背景", "理由", "影响", "证据", "要点"})
 
+# 「我要原文」的问法：命中即放开证据层降权（见 fuse 里的说明）。
+EVIDENCE_REQUEST_RE = re.compile(
+    r"(原文|原件|逐字|原话|一手材料|条款原文|原文怎么|写的是|怎么写的|原文里|原句)"
+)
+
 
 # 结论型区块的标题前缀（区块标题常带后缀，如 `决定：「活满」与…`，故用前缀匹配）。
 CONCLUSION_HEADING_PREFIXES: tuple[str, ...] = (
@@ -227,6 +232,13 @@ def fuse(
 ) -> tuple[list[RankedChunk], Trace]:
     """融合排序。返回 ``(排序后的结果, 检索轨迹)``。"""
     weights = weights or Weights()
+    # R6：问题**明确要原文**时，不再对证据层降权。
+    # 2026-09-14 实测：默认口径下（source_penalty × same_origin_penalty ≈ 0.19）4 个验收问题的
+    # 候选里**一个原件块都没有**——原件只出现在检索轨迹里，进不了模型上下文。对「结论是什么」
+    # 这是对的（结论层更该被引用），但问到「原文怎么写的 / 条款原文 / 逐字怎么说的」时，
+    # 模型手里没有原文就只能说「库里没有」。所以按**问题意图**放开，而不是默认放开。
+    if EVIDENCE_REQUEST_RE.search(query):
+        weights = replace(weights, source_penalty=1.0, same_origin_penalty=1.0)
     notes = index.notes()
     aliases = index.aliases()
     terms = query_terms(query)
@@ -289,8 +301,9 @@ def fuse(
             score += weights.recency * newness
 
         if info.type == "source":
-            score *= weights.source_penalty
-            why.append("证据层降权（source）")
+            if weights.source_penalty != 1.0:
+                score *= weights.source_penalty
+                why.append("证据层降权（source）")
         role = _block_role(hit.heading)
         if role == "conclusion":
             score *= weights.conclusion_boost
@@ -387,8 +400,11 @@ def fuse(
                 if chunk is None:
                     continue
                 base = weights.link * TYPE_AUTHORITY.get(info.type, 0.3) + weights.authority * 0.2
+                link_why = ["双链扩展", f"来自 {seed.source_id}"]
                 if info.type == "source":
                     base *= weights.source_penalty
+                    # 把降权写进轨迹：扩展路径也要能看出「这个原件块被降权了」
+                    link_why.append("证据层降权（source）")
                 position[neighbour] = len(scored)
                 scored.append(
                     (
