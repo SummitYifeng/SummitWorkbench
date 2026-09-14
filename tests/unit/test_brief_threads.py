@@ -22,9 +22,12 @@ def _archive(
     path.parent.mkdir(parents=True, exist_ok=True)
     step = f"- {next_step}" if next_step else ""
     title_line = f"title: {title}\n" if title else ""
+    front = (
+        f"---\nproject: {project}\n{title_line}date: 2026-09-01\n"
+        f"type: project-main\nstatus: {status}\n"
+    )
     path.write_text(
-        f"---\nproject: {project}\n{title_line}date: 2026-09-01\ntype: project-main\nstatus: {status}\n"
-        f"---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n{step}\n\n## 阻塞\n{blocked}\n\n"
+        f"{front}---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n{step}\n\n## 阻塞\n{blocked}\n\n"
         f"## 决策记录\n\n## 跟进事项\n{followup}\n",
         encoding="utf-8",
     )
