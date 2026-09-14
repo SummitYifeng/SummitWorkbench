@@ -196,6 +196,11 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    **已核实（2026-09-14）**：库里的 HR 与活满社群**只有骨架页**，工作日志 / 思考**只有模板**（`insights/`
    是空的），而素材目录里**只有 HII（4 份）+ IT（4 份）**——这三类素材一份都没有。
    ⇒ 这条**卡在素材**：使用者把材料放进目录后才谈得上开工。
+   **2026-09-14 已与使用者对齐四条决策**（逐字原件大部分有、**新增 3 个项目页**、HR 全可上云+可进索引、
+   默认粒度＝按人/对象＋按事件＋按主题）。**下一步见专门作业单：
+   `docs/implementation/NEXT-SESSION-PROMPT-SEED-INGESTION.md`**（含「优质素材长什么样」的规范与模板要求）。
+   ⚠️ 其中「新增 3 个项目页」与 `_vault/conventions.md` §1「`projects/` 恒定 2 个、永不新增」冲突，
+   属**契约级改动**，必须同步改规范。
 
 ---
 
