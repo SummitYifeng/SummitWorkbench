@@ -172,20 +172,35 @@ def _answer_with_retry(
     prompt: Prompt,
     user_message: str,
     *,
+    retry_message: str | None = None,
     task_key: str,
     now: datetime | None,
     sleep: Callable[[float], None],
 ) -> tuple[QaAnswer, UsageRecord]:
-    """调用模型并解析；对空/非法 JSON 这类瞬时问题按退避重试（复用会议处理的韧性约定）。"""
+    """调用模型并解析；对空/非法 JSON 这类瞬时问题按退避重试（复用会议处理的韧性约定）。
+
+    ``retry_message`` 是**重试时换用的 user message**（来源收窄后的版本）。为什么要换而不是
+    原样重发：2026-09-14 实测，长答案会撞上 ``max_output_tokens`` 导致 JSON 被截断，
+    原样重发必然同样失败；减少来源（答案是「从这些来源里挑事实」）是最有效的自救。
+    同时把「输出触顶」这个真因写进错误文案，而不是只报「非 JSON」。
+
+    重试**次数**不变（``MAX_RETRIES``）：候选很少、给不出收窄版本时，仍按原消息重试。
+    """
     usages: list[UsageRecord] = []
     last_error: LLMSchemaError | None = None
     for attempt in range(1, MAX_RETRIES + 2):
-        result = completer.complete(prompt.body, user_message, json_mode=True)
+        message = retry_message if attempt > 1 and retry_message is not None else user_message
+        result = completer.complete(prompt.body, message, json_mode=True)
         usages.append(record_from_result(cfg, result, task_key=task_key, now=now))
         try:
             return _parse_answer(result.text), _aggregate_usage(usages)
         except LLMSchemaError as exc:
             last_error = exc
+            if result.usage.output_tokens >= cfg.max_output_tokens:
+                last_error = LLMSchemaError(
+                    f"答案被截断：输出达到 max_output_tokens={cfg.max_output_tokens}。"
+                    "请把问题问得更具体，或在「设置 → 模型」里提高 max_output_tokens。"
+                )
             if attempt <= MAX_RETRIES:
                 sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
     raise last_error or LLMSchemaError("问答返回无法解析")
@@ -268,10 +283,23 @@ def answer_question(
     )
     sources = _select_within_budget(candidates, cfg, fixed)
     user_message = _build_user_message(query, sources, history_text)
+    # 重试时用的收窄版本（来源砍半）：见 _answer_with_retry 的说明
+    retry_message = None
+    if len(sources) >= 4:
+        retry_message = _build_user_message(
+            query, sources[: max(3, len(sources) // 2)], history_text
+        )
 
     client = completer or ModelClient(cfg, api_key)
     answer, usage = _answer_with_retry(
-        client, cfg, prompt, user_message, task_key=_task_key(query), now=now, sleep=sleep
+        client,
+        cfg,
+        prompt,
+        user_message,
+        retry_message=retry_message,
+        task_key=_task_key(query),
+        now=now,
+        sleep=sleep,
     )
     grounded, dropped = _ground(answer, {c.source_id for c in sources})
     return AskResult(

@@ -197,13 +197,18 @@ def test_case_list_covers_the_three_priority_scenarios() -> None:
     assert len(acceptance.CASES) >= 6
 
 
-def test_only_the_two_acceptance_questions_call_the_model() -> None:
-    """扩充回归清单不能悄悄把 token 成本也扩了。"""
+def test_only_the_four_acceptance_questions_call_the_model() -> None:
+    """扩充回归清单不能悄悄把 token 成本也扩了。
+
+    真调模型的只有用户提的这 4 道题；其余（回溯 / 决策 / 回顾 / 综合）答「该召回哪些关键块」，
+    零 token 跑，用来盯住路由和块级锚点不被改坏。
+    """
     model_cases = [case for case in acceptance.CASES if case.use_model]
-    assert len(model_cases) == 2
     assert [case.name for case in model_cases] == [
-        "Q1 商标共识规范（决策）",
-        "Q2 IT 进度与下一阶段（点查）",
+        "Q1 商标共识规范",
+        "Q2 Danny 来华待收口",
+        "Q3 IT 进度与下一阶段",
+        "Q4 活满 vs 和夫曼",
     ]
 
 

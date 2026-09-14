@@ -289,15 +289,17 @@ class Regression:
     expect_transcript: bool = False
 
 
-# 问题原文 / 期望路由 / 逐字稿要求都来自验收清单；只有「哪篇是关键证据」按本 vault 映射。
+# 问题原文 / 期望路由 / 逐字稿要求来自验收清单；「哪篇是关键证据」按本合成 vault 映射。
+#
+# ⚠️ 这里**只收合成 vault 里真有对应材料的题**：4 个对外验收题（Q1–Q4）跑真实库
+# （`scripts/kb_acceptance.py`），不该为了迁就一个小 fixture 去伪造 Danny / 活满 / 主题簇页材料——
+# 那样测的是 fixture 而不是库。职责划分：合成库管「路由 + 块级锚点 + 追溯链」的机制回归，
+# 真实库管「答案对不对」。
 _MUST_RECALL: dict[str, str] = {
-    "Q1 商标共识规范（决策）": "hii/notes/20260912-hii-hic-ip-analysis",
-    "Q2 IT 进度与下一阶段（点查）": "it/notes/20260912-hic-it-roadmap-analysis",
     "R1 商标共识的来龙去脉（回溯）": "hii/notes/20260912-hii-hic-ip-analysis",
     "R2 门户权限方向的由来（回溯）": "meetings/notes/20260907-portal-permission-alignment",
     "D1 royalty 分层口径与依据（决策）": "hii/notes/20260911-hic-hii-royalty-analysis",
-    "V1 本周进展回顾（回顾）": "reviews/weekly/2026-W37",
-    "V2 本月决策复盘（回顾）": "index/decisions",
+    "V1 近期进展回顾（回顾）": "reviews/weekly/2026-W37",
     "S1 系统现状一览（综合）": "it/notes/20260912-hic-it-roadmap-analysis",
 }
 
@@ -310,16 +312,19 @@ REGRESSIONS: tuple[Regression, ...] = tuple(
         expect_transcript=case.expect_transcript,
     )
     for case in acceptance.CASES
+    if case.name in _MUST_RECALL
 )
 
 
-def test_regression_list_covers_every_acceptance_case() -> None:
-    """验收清单加了新题，这里必须跟上——否则两组清单会悄悄漂移。"""
-    assert set(_MUST_RECALL) == {case.name for case in acceptance.CASES}
+def test_regression_list_covers_every_synthetic_vault_case() -> None:
+    """合成库回归必须覆盖**所有非模型题**；4 个对外验收题由真实库那条链路覆盖。"""
+    cheap = {case.name for case in acceptance.CASES if not case.use_model}
+    assert set(_MUST_RECALL) == cheap, set(_MUST_RECALL) ^ cheap
 
 
-def test_regression_list_is_at_least_six_questions_and_covers_the_three_scenarios() -> None:
-    assert len(REGRESSIONS) >= 6
+def test_regression_list_covers_the_three_scenarios() -> None:
+    # 合成库只跑非模型题（当前 5 道）；4 个对外验收题在真实库上跑，见 kb_acceptance.py。
+    assert len(REGRESSIONS) >= 5
     routes = {case.expect_route for case in REGRESSIONS}
     assert {"retrospect", "decision", "review"} <= routes
 

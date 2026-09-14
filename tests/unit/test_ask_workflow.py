@@ -5,11 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from pydantic import SecretStr
 
 from summit_workbench.prompts import Prompt, load_prompt
 from summit_workbench.providers.llm.client import CompletionResult, Usage
 from summit_workbench.providers.llm.config import ModelConfig
+from summit_workbench.providers.llm.errors import LLMSchemaError
 from summit_workbench.workflows.ask.ask import AskTurn, answer_question
 
 CFG = ModelConfig(capability="qa", model_id="m", base_url="http://x", credential_account="shared")
@@ -203,3 +205,84 @@ def test_history_capped_to_last_turns(tmp_path):
     assert "前轮问题2" not in user
     assert "前轮问题3" in user
     assert "前轮问题8" in user
+
+
+class TruncationCompleter:
+    """模拟「输出触顶」：返回被截断的 JSON，并把 output_tokens 报到上限。"""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def complete(self, system: str, user: str, *, json_mode: bool = True) -> CompletionResult:
+        self.calls.append(user)
+        return CompletionResult(
+            text='{"summary": "很长很长的答案被截断了',
+            usage=Usage(100, CFG.max_output_tokens),
+            model_id="m",
+            attempts=1,
+        )
+
+
+def test_truncated_answer_reports_an_actionable_hint(tmp_path: Path) -> None:
+    """输出触顶导致 JSON 截断时，错误必须说清「被截断 + 怎么办」。
+
+    2026-09-14 实测：来源块本身很长（主题簇页的 `## 关键结论` 是逐条清单）时，
+    模型答案会撞上 ``max_output_tokens`` 把 JSON 截断，而旧文案只有
+    「问答返回非 JSON：Unterminated string…」——使用者完全不知道能做什么。
+    """
+    completer = TruncationCompleter()
+    with pytest.raises(LLMSchemaError) as exc_info:
+        answer_question(
+            _vault(tmp_path),
+            "价格",
+            CFG,
+            SecretStr("k"),
+            prompt=PROMPT,
+            completer=completer,
+            sleep=lambda _: None,
+        )
+    message = str(exc_info.value)
+    assert "截断" in message and "max_output_tokens" in message, message
+
+
+class RecordingCompleter:
+    """第一次返回空（触发重试），第二次返回合法 JSON；记录每次的 user message。"""
+
+    def __init__(self, payload: dict[str, object]) -> None:
+        self._valid = json.dumps(payload, ensure_ascii=False)
+        self.calls: list[str] = []
+
+    def complete(self, system: str, user: str, *, json_mode: bool = True) -> CompletionResult:
+        self.calls.append(user)
+        text = "" if len(self.calls) == 1 else self._valid
+        return CompletionResult(text=text, usage=Usage(100, 30), model_id="m", attempts=1)
+
+
+def test_retry_narrows_the_sources(tmp_path: Path) -> None:
+    """重试必须换用「来源收窄」的消息。
+
+    原样重发在「输出触顶」场景下必然同样失败；减少来源是最有效的自救。
+    判据：第二次调用的 user message 里 source 条数严格少于第一次（fixture 给 ≥4 个来源）。
+    """
+    vault = tmp_path / "vault"
+    for index in range(6):
+        _note(
+            vault,
+            f"projects/P{index}.md",
+            f"P{index}",
+            f"# P{index}\n\n价格与费用由后台设置为免费实现，第 {index} 条。",
+        )
+    completer = RecordingCompleter({"summary": "免费。"})
+    answer_question(
+        vault,
+        "价格",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        sleep=lambda _: None,
+    )
+    assert len(completer.calls) == 2
+    first, second = completer.calls
+    assert first.count("source_id:") >= 4, first[:200]
+    assert second.count("source_id:") < first.count("source_id:")
