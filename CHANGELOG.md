@@ -213,178 +213,6 @@
 - `tests/integration/test_packaged_app.py` 增补包内 `--kb-diagnostic` 探针断言（FTS5 可用与否
   都必须证明块级检索可用）。
 
-## [0.4.7] - 2026-09-12
-
-> 分发版：让**同事拿到 DMG 装完就能用**——飞书授权从「需要管理员在每台机器上预置
-> config.toml 与 Keychain」变成「点一下『授权飞书』」。做法是把飞书 app_id 与
-> app_secret 作为**默认值**在构建时写进包内资源（`Contents/Resources/feishu-defaults.json`），
-> 并在运行时按「显式配置/Keychain > 内置默认」的顺序回退。产品行为与数据格式未改动。
-
-### 新增
-
-- **内置飞书默认凭据（分发包）**：新增
-  `providers/feishu/bundled.py`，从包内 `feishu-defaults.json` 读取 app_id / app_secret /
-  redirect_uri；文件由 `scripts/build-macos-app.sh` 在**签名之前**从环境变量
-  `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET` 生成，仓库内不存在该文件（`build/`、`dist/`
-  均被 git 忽略），因此密钥永不进版本库。
-- **配置回退链**：`load_feishu_config()` 现在按「配置文件里的 `[feishu]` 表 → 包内内置默认值 →
-  显式报错」解析。显式写了 `[feishu]` 却漏字段时仍**严格报错**，不会被内置默认值掩盖。
-- **凭据回退链**：`FeishuSession._app_secret()` 按「workspace 作用域 Keychain → 旧命名
-  Keychain（一次性迁移）→ 包内内置默认值」解析；内置值**只读不写**，不会把厂商秘密复制进
-  用户 Keychain，用户自己存的条目始终优先。
-- **发布门禁**：`REQUIRE_BUNDLED_FEISHU=true` 时，构建缺少内置凭据即失败；
-  `verify-macos-release.sh` 对包内凭据文件做结构化校验，并在通用 secret scan 中把它列为
-  **显式例外**（该文件是唯一有意内置的秘密，见 `docs/RELEASING.md`）。
-- **授权失败不再「只说失败」**：分发包内置凭据后同事本机没有任何可改的配置，失败时必须由
-  界面告诉他找谁、做什么。现在令牌端点的失败码会被翻成可执行提示（`20010` → 「你的账号还没有
-  这个应用的使用权限：请联系管理员把你加入应用『可用范围』」、`20002` → 「内置的应用凭据无效
-  （可能已轮换）：请联系管理员重新发布安装包」、`20003/20004/20065` → 重新授权），并透传到
-  向导界面（此前只显示「飞书授权未完成，请重新点击授权」，同事只能反复点）。用户点「拒绝」时
-  也区分文案。原始错误码保留在消息里便于审计，**凭据与授权码绝不回显**（有专门测试断言）。
-  授权状态（`feishu-auth-state.json`）新增可选 `reason` 字段；查询状态不消费原因，App 重启后
-  仍能看到解释。**设置页的「重新授权」回跳也补上了提示**：此前 `?feishu=failed` 完全没被处理，
-  失败后静默回到设置页（而指南恰恰让用户用这条路径从令牌失效中恢复），现在会取回原因并按
-  `textContent` 安全显示（不引入转义风险），查询串随即清掉以免重复提示；前端契约测试新增
-  三条守卫并做过变异验证（把取回原因的端点改坏即报出对应断言）。**拿不到会话 cookie 的静态
-  回退页同样说明原因**（`_panel_redirect`：没有 state / 状态失效 / 已记录失败 / 用户取消各有
-  对应文案），该页会把未信任的 `error` 参数拼进 HTML，因此做了转义并有专门断言。
-- **修复 provider 设置的丢段竞态（现场发现）**：`update_provider_settings` 原本是无锁的
-  读-改-写，而向导会先后写「模型」段与「飞书」段（模型验证与授权回调可能几乎同时到达）。
-  并发时后写者会基于自己读到的旧快照落盘，**静默丢掉另一段**——现场表现正是「授权成功、
-  Keychain 有可用 refresh_token，但设置页显示未连接」。现在整段 load→改→save 持有
-  per-workspace 锁（锁根在 `Application Support` 下的 `locks/<workspace_id>`，刻意不放在
-  profile 目录里，避免失败路径造出空 profile）；并补了**确定性并发交错测试**：无锁时该测试
-  必然报出「模型段被并发写入覆盖」（已做变异验证）。
-- **测试**：新增 `tests/unit/test_feishu_bundled.py`（15 例）、
-  `tests/unit/test_feishu_authorization_reason.py`（14 例，含「被拒绝 → 向导显示原因」的
-  端到端用例与静态回退页的注入转义用例）、
-  `tests/unit/test_profile_settings_concurrency.py`（3 例，含并发丢段回归）与
-  `tests/unit/test_feishu_session.py` 的 3 例，覆盖回退链两个方向、显式配置优先、
-  显式配置缺字段仍报错、内置文件损坏、无内置时保持原有报错文案，以及**打包运行时契约**：
-  按 `WB_STATIC_DIR` 与 server 可执行文件相对路径两条查找路径都能命中内置凭据文件、
-  显式覆盖优先、空串覆盖＝显式关闭。这些测试都做过**变异验证**（删掉 `WB_STATIC_DIR`
-  分支、让空串覆盖不再禁用探测、去掉 provider 设置的互斥，都会被对应测试抓住），确认不是空转。
-- **端到端验证（真实凭据，2026-09-12 现场）**：在**清空 Application Support + 移走
-  `~/.config/.../config.toml` + Keychain 无任何凭据**的干净机器上，从 DMG 安装 0.4.7 后由
-  使用者本人走完向导三步：连接已有 `_vault` → 粘贴 DeepSeek API Key（现场验证成功）→
-  点「授权飞书」并在浏览器同意。结果：workspace 作用域 Keychain 出现真实 refresh_token
-  （1771 字符），用它可以成功刷新出 access_token（1703 字符）——**零预置、点一下即可完成
-  授权**这一目标达成；Keychain 中没有 app_secret 副本，证明用的是包内内置值且只读。
-  另外用包内 secret 换 `tenant_access_token` 成功，证明凭据在飞书侧有效。
-  此前的占位 secret 构建则用于验证：授权 URL 取自包内 app_id、真实飞书失败会翻成可执行提示、
-  静态回退页与状态端点都会带上原因。
-
-### 为什么必须内置 app_secret
-
-飞书 `authen/v2/oauth/token` 的 `client_secret` 是**必填**，`code_verifier`（PKCE）只是可选的
-额外保护，**不能替代** client_secret（官方文档：<https://open.feishu.cn/document/authentication-management/access-token/get-user-access-token>）。
-分发包里没有可代持秘密的后端，所以「零预置 + 点一下就能授权」与「秘密不进客户端」二者不可兼得。
-
-### 已知代价（明示，不做隐瞒）
-
-- 拿到 DMG 的人都能提取出这个 app_secret（它是**应用级**凭证），可据此以应用身份调用飞书
-  API、读取该应用已授权范围内的数据。这只在「内部自建应用 + 信任圈子」前提下可接受。
-- 若要消除该风险，需要把令牌换取搬到管理员自建的后端代理（app_secret 只留在服务端），
-  属于后续可选改动，本版不做。
-- 飞书开放平台侧仍需管理员保证：应用「可用范围」包含每位同事、`offline_access` 等 scope
-  已开通、重定向 URL 已登记 `http://localhost:8765/callback`。
-
-### 发布
-
-- tag `v0.4.7` → release run
-  [#34670529202](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34670529202)（success，
-  2m20s；含 secret scan、打包集成测试、P1-07D 双机验收门与发布步骤），产物发布在
-  <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.7>，`latest` 已指向
-  `v0.4.7`（公开 `update-feed.json`：version 0.4.7 / build 21 / arm64）。
-- DMG SHA256：`ea9651182f4baaa38556068dbdb5d3ef7d69a8051d5a4bc65e3184791108e930`
-  （49,431,182 字节）。构建号为 **21**，由 CI 的 `github.run_number` 决定。
-- 发布构建需要仓库 `release` environment 下的 variable `WB_FEISHU_APP_ID` 与 secret
-  `WB_FEISHU_APP_SECRET`；stable 通道还要求 `UPDATE_DOWNLOAD_URL` 指向当前版本的 DMG
-  （本次已从 `v0.4.6` 更新到 `v0.4.7`），否则 `release.yml` 按设计直接失败。
-- **双机现场验收（发布后）**：在一台**从未安装过**的 Mac 上完成——直接跳转飞书授权并成功、
-  配置 DeepSeek API 成功、进入界面后生成简报成功。这一条同时反证了 CI 产物内内置凭据正确
-  （发布前只能核验 feed/metadata 与本地同源构建，无法字节级核验 CI 产物）。
-- 本机（该 workspace 的原机器）另有本地预发布构建 build 25，仅用于开发期验证；对外的可分发
-  产物是上面这个 build 21。
-
-## [0.4.6] - 2026-09-12
-
-> 补丁版：修掉 `v0.4.5` 留下的、指南首页那行版本标记的显示瑕疵。**产品行为同样未改动**——
-> 只改了指南开头一句文案并重建前端。
-
-### 修复
-
-- 指南首页原本硬编码 `适用版本：v0.4.5 build 19`。这类写死的版本号**每次发版都会过期**：
-  指南正文是构建时打进的静态文本，不随 App 升级自动更新，而 `v0.4.5` 的产物里它恰好还是
-  发布前误估的 `build 13`。现在不再写任何具体版本号，改为指引读者看**窗口顶栏右上角的实时状态**
-  （形如「界面 v… · 服务 x.y.z · 已同步」）——那里读的是运行中的真实值，**永远不会漂移**。
-  这同时修掉了"标记写错"与"标记必然过期"两个问题，而不只是把 13 换成 20。
-
-### 说明
-
-- 因指南是构建输入（`web/scripts/sync-guide.mjs` → `web/src/guide.md`），文案改动会改变前端
-  `source_hash` 与构建身份，故前端静态产物随之重建并单独提交；`verify-build.mjs` 通过。
-- 已发布并装机的 `v0.4.5`（build 19）产物身份保持不变，本版在其之上只做这一处文案修正。
-- 无新增测试：本次改动是纯文案 + 产物重建。已完成的门禁与 `v0.4.5` 相同
-  （890 passed / 1 skipped、覆盖率 82.33%、ruff、mypy strict、`tsc`、前端契约测试全绿）。
-
-## [0.4.5] - 2026-09-12
-
-> 交付前最后一轮审查与清理版。**首要目标是不改变行为**——v0.4.4 的验收刚刚结束，本轮所有改动
-> 都属于删除无引用内容、文档更正与文案重写，**未触碰任何产品行为逻辑**（路由、写回边界、锁语义、
-> outbox、schema/迁移一律未动）。基线为 `v0.4.4` build 12。
-
-### 变更
-
-- **「指南」页重写为任务导向**：`docs/product/WEB_USAGE_GUIDE.md` 从按页签/架构组织改为按
-  「我想做什么」组织（记一件事 / 处理今天待办 / 处理审批 / 导入会议 / 看项目进展 / 问第二大脑 /
-  多设备同步 / 撤销 / 排障），默认只显示步骤，原理与边界条件收进引用块，面向不读代码、不开终端
-  的账号所有者。渲染器未改动，指南渲染契约测试（本地搜索、目录、H2/H3 分组、筛选跟随）原样通过。
-- 更新现状类文档：`README.md`、`PROJECTDESC.md`、`docs/product/WEB_WORKBENCH.md` 的版本/构建号与
-  质量门数字由过期的 build 9 更正为当前基线（890 passed / 1 skipped、覆盖率 82.33%）。
-- `docs/archive/` 增加归档标注（历史记录、结论可能过期、当前状态以
-  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` 为准），**归档正文未改动**。
-
-### 移除
-
-- 删除 4 个完全空的目录：`docs/architecture/`、`docs/background/`、`docs/design/`、`docs/plans/`
-  （`ls -A` 确认连隐藏文件也没有，且均未被 git 跟踪）。目录本身为空，不涉及任何文件。
-- 更正一处失效路径引用：`tests/unit/test_ci_contract.py` 实际位于 `tests/contract/test_ci_contract.py`。
-
-### 说明
-
-- **本轮未删除任何 Python/TypeScript/Swift 代码。** 死代码判定执行「三重证据」标准
-  （① 静态引用扫描 ② 测试与构建产物引用 ③ 运行时可达性），vulture / ruff 的全部高置信度候选
-  经逐条核对后**均为误报**（Typer 装饰器命令、Pydantic 模型与校验器、FastAPI 路由、
-  `settings_customise_sources` 签名参数等）。逐条判定见
-  `docs/implementation/DELIVERY-CLEANUP-REPORT.md`。
-- 新增两份拆分方案（**只写方案，未改代码**）：`docs/implementation/LEGACY-APP-SPLIT-PLAN.md`
-  （`webapp/legacy_app.py`）与 `docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md`
-  （`web/src/legacy-main.ts`）。
-- 保留未删（证据不足）：`providers/feishu/calendar.py:list_events`（有契约测试引用，
-  生产路径已改用 `list_events_between`）、4 个空的 `web/src/features/` 子目录
-  （ADR 0036 明确保留为空入口边界）、`docs/contracts/`（仍是当前生效的 web 路由契约）。
-
-### 发布
-
-- tag `v0.4.5` → release run
-  [#34664646655](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34664646655)（success），
-  产物发布在 <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.5>。
-- **`latest` 已正确指向 v0.4.5**（此前停在 `v0.4.2`；历史 rc 均为 prerelease，stable 通道未被污染）。
-- DMG SHA256：`79a64f36871cd0d8a2ac187d7028d21c653970d10e77702b049172f126852d80`
-  （49413832 字节；与 `update-feed.json`、`SHA256SUMS`、`release-metadata.json` 四处一致）。
-- 构建号为 **19**——由 CI 的 `github.run_number` 决定（`release.yml` 传
-  `BUILD_NUMBER: ${{ github.run_number }}`），不是手工 bump 的值。
-- 本机从 DMG 安装并启动验证：`CFBundleShortVersionString 0.4.5` / `CFBundleVersion 19`，
-  `/api/version` 返回 `server_version 0.4.5 / build 19 / git_revision 749eeef`，六页签可达，
-  无 crash loop（本次启动仅 1 条生命周期事件、0 条 error/warning）。
-- 已知显示瑕疵（不影响行为）：已发布 DMG 内的指南首页版本标记写作 `build 13`（发布前按
-  "build 12 顺延"误估），仓库文档已统一更正为 `build 19`；为避免已发布产物与仓库静态产物漂移，
-  未为此重建前端。详见 `docs/implementation/DELIVERY-CLEANUP-REPORT.md` §5.2。
-  **该瑕疵已在 `v0.4.6` 修复**（见下）。
-
-## [Unreleased]
-
 ### 2026-09-13 · 交付包 build 34：D9/D10/G1/G2/G3 收口 + 仓库与冗余代码清理
 
 > 按 `docs/implementation/HANDOFF-NEXT-DELIVERY-AND-CLEANUP.md`（已归档到
@@ -631,7 +459,7 @@ DMG SHA-256 `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5`�
 > 当远端父提交的 committer time 晚于本地恢复提交（跨机时钟偏差，或任何把提交时间写晚的来源），
 > 恢复本身成功、推送却被拒，workspace 卡在 `diverged-protected`，而 git 自己的
 > `merge-base --is-ancestor` 认为这是一次干净快进。**已在 build 34 修复**（图可达性复核 +
-> 单 refspec 显式强推，见本文件顶部 2026-09-13 build 34 块）。
+> 单 refspec 显式强推，见上文「2026-09-13 · 交付包 build 34」块）。
 
 - **复现（build 30 真机）**：远端父 `09aebd7`（`commit_time = 01:50:00Z`）、本地恢复提交
   `001df9a`（`01:47:21Z`）+ 审计 `f0a51bc`（`01:47:22Z`）⇒
@@ -648,6 +476,176 @@ DMG SHA-256 `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5`�
   时间戳的图可达性**复核（从本地头沿 parents 走到远端 ref）；只有确认真快进时，才对该 ref
   显式 `force=True` 重推一次，并把"图复核通过"写进状态原因。不做无条件 force。
 
+
+## [0.4.7] - 2026-09-12
+
+> 分发版：让**同事拿到 DMG 装完就能用**——飞书授权从「需要管理员在每台机器上预置
+> config.toml 与 Keychain」变成「点一下『授权飞书』」。做法是把飞书 app_id 与
+> app_secret 作为**默认值**在构建时写进包内资源（`Contents/Resources/feishu-defaults.json`），
+> 并在运行时按「显式配置/Keychain > 内置默认」的顺序回退。产品行为与数据格式未改动。
+
+### 新增
+
+- **内置飞书默认凭据（分发包）**：新增
+  `providers/feishu/bundled.py`，从包内 `feishu-defaults.json` 读取 app_id / app_secret /
+  redirect_uri；文件由 `scripts/build-macos-app.sh` 在**签名之前**从环境变量
+  `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET` 生成，仓库内不存在该文件（`build/`、`dist/`
+  均被 git 忽略），因此密钥永不进版本库。
+- **配置回退链**：`load_feishu_config()` 现在按「配置文件里的 `[feishu]` 表 → 包内内置默认值 →
+  显式报错」解析。显式写了 `[feishu]` 却漏字段时仍**严格报错**，不会被内置默认值掩盖。
+- **凭据回退链**：`FeishuSession._app_secret()` 按「workspace 作用域 Keychain → 旧命名
+  Keychain（一次性迁移）→ 包内内置默认值」解析；内置值**只读不写**，不会把厂商秘密复制进
+  用户 Keychain，用户自己存的条目始终优先。
+- **发布门禁**：`REQUIRE_BUNDLED_FEISHU=true` 时，构建缺少内置凭据即失败；
+  `verify-macos-release.sh` 对包内凭据文件做结构化校验，并在通用 secret scan 中把它列为
+  **显式例外**（该文件是唯一有意内置的秘密，见 `docs/RELEASING.md`）。
+- **授权失败不再「只说失败」**：分发包内置凭据后同事本机没有任何可改的配置，失败时必须由
+  界面告诉他找谁、做什么。现在令牌端点的失败码会被翻成可执行提示（`20010` → 「你的账号还没有
+  这个应用的使用权限：请联系管理员把你加入应用『可用范围』」、`20002` → 「内置的应用凭据无效
+  （可能已轮换）：请联系管理员重新发布安装包」、`20003/20004/20065` → 重新授权），并透传到
+  向导界面（此前只显示「飞书授权未完成，请重新点击授权」，同事只能反复点）。用户点「拒绝」时
+  也区分文案。原始错误码保留在消息里便于审计，**凭据与授权码绝不回显**（有专门测试断言）。
+  授权状态（`feishu-auth-state.json`）新增可选 `reason` 字段；查询状态不消费原因，App 重启后
+  仍能看到解释。**设置页的「重新授权」回跳也补上了提示**：此前 `?feishu=failed` 完全没被处理，
+  失败后静默回到设置页（而指南恰恰让用户用这条路径从令牌失效中恢复），现在会取回原因并按
+  `textContent` 安全显示（不引入转义风险），查询串随即清掉以免重复提示；前端契约测试新增
+  三条守卫并做过变异验证（把取回原因的端点改坏即报出对应断言）。**拿不到会话 cookie 的静态
+  回退页同样说明原因**（`_panel_redirect`：没有 state / 状态失效 / 已记录失败 / 用户取消各有
+  对应文案），该页会把未信任的 `error` 参数拼进 HTML，因此做了转义并有专门断言。
+- **修复 provider 设置的丢段竞态（现场发现）**：`update_provider_settings` 原本是无锁的
+  读-改-写，而向导会先后写「模型」段与「飞书」段（模型验证与授权回调可能几乎同时到达）。
+  并发时后写者会基于自己读到的旧快照落盘，**静默丢掉另一段**——现场表现正是「授权成功、
+  Keychain 有可用 refresh_token，但设置页显示未连接」。现在整段 load→改→save 持有
+  per-workspace 锁（锁根在 `Application Support` 下的 `locks/<workspace_id>`，刻意不放在
+  profile 目录里，避免失败路径造出空 profile）；并补了**确定性并发交错测试**：无锁时该测试
+  必然报出「模型段被并发写入覆盖」（已做变异验证）。
+- **测试**：新增 `tests/unit/test_feishu_bundled.py`（15 例）、
+  `tests/unit/test_feishu_authorization_reason.py`（14 例，含「被拒绝 → 向导显示原因」的
+  端到端用例与静态回退页的注入转义用例）、
+  `tests/unit/test_profile_settings_concurrency.py`（3 例，含并发丢段回归）与
+  `tests/unit/test_feishu_session.py` 的 3 例，覆盖回退链两个方向、显式配置优先、
+  显式配置缺字段仍报错、内置文件损坏、无内置时保持原有报错文案，以及**打包运行时契约**：
+  按 `WB_STATIC_DIR` 与 server 可执行文件相对路径两条查找路径都能命中内置凭据文件、
+  显式覆盖优先、空串覆盖＝显式关闭。这些测试都做过**变异验证**（删掉 `WB_STATIC_DIR`
+  分支、让空串覆盖不再禁用探测、去掉 provider 设置的互斥，都会被对应测试抓住），确认不是空转。
+- **端到端验证（真实凭据，2026-09-12 现场）**：在**清空 Application Support + 移走
+  `~/.config/.../config.toml` + Keychain 无任何凭据**的干净机器上，从 DMG 安装 0.4.7 后由
+  使用者本人走完向导三步：连接已有 `_vault` → 粘贴 DeepSeek API Key（现场验证成功）→
+  点「授权飞书」并在浏览器同意。结果：workspace 作用域 Keychain 出现真实 refresh_token
+  （1771 字符），用它可以成功刷新出 access_token（1703 字符）——**零预置、点一下即可完成
+  授权**这一目标达成；Keychain 中没有 app_secret 副本，证明用的是包内内置值且只读。
+  另外用包内 secret 换 `tenant_access_token` 成功，证明凭据在飞书侧有效。
+  此前的占位 secret 构建则用于验证：授权 URL 取自包内 app_id、真实飞书失败会翻成可执行提示、
+  静态回退页与状态端点都会带上原因。
+
+### 为什么必须内置 app_secret
+
+飞书 `authen/v2/oauth/token` 的 `client_secret` 是**必填**，`code_verifier`（PKCE）只是可选的
+额外保护，**不能替代** client_secret（官方文档：<https://open.feishu.cn/document/authentication-management/access-token/get-user-access-token>）。
+分发包里没有可代持秘密的后端，所以「零预置 + 点一下就能授权」与「秘密不进客户端」二者不可兼得。
+
+### 已知代价（明示，不做隐瞒）
+
+- 拿到 DMG 的人都能提取出这个 app_secret（它是**应用级**凭证），可据此以应用身份调用飞书
+  API、读取该应用已授权范围内的数据。这只在「内部自建应用 + 信任圈子」前提下可接受。
+- 若要消除该风险，需要把令牌换取搬到管理员自建的后端代理（app_secret 只留在服务端），
+  属于后续可选改动，本版不做。
+- 飞书开放平台侧仍需管理员保证：应用「可用范围」包含每位同事、`offline_access` 等 scope
+  已开通、重定向 URL 已登记 `http://localhost:8765/callback`。
+
+### 发布
+
+- tag `v0.4.7` → release run
+  [#34670529202](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34670529202)（success，
+  2m20s；含 secret scan、打包集成测试、P1-07D 双机验收门与发布步骤），产物发布在
+  <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.7>，`latest` 已指向
+  `v0.4.7`（公开 `update-feed.json`：version 0.4.7 / build 21 / arm64）。
+- DMG SHA256：`ea9651182f4baaa38556068dbdb5d3ef7d69a8051d5a4bc65e3184791108e930`
+  （49,431,182 字节）。构建号为 **21**，由 CI 的 `github.run_number` 决定。
+- 发布构建需要仓库 `release` environment 下的 variable `WB_FEISHU_APP_ID` 与 secret
+  `WB_FEISHU_APP_SECRET`；stable 通道还要求 `UPDATE_DOWNLOAD_URL` 指向当前版本的 DMG
+  （本次已从 `v0.4.6` 更新到 `v0.4.7`），否则 `release.yml` 按设计直接失败。
+- **双机现场验收（发布后）**：在一台**从未安装过**的 Mac 上完成——直接跳转飞书授权并成功、
+  配置 DeepSeek API 成功、进入界面后生成简报成功。这一条同时反证了 CI 产物内内置凭据正确
+  （发布前只能核验 feed/metadata 与本地同源构建，无法字节级核验 CI 产物）。
+- 本机（该 workspace 的原机器）另有本地预发布构建 build 25，仅用于开发期验证；对外的可分发
+  产物是上面这个 build 21。
+
+## [0.4.6] - 2026-09-12
+
+> 补丁版：修掉 `v0.4.5` 留下的、指南首页那行版本标记的显示瑕疵。**产品行为同样未改动**——
+> 只改了指南开头一句文案并重建前端。
+
+### 修复
+
+- 指南首页原本硬编码 `适用版本：v0.4.5 build 19`。这类写死的版本号**每次发版都会过期**：
+  指南正文是构建时打进的静态文本，不随 App 升级自动更新，而 `v0.4.5` 的产物里它恰好还是
+  发布前误估的 `build 13`。现在不再写任何具体版本号，改为指引读者看**窗口顶栏右上角的实时状态**
+  （形如「界面 v… · 服务 x.y.z · 已同步」）——那里读的是运行中的真实值，**永远不会漂移**。
+  这同时修掉了"标记写错"与"标记必然过期"两个问题，而不只是把 13 换成 20。
+
+### 说明
+
+- 因指南是构建输入（`web/scripts/sync-guide.mjs` → `web/src/guide.md`），文案改动会改变前端
+  `source_hash` 与构建身份，故前端静态产物随之重建并单独提交；`verify-build.mjs` 通过。
+- 已发布并装机的 `v0.4.5`（build 19）产物身份保持不变，本版在其之上只做这一处文案修正。
+- 无新增测试：本次改动是纯文案 + 产物重建。已完成的门禁与 `v0.4.5` 相同
+  （890 passed / 1 skipped、覆盖率 82.33%、ruff、mypy strict、`tsc`、前端契约测试全绿）。
+
+## [0.4.5] - 2026-09-12
+
+> 交付前最后一轮审查与清理版。**首要目标是不改变行为**——v0.4.4 的验收刚刚结束，本轮所有改动
+> 都属于删除无引用内容、文档更正与文案重写，**未触碰任何产品行为逻辑**（路由、写回边界、锁语义、
+> outbox、schema/迁移一律未动）。基线为 `v0.4.4` build 12。
+
+### 变更
+
+- **「指南」页重写为任务导向**：`docs/product/WEB_USAGE_GUIDE.md` 从按页签/架构组织改为按
+  「我想做什么」组织（记一件事 / 处理今天待办 / 处理审批 / 导入会议 / 看项目进展 / 问第二大脑 /
+  多设备同步 / 撤销 / 排障），默认只显示步骤，原理与边界条件收进引用块，面向不读代码、不开终端
+  的账号所有者。渲染器未改动，指南渲染契约测试（本地搜索、目录、H2/H3 分组、筛选跟随）原样通过。
+- 更新现状类文档：`README.md`、`PROJECTDESC.md`、`docs/product/WEB_WORKBENCH.md` 的版本/构建号与
+  质量门数字由过期的 build 9 更正为当前基线（890 passed / 1 skipped、覆盖率 82.33%）。
+- `docs/archive/` 增加归档标注（历史记录、结论可能过期、当前状态以
+  `docs/acceptance/OPEN-VERIFICATION-ITEMS.md` 为准），**归档正文未改动**。
+
+### 移除
+
+- 删除 4 个完全空的目录：`docs/architecture/`、`docs/background/`、`docs/design/`、`docs/plans/`
+  （`ls -A` 确认连隐藏文件也没有，且均未被 git 跟踪）。目录本身为空，不涉及任何文件。
+- 更正一处失效路径引用：`tests/unit/test_ci_contract.py` 实际位于 `tests/contract/test_ci_contract.py`。
+
+### 说明
+
+- **本轮未删除任何 Python/TypeScript/Swift 代码。** 死代码判定执行「三重证据」标准
+  （① 静态引用扫描 ② 测试与构建产物引用 ③ 运行时可达性），vulture / ruff 的全部高置信度候选
+  经逐条核对后**均为误报**（Typer 装饰器命令、Pydantic 模型与校验器、FastAPI 路由、
+  `settings_customise_sources` 签名参数等）。逐条判定见
+  `docs/implementation/DELIVERY-CLEANUP-REPORT.md`。
+- 新增两份拆分方案（**只写方案，未改代码**）：`docs/implementation/LEGACY-APP-SPLIT-PLAN.md`
+  （`webapp/legacy_app.py`）与 `docs/implementation/LEGACY-MAIN-SPLIT-PLAN.md`
+  （`web/src/legacy-main.ts`）。
+- 保留未删（证据不足）：`providers/feishu/calendar.py:list_events`（有契约测试引用，
+  生产路径已改用 `list_events_between`）、4 个空的 `web/src/features/` 子目录
+  （ADR 0036 明确保留为空入口边界）、`docs/contracts/`（仍是当前生效的 web 路由契约）。
+
+### 发布
+
+- tag `v0.4.5` → release run
+  [#34664646655](https://github.com/SummitYifeng/SummitWorkbench/actions/runs/34664646655)（success），
+  产物发布在 <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.5>。
+- **`latest` 已正确指向 v0.4.5**（此前停在 `v0.4.2`；历史 rc 均为 prerelease，stable 通道未被污染）。
+- DMG SHA256：`79a64f36871cd0d8a2ac187d7028d21c653970d10e77702b049172f126852d80`
+  （49413832 字节；与 `update-feed.json`、`SHA256SUMS`、`release-metadata.json` 四处一致）。
+- 构建号为 **19**——由 CI 的 `github.run_number` 决定（`release.yml` 传
+  `BUILD_NUMBER: ${{ github.run_number }}`），不是手工 bump 的值。
+- 本机从 DMG 安装并启动验证：`CFBundleShortVersionString 0.4.5` / `CFBundleVersion 19`，
+  `/api/version` 返回 `server_version 0.4.5 / build 19 / git_revision 749eeef`，六页签可达，
+  无 crash loop（本次启动仅 1 条生命周期事件、0 条 error/warning）。
+- 已知显示瑕疵（不影响行为）：已发布 DMG 内的指南首页版本标记写作 `build 13`（发布前按
+  "build 12 顺延"误估），仓库文档已统一更正为 `build 19`；为避免已发布产物与仓库静态产物漂移，
+  未为此重建前端。详见 `docs/implementation/DELIVERY-CLEANUP-REPORT.md` §5.2。
+  **该瑕疵已在 `v0.4.6` 修复**（见上文 `[0.4.6]` 的「修复」）。
 
 ### 2026-09-12 · 前端拆分收尾与第二台机器接入
 
@@ -773,7 +771,7 @@ DMG SHA-256 `15a57239cc8836d61031f72f6305da43ab43ad62a5b54c761e857f65e2920df5`�
 - 原生 App 生命周期加固：仅接管自身且身份匹配的服务；PID 被系统复用或运行记录过期时忽略旧记录，避免误判 crash loop。
 - 修复网页端“现在生成/重新生成”：生成成功后显式提交并推送本次产生的简报、快照、用量和授权状态文件，绝不使用 `add -A` 带入其他用户改动。
 - build 9 arm64 `INTERNAL-DEV` DMG 已通过离线发布验证和实际 vault 交互验收：`v2026.09.10-df4ba1f-1cb9c2eb`；DMG 位于 `dist/releases-local-v0.4.4-brief-fix-df4ba1f/0.4.4/arm64/`，SHA-256 为 `d6104112cfce8598457c04126d355112d85e3957bb07bf6268f4a9411adbcdc8`。
-- 本地门禁：Ruff、格式检查、mypy、`pytest tests/unit`（762 passed，5 warnings）、route contract（51 passed，1 warning）、`npm run test:frontend`、生产构建和 packaged smoke 均通过；远端 CI 当时未启动，不在本节宣称 CI 全绿（后续已于 2026-09-11 跑通，见 Unreleased）。
+- 本地门禁：Ruff、格式检查、mypy、`pytest tests/unit`（762 passed，5 warnings）、route contract（51 passed，1 warning）、`npm run test:frontend`、生产构建和 packaged smoke 均通过；远端 CI 当时未启动，不在本节宣称 CI 全绿（后续已于 2026-09-11 跑通，见上文 `[0.4.5]` 的「2026-09-11 · 远端 CI、前端工具链与交付门禁补强」）。
 
 ## [0.4.3] - 2026-09-07
 

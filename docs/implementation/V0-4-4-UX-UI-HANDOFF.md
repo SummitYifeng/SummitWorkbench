@@ -334,7 +334,8 @@
 - 仓库已迁移到组织 `SummitYifeng/SummitWorkbench`。根因：Actions 分钟数按**仓库所有者**计费，
   `yifeng93` 个人账户额度耗尽且没有有效支付方式，而 Team 计划买在组织上；迁移后 CI 恢复，
   secrets、`release` environment 与 releases 均保留，本地 remote 已更新。
-- 远端 CI 首次真实运行即暴露并修复一个缺陷（详见 ADR 0045「后续修订」与 CHANGELOG Unreleased）：
+- 远端 CI 首次真实运行即暴露并修复一个缺陷（详见 ADR 0045「后续修订」与 CHANGELOG
+  `[0.4.5]` 的「2026-09-11 · 远端 CI、前端工具链与交付门禁补强」块）：
   macOS framework 版 Python 的 re-exec 使 `_same_server_executable()` 把活着的 server 误判为复用 PID，
   删除活着的 runtime 记录并绕过 `server_entry.py` 的重复实例保护。
 - `packaged App smoke` 已接入 CI 的 arm64 构建矩阵；两个 workflow 的 action 升级到 node24 大版本，
