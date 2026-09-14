@@ -14,12 +14,9 @@ from pathlib import Path
 import yaml
 
 from summit_workbench.domain.vault import ValidationIssue, validate_note
+from summit_workbench.repositories.ignore import is_internal_dirname
 
 _FM_DELIM = "---"
-
-# 校验时跳过的目录：非笔记内容或构建/隐藏物。``templates`` 是骨架模板，其 frontmatter
-# 含 ``{{date}}`` 之类占位符，既不该进 schema 校验，也不该进知识索引与双链。
-_SKIP_DIRS = {".git", ".obsidian", "_signals", "templates"}
 
 
 @dataclass(frozen=True)
@@ -57,9 +54,12 @@ def parse_frontmatter(text: str) -> tuple[dict[str, object], str, str | None]:
 
 
 def iter_markdown_files(root: Path) -> Iterator[Path]:
-    """遍历 ``root`` 下的 Markdown 文件，跳过 `_SKIP_DIRS`。"""
+    """遍历 ``root`` 下的 Markdown 文件，跳过 :func:`is_internal_dirname` 认定的目录。
+
+    只判**目录**部分（``parts[:-1]``）：判据是「目录名」，文件名不以它判定。
+    """
     for path in sorted(root.rglob("*.md")):
-        if any(part in _SKIP_DIRS for part in path.relative_to(root).parts):
+        if any(is_internal_dirname(part) for part in path.relative_to(root).parts[:-1]):
             continue
         yield path
 

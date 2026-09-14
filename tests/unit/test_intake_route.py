@@ -13,7 +13,8 @@ Workbench / Obsidian 里操作」之后，这条链就是他的主路径。
 
 变异验证：
 - 把 `templates/vault/*.template.md` 里任一 `{{…}}` 的引号去掉 → 第 1 组断言变红；
-- 把 `_SKIP_DIRS` 移除 `templates` 或让索引跳过新文件 → 第 2 组断言变红。
+- 把 `templates` 从 `repositories/ignore.py` 的 `MACHINE_DIRNAMES` 移除，或让索引跳过新文件
+  → 第 2 组断言变红。
 """
 
 from __future__ import annotations

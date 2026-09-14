@@ -81,7 +81,7 @@ def test_templates_dir_is_skipped_by_check_and_iter(tmp_path):
 
     模板里的 `date: {{date}}` 过不了 `YYYY-MM-DD` 校验；若不过滤，`wb vault check` 会在
     任何带模板的库上变红，检索也会把骨架当成知识笔记召回（变异验证：把 `templates` 从
-    `_SKIP_DIRS` 移除，本用例必须变红）。
+    `repositories/ignore.py` 的 `MACHINE_DIRNAMES` 移除，本用例必须变红）。
     """
     tpl = tmp_path / "templates" / "note-template.md"
     tpl.parent.mkdir()

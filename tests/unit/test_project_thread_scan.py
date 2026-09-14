@@ -1,7 +1,9 @@
 """知识线程项目：内部目录不进项目视野；vault 档案全集含无文件夹线程。
 
 覆盖 P0 需求再梳理结论：
-- 下划线前缀目录（_vault / _transcripts-inbox 等）一律不扫描、不提示「加入工作台」；
+- 内部目录（下划线前缀 `_vault` / `_transcripts-inbox`，以及点开头的隐藏/机器目录
+  `.obsidian` / `.git` 与机器目录 `templates`）一律不扫描、不提示「加入工作台」；
+  判据真源见 `repositories/ignore.py` 与 `tests/unit/test_ignore_dirs.py`；
 - 已建档但 Work 目录无同名文件夹的 project-main 档案 = 知识线程项目，与仓库项目
   在「项目全集」中共存（项目页 / 审批目标项目下拉 / 首页推进卡的数据源）。
 """

@@ -33,10 +33,10 @@ from pathlib import Path
 import yaml
 
 from summit_workbench.config.app_support import app_support_dir
+from summit_workbench.repositories.ignore import is_internal_dirname
 from summit_workbench.workflows.ask.chunking import chunk_markdown
 from summit_workbench.workflows.ask.terms import fts_query, query_terms
 
-_SKIP_DIRS = {".git", ".obsidian", "_signals", ".summit-workbench", "templates"}
 # 不进索引的 status：草稿不是事实，不得被问答当成依据（conventions §2.2）。
 _EXCLUDED_STATUS = frozenset({"draft"})
 # 双链目标**包含** `#区块` 部分：C-lite 粒度下「指向某一节」是一等用法，
@@ -345,7 +345,8 @@ class KnowledgeIndex:
     def _markdown_files(self) -> Iterator[Path]:
         for path in sorted(self.vault_dir.rglob("*.md")):
             parts = path.relative_to(self.vault_dir).parts
-            if any(part in _SKIP_DIRS for part in parts):
+            # 只判目录部分（`parts[:-1]`）：判据是「目录名」，不按文件名跳过。
+            if any(is_internal_dirname(part) for part in parts[:-1]):
                 continue
             yield path
 

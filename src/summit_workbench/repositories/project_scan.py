@@ -13,18 +13,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from summit_workbench.repositories.git import GitError, GitRepo
+from summit_workbench.repositories.ignore import is_internal_dirname
 from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.vault import load_note, meta_date_iso
 
-# 下划线前缀目录 = 系统内部目录（vault、落料夹等），一律不进「项目」视野：
-# 不扫描、不提示「加入工作台」、不允许激活/归档操作。
-_VAULT_DIRNAME = "_vault"
-_INTERNAL_PREFIX = "_"
-
-
-def is_internal_dirname(name: str) -> bool:
-    """是否为系统内部目录名（下划线前缀，如 ``_vault`` / ``_transcripts-inbox``）。"""
-    return name.startswith(_INTERNAL_PREFIX)
+# 不进「项目」视野的目录（不扫描、不提示「加入工作台」、不允许激活/归档）：
+# 下划线前缀的内部目录 + 点开头的隐藏/机器目录 + 已知机器目录名，判据统一在
+# ``repositories/ignore.py``——原先这里只挡下划线前缀，于是 ``Work/.obsidian``
+# 漏进了 App【项目】（2026-09-14）。
+__all__ = [
+    "ProjectState",
+    "count_inbox_pending",
+    "extract_next_step",
+    "is_internal_dirname",
+    "scan_all_projects",
+    "scan_project",
+    "scan_projects",
+    "thread_projects",
+]
 
 
 @dataclass(frozen=True)
