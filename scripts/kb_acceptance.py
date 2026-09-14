@@ -50,12 +50,16 @@ class Case:
     name: str
     question: str
     expect_route: str
-    must_recall: str
+    must_recall: str = ""
     expect_transcript: bool = False
     # 只有对外验收的题真调模型；其余是检索回归，不花 token
     use_model: bool = False
-    # 答案层期望：**块级**锚点，命中任意一个即通过（同一份答案可能落在主题簇页，
-    # 也可能落在项目主页的入口版；写死「唯一正解」会把等价答案误判成失败）。
+    # 关键证据的**等价入口**：与 must_recall 取并集后按 any-of 判。同一个答案既可能落在
+    # 主题簇页、也可能落在项目主页的入口版（两页内容等价）；写死唯一正解会把等价答案判成失败——
+    # 2026-09-14 实测：Q1 答出完整商标共识清单、出处是 `projects/hii-affairs#关键结论`，
+    # 只因上下文里没出现簇页而红了。
+    must_recall_any: tuple[str, ...] = ()
+    # 答案层期望：**块级**锚点，命中任意一个即通过（理由同上）。
     must_recall_blocks: tuple[str, ...] = ()
 
 
@@ -66,6 +70,7 @@ CASES = (
         question="根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？",
         expect_route="decision",
         must_recall="hii/clusters/ip-trademark",
+        must_recall_any=("projects/hii-affairs",),
         must_recall_blocks=(
             "hii/clusters/ip-trademark#关键结论",
             "projects/hii-affairs#关键结论",
@@ -216,11 +221,13 @@ def audit_case(case: Case, observation: Observation, index: KnowledgeIndex) -> l
     if observation.route != case.expect_route:
         failures.append(f"{case.name}：路由 {observation.route} != 期望 {case.expect_route}")
 
-    # 2) 关键证据必须被召回（融合结果或事实引用任意一处出现即可）
+    # 2) 关键证据必须被召回（融合结果或事实引用任意一处出现即可）。
+    #    等价入口之间是 any-of：命中其中一个即可。
+    wanted_notes = ((case.must_recall,) if case.must_recall else ()) + case.must_recall_any
     recalled = set(observation.fused) | set(observation.recalled)
     recalled |= {anchor.split("#", 1)[0] for anchor in observation.anchors}
-    if not any(case.must_recall in item for item in recalled):
-        failures.append(f"{case.name}：未召回关键证据 {case.must_recall}")
+    if wanted_notes and not any(note in item for note in wanted_notes for item in recalled):
+        failures.append(f"{case.name}：未召回关键证据（任一即可）：{'、'.join(wanted_notes)}")
 
     # 2.5) 答案层块级期望：候选或引用里必须出现**其中一个**（任一即可，见 Case 的说明）
     if case.must_recall_blocks:

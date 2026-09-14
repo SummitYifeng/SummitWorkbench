@@ -2,7 +2,7 @@
 
 为什么需要这一组：检索的启发式常量（路由关键词权重、导航型区块降权 `NAV_HEADINGS`、
 `max_chunks_per_note=3`、`source_penalty=0.55`、`same_origin_penalty=0.35`、`link_seed_ratio=0.6`）
-全是经验值，而此前只有 `kb_acceptance.py` 的两个真实问题做回归——那两题都在「点查/决策」，
+全是经验值，而此前只有 `kb_acceptance.py` 的少量真实问题做回归——那些题都在「点查/决策」，
 回溯与回顾一旦被改坏没有任何断言会红。
 
 设计要点：

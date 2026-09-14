@@ -150,6 +150,36 @@ def test_audit_flags_missing_key_evidence(index: KnowledgeIndex) -> None:
     assert any("未召回关键证据" in item for item in failures)
 
 
+def test_audit_accepts_an_equivalent_key_evidence_entry_point(index: KnowledgeIndex) -> None:
+    """等价入口 any-of：只召回 must_recall_any 里那篇，也算关键证据已召回。
+
+    现实里的样子（2026-09-14）：Q1 的商标共识清单同时有主题簇页与项目主页入口版两个等价入口，
+    答案落在项目主页时不该判红。
+    """
+    observation = acceptance.Observation(
+        route="decision",
+        anchors=("meetings/notes/meeting#一分钟摘要",),
+        fused=("meetings/notes/meeting",),
+    )
+    case = _case(
+        must_recall="hii/notes/does-not-exist", must_recall_any=("meetings/notes/meeting",)
+    )
+    assert acceptance.audit_case(case, observation, index) == []
+
+
+def test_audit_flags_when_no_equivalent_entry_point_is_recalled(index: KnowledgeIndex) -> None:
+    """any-of 不是「放水」：两个入口都没进上下文时仍然必须红，且要说清候选。"""
+    observation = acceptance.Observation(
+        route="decision",
+        anchors=("hii/notes/analysis#商标共识规范",),
+        fused=("hii/notes/analysis",),
+    )
+    case = _case(must_recall="hii/notes/absent-a", must_recall_any=("hii/notes/absent-b",))
+    failures = acceptance.audit_case(case, observation, index)
+    missing = [item for item in failures if "未召回关键证据" in item]
+    assert missing and "hii/notes/absent-a" in missing[0] and "hii/notes/absent-b" in missing[0]
+
+
 def test_audit_flags_a_fabricated_anchor(index: KnowledgeIndex) -> None:
     """模型编一个不存在的区块名 → 必须红，这是防止「引用看起来对」的关键一条。"""
     observation = acceptance.Observation(

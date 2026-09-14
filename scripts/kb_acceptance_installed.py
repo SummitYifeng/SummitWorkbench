@@ -17,7 +17,7 @@ server 进程环境里读取，**绝不打印、绝不写进任何输出文件**
 
 用法：
 
-    scripts/kb_acceptance_installed.py                     # 两题对外验收口径（真调模型）
+    scripts/kb_acceptance_installed.py                     # 4 题对外验收口径（真调模型）
     scripts/kb_acceptance_installed.py --all               # 清单全部题目
     scripts/kb_acceptance_installed.py --out FILE          # 落盘报告
 """
@@ -144,7 +144,12 @@ def _facts(answer: dict[str, object] | None) -> list[dict[str, object]]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="已安装 App 的第二大脑端到端验收")
     parser.add_argument(
-        "--all", action="store_true", help="跑清单全部题目（默认只跑两题模型口径）。"
+        "--all", action="store_true", help="跑清单全部题目（默认只跑 4 题对外验收口径）。"
+    )
+    parser.add_argument(
+        "--only",
+        default=None,
+        help="只跑名字里含该子串的题（重查单题时不必再把 4 次模型调用都花一遍）。",
     )
     parser.add_argument(
         "--app-support",
@@ -159,6 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     endpoint = discover(args.app_support)
     version = _get(endpoint, "/api/version")
     cases = list(acceptance.CASES) if args.all else [c for c in acceptance.CASES if c.use_model]
+    if args.only:
+        cases = [case for case in cases if args.only in case.name]
+        if not cases:
+            raise SystemExit(f"✗ --only {args.only!r} 没匹配到任何题目")
 
     lines: list[str] = []
     failures: list[str] = []
@@ -171,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     emit(f"runtime record：{endpoint.record}")
     emit(f"frontend_build：{endpoint.frontend_build}")
     emit(f"/api/version：{json.dumps(version, ensure_ascii=False, sort_keys=True)}")
-    emit(f"题目数：{len(cases)}（{'全部' if args.all else '两题模型口径'}）")
+    emit(f"题目数：{len(cases)}（{'清单全部' if args.all else '4 题对外验收口径'}）")
     emit("")
 
     vault_dir = Path(str(version.get("vault_dir") or "")) if version.get("vault_dir") else None
@@ -228,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
             emit("")
             emit(f"检索轨迹里的路由：{observation.route or '（未渲染）'}")
             emit(f"进入上下文的来源：{len(source_ids)} 条")
+            for source_id in source_ids:
+                emit(f"    · {source_id}")
             emit(f"事实引用：{len(cited)} 条，其中块级 {sum('#' in a for a in cited)} 条")
             emit(f"追溯到证据层：{chains[0] if chains else '（未走出）'}（共 {len(chains)} 条）")
             emit(f"其中走到逐字稿：{transcripts[0] if transcripts else '（无）'}")

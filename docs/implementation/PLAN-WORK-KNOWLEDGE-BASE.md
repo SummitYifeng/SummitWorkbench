@@ -1046,17 +1046,19 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
 **数据驱动的两次回退**：BM25 `b=0.35` 与 CJK 2-gram 补词都**实测有害**（44%→31%），已撤回。
 教训记在这里：权重/词表这类改动必须先用真实问题量一遍，不能凭直觉。
 
-**仍未做（Phase 5 剩余）**
+**Phase 5 收尾（全部已完成）**
 
 | 项 | 状态 |
 |---|---|
-| R4 路由启发式补强（Q2/Q3 落在「无关键词：按长度兜底」） | ☐ |
-| R5 `decision` 第 7 区块 `## 关联` 写进 app 固定区块表（契约级，含模板/测试/快照） | ☐ |
-| R6 `source` 索引策略复核（证据层是否值得整篇入索引） | ☐ |
-| BUG-1「首次发布到远端」修复 + 回归测试 | ☐ |
+| R4 路由启发式补强（Q2/Q3 落在「无关键词：按长度兜底」） | ✓ 提交 `682eb88`：`_FORM_RULES` 问句形态兜底，只在零关键词命中时生效（不与词表抢路） |
+| R5 `decision` 第 7 区块 `## 关联` 写进 app 固定区块表（契约级，含模板/测试/快照） | ✓ 提交 `78fa662`：`domain/vault.py` 固定区块表 + 模板 + 契约测试 |
+| R6 `source` 索引策略复核（证据层是否值得整篇入索引） | ✓ 提交 `682eb88`：结论是**保留整篇入索引、改用提问侧加权**——问「要原文/原话」时放开证据层降权（`EVIDENCE_REQUEST_RE`），其余时候照旧 ×0.8 降权 |
+| BUG-1「首次发布到远端」修复 + 回归测试 | ✓ 提交 `78fa662`：全新 workspace 首推必失败（真实 vault 走 `credential_scoped_backend` 时没带用户名/凭据，`GitCredentialsUnavailable` 被吞成 `remote_publish_rolled_back`）；修好 + 2 例回归 + 变异验证 |
+| Q1 的深层短板：宽泛问题需要「问题点名某主题 → 该主题簇页 `## 关键结论` 优先」 | ✓ 提交 `1ba837d`：主题通道（标题/领域/别名/tag 的 2-gram + 拉丁词命中，`topic_step=0.4`、封顶 2.4）。**已知代价**：Q3 的 `it/clusters/enrollment#关键结论` 由「同篇不同块」变成未召回（净 6→7），见下方「仍存在的不足」 |
+| 回答撞输出上限时不再把 `LLMSchemaError` 抛给使用者 | ✓ 提交 `425dff3`：带「收窄材料」提示重试一次，仍截断则回报可操作提示（问得更具体 / 提高 `max_output_tokens`） |
 | 新增「知识沉淀」审批落点（第 7 个 `RouteTarget`） | ✓ 提交 `c678b08`：目标显式指定（`sink_target`）、只接受 vault 相对路径（拒穿越）、目标页缺失即拒批、带出处与幂等标记；15 例新测试 + 变异验证 |
 | Workbench「决策」页（API + UI + 路由契约快照） | ✓ 提交 `6ba2f60`：`GET /api/decisions`（筛选/分面/关系解析）+ 新「决策」tab（状态分组、关系行、空态、输入防抖）；8 例后端单测 + 1 个前端纯渲染测试；已发布 build 38 并在 app 内验证（15 篇决策 / 2 管线 / 8 主题） |
-| **重新打包并重装 app** | ✓ 0.4.9 build 37 已构建并安装（`dist/releases/0.4.9/arm64/`，SHA-256 `54b0b912…`）；GUI 实跑验证：R2 的一级章节锚点已可见（0.4.8 里不存在）、Danny 验收题逐条答出、前端产物含新落点「知识沉淀」 |
+| **重新打包并重装 app** | ✓ 0.4.9 **build 40** 已构建并安装（build 37 → 38 → 39 → 40 逐轮迭代）（`dist/releases/0.4.9/arm64/`，SHA-256 `54b0b912…`）；GUI 实跑验证：R2 的一级章节锚点已可见（0.4.8 里不存在）、Danny 验收题逐条答出、前端产物含新落点「知识沉淀」 |
 | Q1 的深层短板：宽泛问题（「当前达成的商标共识规范是什么」）需要「**问题点名某主题 → 该主题簇页的 `## 关键结论` 优先**」这条路，当前只靠词项匹配还排不上来 | ☐ |
 
 #### Phase 5 打包重装 · 两条操作经验（下次发布照做）
@@ -1078,3 +1080,42 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
   功能不受影响——本次实测：重启后该文件 `items: {}`，但 `POST /api/run/brief` 返回
   「已生成今日简报（健康度 ok）」。**风险**：若界面授权徽标直接读这个文件，重启后会误显示未授权。
   待确认后决定是否改为启动时从 Keychain 重建缓存。
+
+### Phase 6 · SOP 与验收 —— 已完成（2026-09-14）
+
+| 项 | 状态 |
+|---|---|
+| `_vault` SOP 定稿 | ✓ 提交 `d5f224d`（vault 仓库）：知识沉淀落点写法与安全边界、决策页、提问技巧（主题优先 / 要原文给原文 / 块级引用） |
+| 4 个真实问题写成可重复运行用例 | ✓ `scripts/kb_acceptance.py` 的 `CASES`：Q1–Q4 真调模型；R1/R2/D1/V1/S1 零 token 只验路由 + 块级锚点 + 追溯链 |
+| 真跑并留证据 | ✓ `docs/acceptance/evidence/kb-acceptance-2026-09-14.txt`（真实库，8 题全过）<br>✓ `docs/acceptance/evidence/kb-acceptance-installed-2026-09-14-build40.txt`（**装好的 build 40**，4 题模型口径全过） |
+| 本机门禁全绿 | ✓ `pytest --cov` 1127 passed / 83.72%；`ruff check` + `ruff format --check`；`mypy` 359 文件；`secret_scan`；前端 76 源文件 15 组测试；web build + `verify-build.mjs` |
+| vault 自检 | ✓ 53 个内容页；272 条 wikilink + 378 条 `路径#区块` 引用全部可解析；`wb vault check` 53/53 |
+
+**Phase 6 新增/修正的判据（都带变异验证）**
+
+1. **验收清单按职责拆两类**：对外验收题（真调模型）跑真实库；机制回归题零 token 跑。
+   `tests/unit/test_ask_regression_questions.py` 的合成 vault **只收它真有材料的题**——不为迁就
+   一个小 fixture 去伪造 Danny / 活满 / 主题簇页材料（那样测的是 fixture，不是库）。
+   并有测试锁住「所有非模型题都必须被合成库覆盖」，防止两组清单悄悄漂移。
+2. **关键证据判据支持「等价入口 any-of」**（`Case.must_recall_any`）：Q1 的商标共识清单同时有
+   主题簇页与项目主页入口版，答案落在 `projects/hii-affairs#关键结论` 时不该判红。
+   ⚠️ 这不是放水：两个入口都没进上下文时仍然红，且报错会列出全部候选（2 例新测试 + 变异验证：
+   去掉 any-of 支持，两条测试立刻失败）。
+3. **已装 App 验收脚本**新增 `--only <子串>`（重查单题不必再花 4 次模型调用）与「进入上下文的
+   来源」逐条列出（失败时能一眼看出是没召回、还是召回了没引用）。
+
+**Phase 6 暴露并修掉的真实缺陷**：回答撞 `max_output_tokens` 时，`LLMSchemaError` 的原文
+（`问答返回非 JSON：Unterminated string…`）会直接抛给使用者。现在改为带「收窄材料」提示重试一次，
+仍截断则回报可操作提示（问得更具体 / 提高 `max_output_tokens`）。提交 `425dff3`。
+
+### Phase 7 · Air 接入（备用机器）—— Studio 侧已完成，Air 侧待在那台机器上执行
+
+| 项 | 状态 |
+|---|---|
+| Studio 作为主设备就绪 | ✓ 0.4.9 **build 40** 已装并实跑；`/api/sync/status = ready`，ahead 0 / behind 0；`automation_primary_device_id` = Studio，generation 1 |
+| 远端已是最新库 | ✓ SOP 定稿提交已推送（vault 仓库 `d5f224d`） |
+| Air 接入路径**已在本机拿真远端真凭据验过** | ✓ 用 workspace 级钥匙串凭据对真实私有远端做暂存克隆：成功、marker 存在、兼容性 `read-write`、workspace id 一致；**另一设备 id → `secondary`**、Studio 自身 → `automation-primary`；staging 与临时目录已清理 |
+| Air 侧操作 | ☐ 需在 Air 上做：装同一 build → 向导「从另一台 Mac 克隆」→ 四项值 → 确认 → 连模型/飞书。作业单见 `docs/implementation/AIR-MACHINE-HANDOFF.md` |
+
+两个已知、留待下一轮的不足没有变化（见上文「仍存在、已知的不足」），本轮**没有**再动权重：
+Q3 的 `it/clusters/enrollment#关键结论` 仍未召回；度量是 16 项二值指标，不适合当单一调参目标。
