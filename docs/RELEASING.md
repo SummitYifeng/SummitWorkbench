@@ -33,12 +33,14 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 38）
 
 SHA-256：`54b0b9128cca5ee426f7e6a63236f669b9f477cc23560afba4e5c6c83a9eea58`
 
-版本 `0.4.9`、build `37`，构建来源提交 `f202d3e8eec5ef55f4d6f8a2e49fcac49c2ca9da`，
-对应前端 build identity 为 `v2026.09.14-f202d3e-7f744ba1`，
+版本 `0.4.9`、build `38`，构建来源提交 `6ba2f60`（新增「决策」页），
+对应前端 build identity 为 `v2026.09.14-6ba2f60-1731ce07`；
+（同一版本号内的内部迭代只递增 build：37 = 检索修复 + 知识沉淀落点，38 = 决策页。
+旧构建按仓库既有先例移到 `dist/releases/0.4.9.superseded-b<NN>/`，脚本拒绝覆盖已存在的发布目录。）
 并已内置飞书默认凭据（`REQUIRE_BUNDLED_FEISHU=true`，凭据与 0.4.8 包逐项一致）。发布目录同时包含
 `SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`notary-log.json`、`test-manifest.json`
 和本地验证摘要。`test-manifest.json` 的 `checks` 列出本次构建真跑过的 13 项门禁
