@@ -35,6 +35,12 @@ const brief = {
       evidence: '00:12', source_ref: 'logistics/sources/2026-09-14-1977-hotel.md',
       project: 'huoman-logistics', due_date: null, detail: '', rank: 1,
     },
+    {
+      // 项目自身页面的引用：不能再把项目 ID 当「出处」显示一遍（真实数据验证发现）。
+      signal_id: 'next-huoman-logistics', title: '按材料推进合同', category_key: 'main-push', category: '主线推进',
+      evidence: 'E2', source_ref: 'projects/huoman-logistics.md#下一步',
+      project: 'huoman-logistics', due_date: null, detail: '', rank: 2,
+    },
   ],
   proposals: [
     {
@@ -80,6 +86,7 @@ export const labels = {
   unknownCode: syncStateLabel('some-new-state'),
   sourceLabel: briefSourceLabel('logistics/sources/2026-09-14-1977-hotel.md'),
   feishuRef: briefSourceLabel('feishu-task:abc'),
+  anchored: briefSourceLabel('projects/hii-affairs.md#下一步'),
 };
 export const briefHtml = briefCardHtml(brief, '2026-09-14', projectNames);
 export const reviewHtmlText = review(entry0);
@@ -120,6 +127,13 @@ try {
   assert.ok(!mod.briefHtml.includes('logistics/sources/'), 'brief must not print source paths');
   assert.match(mod.briefHtml, /1977-hotel/, 'brief keeps the readable part of the source name');
   assert.equal(mod.labels.sourceLabel, '1977-hotel');
+  // 带 `#区块` 锚点的引用必须先剥锚点（否则会留下 `xxx.md#区块` 的残渣）。
+  assert.equal(mod.labels.anchored, 'hii-affairs');
+  assert.equal(mod.labels.feishuRef, '', 'feishu task refs have no readable file name');
+  assert.ok(
+    !mod.briefHtml.includes('projects/huoman-logistics.md'),
+    'a project page reference must not be echoed as a source label',
+  );
   assert.equal(mod.labels.feishuRef, '', 'feishu task refs have no readable file name');
 
   // ③ 审批：目标项目显示中文名；内部标记 unresolved 显示为「未定」。

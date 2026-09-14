@@ -179,15 +179,34 @@ function briefOrphanActions(b: BriefData): BriefAction[] {
 }
 
 /**
- * 出处文件的显示名：去掉目录与日期前缀，只留可读标题。
+ * 出处文件的显示名：先去掉 `#区块` 锚点与目录，再去掉日期前缀，只留可读标题。
  *
  * 2026-09-14：界面上不再直接显示 `huoman-logistics · 2026-09-14-木子沟通.md` 这种
  * 「英文 ID + 文件名」；完整路径仍可在「第二大脑」的来源按钮里看到。
+ * ⚠️ 锚点必须先剥掉：`projects/hii-affairs.md#下一步` 若只按 `.md$` 去尾，
+ * 会留下 `it-development.md#下一步` 这种把项目 ID 带出来的残渣（真实数据验证发现）。
  */
 export function briefSourceLabel(ref: string): string {
   if (!ref || ref.startsWith('feishu-task:')) return '';
-  const base = (ref.split('/').pop() || '').replace(/\.(md|txt)$/i, '');
+  const withoutAnchor = ref.split('#')[0];
+  const base = (withoutAnchor.split('/').pop() || '').replace(/\.(md|txt)$/i, '');
   return base.replace(/^\d{4}-?\d{2}-?\d{2}[-_]?/, '');
+}
+
+/**
+ * 这条行动要显示的出处标签。
+ *
+ * - 飞书任务引用没有可读文件名 ⇒ 空；
+ * - **项目自身页面**的引用（`projects/<该项目>.md#…`）不重复显示——那只是把项目 ID
+ *   再写一遍，同一行的项目中文名已经表达了它；
+ * - 其余给出去目录、去日期前缀的可读名。
+ */
+function briefRefLabel(a: BriefAction, projectNames: Record<string, string>): string {
+  const ref = a.source_ref || '';
+  if (a.project && ref.startsWith('projects/' + a.project + '.md')) return '';
+  const label = briefSourceLabel(ref);
+  const projectName = a.project ? projectNames[a.project] ?? a.project : '';
+  return label && label !== projectName ? label : '';
 }
 
 function briefOrphanBlock(
@@ -199,10 +218,8 @@ function briefOrphanBlock(
     const pieces: string[] = [];
     if (a.project) pieces.push(projectNames[a.project] ?? a.project);
     if (a.detail) pieces.push(a.detail);
-    const refName = briefSourceLabel(a.source_ref);
-    if (refName && refName !== (a.project ? projectNames[a.project] ?? a.project : '')) {
-      pieces.push(refName);
-    }
+    const refName = briefRefLabel(a, projectNames);
+    if (refName) pieces.push(refName);
     const meta = pieces.length
       ? '<div class="bf-act-meta">' + pieces.map(esc).join(' · ') + '</div>'
       : '';
@@ -224,10 +241,8 @@ function briefProposalBlock(list: BriefAction[], projectNames: Record<string, st
   const rows = list.map((p) => {
     const pieces: string[] = [];
     if (p.project) pieces.push(projectNames[p.project] ?? p.project);
-    const refName = briefSourceLabel(p.source_ref);
-    if (refName && refName !== (p.project ? projectNames[p.project] ?? p.project : '')) {
-      pieces.push(refName);
-    }
+    const refName = briefRefLabel(p, projectNames);
+    if (refName) pieces.push(refName);
     return '<div class="bf-minor-row"><span class="bf-minor-main">' + esc(p.title) + '</span>' +
       (pieces.length
         ? '<span class="bf-minor-text">' + pieces.map(esc).join(' · ') + '</span>'
