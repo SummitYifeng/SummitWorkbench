@@ -16,12 +16,14 @@ def _archive(
     next_step: str = "",
     blocked: str = "无",
     followup: str = "",
+    title: str | None = None,
 ) -> None:
     path = vault / "projects" / f"{project}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     step = f"- {next_step}" if next_step else ""
+    title_line = f"title: {title}\n" if title else ""
     path.write_text(
-        f"---\nproject: {project}\ndate: 2026-09-01\ntype: project-main\nstatus: {status}\n"
+        f"---\nproject: {project}\n{title_line}date: 2026-09-01\ntype: project-main\nstatus: {status}\n"
         f"---\n\n# {project}\n\n## 当前状态\n\n## 下一步\n{step}\n\n## 阻塞\n{blocked}\n\n"
         f"## 决策记录\n\n## 跟进事项\n{followup}\n",
         encoding="utf-8",
@@ -72,3 +74,33 @@ def test_no_noise_when_blocks_empty(tmp_path: Path) -> None:
     assert "block-Quiet" not in ids
     assert "follow-Quiet" not in ids
     assert "next-Quiet" not in ids
+
+
+def test_anti_stall_title_uses_display_name_not_project_id(tmp_path: Path) -> None:
+    """信号标题直接显示给使用者 ⇒ 用档案中文显示名，不出现项目 ID。
+
+    2026-09-14 真机真实数据验证发现：简报上出现「hii-affairs 阻塞：…」这种中英混杂。
+    变异验证：把 `display` 退回 `project.name`，本用例必须红。
+    """
+    work = tmp_path / "Work"
+    vault = work / "_vault"
+    _archive(
+        vault,
+        "huoman-logistics",
+        title="活满后勤&行政",
+        blocked="合同条款未落书面",
+        followup="- [ ] 1977 酒店合同",
+    )
+    collected = collect_signals(work, vault, timezone="Asia/Shanghai", facts_source=None)
+    by_id = {sig.signal_id: sig for sig in collected.candidates}
+
+    blocked_title = by_id["block-huoman-logistics"].title
+    assert blocked_title.startswith("活满后勤&行政 阻塞：")
+    assert "huoman-logistics" not in blocked_title
+    # 信号 id 与来源仍用稳定项目 ID（那是机器标识，不进界面文案）
+    assert by_id["block-huoman-logistics"].project == "huoman-logistics"
+    assert by_id["block-huoman-logistics"].source_ref == "projects/huoman-logistics.md#阻塞"
+
+    follow_title = by_id["follow-huoman-logistics"].title
+    assert follow_title.startswith("跟进 活满后勤&行政：")
+    assert "huoman-logistics" not in follow_title

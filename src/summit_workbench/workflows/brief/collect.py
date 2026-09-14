@@ -168,12 +168,15 @@ def _thread_extra_signals(vault_dir: Path, project: ProjectState) -> list[Action
     if not project.registered or project.status != "active":
         return []
     blocked, followup_open = project_archive_state(vault_dir, project.name)
+    # 2026-09-14：信号标题是直接给使用者看的，用档案里的中文显示名（`title`），
+    # 不用项目 ID——否则简报上会出现「hii-affairs 阻塞：…」这种中英混杂（真实数据验证发现）。
+    display = (project.title or "").strip() or project.name
     signals: list[ActionSignal] = []
     if blocked:
         signals.append(
             ActionSignal(
                 signal_id=f"block-{project.name}",
-                title=f"{project.name} 阻塞：{blocked}",
+                title=f"{display} 阻塞：{blocked}",
                 category=ActionCategory.ANTI_STALL,
                 evidence=EvidenceLevel.E2,
                 source_ref=f"projects/{project.name}.md#阻塞",
@@ -184,7 +187,7 @@ def _thread_extra_signals(vault_dir: Path, project: ProjectState) -> list[Action
         signals.append(
             ActionSignal(
                 signal_id=f"follow-{project.name}",
-                title=f"跟进 {project.name}：{followup_open[0]}",
+                title=f"跟进 {display}：{followup_open[0]}",
                 category=ActionCategory.MAIN_PUSH,
                 evidence=EvidenceLevel.E2,
                 source_ref=f"projects/{project.name}.md#跟进事项",
