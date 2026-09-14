@@ -680,5 +680,25 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
 | BUG-1「首次发布到远端」修复 + 回归测试 | ☐ |
 | 新增「知识沉淀」审批落点（第 7 个 `RouteTarget`） | ✓ 提交 `c678b08`：目标显式指定（`sink_target`）、只接受 vault 相对路径（拒穿越）、目标页缺失即拒批、带出处与幂等标记；15 例新测试 + 变异验证 |
 | Workbench「决策」页（API + UI + 路由契约快照） | ☐ |
-| **重新打包并重装 app**（R2/R1 只在源码生效，GUI 仍是旧切块与旧权重） | ☐ |
+| **重新打包并重装 app** | ✓ 0.4.9 build 37 已构建并安装（`dist/releases/0.4.9/arm64/`，SHA-256 `54b0b912…`）；GUI 实跑验证：R2 的一级章节锚点已可见（0.4.8 里不存在）、Danny 验收题逐条答出、前端产物含新落点「知识沉淀」 |
 | Q1 的深层短板：宽泛问题（「当前达成的商标共识规范是什么」）需要「**问题点名某主题 → 该主题簇页的 `## 关键结论` 优先**」这条路，当前只靠词项匹配还排不上来 | ☐ |
+
+#### Phase 5 打包重装 · 两条操作经验（下次发布照做）
+
+1. **升版本号后必须刷新 venv 的 distribution 元数据**：`uv pip install -e . --no-deps`。
+   `server_version` 来自 `importlib.metadata`（不是 `pyproject`），不刷新的话打包出的 server
+   会在诊断里报旧版本号——本次实测：app 是 0.4.9 而 `/api/version.server_version` 报 0.4.8，
+   于是又重建了一次（build 37）。
+2. **发布脚本拒绝覆盖已存在的发布目录**：同版本重建要先按仓库既有先例把它移开
+   （`dist/releases/0.4.9.superseded-b36`），或在脚本报错处换 `RELEASE_OUTPUT_DIR`。
+3. **传凭据给构建脚本不要用 `eval "$(heredoc)"`**：本次那样写会让 shell 解析出错，
+   把非机密的 `app_id` 打进了日志（`app_secret` 未泄漏）。改为先写 0600 临时 env 文件、
+   `source` 后立即删除。
+
+#### Phase 5 顺带发现的观测（未修，记录在案）
+
+- **飞书授权状态缓存不持久**：`~/Library/Application Support/SummitWorkbench/feishu-auth-state.json`
+  是**内存态缓存**（进程内 `_items` 整体覆写），app 重启后变空。真实 refresh token 在 Keychain、
+  功能不受影响——本次实测：重启后该文件 `items: {}`，但 `POST /api/run/brief` 返回
+  「已生成今日简报（健康度 ok）」。**风险**：若界面授权徽标直接读这个文件，重启后会误显示未授权。
+  待确认后决定是否改为启动时从 Keychain 重建缓存。
