@@ -1,7 +1,7 @@
 import { viewElement } from './dom';
 
 /** 外壳的六个 tab：顺序即 DOM 顺序，也是 render() 的派发顺序。 */
-export const TAB_IDS = ['today', 'review', 'ask', 'projects', 'guide', 'settings'] as const;
+export const TAB_IDS = ['today', 'review', 'ask', 'projects', 'decisions', 'guide', 'settings'] as const;
 
 export type ShellTab = (typeof TAB_IDS)[number];
 
@@ -23,6 +23,7 @@ export function applyTabChrome(tab: ShellTab): void {
     review: viewElement('review') as HTMLElement,
     ask: viewElement('ask') as HTMLElement,
     projects: viewElement('projects') as HTMLElement,
+    decisions: viewElement('decisions') as HTMLElement,
     guide: viewElement('guide') as HTMLElement,
     settings: viewElement('settings') as HTMLElement,
   };

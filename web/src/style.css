@@ -876,3 +876,34 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .conflict-path { align-items: stretch; flex-direction: column; gap: 5px; }
   .conflict-path-action { flex-basis: auto; }
 }
+
+/* ---- 决策台账页（features/decisions）---- */
+.decisions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin: 12px 0;
+}
+.decisions-bar label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.decisions-counts {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-bottom: 8px;
+}
+.decision-card .card-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.decision-rel {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-top: 6px;
+}

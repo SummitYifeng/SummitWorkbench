@@ -203,9 +203,11 @@ def create_app(
     register_review_apply_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_thread_routes(dependencies, runtime=runtime)
 
+    from summit_workbench.webapp.routers.decisions import register_decision_routes
     from summit_workbench.webapp.routers.projects import register_project_read_routes
 
     register_project_read_routes(dependencies)
+    register_decision_routes(dependencies)
     register_thread_document_routes(dependencies, runtime=runtime)
     register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_brief_routes(dependencies, runtime=runtime)

@@ -62,6 +62,7 @@ import {
 } from './features/sync';
 import { mountUndo, openUndoModal } from './features/undo';
 import { mountGuide } from './features/guide';
+import { renderDecisions, resetDecisionsForWorkspace } from './features/decisions';
 import {
   mountThreads,
   openArtifactModal,
@@ -126,7 +127,7 @@ import {
   type TodayActions,
 } from './features/today';
 
-type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
+type Tab = 'today' | 'review' | 'ask' | 'projects' | 'decisions' | 'guide' | 'settings';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -362,6 +363,7 @@ async function doCheckVersion(reason: string): Promise<void> {
     restoredDraft = null;
     resetTodayForWorkspace();
     resetProjectsForWorkspace();
+    resetDecisionsForWorkspace();
     loadedAskWorkspace = workspaceId;
     reloadAskStore();
   }
@@ -403,6 +405,8 @@ function render(): void {
     renderReviewView();
   } else if (tab === 'projects') {
     renderProjects(viewElement('projects') as HTMLElement, state);
+  } else if (tab === 'decisions') {
+    void renderDecisions();
   } else if (tab === 'guide') {
     mountGuide(viewElement('guide') as HTMLElement);
   } else if (tab === 'settings') {
@@ -809,6 +813,8 @@ async function refreshState(): Promise<boolean> {
   if (tab === 'today') renderToday(document.getElementById('view-today') as HTMLElement);
   else if (tab === 'projects') {
     renderProjects(document.getElementById('view-projects') as HTMLElement, state);
+  } else if (tab === 'decisions') {
+    void renderDecisions();
   }
   return true;
 }

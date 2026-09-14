@@ -41,6 +41,21 @@
     "method": [
       "GET"
     ],
+    "path": "/api/decisions",
+    "request_fields": [
+      "domain",
+      "project",
+      "q",
+      "status"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/diagnostics/export",
     "request_fields": [],
     "request_model": null,
