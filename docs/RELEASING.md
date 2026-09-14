@@ -33,13 +33,12 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 49）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 50）
 
-SHA-256：`d4ecfe4aacecdbf06c846018b3289b0450781fdaf08c1fe5671ec594bc1f2b49`
+SHA-256：`5fcd183f7b6e8dea2b73cc5baef1000fd1aa9ed03d930c8cdd855fc7ba86888b`
 
-版本 `0.4.9`、build `49`，构建来源提交 `9831168`（原生壳与首启向导文案口径：内部枚举 /
-英文技术词不再给使用者看 + 修更新提示的字面量缺陷），
-对应前端 build identity 为 `v2026.09.14-9831168-92261f7c`。
+版本 `0.4.9`、build `50`，构建来源提交 `02a59c4`（把原生壳界面文案抽成纯函数 `UICopy`，
+加上功能单测与变异验证），对应前端 build identity 为 `v2026.09.14-02a59c4-92261f7c`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -58,7 +57,8 @@ SHA-256：`d4ecfe4aacecdbf06c846018b3289b0450781fdaf08c1fe5671ec594bc1f2b49`
 | 46 | `5437ceb` | 简报防停摆标题改用档案中文显示名 + 修 ruff E501 |
 | 47 | `70c3303` | 简报出处标签先剥 `#区块` 锚点 + 项目自身页面引用不重复显示项目 ID |
 | 48 | `d4bf2aa` | 同步横幅收窄（一行短状态 + 建议句 + 内部标识折叠）；分叉态主按钮改「处理冲突」 |
-| 49 | `9831168` | 原生壳 + 首启向导文案口径（更新提示字面量缺陷、`rawValue`/`compatibility` 枚举不外露、英文技术词进括号、向导 3 处漏转义）（**当前装机**） |
+| 49 | `9831168` | 原生壳 + 首启向导文案口径（更新提示字面量缺陷、`rawValue`/`compatibility` 枚举不外露、英文技术词进括号、向导 3 处漏转义） |
+| 50 | `02a59c4` | 界面文案抽成纯函数 `UICopy`（更新提示 / 服务状态中文名）+ 原生功能单测 + 变异验证（**当前装机**） |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -97,6 +97,11 @@ SHA-256：`d4ecfe4aacecdbf06c846018b3289b0450781fdaf08c1fe5671ec594bc1f2b49`
   `it-development`），**`.obsidian` 已不出现**；同一进程下 `GET /api/projects/view?name=hr`
   返回的 `## 当前状态` 已是有序列表块、正文里不再有「素材放 / 已示范一次 / 建对象页」这类建库内容。
   变体验证见 `tests/unit/test_ignore_dirs.py`（去掉点开头判据 ⇒ 4 条红）。
+- 原生壳文案的功能单测（build 50）：`scripts/test-native-automation.sh` 现在跑两套
+  （automation + UI copy）；3 条变异验证全部让脚本以 **133** 退出并给出中文断言消息。
+  ⚠️ 这类文案是**短中文字面量（≤15 字节）**，Swift 会 small-string 内联 ⇒ **二进制搜不到**
+  （校准：「关闭」「确定」「取消」也是 0 命中，而 18 字节的「复制诊断信息」能查到）。
+  **不要再拿 `strings` 去验证它们**，见证据文件 §5.1。
 - 原生壳 + 向导实测（build 49）：**隔离 `HOME` 启动已安装的打包服务**并 GET 受限 app 的 `/`
   （首启向导），核对中文兼容性映射 / 短标识 / 3 处转义全部在、枚举直贴为 0。
   ⚠️ 必须带 `--static-dir`，否则服务拒绝启动。证据见

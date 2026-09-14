@@ -72,3 +72,46 @@ DMG：dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg
 ================================================================================
 `copyDiagnostics()` 里仍是英文（`App frontend build:` / `State: <rawValue>`）——
 那是「复制诊断信息」给支持人员的文本，必须精确；测试里专门写了这条例外。
+
+================================================================================
+五、附录（build 50）：两条「未验证」的收口 —— 换掉走不通的取证方式
+================================================================================
+代码提交：02a59c4　build 50（git_revision=02a59c4、frontend_build=v2026.09.14-02a59c4-92261f7c）
+
+### 5.1 「无法从二进制反查中文串」的根因（已查清）
+不是修复没生效，而是**这些文案是短中文字面量（≤15 UTF-8 字节）**，Swift 的
+small-string 优化会把它们**内联进代码、不放数据段** ⇒ `strings` 与原始字节搜索都查不到。
+
+校准证据（同一份二进制，build 49）：
+
+    代码里确实存在、且长度 ≤15 字节：关闭 ×0、确定 ×0、取消 ×0、好 ×0、端口被占用 ×0、已就绪 ×0
+    代码里确实存在、且长度 ≥16 字节：复制诊断信息 ×4、正在探测服务 ×1、反复启动失败 ×2
+
+第一次做这条验证时被这个现象误导过（以为「端口被占用」没进包），记在这里避免下次重走。
+
+### 5.2 换成的做法：把文案抽成纯函数 + 功能单测（build 50）
+- 新增 `native/SummitWorkbench/UICopy.swift`：`updateAvailable(version:)` 与
+  `supervisorState(_:)`（11 个映射，含 `nil`）；
+- 新增 `native/tests/UICopyTests.swift` + `scripts/test-native-automation.sh` 第二个运行段；
+- 顺带修边界：版本号为空/全空白 → 「发现可用更新」（不留空冒号）。
+
+实测（build 50 装机后复跑）：
+
+    $ bash scripts/test-native-automation.sh
+    native automation service manager tests passed
+    native UI copy tests passed                              # 退出码 0
+
+变异验证（把修好的地方改回去，必须红）：
+
+    updateAvailable 退回 "发现可用更新 (version)"  → 退出码 133，报「更新提示必须带上实际版本号」
+    .crashLoop 退回 rawValue                       → 退出码 133，报「状态 crashLoop 的中文名泄漏了 rawValue」
+    .conflict  退回 rawValue                       → 退出码 133，报「状态 conflict 的中文名应为「端口被占用」，实际「conflict」」
+    还原后                                          → 退出码 0
+
+### 5.3 build 50 装机后仍然能做的二进制取证（≥16 字节那部分）
+    正在探测服务 ✓ ×1   反复启动失败 ✓ ×2   内置的服务程序 ✓ ×2
+    自动化辅助程序 ✓ ×4   构建清单 ✓ ×2
+    端口被占用 ×0、已就绪 ×0 ← **预期如此**（短字面量走 small-string 优化，见 5.1）
+
+结论：这两条从「未验证」升级为「**有功能单测 + 变异验证**」。验证方式换了
+（二进制取证对短字面量本来无效），覆盖强度比原来高。

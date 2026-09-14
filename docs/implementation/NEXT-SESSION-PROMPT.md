@@ -43,8 +43,8 @@
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 49**
-  （`frontend_build v2026.09.14-9831168-92261f7c`、`git_revision 9831168`）；同步状态 `ready`，ahead 0 / behind 0。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 50**
+  （`frontend_build v2026.09.14-02a59c4-92261f7c`、`git_revision 02a59c4`）；同步状态 `ready`，ahead 0 / behind 0。
   Studio 与 Air **两台机器均已接入**并实测四向同步通过。
 - 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
@@ -194,9 +194,12 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 > - ~~审计只覆盖 `web/src`，原生壳与首启向导未扫~~ —— **已扫并修（build 49）**：
 >   更新提示的字面量缺陷、`SupervisorState.rawValue` / `compatibility` 枚举不外露、
 >   英文技术词打头的错误文案、向导 3 处漏转义。守卫 `tests/unit/test_ui_copy_chinese_first.py`
->   （5 组 + 5 条变异）。⚠️ 原生壳侧**无法从装机二进制反查中文串**（`strings` 看不到 Swift
->   中文字面量），`.available` 更新提示也无法真机触发 —— 这两条是已知的**未验证**。
->   启动隔离服务必须带 `--static-dir`（否则拒绝启动）。**不要再重做**。
+>   （5 组 + 5 条变异）。**两条原本标为「未验证」的已在 build 50 关掉**：
+>   根因是这些文案为**短中文字面量（≤15 字节）**，Swift 的 small-string 优化会内联进代码
+>   ⇒ **二进制里搜不到**（校准：「关闭」「确定」「取消」也 0 命中，18 字节的「复制诊断信息」能查到）。
+>   改为把文案抽成纯函数 `native/SummitWorkbench/UICopy.swift` + `native/tests/UICopyTests.swift`
+>   做功能单测，3 条变异验证全红（脚本退出码 133）。
+>   ⚠️ **不要再拿 `strings` 去验证这类短中文文案**；启动隔离服务必须带 `--static-dir`。**不要再重做**。
 > - `/api/decisions` 现在没有界面入口（保留为契约 API + `index/decisions.md` 生成）；
 >   确认长期不用再动 API。
 > - ~~使用者写入的日志与 `hr` 页「当前状态」不一致~~ —— **已回填（2026-09-14 晚，vault `eb99c83`）**：

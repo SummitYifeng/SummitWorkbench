@@ -1694,3 +1694,24 @@ generalization 部分基本跑完，下一步转 Overleaf 做文字修改。库�
 - `.available` 的更新提示需要可用更新源，本机 `update_feed_url` 未配置 ⇒ **无法真机触发**；
 - 启动隔离服务时**必须带 `--static-dir`**（否则报「必须指向 bundle 内的 web/static」）——
   这条已写进证据文件，下次别踩。
+
+#### 追加（build 50）：把两条「未验证」关掉 —— 换掉走不通的取证方式
+
+使用者追问「已知不足是否修复了」。查清后：**「原生壳无法从二进制反查中文串」不是修复没生效，
+而是取证方式对这些文案本来无效**——它们是**短中文字面量（≤15 UTF-8 字节）**，Swift 的
+small-string 优化会内联进代码而不放数据段。校准：同一份二进制里，代码中确实存在的
+「关闭」「确定」「取消」「好」全是 **0 命中**，而 18 字节的「复制诊断信息」能找到；
+我新加的「端口被占用」（15 字节）查不到、「反复启动失败」（18 字节）查得到。
+⚠️ 第一次做这条验证时被它误导过（以为「端口被占用」没进包），已把校准数据写进证据文件。
+
+**改法**：新增 `native/SummitWorkbench/UICopy.swift` 把「更新提示」与「服务状态中文名」
+抽成纯函数（`updateAvailable(version:)` / `supervisorState(_:)`），`LifecycleCoordinator` 改调它；
+新增 `native/tests/UICopyTests.swift`，`scripts/test-native-automation.sh` 加第二个运行段。
+顺带修一个边界：版本号为空/全空白 → 「发现可用更新」（不留空冒号）。
+
+**验证**：`bash scripts/test-native-automation.sh` 两套全过；**3 条变异验证**
+（更新提示退回字面量 / `.crashLoop` 退回 rawValue / `.conflict` 退回 rawValue）
+全部让脚本以 **133** 退出并给出中文断言消息，还原后 0。Python 侧守卫同步指向新位置
+并加严（`UICopy.swift` 的**代码行**不许出现 `(version)`；11 个中文状态名逐个在册）。
+
+⇒ 这两条从「未验证」升级为「**有功能单测 + 变异验证**」，覆盖强度比原来高。
