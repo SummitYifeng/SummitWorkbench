@@ -6,8 +6,9 @@
 > 全局查找交给「提问」）；【今日页】改上下两块（会议在上紧凑、待办任务在下占满整宽）；
 > 「追加推进日志」项目勾选一项一行、英文 ID 收进 hover；全局口径「主显中文名、英文 ID 放次要位置、
 > 只有引用来源保留完整路径」；审计出的 A 类（显示）/ B 类（布局）/ C 类（信息架构）全部处置。
-> 装机 **build 48**（随后又收窄了同步横幅）。审计全表与逐条处置见
-> `docs/implementation/UI-AUDIT-2026-09-14.md`。
+> 装机 **build 49**（随后依次收窄了同步横幅、扫了原生壳与首启向导）。审计全表与逐条处置见
+> `docs/implementation/UI-AUDIT-2026-09-14.md` 与
+> `docs/acceptance/evidence/native-shell-copy-2026-09-14-build49.txt`。
 > 上一轮（内容质量与「工作 vs 建库」边界）的校正见下方 §七 的结案块。
 
 你在 `/Users/yifengstudio/Documents/GitHub/SummitWorkbench` 里继续一个「本地优先」的 macOS 应用项目：
@@ -42,8 +43,8 @@
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 48**
-  （`frontend_build v2026.09.14-d4bf2aa-92261f7c`、`git_revision d4bf2aa`）；同步状态 `ready`，ahead 0 / behind 0。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 49**
+  （`frontend_build v2026.09.14-9831168-92261f7c`、`git_revision 9831168`）；同步状态 `ready`，ahead 0 / behind 0。
   Studio 与 Air **两台机器均已接入**并实测四向同步通过。
 - 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
@@ -74,7 +75,7 @@
 
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
-.venv/bin/python -m pytest --cov -q          # 期望 1195 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
+.venv/bin/python -m pytest --cov -q          # 期望 1200 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # 全过（文件数随未跟踪产物浮动，别写死）
 .venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
@@ -190,8 +191,12 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 > 🟡 **UI 优化轮的遗留（2026-09-14，build 47）**，都不阻塞使用：
 > - B 类（排版）是**静态推断**：请在**窄窗口**里再看一眼项目详情双列与日志弹窗
 >   （本轮已按最保守写法改：可收缩列 + `overflow-wrap` + 窄屏单列）。
-> - 审计**只覆盖 `web/src`**：原生 macOS 壳（`native/`、`packaging/`、`deploy/`）与
->   `webapp/onboarding_view.py` 内嵌页面的文案**还没扫**（仍是下一轮的候选）。
+> - ~~审计只覆盖 `web/src`，原生壳与首启向导未扫~~ —— **已扫并修（build 49）**：
+>   更新提示的字面量缺陷、`SupervisorState.rawValue` / `compatibility` 枚举不外露、
+>   英文技术词打头的错误文案、向导 3 处漏转义。守卫 `tests/unit/test_ui_copy_chinese_first.py`
+>   （5 组 + 5 条变异）。⚠️ 原生壳侧**无法从装机二进制反查中文串**（`strings` 看不到 Swift
+>   中文字面量），`.available` 更新提示也无法真机触发 —— 这两条是已知的**未验证**。
+>   启动隔离服务必须带 `--static-dir`（否则拒绝启动）。**不要再重做**。
 > - `/api/decisions` 现在没有界面入口（保留为契约 API + `index/decisions.md` 生成）；
 >   确认长期不用再动 API。
 > - ~~使用者写入的日志与 `hr` 页「当前状态」不一致~~ —— **已回填（2026-09-14 晚，vault `eb99c83`）**：

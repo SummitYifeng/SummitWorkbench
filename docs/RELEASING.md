@@ -33,12 +33,13 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 48）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 49）
 
-SHA-256：`b779c9e1d222f48d4a51efd26bb42fb0691ddc5d75215d1d6c62da22b19bfd2b`
+SHA-256：`d4ecfe4aacecdbf06c846018b3289b0450781fdaf08c1fe5671ec594bc1f2b49`
 
-版本 `0.4.9`、build `48`，构建来源提交 `d4bf2aa`（同步横幅收窄：一行短状态 + 一句建议 +
-内部信息折叠），对应前端 build identity 为 `v2026.09.14-d4bf2aa-92261f7c`。
+版本 `0.4.9`、build `49`，构建来源提交 `9831168`（原生壳与首启向导文案口径：内部枚举 /
+英文技术词不再给使用者看 + 修更新提示的字面量缺陷），
+对应前端 build identity 为 `v2026.09.14-9831168-92261f7c`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -56,7 +57,8 @@ SHA-256：`b779c9e1d222f48d4a51efd26bb42fb0691ddc5d75215d1d6c62da22b19bfd2b`
 | 45 | `bb02cfc` | UI 优化轮主体（删【决策】页签 / 今日页上下两块 / 中文优先口径）。⚠️ **这个包已不在本机**：准备 build 46 时误 `rm -rf dist/releases/0.4.9`，把 b45 的产物一并删掉了；代码仍可通过提交 `bb02cfc` 复现 |
 | 46 | `5437ceb` | 简报防停摆标题改用档案中文显示名 + 修 ruff E501 |
 | 47 | `70c3303` | 简报出处标签先剥 `#区块` 锚点 + 项目自身页面引用不重复显示项目 ID |
-| 48 | `d4bf2aa` | 同步横幅收窄（一行短状态 + 建议句 + 内部标识折叠）；分叉态主按钮改「处理冲突」（**当前装机**） |
+| 48 | `d4bf2aa` | 同步横幅收窄（一行短状态 + 建议句 + 内部标识折叠）；分叉态主按钮改「处理冲突」 |
+| 49 | `9831168` | 原生壳 + 首启向导文案口径（更新提示字面量缺陷、`rawValue`/`compatibility` 枚举不外露、英文技术词进括号、向导 3 处漏转义）（**当前装机**） |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -95,6 +97,11 @@ SHA-256：`b779c9e1d222f48d4a51efd26bb42fb0691ddc5d75215d1d6c62da22b19bfd2b`
   `it-development`），**`.obsidian` 已不出现**；同一进程下 `GET /api/projects/view?name=hr`
   返回的 `## 当前状态` 已是有序列表块、正文里不再有「素材放 / 已示范一次 / 建对象页」这类建库内容。
   变体验证见 `tests/unit/test_ignore_dirs.py`（去掉点开头判据 ⇒ 4 条红）。
+- 原生壳 + 向导实测（build 49）：**隔离 `HOME` 启动已安装的打包服务**并 GET 受限 app 的 `/`
+  （首启向导），核对中文兼容性映射 / 短标识 / 3 处转义全部在、枚举直贴为 0。
+  ⚠️ 必须带 `--static-dir`，否则服务拒绝启动。证据见
+  `docs/acceptance/evidence/native-shell-copy-2026-09-14-build49.txt`（含「原生壳侧无法从
+  二进制反查中文串、`.available` 更新提示无法真机触发」两条**未验证**的如实标注）。
 - 同步横幅实测（build 48）：横幅只在**非 ready / 非 unconfigured** 状态出现，装机时本机是
   `ready`（横幅隐藏）⇒ 无法在真机上直接看到，因此这一项的证据是
   `web/scripts/test-sync-render.mjs`（DOM 桩 + 真实形状的 payload：`local-ahead` 与

@@ -1,0 +1,74 @@
+SummitWorkbench · 2026-09-14 原生壳与首启向导文案口径（扫描 → 修复 → 真机产物复验）
+================================================================================
+代码提交：9831168
+已安装 App：0.4.9 build 49（git_revision=9831168、frontend_build=v2026.09.14-9831168-92261f7c）
+DMG：dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg
+      SHA-256 见同目录 SHA256SUMS（本轮由 `dist/releases/0.4.9/arm64/SHA256SUMS` 复核）
+
+范围：`web/src` 之外的两块——原生 macOS 壳（`native/SummitWorkbench/*.swift`）与
+首启向导（`src/summit_workbench/webapp/onboarding_view.py` 内嵌 HTML/JS）。
+
+================================================================================
+一、扫出的四类问题
+================================================================================
+1. 字面量缺陷：`LifecycleCoordinator.swift` 的更新提示写死 `"发现可用更新 (version)"`
+   —— `(version)` 原样显示，实际版本号丢失。
+2. 内部枚举直贴：
+   - `presentFailure()` 把 `SupervisorState.rawValue` 插进弹窗
+     ⇒ 使用者看到「服务尚未就绪（状态：crashLoop）。」；
+   - 向导确认页把后端 `compatibility` 枚举直贴
+     ⇒ 「兼容性：read-only-upgrade-required」。
+3. 英文技术词打头的错误文案（会经 `presentError(detail:)` 弹给使用者）：
+   `"无法定位 bundle server"`、`"bundle server 不存在或不可执行：<路径>"`、
+   `"build manifest 字段无效"`、`"缺少 Resources/build-manifest.json"`；
+   另有 5 条 `"automation helper …"`（只进日志，一并统一口径）。
+4. 向导里 3 处错误文案漏了 `escapeHtml`（同一文件其它位置本来就都转义）。
+
+================================================================================
+二、修复后的真机产物复验
+================================================================================
+方法（隔离 HOME 让**已安装产物**进首启模式；主 App 不受影响）：
+
+    TMPHOME=/tmp/wb-onb3; mkdir -p "$TMPHOME/Documents/Work"
+    APP=/Applications/SummitWorkbench.app
+    env HOME="$TMPHOME" WB_PANEL_MODE=production \
+      "$APP/Contents/Resources/server/SummitWorkbenchServer" \
+      --host 127.0.0.1 --port 8799 --work-root "$TMPHOME/Documents/Work" \
+      --static-dir "$APP/Contents/Resources/web/static"
+    # 然后 GET http://127.0.0.1:8799/  （受限 app 的 `/` 就是首启向导）
+    # ⚠️ 必须给 --static-dir，否则服务拒绝启动：
+    #    "WB_STATIC_DIR/--static-dir 必须指向 bundle 内的 web/static"
+
+实测结果（build 49 的打包产物）：
+
+    向导 HTML 长度： 15129
+      含 compatibilityLabels                        : True
+      含 compatibilityText                          : True
+      含 shortId                                    : True
+      含 工作区标识                                      : True
+      含 'read-write':'可读写'                         : True
+      含 'cannot-open':'无法打开：版本或标识不匹配'              : True
+      漏转义 error.message（应为 0）: 0
+      escapeHtml(error.message) 次数 : 3
+      直接贴枚举（应为 0）: 0
+
+复验后已终止该临时进程并删除隔离 HOME；主 App（端口 0，build 49 / rev 9831168）继续运行。
+
+================================================================================
+三、原生壳：证据强度如实标注
+================================================================================
+- `xcrun swiftc -typecheck`（AppKit/WebKit/Security/ServiceManagement/CryptoKit 全量源码）通过；
+- `bash scripts/test-native-automation.sh` 通过；
+- `tests/unit/test_ui_copy_chinese_first.py` 5 组 + **5 条变异验证**（逐条单独做，全部变红后还原转绿）；
+- 构建自身门禁通过，`release-metadata.json` 的 `git_commit = 9831168` ⇒ 装机二进制由受守卫的源码构建。
+
+⚠️ **没能做到的**：`strings` 看不到 Swift 的中文字面量（用已存在的
+`"退出 SummitWorkbench"` 校准也是 0 命中），因此**无法从装机二进制里反查这些中文串**；
+`.available` 的更新提示需要可用更新源（本机 `update_feed_url` 未配置 ⇒ 状态是
+`unavailable`），也无法真机触发。这两条属「未验证」，不要当成已验证。
+
+================================================================================
+四、有意保留（不算缺陷）
+================================================================================
+`copyDiagnostics()` 里仍是英文（`App frontend build:` / `State: <rawValue>`）——
+那是「复制诊断信息」给支持人员的文本，必须精确；测试里专门写了这条例外。

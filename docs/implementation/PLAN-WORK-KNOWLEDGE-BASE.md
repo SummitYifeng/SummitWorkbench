@@ -1654,3 +1654,43 @@ generalization 部分基本跑完，下一步转 Overleaf 做文字修改。库�
 旧的置中按钮排为 0。pytest 1195 passed / 1 skipped / 83.85%，ruff / format / mypy / secret_scan 全过。
 ⚠️ 横幅只在非 ready 状态出现，装机时本机是 `ready` ⇒ 这一项**没有真机截图级证据**，
 只有 DOM 桩 + 真实 payload 与变异验证（已在 `RELEASING.md` 如实标注）。
+
+### 原生壳 + 首启向导文案口径 —— 已完成（build 49）
+
+使用者选择题 ③「扫 UI 遗留：原生壳 + 首启向导」。这两块在 `web/src` 之外，前几轮审计一直没覆盖。
+
+#### 扫出四类问题（都已修）
+
+1. **字面量缺陷**：`LifecycleCoordinator.swift` 的更新提示写死 `"发现可用更新 (version)"`
+   —— 实际版本号压根没显示；
+2. **内部枚举直贴**：`presentFailure()` 插 `SupervisorState.rawValue`
+   ⇒「服务尚未就绪（状态：crashLoop）。」；向导确认页贴 `compatibility` 枚举
+   ⇒「兼容性：read-only-upgrade-required」；
+3. **英文技术词打头的错误文案**（会弹给使用者）：`"无法定位 bundle server"`、
+   `"bundle server 不存在或不可执行：<路径>"`、`"build manifest 字段无效"`、
+   `"缺少 Resources/build-manifest.json"`；另 5 条 `"automation helper …"`（只进日志）一并统一；
+4. **向导 3 处错误文案漏 `escapeHtml`**（同文件其它位置本来就转义）。
+
+修法：`supervisorStateLabel(_:)` 十个状态中文映射；错误文案改中文打头、技术词进括号
+（「App 内置的服务程序（bundle server）」）；向导加 `compatibilityLabels` 三个枚举值的中文映射
+与 `shortId()`（工作区 UUID 只显示前 8 位、完整值进 `title`）。
+
+#### 验证
+
+- 新增 `tests/unit/test_ui_copy_chinese_first.py`（5 组）+ **5 条变异验证**逐条单独做、全部变红后还原；
+  ⚠️ 其中「弹窗退回 `rawValue`」**第一次变异没红**——原守卫只查调用行，漏掉「先算好 detail 再传入」
+  的写法；按变异结果把守卫加严为「除 `copyDiagnostics()` 外，任何字符串插值里都不许有 `rawValue`」；
+- `xcrun swiftc -typecheck`（全量原生源码）与 `scripts/test-native-automation.sh` 通过；
+- **真机复验**：隔离 `HOME` 启动**已安装的**打包服务进首启模式，GET 受限 app 的 `/` 拿到向导 HTML
+  ⇒ 中文映射 / 短标识 / 3 处转义都在、枚举直贴为 0（证据：
+  `docs/acceptance/evidence/native-shell-copy-2026-09-14-build49.txt`）；
+- pytest 1200 passed / 1 skipped / 83.85%、ruff（486 文件）/ format / mypy（365 文件）/ secret_scan、前端 16 组。
+
+#### 已知不足 / 未验证（如实标注）
+
+- **原生壳侧无法从装机二进制反查中文串**：`strings` 看不到 Swift 的中文字面量
+  （用已存在的 `"退出 SummitWorkbench"` 校准也是 0 命中），所以那几条修复的证据是
+  「源码守卫 + 变异验证 + 类型检查 + 构建门禁 + `git_commit` 对应」，不是二进制取证；
+- `.available` 的更新提示需要可用更新源，本机 `update_feed_url` 未配置 ⇒ **无法真机触发**；
+- 启动隔离服务时**必须带 `--static-dir`**（否则报「必须指向 bundle 内的 web/static」）——
+  这条已写进证据文件，下次别踩。
