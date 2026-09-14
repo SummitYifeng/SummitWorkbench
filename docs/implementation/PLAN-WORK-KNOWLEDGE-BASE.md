@@ -764,14 +764,20 @@ R2 修正（文首 H1＝笔记标题，不切块）、`kb_index_people.py` 保�
 （`问答返回非 JSON：Unterminated string…`）会直接抛给使用者。现在改为带「收窄材料」提示重试一次，
 仍截断则回报可操作提示（问得更具体 / 提高 `max_output_tokens`）。提交 `425dff3`。
 
-### Phase 7 · Air 接入（备用机器）—— Studio 侧已完成，Air 侧待在那台机器上执行
+### Phase 7 · Air 接入（备用机器）—— **已接入并完成一次真实双向同步**（2026-09-14）
 
 | 项 | 状态 |
 |---|---|
-| Studio 作为主设备就绪 | ✓ 0.4.9 **build 40** 已装并实跑；`/api/sync/status = ready`，ahead 0 / behind 0；`automation_primary_device_id` = Studio，generation 1 |
+| Studio 作为主设备就绪 | ✓ 0.4.9 **build 43** 已装并实跑；`/api/sync/status = ready`，ahead 0 / behind 0；`automation_primary_device_id` = `0617854a-…`（Studio），generation 1 |
 | 远端已是最新库 | ✓ SOP 定稿提交已推送（vault 仓库 `d5f224d`） |
-| Air 接入路径**已在本机拿真远端真凭据验过** | ✓ 用 workspace 级钥匙串凭据对真实私有远端做暂存克隆：成功、marker 存在、兼容性 `read-write`、workspace id 一致；**另一设备 id → `secondary`**、Studio 自身 → `automation-primary`；staging 与临时目录已清理 |
-| Air 侧操作 | ☐ 需在 Air 上做：装同一 build → 向导「从另一台 Mac 克隆」→ 四项值 → 确认 → 连模型/飞书。作业单见 `docs/implementation/AIR-MACHINE-HANDOFF.md` |
+| Air 接入路径**已在本机拿真远端真凭据验过** | ✓ 用 workspace 级钥匙串凭据对真实私有远端做暂存克隆：成功、marker 存在、兼容性 `read-write`、workspace id 一致；**另一设备 id → `secondary`**、Studio 自身 → `automation-primary` |
+| **Air 侧：完成向导接入** | ✓ 2026-09-14 使用者实机：build 42 上以**绝对路径**通过首启向导（当时 `~用户名` 会让 build 42 崩，见「首启向导实机故障轮」），随后替换为 **build 43** |
+| **Air 侧：写 → 提交 → 推送** | ✓ 在 Air 上用「我想记一件事」写入 `air接入冒烟`，自动提交 `875f56e wb: capture [331ca330-…]` 并**推送成功**——**PAT 的写权限据此确认可用**（克隆只需读，推送需要写，这是此前唯一没验过的风险点） |
+| **Studio 侧：拉取** | ✓ `POST /api/sync/run` → fetch→fast-forward 到 `875f56e`，两端 `ready` **0/0**；录入原文保真（`append_global_inbox` 原样写 `[ ] {description}`） |
+| Air 侧：作业单 §3 的其余三条 | ☐ 待使用者回报：① 角色显示 **secondary** 且主设备是 `0617854a-…`；② 真问题能答出**块级出处**且可点开；③「决策」页 **15 篇** |
+
+> **本轮顺带推翻的一句旧结论**：此前记的「Air 侧未验证」在本轮部分失效——接入与双向同步已实测；
+> 仍未验证的只剩上面三条 GUI 口径（以及 Air 上的 TCC 权限弹窗是否点过允许）。
 
 两个已知、留待下一轮的不足没有变化（见上文「仍存在、已知的不足」），本轮**没有**再动权重：
 Q3 的 `it/clusters/enrollment#关键结论` 仍未召回；度量是 16 项二值指标，不适合当单一调参目标。
