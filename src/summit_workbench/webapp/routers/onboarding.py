@@ -15,12 +15,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Annotated, cast
 
 from fastapi import Body, FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import SecretStr
 
+from summit_workbench.config.paths import resolve_user_path
 from summit_workbench.config.profiles import ActiveWorkspaceContext, resolve_workspace
 from summit_workbench.domain.onboarding import OnboardingFlow
 from summit_workbench.domain.workspace import DeviceRole
@@ -35,6 +36,19 @@ from summit_workbench.webapp.api import (
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.security import error_payload
 from summit_workbench.workflows import onboarding as onboarding_service
+
+
+def _pat_secret(raw: str | None) -> SecretStr | None:
+    """把使用者粘贴的 PAT 去空白后包成 ``SecretStr``；**全空白视为「没给」**。
+
+    为什么要 strip：从 GitHub 复制 token 常带尾随换行/空格，而它随后要当 git 密码用。
+    2026-09-14 实测：向导里 url/target/username 三个字段都 ``.trim()`` 了，**只有 PAT 没有**，
+    服务端也没 strip——那种 token 一定认证失败，且报错很难看出是这个原因。
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    return SecretStr(text) if text else None
 
 
 def register_onboarding_routes(dependencies: RouteDependencies) -> None:
@@ -77,7 +91,7 @@ def register_onboarding_routes(dependencies: RouteDependencies) -> None:
         try:
             report = onboarding_service.preflight(
                 OnboardingFlow(payload.flow),
-                Path(payload.path).expanduser(),
+                resolve_user_path(payload.path),
                 templates_dir=onboarding_service.default_vault_templates_dir(),
                 home=ctx.active_workspace.home if ctx.active_workspace else None,
             )
@@ -92,7 +106,7 @@ def register_onboarding_routes(dependencies: RouteDependencies) -> None:
         """create-new：全新工作区（staging + 原子改名 + marker + profile，失败回滚）。"""
         try:
             result = onboarding_service.create_workspace(
-                Path(payload.work_root).expanduser(),
+                resolve_user_path(payload.work_root),
                 display_name=payload.display_name,
                 device_name=payload.device_name,
                 device_role=DeviceRole(payload.device_role),
@@ -113,7 +127,7 @@ def register_onboarding_routes(dependencies: RouteDependencies) -> None:
         """upgrade-existing：旧 vault 升级（备份 + marker + profile，内容不动）。"""
         try:
             result = onboarding_service.upgrade_workspace(
-                Path(payload.vault_dir).expanduser(),
+                resolve_user_path(payload.vault_dir),
                 device_name=payload.device_name,
                 device_role=DeviceRole(payload.device_role),
                 home=ctx.active_workspace.home if ctx.active_workspace else None,
@@ -132,7 +146,7 @@ def register_onboarding_routes(dependencies: RouteDependencies) -> None:
         """connect-local：连接已 clone/拷贝的带 marker vault（建档 + 置 active）。"""
         try:
             result = onboarding_service.connect_workspace(
-                Path(payload.vault_dir).expanduser(),
+                resolve_user_path(payload.vault_dir),
                 display_name=payload.display_name,
                 device_name=payload.device_name,
                 home=ctx.active_workspace.home if ctx.active_workspace else None,
@@ -224,13 +238,10 @@ def register_restricted_onboarding_routes(
             stage_remote_clone,
         )
 
+        pat = _pat_secret(payload.pat)
         credential_resolver = None
-        if payload.pat:
-            from pydantic import SecretStr
-
+        if pat is not None:
             from summit_workbench.config.git_credentials import GitCredentials
-
-            pat = SecretStr(payload.pat)
 
             def resolve(_ws: str, host: str, _username: str) -> GitCredentials:
                 return GitCredentials(_ws, host, payload.git_username, pat)
@@ -240,7 +251,7 @@ def register_restricted_onboarding_routes(
         try:
             staged = stage_remote_clone(
                 payload.remote_url,
-                Path(payload.target_vault).expanduser(),
+                resolve_user_path(payload.target_vault),
                 workspace_id=payload.expected_workspace_id,
                 username=payload.git_username,
                 home=active_workspace.home,
@@ -293,10 +304,9 @@ def register_restricted_onboarding_routes(
                 device_name=payload.device_name,
                 user_email=payload.user_email,
             )
-            if payload.pat:
+            confirm_pat = _pat_secret(payload.pat)
+            if confirm_pat is not None:
                 from urllib.parse import urlsplit
-
-                from pydantic import SecretStr
 
                 from summit_workbench.config.git_credentials import store_git_credentials
                 from summit_workbench.workflows.remote_onboarding import RemoteCloneStage
@@ -304,7 +314,7 @@ def register_restricted_onboarding_routes(
                 staged_info = cast(RemoteCloneStage, staged)
                 host = urlsplit(staged_info.remote_url).hostname or ""
                 store_git_credentials(
-                    staged_info.workspace_id, host, staged_info.username, SecretStr(payload.pat)
+                    staged_info.workspace_id, host, staged_info.username, confirm_pat
                 )
         except RemoteCloneError as exc:
             return JSONResponse(
@@ -347,7 +357,7 @@ def register_restricted_onboarding_routes(
         try:
             report = onboarding_service.preflight(
                 OnboardingFlow(payload.flow),
-                Path(payload.path).expanduser(),
+                resolve_user_path(payload.path),
                 templates_dir=onboarding_service.default_vault_templates_dir(),
                 home=active_workspace.home,
             )
@@ -361,7 +371,7 @@ def register_restricted_onboarding_routes(
     ) -> dict[str, object] | JSONResponse:
         try:
             result = onboarding_service.create_workspace(
-                Path(payload.work_root).expanduser(),
+                resolve_user_path(payload.work_root),
                 display_name=payload.display_name,
                 device_name=payload.device_name,
                 device_role=DeviceRole(payload.device_role),
@@ -381,7 +391,7 @@ def register_restricted_onboarding_routes(
     ) -> dict[str, object] | JSONResponse:
         try:
             result = onboarding_service.upgrade_workspace(
-                Path(payload.vault_dir).expanduser(),
+                resolve_user_path(payload.vault_dir),
                 device_name=payload.device_name,
                 device_role=DeviceRole(payload.device_role),
                 home=active_workspace.home,
@@ -399,7 +409,7 @@ def register_restricted_onboarding_routes(
     ) -> dict[str, object] | JSONResponse:
         try:
             result = onboarding_service.connect_workspace(
-                Path(payload.vault_dir).expanduser(),
+                resolve_user_path(payload.vault_dir),
                 display_name=payload.display_name,
                 device_name=payload.device_name,
                 home=active_workspace.home,

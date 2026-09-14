@@ -29,6 +29,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from summit_workbench.config.paths import UserPathError
 from summit_workbench.domain.workspace import Compatibility
 from summit_workbench.webapp.context import WebContext
 from summit_workbench.webapp.security import (
@@ -53,7 +54,14 @@ _SCHEMA_UPGRADE_WRITE_EXEMPTIONS = frozenset(
 
 
 def install_validation_handler(app: FastAPI, *, operation_id: Callable[[Request], str]) -> None:
-    """只安装 422 校验错误处理器（受限 app 用的就是这一个）。"""
+    """422 校验错误 + 使用者路径解析错误（**受限 app 用的就是这两个**）。
+
+    为什么把 :class:`UserPathError` 也放在这里：首启向导跑的就是**受限 app**，而它此前
+    **只有 422 处理器**。2026-09-14 在 Air 上实测：使用者在「目标文件夹」里填了 ``~用户名``
+    而该用户不存在 → ``Path.expanduser()`` 抛 ``RuntimeError`` → 没有任何处理器接住 →
+    向导只拿到一个非 JSON 响应，界面显示成 WebKit 的
+    「The string did not match the expected pattern.」，**真实原因完全不可见**。
+    """
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -68,6 +76,38 @@ def install_validation_handler(app: FastAPI, *, operation_id: Callable[[Request]
                 message="请求参数不符合接口约束",
                 operation_id=operation_id(request),
                 details=details,
+            ),
+        )
+
+    install_user_path_handler(app, operation_id=operation_id)
+
+
+def install_user_path_handler(app: FastAPI, *, operation_id: Callable[[Request], str]) -> None:
+    """``UserPathError`` → **400**，文案直接来自异常（本就是写给使用者看的）。"""
+
+    @app.exception_handler(UserPathError)
+    async def _user_path_error(request: Request, exc: UserPathError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content=error_payload(
+                code="invalid_path",
+                message=str(exc),
+                operation_id=operation_id(request),
+            ),
+        )
+
+
+def install_unexpected_handler(app: FastAPI, *, operation_id: Callable[[Request], str]) -> None:
+    """兜底 500（JSON）。**受限 app 也必须装**——否则未预期异常会变成不可读的响应。"""
+
+    @app.exception_handler(Exception)
+    async def _unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content=error_payload(
+                code="internal_error",
+                message="服务内部错误，请稍后重试",
+                operation_id=operation_id(request),
             ),
         )
 
@@ -107,16 +147,7 @@ def install_exception_handlers(app: FastAPI, *, operation_id: Callable[[Request]
             ),
         )
 
-    @app.exception_handler(Exception)
-    async def _unexpected_error(request: Request, _exc: Exception) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content=error_payload(
-                code="internal_error",
-                message="服务内部错误，请稍后重试",
-                operation_id=operation_id(request),
-            ),
-        )
+    install_unexpected_handler(app, operation_id=operation_id)
 
 
 def install_security_boundary(

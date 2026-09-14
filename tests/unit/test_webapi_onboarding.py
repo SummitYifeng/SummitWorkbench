@@ -326,3 +326,110 @@ def test_remote_clone_failure_is_coded_and_never_leaks_pat(tmp_path, monkeypatch
     assert response.status_code == 409
     assert response.json()["code"] == "remote_missing_marker"
     assert "canary-pat" not in response.text
+
+
+# ------------------------------------------------- 2026-09-14 Air 首启故障的回归
+#
+# 那次的现象：使用者填 `~用户名`（该用户不存在）→ 服务端 Path.expanduser() 抛 RuntimeError →
+# 受限 app 当时**只有 422 处理器**，异常漏出去 → 向导只拿到非 JSON 响应 →
+# 界面显示成 WebKit 的「The string did not match the expected pattern.」，真实原因不可见。
+
+
+def test_remote_clone_stage_reports_an_unknown_tilde_user_as_a_readable_400(
+    tmp_path, monkeypatch
+) -> None:
+    client = _restricted_client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/onboarding/remote/stage",
+        json={
+            "remote_url": "https://github.com/acme/private.git",
+            "target_vault": "~nosuchuser/Documents/Work/_vault",
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "invalid_path"
+    assert "nosuchuser" in payload["message"]
+    assert "canary-pat" not in response.text
+
+
+def test_remote_clone_stage_expands_a_bare_tilde_against_the_service_home(
+    tmp_path, monkeypatch
+) -> None:
+    """`~/…` 要按**服务端已知的 home** 展开，不依赖进程环境里的 HOME。"""
+    from summit_workbench.workflows import remote_onboarding
+
+    seen: dict[str, Path] = {}
+
+    def fake_stage(remote_url: str, target: Path, **kwargs: object) -> object:
+        seen["target"] = target
+        raise remote_onboarding.RemoteCloneError("stop_here", "到这里就够了")
+
+    monkeypatch.setattr(remote_onboarding, "stage_remote_clone", fake_stage)
+    client = _restricted_client(tmp_path, monkeypatch)
+    response = client.post(
+        "/api/onboarding/remote/stage",
+        json={
+            "remote_url": "https://github.com/acme/private.git",
+            "target_vault": "~/Documents/Work/_vault",
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert response.status_code == 409  # 哨兵错误：说明路径已经解析通过、真的走到克隆
+    assert seen["target"] == tmp_path / "fake-home" / "Documents/Work/_vault"
+
+
+def test_restricted_app_answers_unexpected_errors_with_a_json_envelope(
+    tmp_path, monkeypatch
+) -> None:
+    """首启向导（受限 app）的未预期异常也必须是 JSON。
+
+    否则前端 `response.json()` 会抛 WebKit 那句英文，真实原因彻底不可见。
+    """
+    from summit_workbench.workflows import remote_onboarding
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(remote_onboarding, "stage_remote_clone", boom)
+    monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
+    monkeypatch.delenv("WORK_ROOT", raising=False)
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "nonexistent.toml"))
+    client = TestClient(
+        create_app(None, static_dir=tmp_path / "no-static"), raise_server_exceptions=False
+    )
+    response = client.post(
+        "/api/onboarding/remote/stage",
+        json={
+            "remote_url": "https://github.com/acme/private.git",
+            "target_vault": str(tmp_path / "work" / "_vault"),
+            "git_username": "alice",
+            "pat": "canary-pat",
+        },
+    )
+    assert response.status_code == 500
+    assert response.json()["code"] == "internal_error"
+    assert "canary-pat" not in response.text
+
+
+def test_pat_is_stripped_before_use() -> None:
+    """从 GitHub 复制的 token 常带尾随换行，而它随后要当 git 密码用；全空白视为「没给」。"""
+    from summit_workbench.webapp.routers.onboarding import _pat_secret
+
+    stripped = _pat_secret("  github_pat_abc\n")
+    assert stripped is not None and stripped.get_secret_value() == "github_pat_abc"
+    assert _pat_secret(" \n ") is None
+    assert _pat_secret(None) is None
+
+
+def test_wizard_api_client_surfaces_non_json_responses(tmp_path, monkeypatch) -> None:
+    """向导的 `api()` 不能无条件 `response.json()`——非 JSON 响应要报 HTTP 状态与片段。"""
+    page = _restricted_client(tmp_path, monkeypatch).get("/")
+    assert "await response.text()" in page.text
+    assert "JSON.parse(raw)" in page.text
+    assert "（空响应）" in page.text
+    # PAT 与其它三个字段一样要去空白。
+    assert "const pat = $('remote-pat').value.trim();" in page.text

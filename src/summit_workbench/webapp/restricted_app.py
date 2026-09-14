@@ -48,6 +48,7 @@ from summit_workbench.webapp.request_boundary import (
 )
 from summit_workbench.webapp.request_boundary import (
     install_restricted_boundary,
+    install_unexpected_handler,
     install_validation_handler,
 )
 from summit_workbench.webapp.routers.onboarding import (
@@ -86,6 +87,11 @@ def create_restricted_app(
     app.state.active_workspace_context = active_workspace
 
     install_validation_handler(
+        app,
+        operation_id=lambda request: request.headers.get("x-wb-operation-id", "unknown"),
+    )
+    # 受限 app 也要兜底：首启向导的未预期异常不能变成非 JSON 响应（2026-09-14 Air 实测踩到）。
+    install_unexpected_handler(
         app,
         operation_id=lambda request: request.headers.get("x-wb-operation-id", "unknown"),
     )
