@@ -2,10 +2,12 @@
 
 > **用法**：新开窗口时把本文件交给 Agent——直接说「读 `docs/implementation/NEXT-SESSION-PROMPT.md` 并按它开工」即可。
 > **本文件是活文件**：每轮收口时按实测发现校正一次，别让它又变成一份过期文档。
-> **最近校正**：2026-09-14（内容质量与「工作 vs 建库」边界轮：`conventions.md` 新增 §0.8 内容边界
-> 与 §4.9 项目页区块写法、5 个项目页改写（删净建库类内容、`## 当前状态` 分点分层）、
-> 「公司人事」重新定位、App 目录过滤统一修 `.obsidian` 泄漏、build 44）。
-> 移出 vault 的建库事项汇总在 **`docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`**。
+> **最近校正**：2026-09-14（**UI 优化轮**）：删掉【决策】页签（决策只在各项目页「决策记录」里看，
+> 全局查找交给「提问」）；【今日页】改上下两块（会议在上紧凑、待办任务在下占满整宽）；
+> 「追加推进日志」项目勾选一项一行、英文 ID 收进 hover；全局口径「主显中文名、英文 ID 放次要位置、
+> 只有引用来源保留完整路径」；审计出的 A 类（显示）/ B 类（布局）/ C 类（信息架构）全部处置。
+> 装机 **build 47**。审计全表与逐条处置见 `docs/implementation/UI-AUDIT-2026-09-14.md`。
+> 上一轮（内容质量与「工作 vs 建库」边界）的校正见下方 §七 的结案块。
 
 你在 `/Users/yifengstudio/Documents/GitHub/SummitWorkbench` 里继续一个「本地优先」的 macOS 应用项目：
 原生 Swift 壳 + 打包在内的 Python FastAPI 服务 + 原生 TS 的 SPA 面板。核心用途是使用者的
@@ -39,8 +41,8 @@
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
   本机（Studio）device_id `0617854a-e193-4b3e-bb6d-fb5bb738937d`，角色 automation-primary，generation 1。
-- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 44**
-  （`frontend_build v2026.09.14-d5fb5c3-4d072dbb`、`git_revision d5fb5c3`）；同步状态 `ready`，ahead 0 / behind 0。
+- 已安装的 App：`/Applications/SummitWorkbench.app` = **0.4.9 build 47**
+  （`frontend_build v2026.09.14-70c3303-b241b9ac`、`git_revision 70c3303`）；同步状态 `ready`，ahead 0 / behind 0。
   Studio 与 Air **两台机器均已接入**并实测四向同步通过。
 - 最近提交以 `git log --oneline -8` 为准——**本节不再写死 hash**（历史上这里漂移过两轮）。
 - **没有任何备份**（使用者明确选择不留）。旧 vault、旧远端、旧 workspace 都不可恢复：
@@ -71,11 +73,11 @@
 
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
-.venv/bin/python -m pytest --cov -q          # 期望 1194 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
+.venv/bin/python -m pytest --cov -q          # 期望 1195 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # 全过（文件数随未跟踪产物浮动，别写死）
 .venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
-npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测试（76 源文件）
+npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测试（73 源文件，含 UI 口径守卫）
 # 真实库验收（9 题 = 4 题真调模型 Q1–Q4 + 5 题零 token R1/R2/D1/V1/S1）
 .venv/bin/python scripts/kb_acceptance.py
 # 已装 App 验收（4 题模型口径；只重查一题用 --only 省 token）
@@ -183,6 +185,17 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 > ④ 移出 vault 的建库事项汇总在 **`docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`**；
 > ⑤ App 目录过滤统一为 `repositories/ignore.py`，`Work/.obsidian` 不再漏进【项目】（build 44 已装机）。
 > **不要再重做**；要接着做的是下面 2 / 4 两条（检索不足、继续收素材）。
+
+> 🟡 **UI 优化轮的遗留（2026-09-14，build 47）**，都不阻塞使用：
+> - B 类（排版）是**静态推断**：请在**窄窗口**里再看一眼项目详情双列、同步横幅、日志弹窗
+>   （本轮已按最保守写法改：可收缩列 + `overflow-wrap` + 窄屏单列）。
+> - 审计**只覆盖 `web/src`**：原生 macOS 壳（`native/`、`packaging/`、`deploy/`）与
+>   `webapp/onboarding_view.py` 内嵌页面的文案**还没扫**。
+> - `/api/decisions` 现在没有界面入口（保留为契约 API + `index/decisions.md` 生成）；
+>   确认长期不用再动 API。
+> - 使用者刚写入的 `logs/2026-09-14-001.md` 说「刘玉兰已返回第一轮通用问题清单」，
+>   而 `projects/hr.md` 的 `## 当前状态` 还写着「尚未确认」——**下轮问他要不要回填项目页**
+>   （不要自己替他改）。
 
 1. ~~**Air 备用机接入**~~ —— **已结案（2026-09-14）**：Air 已作为辅助设备接入完成，
    读 / 写 / 推送 / 拉取**四向实测通过**，两台机器 `/api/sync/status = ready 0/0`，
@@ -305,6 +318,13 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
   App 目录过滤统一为 `repositories/ignore.py`（点开头 + 机器目录名 + 下划线前缀），
   `Work/.obsidian` 不再出现在【项目】（build 44 已装机）。
   **移出 vault 的建库事项**见 `docs/implementation/WORKBENCH-MAINTENANCE-TODO.md`。**别重做**。
+- **UI 优化轮（2026-09-14，build 47）**：按使用者 5 个选择题执行——删【决策】页签、
+  今日页改上下两块、日志弹窗勾选一项一行、全局「中文优先 / 英文 ID 进 hover」口径、
+  A/B/C 三类问题一起处置（逐条明细见 `docs/implementation/UI-AUDIT-2026-09-14.md`）。
+  新增前端守卫 `web/scripts/test-ui-language.mjs`（5 条变异验证）；后端新增
+  「信号标题用中文显示名」用例。⚠️ **真机真实数据验证抓出两个审计（只覆盖 `web/src`）
+  看不到的问题**（`workflows/brief/collect.py` 拼项目 ID、`briefSourceLabel` 没剥 `#区块`）——
+  以后这类轮次**必须**真机 + 真库再跑一遍。**别重做**。
 
 ## 十、怎么开始
 

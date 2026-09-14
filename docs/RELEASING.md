@@ -33,13 +33,13 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 44）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 47）
 
-SHA-256：`c4ddda9bf885b8b36627eace2f2e655ec2cebc7a366b071fff0fbf9573825dec`
+SHA-256：`d4fd14577f22110dba911f74223d9c6b06e7cae1efdd25db2ea74ab1c51b86c1`
 
-版本 `0.4.9`、build `44`，构建来源提交 `d5fb5c3`（统一目录忽略规则：`Work/.obsidian`
-不再出现在 App【项目】），
-对应前端 build identity 为 `v2026.09.14-d5fb5c3-4d072dbb`。
+版本 `0.4.9`、build `47`，构建来源提交 `70c3303`（UI 优化轮收口：删【决策】页签、
+今日页上下两块、全局中文优先口径 + 简报出处标签修锚点），
+对应前端 build identity 为 `v2026.09.14-70c3303-b241b9ac`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -54,6 +54,9 @@ SHA-256：`c4ddda9bf885b8b36627eace2f2e655ec2cebc7a366b071fff0fbf9573825dec`
 | 42 | `70f6753` | 逐字保留校验真库 6/6 误报 + `sources/read` 空值/仅区块 500 |
 | 43 | `73d495a` | Air 首启向导 `~用户名` 崩溃 + 向导错误被 WebKit 盖掉 |
 | 44 | `d5fb5c3` | 统一目录忽略规则 ⇒ `Work/.obsidian` 不再出现在【项目】（三处遍历共用 `repositories/ignore.py`） |
+| 45 | `bb02cfc` | UI 优化轮主体（删【决策】页签 / 今日页上下两块 / 中文优先口径）。⚠️ **这个包已不在本机**：准备 build 46 时误 `rm -rf dist/releases/0.4.9`，把 b45 的产物一并删掉了；代码仍可通过提交 `bb02cfc` 复现 |
+| 46 | `5437ceb` | 简报防停摆标题改用档案中文显示名 + 修 ruff E501 |
+| 47 | `70c3303` | 简报出处标签先剥 `#区块` 锚点 + 项目自身页面引用不重复显示项目 ID（**当前装机**） |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -92,6 +95,15 @@ SHA-256：`c4ddda9bf885b8b36627eace2f2e655ec2cebc7a366b071fff0fbf9573825dec`
   `it-development`），**`.obsidian` 已不出现**；同一进程下 `GET /api/projects/view?name=hr`
   返回的 `## 当前状态` 已是有序列表块、正文里不再有「素材放 / 已示范一次 / 建对象页」这类建库内容。
   变体验证见 `tests/unit/test_ignore_dirs.py`（去掉点开头判据 ⇒ 4 条红）。
+- UI 优化轮实测（build 47，2026-09-14 真机）：
+  - **已装包产物核对**：`Contents/Resources/web/static/assets/index-*.js|css` 里 `bf-stack` /
+    `log-proj-name` / `settings-ids` / `sync-more` 均在，`bf-grid` / `view-decisions` /
+    `tab-decisions` / `minmax(160px, 1fr)`（旧的窄网格）**均为 0**；
+    `build-meta.json` 的 `git_revision = 70c3303`、前端 `v2026.09.14-70c3303-b241b9ac`。
+  - **真实数据渲染**：用真库 + 当日快照 + 真项目名跑 `briefCardHtml`，**可见文本里 5 个项目 ID
+    0 命中**、无 `.md` / `sources/` 路径残渣；会议区在待办区之前、容器是 `bf-stack`。
+    ⚠️ 这一步抓出了两个**审计（只覆盖 `web/src`）看不到**的问题：后端信号标题里带项目 ID
+    （`collect.py`），以及 `briefSourceLabel` 没剥 `#区块` 锚点——都已修并补测试。
 
 ### ⚠️ 构建前必须先提交（否则 `git_commit` 会指错）
 

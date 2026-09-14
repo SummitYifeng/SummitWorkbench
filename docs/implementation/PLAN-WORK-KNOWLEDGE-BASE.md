@@ -1558,3 +1558,62 @@ mypy（362 文件）；secret_scan；`wb vault check` 70 篇；`kb_verify_links`
 - **未重跑**：两轮调模型的验收（`kb_acceptance*.py`）与 `kb_measure.py`——本轮只动内容边界与目录过滤，
   未触碰检索权重 / 词表 / 分块，按规范记「未重跑及其理由」。
 - **App 首次读 vault 的 TCC 弹窗**：ad-hoc 签名包替换后第一次读文稿文件夹会弹授权，需使用者点允许。
+
+### UI 优化轮 · 删【决策】页签 + 今日页上下两块 + 全局中文优先口径 —— 已完成（build 47）
+
+使用者反馈 4 点，并要求「用选择题互动对齐」：① 【决策】页多余且只会越来越多；
+② 会议不多、待办多，今日页固定左右两列不好用；③「项目 → 具体项目 → 日志 → 追加推进日志」
+的项目勾选排版乱、错行、中英混杂；④ 要求扫一遍 App 里同类问题。
+
+**对齐结果（5 个选择题，使用者已选）**：删掉【决策】页签 / 今日页改上下两块 /
+日志勾选一项一行（英文 ID 收进 hover）/ 全局「主显中文名、英文 ID 放次要位置、只有引用来源
+保留完整路径」/ **三类（显示 · 布局 · 信息架构）本轮一起做完**。
+
+#### 交付
+
+1. **删掉【决策】页签**：`shell.ts` / `tabs.ts` / `legacy-main.ts` 去掉页签与派发分支，
+   删除 `features/decisions/`（3 文件）、`test-decisions-render.mjs` 与样式块；
+   指南真源改写为「我想看某个决定 / 决策」（项目页「决策记录」+ 第二大脑查找）。
+   ⚠️ `/api/decisions` **保留**（契约级 API，`index/decisions.md` 与脚本仍可用），只是界面不再有入口。
+2. **今日页上下两块**：`.bf-grid`（1fr/1fr 固定两列）→ `.bf-stack` 单列；会议在上（紧凑）、
+   待办任务在下占满整宽。
+3. **日志弹窗项目勾选**：抽出纯函数 `logProjectChoices()`，一项一行、中文名优先、ID 进 `title`；
+   `.log-projs` 由 `minmax(160px,1fr)` 窄网格改单列列表。
+4. **全局中文优先口径**：同步横幅状态码中文化 + 内部标识折叠；简报项目名与出处标签；
+   审批 `unresolved` → 「未定」、外部写回不再铺内部 ID；设置页 device id / generation 折叠与中文化；
+   错误文案归一化（`errorText()`；`toast()` 收 `unknown`，不再贴 `TypeError: Failed to fetch`）。
+5. **布局健壮性 10 处**（`.pv-blocks` / `.sync-grid` / `.bf-minor-*` / `.external-action-row` /
+   `.new-project-row` / `.toast` / `.grid2` / `.bf-row` / `.card-head` / `.entry-top`）。
+6. **信息架构 5 处**：项目空状态按原因分支、只有归档项目时保留入口、今日页待确认计数去重、
+   项目动作片段合并、提问会话上限常量插值。
+
+#### 真机真实数据验证抓出的两个「审计看不到」的问题（都已修 + 补测试）
+
+- **后端** `workflows/brief/collect.py`：信号标题直接拼 `f"{project.name} 阻塞：…"` ⇒ 简报上出现
+  `hii-affairs 阻塞：…`。改为用档案中文 `title`。
+- **前端** `brief-card.ts::briefSourceLabel`：只用 `/\.(md|txt)$/` 去扩展名，而真实
+  `source_ref` 是 `projects/it-development.md#下一步`（`.md` 不在末尾）⇒ 留下
+  `it-development.md#下一步` 把项目 ID 带出来。改为先剥 `#区块` 锚点；并让**项目自身页面**的引用
+  不再当「出处」重复显示。
+
+#### 验证
+
+- 前端：`tsc --noEmit`；`npm run test:frontend` **16 组全过**（含新增 `test-ui-language.mjs`）；
+  73 源文件交互契约测试；
+- **变异验证（逐条单独做）**：日志弹窗放回英文 ID ⇒ 红；简报退回 `bf-grid` ⇒ 红；
+  审批不映射中文名 ⇒ 红；同步状态码泄漏原文 ⇒ 红；`display` 退回 `project.name` ⇒ 红；
+  还原后全绿；
+- **真实数据**：真库 + 当日快照 + 真项目名渲染简报，**可见文本里 5 个项目 ID 0 命中**；
+  已装包产物核对（`bf-stack` / `log-proj-name` / `settings-ids` 在；`bf-grid` / `view-decisions` /
+  `tab-decisions` / 旧窄网格为 0）；
+- 后端：pytest **1195 passed / 1 skipped / 83.85%**；ruff / format / mypy（364 文件）/ secret_scan；
+- vault（改了派生文件）：`wb vault check` 71 篇、`kb_verify_links` 466 双链 / 427 块级、
+  `kb_verify_quotes` 两个素材根各 37 条 0 问题、`kb_index_people --check` 一致。
+
+#### 已知不足 / 未验证
+
+- B 类是**静态推断**，窄窗口真实裁切要在真机再看（已按最保守写法改）。
+- 审计**只覆盖 `web/src`**：原生壳（`native/`）与 `webapp/onboarding_view.py` 未扫。
+- `/api/decisions` 现在没有界面入口；确认长期不用再动 API。
+- build 45 的产物被误删（准备 46 时 `rm -rf dist/releases/0.4.9`）；代码仍可由提交 `bb02cfc` 复现。
+- 审计全表与逐条处置见 `docs/implementation/UI-AUDIT-2026-09-14.md`。
