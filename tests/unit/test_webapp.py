@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -155,7 +156,70 @@ def test_md_to_html_renders_subset() -> None:
     html = md_to_html("## 标题\n- 项目 **粗** `代码`\n> 引用 [[note.md]]")
     assert "<h3>标题</h3>" in html
     assert "<li>项目 <strong>粗</strong> <code>代码</code></li>" in html
-    assert '<blockquote>引用 <span class="wikilink">note.md</span></blockquote>' in html
+    assert (
+        '<blockquote><p>引用 <span class="wikilink" title="note.md">note.md</span></p></blockquote>'
+        in html
+    )
+
+
+def test_md_to_html_handles_archive_block_shapes() -> None:
+    """项目档案区块的真实形状：多行段落、有序列表 + 缩进续行、表格、wikilink 标签。
+
+    与前端 `web/src/md.ts::mdToHtml` 同规则（`web/scripts/test-md-render.mjs` 是同一批断言）。
+    """
+    from summit_workbench.webapp.views import md_to_html
+
+    html = md_to_html(
+        "三条口径已定：**登记主体统一为 HII**、\n"
+        "**「活满」与「和夫曼之旅」分开管理**。\n"
+        "\n"
+        "1. **9 月**：P0 权限清退收口；\n"
+        "   相关方培训。\n"
+        "2. **10 月**：启动 AI 知识库。\n"
+        "- [ ] 待办一\n"
+        "- [x] 已办二\n"
+        "| 主线 | 状态 |\n"
+        "|---|---|\n"
+        "| 报名与课程生命周期 | 🟢 正式生产运行 |\n"
+        "| 门户 / CMS / 权限 | 🟢 已投入业务使用 |\n"
+        "- [[20260623-hii-registration-entity|决定：登记主体统一为 HII]] —— 一律登记在 HII 名下。"
+    )
+    # 硬换行拆开的段落并成一个 <p>，且中文之间不缝空格
+    assert "<strong>登记主体统一为 HII</strong>、<strong>「活满」" in html, "行内标记处不该缝空格"
+    expected_para = (
+        "<p>三条口径已定：<strong>登记主体统一为 HII</strong>、"
+        "<strong>「活满」与「和夫曼之旅」分开管理</strong>。</p>"
+    )
+    assert expected_para in html
+    # 有序列表：一个 <ol>、两项，第二项的缩进续行并进同一项
+    assert html.count("<ol>") == 1 and html.count("</ol>") == 1
+    assert "<li><strong>9 月</strong>：P0 权限清退收口；相关方培训。</li>" in html
+    # 任务清单
+    assert '<li><span class="task">☐</span> 待办一</li>' in html
+    assert '<li><span class="task done">☑</span> 已办二</li>' in html
+    # 表格
+    assert "<table><thead><tr><th>主线</th><th>状态</th></tr></thead>" in html
+    assert "<td>报名与课程生命周期</td><td>🟢 正式生产运行</td>" in html
+    # 表格后面紧跟的列表项不能被当成表格行吞掉（[[目标|显示名]] 里也有 `|`）
+    assert html.count("<tr>") == 3, "表头 + 两行数据，wikilink 那行必须在表格外"
+    assert re.search(r'</tbody></table>\s*<ul><li><span class="wikilink"', html)
+    # wikilink：只显示标签，目标进 title
+    expected_link = (
+        '<span class="wikilink" title="20260623-hii-registration-entity">'
+        "决定：登记主体统一为 HII</span>"
+    )
+    assert expected_link in html
+    assert "[[" not in html
+
+
+def test_md_to_html_never_injects_html() -> None:
+    """vault 与模型文本都不可信：转义之后再套模式，任何路径都不许漏出可执行标签。"""
+    from summit_workbench.webapp.views import md_to_html
+
+    html = md_to_html("<script>alert(1)</script>\n**<img src=x onerror=alert(1)>**")
+    assert "<script" not in html and "<img" not in html
+    assert "&lt;script&gt;" in html
+    assert "<strong>&lt;img src=x onerror=alert(1)&gt;</strong>" in html
 
 
 def test_bad_candidate_shows_message(tmp_path: Path) -> None:

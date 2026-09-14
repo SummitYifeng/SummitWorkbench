@@ -68,10 +68,24 @@ export const cases = {
     title: '显示名',
     status: 'active',
     updated: '2026-09-01',
-    blocks: { '当前状态': ['- 正常'], '下一步': ['- [ ] 继续验收'] },
+    blocks: {
+      '当前状态': [
+        '三条内部口径已经定下并落成决策：**登记主体统一为 HII**、',
+        '**「活满」与「和夫曼之旅」分开管理**。',
+        '| 主线 | 状态 |',
+        '|---|---|',
+        '| 报名与课程生命周期 | 🟢 正式生产运行 |',
+      ],
+      '下一步': ['1. **9 月**：P0 权限清退收口；', '   相关方培训。', '2. **10 月**：启动 AI 知识库。'],
+      '决策记录': ['- [[20260623-hii-registration-entity|决定：登记主体统一为 HII]] —— 一律登记在 HII 名下。'],
+      '跟进事项': ['- [ ] 待办一', '- [x] 已办二'],
+    },
     followup_pending: 1,
     inbox_pending: 0,
-    timeline: [{ date: '2026-09-01', kind: 'log', label: '日志', title: '已检查', snippet: '合成记录' }],
+    timeline: [
+      { date: '2026-09-01', kind: 'log', label: '日志', title: '已检查', snippet: '合成记录' },
+      { date: '2026-09-02', kind: 'meeting-note', label: '会议', title: '对齐', snippet: '缺口在**网课与老师账户未绑定**' },
+    ],
   }, '返回今日'),
 };
 `;
@@ -115,6 +129,17 @@ try {
   assert.match(mod.cases.detail, /返回今日/);
   assert.match(mod.cases.detail, /显示名/);
   assert.match(mod.cases.detail, /合成记录/);
+  // 档案区块正文是真 Markdown：不许再把源码漏给使用者看
+  assert.doesNotMatch(mod.cases.detail, /\*\*/);
+  assert.doesNotMatch(mod.cases.detail, /\[\[/);
+  assert.match(mod.cases.detail, /<strong>登记主体统一为 HII<\/strong>/);
+  assert.match(mod.cases.detail, /<table><thead><tr><th>主线<\/th>/);
+  assert.match(mod.cases.detail, /pv-block-wide/, '含表格的区块要横跨整行');
+  assert.match(mod.cases.detail, /<ol><li><strong>9 月<\/strong>：P0 权限清退收口；相关方培训。<\/li>/);
+  assert.match(mod.cases.detail, /title="20260623-hii-registration-entity">决定：登记主体统一为 HII<\/span>/);
+  assert.match(mod.cases.detail, /<div class="tl-snippet">缺口在<strong>网课与老师账户未绑定<\/strong><\/div>/, '时间线摘要里的行内标记也要渲染');
+  assert.match(mod.cases.detail, /<span class="task">☐<\/span> 待办一/);
+  assert.match(mod.cases.detail, /<span class="task done">☑<\/span> 已办二/);
   console.log('Project pure render tests passed');
 } finally {
   rmSync(tmpDir, { recursive: true, force: true });

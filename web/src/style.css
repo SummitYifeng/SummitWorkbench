@@ -666,8 +666,20 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 .pv-blocks { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
 .pv-block { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
 .pv-block h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
-.pv-block ul { margin: 0; padding-left: 0; list-style: none; }
+.pv-block-wide { grid-column: 1 / -1; }
+.pv-block p { margin: 4px 0; font-size: 13px; line-height: 1.65; }
+.pv-block ul { margin: 4px 0; padding-left: 0; list-style: none; }
+.pv-block ol { margin: 4px 0; padding-left: 20px; }
+.pv-block ul ul, .pv-block ul ol, .pv-block ol ul, .pv-block ol ol { padding-left: 16px; margin: 2px 0; }
 .pv-block li { font-size: 13px; line-height: 1.65; margin: 3px 0; word-break: break-word; }
+.pv-block li .task { color: var(--muted); margin-right: 2px; }
+.pv-block li .task.done { color: var(--ok); }
+.pv-block table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0; }
+.pv-block th, .pv-block td { border: 1px solid var(--border); padding: 4px 7px; text-align: left; vertical-align: top; }
+.pv-block th { background: var(--card); font-weight: 600; }
+.pv-block code { background: var(--card); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+.pv-block blockquote { border-left: 3px solid var(--border); margin: 6px 0; padding: 2px 10px; color: var(--muted); }
+.pv-block pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; overflow-x: auto; }
 .pv-timeline-wrap h4 { margin: 6px 0 8px; font-size: 13px; color: var(--accent); }
 .pv-timeline { list-style: none; margin: 0; padding: 0; max-height: 38vh; overflow: auto; }
 .pv-timeline li { border-left: 2px solid var(--border); padding: 2px 0 10px 12px; margin-left: 4px; font-size: 13px; }

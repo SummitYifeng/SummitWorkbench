@@ -1,4 +1,4 @@
-import { esc } from '../../md';
+import { esc, inlineMd, mdToHtml } from '../../md';
 import type { ProjectListFilter, ProjectState, ProjectView } from './types';
 
 /** 'YYYY-MM-DD' 差值（天）；任一非法返回 -1。 */
@@ -145,17 +145,14 @@ export function projectDetailHtml(v: ProjectView, backLabel = '返回项目列�
   const blockSections = order.map((label) => {
     const lines = v.blocks[label] ?? [];
     if (lines.length === 0) return '';
-    const rows = lines.map((raw) => {
-      let text = raw;
-      let mark = '';
-      if (text.startsWith('- [ ] ')) { mark = '☐ '; text = text.slice(6); }
-      else if (text.startsWith('- [x] ')) { mark = '☑ '; text = text.slice(6); }
-      else if (text.startsWith('- ')) { text = text.slice(2); }
-      return '<li>' + mark + esc(text) + '</li>';
-    }).join('');
+    // 区块正文是**逐行原始 Markdown**（粗体/代码/wikilink/有序列表/表格/软换行），
+    // 交给共用的子集渲染器，而不是 esc 后一行塞一个 <li>——否则档案页会显示成源码。
+    const body = mdToHtml(lines.join('\n'));
     const extra = label === '跟进事项' && v.followup_pending > 0
       ? ' <span class="badge warn">' + v.followup_pending + ' 条待闭环</span>' : '';
-    return '<div class="pv-block"><h4>' + esc(label) + extra + '</h4><ul>' + rows + '</ul></div>';
+    // 表格在双列网格里会被挤扁：含表格的区块横跨整行。
+    const wide = body.includes('<table') ? ' pv-block-wide' : '';
+    return '<div class="pv-block' + wide + '"><h4>' + esc(label) + extra + '</h4>' + body + '</div>';
   }).join('');
   const timeline = v.timeline.length
     ? '<ul class="pv-timeline">' + v.timeline.map((t) =>
@@ -163,7 +160,7 @@ export function projectDetailHtml(v: ProjectView, backLabel = '返回项目列�
         '<span class="tl-date">' + esc(t.date) + '</span>' +
         '<span class="tl-label">' + esc(t.label) + '</span>' +
         '<span class="tl-title">' + esc(t.title) + '</span>' +
-        (t.snippet ? '<div class="tl-snippet">' + esc(t.snippet) + '</div>' : '') +
+        (t.snippet ? '<div class="tl-snippet">' + inlineMd(t.snippet) + '</div>' : '') +
         '</li>'
       ).join('') + '</ul>'
     : '<p class="hint">还没有推进日志/产物/关联会议——用下方「✎ 日志」「存产物」开始积累。</p>';
