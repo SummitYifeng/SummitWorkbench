@@ -1257,3 +1257,46 @@ pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff 全过、mypy（360 文
 > 并写清真实出现过的两个选项（跨线分工 vs 独立两条线），未事后补编。
 > 门禁（56 篇）：`wb vault check` ✓、`kb_verify_links` ✓ 321 双链 / 393 块级引用、`kb_index_people --check` ✓
 > （新增决策页改变 HIC 计数 → 已重生成索引）。
+
+#### 首批种子入库 · 三线各 1 批 —— 已完成（2026-09-14）
+
+使用者把 5 份素材放在 `~/Desktop/3份素材/`（**未**遵循上一轮建的线级目录，属可接受的一次性交付），
+并按「每条线先 1 份」提交。**这是入库规范 v1 的第一次实战检验。**
+
+| 线 | 产出 | 说明 |
+|---|---|---|
+| 活满社群 | `community/clusters/activity-playbook.md`（方法页）<br>`community/sources/20260607-huoman-community-gathering-plan.md`（原件）<br>`community/events/20260607-huoman-community-gathering.md`（事件页） | 原件 408 行 / 15KB。**同一文件内含三个版本**（上午场定稿 / 下午场过程稿 / `New Plan 0526`）——结论层只用最终版，过程稿仅留原件 |
+| 活满后勤&行政 | `logistics/vendors/hangzhou-1977-hotel.md`（对象页）<br>`logistics/sources/20260914-hangzhou-1977-hotel-progress.md`（原件） | 原件 748 字节、**5 条编号进展、无 `##` 小标题** → 整份退化为**单区块**；可寻址结论改由对象页承载 |
+| 公司人事 | `hr/people/liu-yulan.md`（按人页）<br>`hr/sources/20260914-luo-yifeng-liu-yulan-translation-alignment.md`（原稿）<br>`hr/notes/20260914-translation-proofreading-alignment.md`（分析） | 原稿 411 行、`说话人 + MM:SS` 格式。**使用者的人工纪要作为分析笔记底稿保留**，Agent 在其上补结论/未决/关联 |
+
+**使用者现场答复的 6 个选择题**（本轮新增的边界判断，均已落地）：
+
+1. 后勤空文件 → 使用者**当场补了内容**（0 字节 → 748 字节），不是跳过。
+2. 社群《精华总结》→ 做成 `community/clusters/activity-playbook.md` **方法页**（不建 source，因其为二手提炼件）；
+   两场 2025 活动原件由使用者后续补齐（放 `~/Desktop/当前材料/活满社群/`）。
+3. 6/7 方案 → **source 逐字 + events 页**，过程稿只留 source。
+4. HR 原稿 → `source`；人工纪要 → 分析笔记底稿。
+5. **主题归属 → 只归 HR，不建跨线链**（尽管主题是「翻译校对 / Overleaf 写回」，非传统人事）。
+   已在该材料与 `projects/hr.md` 里如实标注分类理由。
+6. 模板 → 新增 `event-plan.template.md`（服务「多写活动方案」）+ `conversation-minutes.template.md`（贴合其纪要三段式）。
+
+**规范检验结论（重要）**：§3 的粒度与 §3.1 的场景表**直接成立、未需修正**；
+暴露的三条**采集习惯**问题已写进 `SEED-MATERIAL-SPEC.md` §10（原件缺 `##` 小标题、
+定稿与过程稿混在一份文件、原稿/纪要并行）。
+
+**验证**：`wb vault check` **64 篇**全过；`kb_verify_links` 371 双链 / 412 块级引用 0 失效；
+`kb_verify_quotes` 对**两个素材根**（`当前材料` 与 `3份素材`）各 33 条、**均 0 问题**；
+`kb_index_people` 21 人 / 4 组织且与 frontmatter 一致；三份原件在生成时用脚本做**字符级比对**
+（其中 1977 酒店原件末尾缺换行，为唯一差异，已在页内如实标注）。
+
+**⚠️ 检索回退（如实记录，未掩盖）**：重建索引后 `kb_measure` 由 **7/16=44% 降到 6/16=38%**，
+分档由 7/3/6 变 **6/4/6**——Q2 的 `hii/clusters/relationships#关键结论` 掉出 limit=16 窗口。
+**逐题 diff 已定位到具体块**：新增的 `projects/huoman-logistics#阻塞` 冲到 **#3**，因为我在该块写了
+「2026-11 签约前必须**收口**」而 Q2 问句正是「还差哪些必须**收口**」——**跨线假阳性**；
+另加新决策的 `## 选项`(#10) 与四个项目页的 `## 下一步`(#8/#9/#11/#12/#13) 占据席位。
+**未改动任何权重、未放宽判据**；也**没有**为把数字改回 7 而改写自己新页面的措辞
+（「收口」是使用者 HII 材料里的既有高频词，为分数改词＝对着测试调参）。
+⚠️ 注意排名均值由 4.9 变 2.8 是**假象**（命中项从 7 降到 6，分母变小）——看回退要看二值/分档。
+证据：`docs/acceptance/evidence/kb-measure-2026-09-14-post-first-batch.txt`。
+这条与本轮上一条「Q2 锚点已贴在窗口边缘 #16」是同一根因，现已被内容增长触发。
+**未跑**：三条新线各自的「真实问题」度量——留待内容再厚一些。

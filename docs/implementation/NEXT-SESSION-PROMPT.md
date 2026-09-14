@@ -29,7 +29,7 @@
 ## 二、环境与身份（已核实，可直接用）
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`；Python venv `.venv`；CLI `.venv/bin/wb`。
-- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**56 个内容页** + **14 个模板**；**16 篇决策** + 8 个主题簇页；
+- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**64 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
   `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
   `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
   索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`
@@ -104,7 +104,8 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 证据落到 `docs/acceptance/evidence/`：
 `kb-acceptance-2026-09-14.txt`（真实库 9 题）、
 `kb-acceptance-installed-2026-09-14-build41.txt`（已装 build 41，4 题）、
-`kb-measure-2026-09-14-post-seed-baseline.txt`（**三线升级后检索读数 + 排名位移归因**，本轮新增）。
+`kb-measure-2026-09-14-post-seed-baseline.txt`（三线升级后检索读数 + 排名位移归因）、
+`kb-measure-2026-09-14-post-first-batch.txt`（**首批入库后的回退 6/16 + 逐块归因**，本轮新增）。
 **只改文档、没动代码时**，不重复跑两项会调模型的验收（上一条已被本轮覆盖且工作树未变），
 在汇报里写明「未重跑及其理由」即可。
 
@@ -173,39 +174,54 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    四条判据（secondary 角色、0/0、块级出处、决策页 15 篇）全部通过。原委见
    `PLAN-WORK-KNOWLEDGE-BASE.md` §12 的「Phase 7」与「首启向导实机故障轮」。
    **不要再把它当待办**；`AIR-MACHINE-HANDOFF.md` 保留作历史作业单。
-2. **已知检索不足（未解决）**：
+2. **已知检索不足（未解决，且本轮有回退）**：
+   - ⚠️ **回退（2026-09-14 首批入库后）**：二值由 **7/16=44% → 6/16=38%**、分档 7/3/6 → **6/4/6**。
+     Q2 的 `hii/clusters/relationships#关键结论` 掉出 limit=16 窗口。**已逐题 diff 定位到块**：
+     新增的 `projects/huoman-logistics#阻塞` 冲到 #3——因为我在该块写了「2026-11 签约前必须**收口**」，
+     而 Q2 问句是「还差哪些必须**收口**」→ **跨线假阳性**；再加新决策 `## 选项`(#10) 与四个项目页
+     `## 下一步`(#8/#9/#11/#12/#13) 占席。**未改权重、未放宽判据**；也**不**为改回数字而改写新页面措辞
+     （「收口」是 HII 材料既有高频词）。证据：`docs/acceptance/evidence/kb-measure-2026-09-14-post-first-batch.txt`。
+     ⚠️ 排名均值 4.9→2.8 是**假象**（命中项变少、分母变小）——判断回退只看二值/分档。
+   - **上一条预言已应验**：上一轮就发现「Q2 锚点贴在窗口边缘 #16，加项目页前要留意」，本轮内容增长即触发。
    - Q3 的 `it/clusters/enrollment#关键结论` 在加「主题通道」后由「同篇不同块」变成**未召回**（净效果 6→7）。
    - 同篇多结论块互相竞争：分析笔记有 19 个「结论N」块，`max_chunks_per_note=3` 下哪 3 个进上下文
      仍偏字面相关度。
-   - **度量已经建好了**（2026-09-14）：`scripts/kb_measure.py` 给二值 + 分档 + 命中排名三层，
-     零 token，`--set` 可直接扫权重。**当前基线**（三线升级后重测）：二值 **7/16 = 44%**、
-     分档 **7 / 3 / 6**、排名均值 **4.9**、期望锚点自检 **16/16**。
-     （升级前排名均值为 4.4；位移已定位＝新增项目页的 `## 下一步` 与 Q2 问句字面强匹配，
-     见 §12 与 `docs/acceptance/evidence/kb-measure-2026-09-14-post-seed-baseline.txt`。
-     **Q2 的 `relationships#关键结论` 现在贴在返回窗口边缘 #16，加项目页前要留意。**）
-   - **一条现成的线索**：`--set topic_step=1.2` 把一项「未召回」变成「同篇但块不同」，
-     而二值不变、排名不变（**没有代价**）——很可能就与上面 Q3 那条相关。
-     ⚠️ **别直接改默认值**（4 题 16 项上的单点证据不够，且 `Weights.topic_step` 的注释写明
-     「不能压过正文相关度」）：先用脚本扫、把配置与读数记进 PLAN，再决定。
+   - **结构性观察（本轮新增）**：Q2 的前 16 席里有 **6 席**是「结构相似但不同题」的块
+     （5 个 `## 下一步` + 1 个 `## 阻塞`）。也就是说，**问题不在某一篇，而在「块标题撞问句措辞」**。
+   - **度量工具**（2026-09-14）：`scripts/kb_measure.py` 给二值 + 分档 + 命中排名三层，零 token，
+     `--set` 可直接扫权重。**当前基线**：二值 **6/16 = 38%**、分档 **6 / 4 / 6**、期望锚点自检 **16/16**。
+   - **两条现成线索**：① `--set topic_step=1.2` 曾把一项「未召回」变成「同篇但块不同」而二值/排名不变
+     （没有代价）；② 本轮发现块标题字面撞车是主要干扰源，可扫「块标题权重 / 项目过滤 / `max_chunks_per_note`」。
+     ⚠️ **别直接改默认值**（4 题 16 项上的单点证据不够，且 `Weights.topic_step` 注释写明「不能压过正文相关度」）：
+     先用脚本扫、把配置与读数记进 PLAN，再决定。
 3. ~~飞书授权缓存观测~~ —— **已结案，不要再查**。`~/Library/Application Support/…/feishu-auth-state.json`
    只是 OAuth `state` 的暂存表（`_STATE_TTL = 600s`），重启后为空是正确行为；界面徽标读的是 vault 内的
    `_signals/feishu-auth.json`（持久）。结论与证据见 PLAN §12「收口轮」第 2 节。
-4. **首批素材仍未入库（唯一未开工项）**：三线的**结构、规范、模板都已就位**（2026-09-14 种子基线轮
-   已完成：`projects/` 2→5、`SEED-MATERIAL-SPEC.md`、库内模板 9→14、既有 HII/IT 内容修缮）。
-   但使用者要先与 Agent**探讨「该准备什么素材」**再去准备，所以 source/notes **一份都没产**。
-   - 素材准备清单：`docs/implementation/SEED-MATERIAL-SPEC.md`（§3.1 四个场景「留什么/叫什么/哪几段」+ §4 自检 5 问）。
-   - **素材入口目录已建好**：`~/Desktop/当前材料/{活满社群,活满后勤行政,HR}/`，每个目录内有 `README-放这里.md`。
-   - 库内模板：`_vault/templates/`（14 个；新增 `hr-person` / `event-retro` / `vendor` / `procurement` / `conversation-note`）。
+4. **首批素材已入库（2026-09-14），三线内容仍很薄——继续收素材**：社群 / 后勤 / HR 各入库 1 批。
+   规范已通过第一次实战检验（粒度与落点**未需修正**；三条采集习惯问题见 `SEED-MATERIAL-SPEC.md` §10）。
+   **当前缺口（下一步该收的）**：
+   - 社群：**2026-06-07 活动的复盘**（事件页 `## 复盘：有效与无效` 仍是空的）；
+     两场 2025 活动（2025-04 杭州聚会、2025-12 年终聚会）的**原件**；社群构想 / 框架类原件。
+   - 后勤：物料采购进展；除 1977 酒店外的酒店 / 场地 / 供应商；行政制度类原件。
+   - HR：人事制度类材料；除刘玉兰外其他团队成员的沟通。
+   - 素材放 `~/Desktop/当前材料/{活满社群,活满后勤行政,HR}/`（每个目录内有 `README-放这里.md`）。
+   - 库内模板 **16 个**（新增 `hr-person` / `event-retro` / `vendor` / `procurement` /
+     `conversation-note` / `conversation-minutes` / `event-plan`）。
    - **已定边界（2026-09-14 决策）**：活满社群与活满后勤&行政是**两个独立部门、不跨线**——
      后勤产出（酒店/场地/供应商/物料）一律记 `logistics/`，社群只记活动与社群自身的事。
      见 `decisions/20260914-community-logistics-separate-departments#决定`。**别再提「社群管决策、后勤管执行」。**
    - **已定日志归属**：按时间的日志进各线 `logs/`（`community/logs/`、`logistics/logs/`、`hr/logs/`），不单独成线。
    - **明确不做（含将来）**：微信聊天记录、录音 / 转写（使用者已确认不会有）。
+   - **判定口径（用过的）**：原件缺 `##` 小标题 → 只能整块引用（结论改放对象页）；
+     一份文件混「定稿 + 过程稿」→ 结论层只用最终版、过程稿只留原件；
+     使用者给「原稿 + 人工纪要」→ 纪要作分析笔记底稿、Agent 在其上补结论。
    - 入库仍走 C-lite 三件套（1 source + 1 分析笔记 / 对象页 / 事件页 + 0..N decision），规范见 `_vault/conventions.md` §11；
      幂等键 `source.ref + source.hash` **只在** `source` / `meeting-transcript` 页上判。
-   - `_vault` 里的内容可以删（使用者已授权）；目前三线素材目录仍是空的（只有 README）。
-   **下一窗口起手式**：先读使用者新放入的素材 → 按 §3 的粒度落点建对象页 / 事件页 →
-   跑 `wb vault check` + `kb_verify_links` + `kb_verify_quotes --materials-root` → 给三线各出一个真实问题量一遍。
+   - `_vault` 里的内容可以删（使用者已授权）。
+   **下一窗口起手式**：读新放入的素材 → 判「原件 / 加工件」（二手提炼件不要建 source）→
+   按 §3 粒度落点建对象页 / 事件页 → 跑 `wb vault check` + `kb_verify_links` +
+   `kb_verify_quotes --materials-root`（**两个素材根都要给**：`当前材料` 与 `3份素材`）→
+   内容再厚一些后，给三线各出一个真实问题用 `kb_measure.py` 量一遍。
 
 ---
 
@@ -233,6 +249,9 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
   素材留存规范 `docs/implementation/SEED-MATERIAL-SPEC.md` + 库内模板 9→14；
   既有 HII/IT 内容修缮（补 `source`、决策字段顺序统一、Loyalty→Royalty、timeline 补双链、
   §4.4 证据补路径、IT 章节数纠错、补 `review/meetings.md`）。**别重做**。
+- **首批种子入库（2026-09-14）**：社群（`activity-playbook` / 6-07 方案原件 / 6-07 事件页）、
+  后勤（`hangzhou-1977-hotel` + 原件）、HR（`liu-yulan` + 原稿 + 分析）；
+  模板 14→16（`event-plan` / `conversation-minutes`）。**别重做**（缺的是复盘与 2025 原件，见 §7.4）。
 
 ---
 
