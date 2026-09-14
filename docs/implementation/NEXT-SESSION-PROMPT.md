@@ -174,6 +174,12 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 
 ## 七、当前待办（按优先级）
 
+> ⚠️ **最新一轮（2026-09-14）另有一份专门作业单，优先做它**：
+> `docs/implementation/NEXT-SESSION-PROMPT-CONTENT-QUALITY.md`
+> —— 主题是「**库里的内容 = 我的工作知识，而不是建库说明**」：改写 5 个项目页（去掉建库类内容、
+> `## 当前状态` 分点分层）、把「公司人事」重新定位为「与每个人的长期沟通记录」、
+> 修 App【项目】里漏出的 `.obsidian`（需重建装机）。含使用者原话、6 个已对齐决策与已取证事实。
+
 1. ~~**Air 备用机接入**~~ —— **已结案（2026-09-14）**：Air 已作为辅助设备接入完成，
    读 / 写 / 推送 / 拉取**四向实测通过**，两台机器 `/api/sync/status = ready 0/0`，
    四条判据（secondary 角色、0/0、块级出处、决策页 15 篇）全部通过。原委见
