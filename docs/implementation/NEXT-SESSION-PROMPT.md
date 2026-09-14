@@ -29,7 +29,7 @@
 ## 二、环境与身份（已核实，可直接用）
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`；Python venv `.venv`；CLI `.venv/bin/wb`。
-- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**64 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
+- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**69 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
   `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
   `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
   索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`
@@ -182,6 +182,8 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
      `## 下一步`(#8/#9/#11/#12/#13) 占席。**未改权重、未放宽判据**；也**不**为改回数字而改写新页面措辞
      （「收口」是 HII 材料既有高频词）。证据：`docs/acceptance/evidence/kb-measure-2026-09-14-post-first-batch.txt`。
      ⚠️ 排名均值 4.9→2.8 是**假象**（命中项变少、分母变小）——判断回退只看二值/分档。
+     **追加 2025 两场后仍为 6/16、6/4/6（持平）** ⇒ 回退是**一次性、可归因**的，
+     不是随规模持续恶化的趋势；这条支持「先不调权重」。若后续每批都继续挤出既有命中，则性质改变。
    - **上一条预言已应验**：上一轮就发现「Q2 锚点贴在窗口边缘 #16，加项目页前要留意」，本轮内容增长即触发。
    - Q3 的 `it/clusters/enrollment#关键结论` 在加「主题通道」后由「同篇不同块」变成**未召回**（净效果 6→7）。
    - 同篇多结论块互相竞争：分析笔记有 19 个「结论N」块，`max_chunks_per_note=3` 下哪 3 个进上下文
@@ -200,9 +202,11 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 4. **首批素材已入库（2026-09-14），三线内容仍很薄——继续收素材**：社群 / 后勤 / HR 各入库 1 批。
    规范已通过第一次实战检验（粒度与落点**未需修正**；三条采集习惯问题见 `SEED-MATERIAL-SPEC.md` §10）。
    **当前缺口（下一步该收的）**：
-   - 社群：**2026-06-07 活动的复盘**（事件页 `## 复盘：有效与无效` 仍是空的）；
-     两场 2025 活动（2025-04 杭州聚会、2025-12 年终聚会）的**原件**；社群构想 / 框架类原件。
-   - 后勤：物料采购进展；除 1977 酒店外的酒店 / 场地 / 供应商；行政制度类原件。
+   - 社群：**三场活动（2025-04 杭州 Kick Off / 2025 年终 / 2026-06-07）的一手复盘——这是最缺的一项**
+     （方法论页的「验证于」只能证明用过，不能证明有效）；社群构想 / 框架类原件；
+     6/7 方案引用的《活动筹备与执行方案》《酒店备选清单》。
+   - 后勤：物料采购进展；除 1977 酒店外的酒店 / 场地 / 供应商；行政制度类原件；
+     1977 酒店的合同条款（时间线写着 2026-11 签约前收口）。
    - HR：人事制度类材料；除刘玉兰外其他团队成员的沟通。
    - 素材放 `~/Desktop/当前材料/{活满社群,活满后勤行政,HR}/`（每个目录内有 `README-放这里.md`）。
    - 库内模板 **16 个**（新增 `hr-person` / `event-retro` / `vendor` / `procurement` /
@@ -251,7 +255,11 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
   §4.4 证据补路径、IT 章节数纠错、补 `review/meetings.md`）。**别重做**。
 - **首批种子入库（2026-09-14）**：社群（`activity-playbook` / 6-07 方案原件 / 6-07 事件页）、
   后勤（`hangzhou-1977-hotel` + 原件）、HR（`liu-yulan` + 原稿 + 分析）；
-  模板 14→16（`event-plan` / `conversation-minutes`）。**别重做**（缺的是复盘与 2025 原件，见 §7.4）。
+  模板 14→16（`event-plan` / `conversation-minutes`）。
+- **2025 两场活动补齐（2026-09-14）**：`20250418-hangzhou-gathering`（Kick Off，含详细流程 Run of Show）与
+  `20251216-year-end-gathering`（上海·音昱听堂）各入 source + 事件页 ⇒ **社群三场活动原件与事件页全部在库**；
+  方法论页的 10 个环节里有 8 个已标出「验证于哪一场」，并把环节库提升为独立 `##` 块。
+  **缺的是一手复盘**（见 §7.4）。**别重做**。
 
 ---
 
