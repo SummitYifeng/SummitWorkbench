@@ -42,10 +42,12 @@ from summit_workbench.repositories.review_page import (
 )
 from summit_workbench.repositories.writeback import (
     append_global_inbox,
+    append_knowledge_note,
     append_project_followup,
     append_project_inbox,
     append_project_main,
     append_thread_inbox,
+    parse_sink_target,
 )
 from summit_workbench.workflows.external_actions import (
     mark_failed,
@@ -104,6 +106,9 @@ def _destination(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> str:
         return _project_inbox_destination(vault_dir, work_root, str(item.target_project))
     if item.route is RouteTarget.GLOBAL_INBOX:
         return str(vault_dir / "inbox.md")
+    if item.route is RouteTarget.KNOWLEDGE_NOTE:
+        rel, _heading = parse_sink_target(str(item.sink_target or ""))
+        return str(vault_dir / rel.with_suffix(".md"))
     if item.route is RouteTarget.FEISHU_TASK:
         return "feishu-task"
     if item.route is RouteTarget.FEISHU_MEETING:
@@ -136,6 +141,9 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
             reason = "缺少 route"
         elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
             reason = "新建会议需要开始时间（在「修改」里填开始时间）"
+        elif item.route is RouteTarget.KNOWLEDGE_NOTE and not Path(destination).is_file():
+            # 知识沉淀必须有已建好的目标页（主题簇页 / 项目主页），否则无处可落。
+            reason = f"写回目标不存在：{destination}（知识沉淀需要先建好目标页）"
         elif (
             item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_FOLLOWUP)
             and not Path(destination).is_file()
@@ -202,6 +210,15 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
         return str(path), None
     if item.route is RouteTarget.GLOBAL_INBOX:
         path, _written = append_global_inbox(vault_dir, item.description, item.candidate_id)
+        return str(path), None
+    if item.route is RouteTarget.KNOWLEDGE_NOTE:
+        path, _written = append_knowledge_note(
+            vault_dir,
+            str(item.sink_target or ""),
+            item.description,
+            item.candidate_id,
+            source_ref=item.evidence.anchor if item.evidence else None,
+        )
         return str(path), None
     raise ValueError(f"非本地 route：{item.route.value}")
 

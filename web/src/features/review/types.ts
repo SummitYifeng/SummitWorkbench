@@ -5,6 +5,8 @@ export interface ReviewEntry {
   target_project: string | null;
   route: string | null;
   due_date: string | null;
+  /** 知识沉淀目标：`<vault 相对页面路径>#<区块标题>`；仅 route=knowledge-note 时有值 */
+  sink_target: string | null;
   start_at: string | null;
   end_at: string | null;
   evidence: string | null;

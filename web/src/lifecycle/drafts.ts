@@ -19,6 +19,8 @@ export interface ReviewDraftFields {
   due_date: string;
   start_at?: string;
   end_at?: string;
+  /** 知识沉淀目标（`<页面路径>#<区块标题>`）；只有 route=knowledge-note 时使用 */
+  sink_target?: string;
 }
 
 export interface DraftSnapshot {

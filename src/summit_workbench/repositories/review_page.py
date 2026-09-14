@@ -54,6 +54,7 @@ def _encode_original(entry: ReviewEntry) -> str:
             "target_project": entry.candidate.target_project,
             "route": entry.candidate.route.value if entry.candidate.route else None,
             "due_date": entry.candidate.due_date,
+            "sink_target": entry.candidate.sink_target,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -78,6 +79,7 @@ def _render_entry(entry: ReviewEntry) -> str:
             f"  - target_project: {target}",
             f"  - route: {route}",
             f"  - due_date: {due}",
+            f"  - sink_target: {item.sink_target or ''}",
             f"  - start_at: {item.start_at or ''}",
             f"  - end_at: {item.end_at or ''}",
             f"  - evidence: {evidence}",
@@ -101,7 +103,9 @@ def render_review_page(entries: list[ReviewEntry], *, today: date | None = None)
     intro = """# 会议提取待确认
 
 > `- [ ]` 待确认，`- [x]` 批准，`~~整条候选~~`（可选追加 `#ignore`）拒绝。
-> 可修改正文、target_project、route 和 due_date；仅保存不会写回。
+> 可修改正文、target_project、route、due_date 和 sink_target；仅保存不会写回。
+> `sink_target` 只在落点选「知识沉淀」时使用，格式 `<页面路径>#<区块标题>`
+> （例：`hii/clusters/ip-trademark#关键结论`；缺区块时默认落到 `## 关键结论`）。
 > `wb review apply` 默认只预演，必须显式添加 `--apply` 才执行。
 """
     groups: dict[tuple[str, str, str], list[ReviewEntry]] = {}
@@ -176,6 +180,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         route=RouteTarget(route_raw) if route_raw else None,
         evidence=EvidenceRef(anchor=evidence_raw) if evidence_raw else None,
         due_date=due,
+        sink_target=_field(block, "sink_target") or None,
         start_at=start_at,
         end_at=end_at,
         is_next_step=True,

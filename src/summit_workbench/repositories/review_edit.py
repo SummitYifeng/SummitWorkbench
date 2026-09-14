@@ -100,8 +100,12 @@ def update_fields(
     due_date: str | None = None,
     start_at: str | None = None,
     end_at: str | None = None,
+    sink_target: str | None = None,
 ) -> None:
-    """原地修改候选正文 / 目标项目 / route / 截止 / 日历会议起止（None 表示保持不变）。"""
+    """原地修改候选正文 / 目标项目 / route / 截止 / 日历会议起止 / 知识沉淀目标。
+
+    None 表示保持该字段不变（与既有语义一致）。
+    """
 
     def mutate(c: ApprovalCandidate) -> ApprovalCandidate:
         return replace(
@@ -112,6 +116,7 @@ def update_fields(
             due_date=due_date if due_date is not None else c.due_date,
             start_at=start_at if start_at is not None else c.start_at,
             end_at=end_at if end_at is not None else c.end_at,
+            sink_target=sink_target if sink_target is not None else c.sink_target,
         )
 
     _rewrite(vault_dir, candidate_id, mutate)

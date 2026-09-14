@@ -22,6 +22,7 @@ const ROUTE_LABELS: Record<string, string> = {
   'project-followup': '跟进事项',
   'project-inbox': '项目 inbox',
   'global-inbox': '全局 inbox',
+  'knowledge-note': '知识沉淀',
 };
 const DECISION_LABELS: Record<string, string> = {
   pending: '待确认',
@@ -36,7 +37,16 @@ const FILTER_LABELS: Record<ReviewFilter, string> = {
 };
 
 function routeOptions(current: string | null): string {
-  const keys = ['', 'feishu-task', 'feishu-meeting', 'project-main', 'project-followup', 'project-inbox', 'global-inbox'];
+  const keys = [
+    '',
+    'feishu-task',
+    'feishu-meeting',
+    'project-main',
+    'project-followup',
+    'project-inbox',
+    'global-inbox',
+    'knowledge-note',
+  ];
   return keys.map((k) => {
     const label = k === '' ? '（未定）' : ROUTE_LABELS[k] ?? k;
     return '<option value="' + k + '"' + (k === current ? ' selected' : '') + '>' + label + '</option>';
@@ -107,6 +117,7 @@ function entryCard(e: ReviewEntry, today: string, selectedIds: ReadonlySet<strin
     '<div class="grid2">' +
     '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="项目 ID 或别名（如 finance-ops）；留空=全局 inbox" value="' + esc(e.target_project ?? '') + '"></div>' +
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
+      '<div><label>沉淀目标</label><input name="sink_target" placeholder="仅「知识沉淀」用：页面路径#区块，如 hii/clusters/ip-trademark#关键结论" value="' + esc(e.sink_target ?? '') + '"></div>' +
     '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
     '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
     '<div><label>结束时间（新建会议）</label><input name="end_at" type="datetime-local" value="' + esc(e.end_at ?? '') + '"></div>' +

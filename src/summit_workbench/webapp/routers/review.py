@@ -214,6 +214,7 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
                     due_date=payload.due_date,
                     start_at=payload.start_at,
                     end_at=payload.end_at,
+                    sink_target=payload.sink_target,
                 )
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 
@@ -277,6 +278,7 @@ def register_review_page_routes(
         target_project: str = Form("", max_length=200),
         route: str = Form("", max_length=64),
         due_date: str = Form("", max_length=32),
+        sink_target: str = Form("", max_length=512),
     ) -> RedirectResponse:
         try:
 
@@ -288,6 +290,7 @@ def register_review_page_routes(
                     target_project=target_project.strip() or None,
                     route=RouteTarget(route) if route else None,
                     due_date=due_date.strip() or None,
+                    sink_target=sink_target.strip() or None,
                 )
                 return LocalMutationOutcome(None, (review_path(ctx.vault_dir),))
 

@@ -44,10 +44,13 @@ class EditPayload(BaseModel):
             "project-followup",
             "project-inbox",
             "global-inbox",
+            "knowledge-note",
         ]
         | None
-    ) = None  # feishu-task | feishu-meeting | project-main | project-inbox | global-inbox
+    ) = None  # feishu-task|feishu-meeting|project-main|project-inbox|global-inbox|knowledge-note
     due_date: str | None = Field(default=None, max_length=32)
+    # 知识沉淀落点：`<vault 相对页面路径>#<区块标题>`；只有 route=knowledge-note 时使用。
+    sink_target: str | None = Field(default=None, max_length=512)
     start_at: str | None = Field(default=None, max_length=64)
     end_at: str | None = Field(default=None, max_length=64)
 

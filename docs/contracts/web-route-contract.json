@@ -964,6 +964,7 @@
       "description",
       "due_date",
       "route",
+      "sink_target",
       "target_project"
     ],
     "request_model": "str",

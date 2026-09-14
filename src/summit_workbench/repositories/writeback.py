@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
-from pathlib import Path
+from datetime import UTC, date, datetime
+from pathlib import Path, PurePosixPath
 
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import CandidateKind
@@ -181,4 +181,64 @@ def append_project_inbox(
     with workspace_lock(work_root):
         path = work_root / project / "input" / "inbox.md"
         written = _append_under_heading(path, "## 待处理条目", f"[ ] {description}", candidate_id)
+        return path, written
+
+
+# 知识沉淀的默认落点区块：主题簇页与项目主页都用它承载「一句话级结论」。
+_DEFAULT_KNOWLEDGE_HEADING = "## 关键结论"
+
+
+def parse_sink_target(sink_target: str) -> tuple[PurePosixPath, str]:
+    """把 `<vault 相对页面路径>#<区块标题>` 解析成 ``(相对路径, 完整区块标题行)``。
+
+    - 缺 `#区块` 时默认 ``## 关键结论``；
+    - 区块标题允许写成 `关键结论` 或 `## 关键结论`，统一规整成后者；
+    - **只接受 vault 相对路径**：绝对路径或含 `..` 的目标一律拒绝——否则一条审批写回
+      就能把内容写到库外（这是审批链路上最需要守住的边界）。
+
+    变异验证：把 `..` 检查去掉，`tests/unit/test_review_apply_meeting_links.py` 里
+    针对路径穿越的用例必须变红。
+    """
+    raw = sink_target.strip()
+    page, _, block = raw.partition("#")
+    page = page.strip()
+    if page.endswith(".md"):
+        page = page[: -len(".md")]
+    if not page:
+        raise ValueError(f"知识沉淀目标缺少页面路径：{sink_target!r}")
+    rel = PurePosixPath(page)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(f"知识沉淀目标必须是 vault 相对路径（不得越出库）：{sink_target!r}")
+    title = block.strip().lstrip("#").strip() or _DEFAULT_KNOWLEDGE_HEADING.lstrip("# ")
+    return rel, f"## {title}"
+
+
+def append_knowledge_note(
+    vault_dir: Path,
+    sink_target: str,
+    description: str,
+    candidate_id: str,
+    *,
+    source_ref: str | None = None,
+    today: str | None = None,
+) -> tuple[Path, bool]:
+    """「知识沉淀」落点：把一条结论追加到目标页的指定区块，并留出处。
+
+    为什么它与其它落点不同：待办要落到飞书 / 项目主页，而**知识结论**要落回它所属的
+    主题簇页（如 `hii/clusters/ip-trademark#关键结论`）。落点由使用者在审批页显式指定，
+    app 不自动猜——「这条结论该进哪一页的哪一节」是业务判断。
+
+    写入行格式：``- YYYY-MM-DD <结论>（出处：<source_ref>）``，
+    幂等标记沿用 `_append_under_heading`（同一 candidate_id 重复批准不会重复追加）。
+    """
+    rel, heading = parse_sink_target(sink_target)
+    with workspace_lock(vault_dir.parent):
+        path = vault_dir / rel.with_suffix(".md")
+        if not path.is_file():
+            raise ValueError(f"写回目标不存在：{path}")
+        stamp = today or date.today().isoformat()
+        line = f"{stamp} {description.strip()}"
+        if source_ref and source_ref.strip():
+            line += f"（出处：{source_ref.strip()}）"
+        written = _append_under_heading(path, heading, line, candidate_id)
         return path, written

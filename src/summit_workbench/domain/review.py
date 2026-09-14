@@ -37,6 +37,10 @@ class RouteTarget(StrEnum):
     PROJECT_FOLLOWUP = "project-followup"  # 他人行动项 → 主档案「跟进事项」责任记录（不进本人待办）
     PROJECT_INBOX = "project-inbox"  # 未成熟想法
     GLOBAL_INBOX = "global-inbox"  # 目标项目不明
+    # 知识沉淀：把一条**知识结论**（而不是待办）写入指定页面的指定区块。
+    # 与其它落点不同，它**不自动路由**：目标由使用者在审批页显式指定（sink_target），
+    # 因为「这条结论该进哪个主题簇页的哪一节」是业务判断，不该由模型猜。
+    KNOWLEDGE_NOTE = "knowledge-note"
 
 
 class CandidateDecision(StrEnum):
@@ -76,6 +80,9 @@ class ApprovalCandidate:
     route: RouteTarget | None = None
     evidence: EvidenceRef | None = None
     due_date: str | None = None  # YYYY-MM-DD；无期限留空
+    # 知识沉淀目标：`<vault 相对页面路径>#<区块标题>`（如 `hii/clusters/ip-trademark#关键结论`）。
+    # 只有 route=knowledge-note 时使用；缺 `#区块` 时写入器默认落到 `## 关键结论`。
+    sink_target: str | None = None
     start_at: str | None = None  # 新建日历会议的开始时间（本地 naive YYYY-MM-DDTHH:MM）
     end_at: str | None = None  # 新建日历会议的结束时间（同上；缺省按开始 + 1 小时）
     involves_others: bool = False
@@ -89,10 +96,14 @@ class ApprovalCandidate:
         目标可写的判定按 route 区分（贴合真实场景：多数会议未必对应已建项目）：
         - 全局 inbox 与新建日历会议（个人日程排期）正是「目标项目不明」的兜底，
           不需要已解析项目即可捕获/落日程；
+        - 「知识沉淀」不以项目为条件，但**必须有明确的沉淀目标**（`sink_target`）——
+          没有目标页就没有落点，允许勾选只会让使用者批准一条写不进去的候选；
         - 其余落点（项目主笔记 / 跟进事项 / 项目 inbox / 飞书任务 / 未定 route）需已解析目标项目。
         """
         if self.evidence is None or not self.evidence.is_valid():
             return False
+        if self.route is RouteTarget.KNOWLEDGE_NOTE:
+            return bool(self.sink_target and self.sink_target.strip())
         if self.route in (RouteTarget.GLOBAL_INBOX, RouteTarget.FEISHU_MEETING):
             return True
         return _has_project(self.target_project)

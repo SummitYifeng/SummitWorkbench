@@ -236,6 +236,7 @@ function saveCurrentDraftSnapshot(): void {
       due_date: String(data.get('due_date') ?? ''),
       start_at: String(data.get('start_at') ?? ''),
       end_at: String(data.get('end_at') ?? ''),
+      sink_target: String(data.get('sink_target') ?? ''),
     };
   });
   if (editForms.length > 0) reviewDrafts = reviewForms;

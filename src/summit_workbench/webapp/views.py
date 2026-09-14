@@ -20,6 +20,7 @@ _ROUTE_LABELS = {
     RouteTarget.PROJECT_FOLLOWUP: "跟进事项",
     RouteTarget.PROJECT_INBOX: "项目 inbox",
     RouteTarget.GLOBAL_INBOX: "全局 inbox",
+    RouteTarget.KNOWLEDGE_NOTE: "知识沉淀",
 }
 _DECISION_BADGE = {
     CandidateDecision.PENDING: ("待确认", "pending"),
