@@ -79,6 +79,9 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 .venv/bin/python scripts/kb_acceptance.py
 # 已装 App 验收（4 题模型口径；只重查一题用 --only 省 token）
 .venv/bin/python scripts/kb_acceptance_installed.py --only "Q1"
+# 库内模板「插入即合法」守卫（**零 token**；动了 _vault/templates/ 必跑）
+# 判据＝只做 Obsidian 的 {{date}}/{{time}}/{{title}} 替换，其余占位符原样留着也必须过 schema。
+.venv/bin/python scripts/kb_check_templates.py
 # vault 自检（**全部零 token**；动了 vault 内容、归档判据或检索时必须跑）
 .venv/bin/wb vault check
 .venv/bin/python scripts/kb_verify_links.py
@@ -205,7 +208,10 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    - 社群：**2025 两场活动的一手复盘**（2026-06-07 已有，且已把方法论升级为「有效 / 需调整」）；
      社群构想 / 框架类原件；6/7 方案引用的《活动筹备与执行方案》《酒店备选清单》。
    - ⚠️ **需使用者明确一件事**：6/7 复盘要求「将来继续让学员做，需要给出更完善的执行指南，
-     **而不是全部交出去**」——**下次下午场是否仍由学员主导尚未决定**。
+     **而不是全部交出去**」——**下次下午场是否仍由学员主导尚未决定**（已搁置，不催）。
+   - ⚠️ **台账里"待验证"的一条**：素材入口指南写的「你自己操作」路线**尚未实跑过一轮**——
+     下一轮使用者按指南建第一页时，顺手确认：模板插入是否顺畅、`wb vault check` 是否真过、
+     下次提问是否真能检索到。**若发现卡点，改的是指南与模板（不是让使用者迁就）。**
    - 后勤：物料采购进展；除 1977 酒店外的酒店 / 场地 / 供应商；行政制度类原件；
      1977 酒店的合同条款（时间线写着 2026-11 签约前收口）。
    - HR：人事制度类材料；除刘玉兰外其他团队成员的沟通。
@@ -260,6 +266,11 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 - **2025 两场活动补齐（2026-09-14）**：`20250418-hangzhou-gathering`（Kick Off，含详细流程 Run of Show）与
   `20251216-year-end-gathering`（上海·音昱听堂）各入 source + 事件页 ⇒ **社群三场活动原件与事件页全部在库**；
   方法论页的 10 个环节里有 8 个已标出「验证于哪一场」，并把环节库提升为独立 `##` 块。**别重做**。
+- **素材入口指南（2026-09-14）**：库内 `index/sop.md` 新增「入口指南」一章（四条通道 / 建页三步 /
+  不完美怎么办 / 常见错误 / 何时交 Agent），仓库 `docs/product/INTAKE-GUIDE.html` 为交互版
+  （桌面另有一份副本）。**并且修掉了 16 个库内模板「插入不安全」的缺陷**（占位符未加引号 → YAML 非法），
+  现全部「插入即合法」。使用者已确认工作方式＝**他自己在 Workbench / Obsidian 里操作、手记直接写 vault**。
+  **别重做**。
 - **2026-06-07 一手复盘入库（2026-09-14）**：260 字复盘 → `activity-playbook` 新增
   `## 复盘教训（跨场次累积）`（6 条教训）、设计理念第 4 条按复盘修正、6/7 事件页复盘区补齐、
   `## 可复用流程` 由 7 步扩到 10 步；规范 §3.1 场景表**新增「办完活动之后的复盘」并标为价值最高**。

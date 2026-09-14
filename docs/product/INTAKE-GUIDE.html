@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>素材入口指南 · 工作知识库</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1c2333; --muted:#5b6579; --line:#e3e7f0;
+    --brand:#4f46e5; --brand-soft:#eef0fe; --ok:#0f9d58; --ok-soft:#e8f6ee;
+    --warn:#b45309; --warn-soft:#fdf3e3; --bad:#c0392b; --bad-soft:#fdecea;
+    --shadow:0 1px 2px rgba(16,24,40,.05), 0 8px 24px -12px rgba(16,24,40,.18);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--brand); text-decoration:none}
+  a:hover{text-decoration:underline}
+  header.hero{
+    background:linear-gradient(135deg,#4f46e5 0%,#6d5ce7 45%,#8b5cf6 100%);
+    color:#fff; padding:40px 24px 34px;
+  }
+  .wrap{max-width:1020px; margin:0 auto}
+  header.hero h1{margin:0 0 6px; font-size:30px; letter-spacing:.3px}
+  header.hero p{margin:0; color:#e7e6ff; font-size:15px}
+  .hero-tags{margin-top:18px; display:flex; flex-wrap:wrap; gap:8px}
+  .hero-tags span{
+    background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28);
+    padding:5px 11px; border-radius:999px; font-size:13px;
+  }
+  nav.sticky{
+    position:sticky; top:0; z-index:50; background:rgba(246,247,251,.92);
+    backdrop-filter:saturate(180%) blur(12px); border-bottom:1px solid var(--line);
+  }
+  nav.sticky .wrap{display:flex; gap:6px; overflow-x:auto; padding:10px 24px}
+  nav.sticky a{
+    flex:0 0 auto; font-size:13.5px; color:var(--muted); padding:6px 11px;
+    border-radius:999px; border:1px solid transparent; white-space:nowrap;
+  }
+  nav.sticky a:hover{background:#fff; border-color:var(--line); color:var(--ink); text-decoration:none}
+  main{padding:26px 24px 80px}
+  section{margin:0 0 30px; scroll-margin-top:70px}
+  h2{font-size:20px; margin:0 0 4px; display:flex; align-items:center; gap:9px}
+  h2 .n{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; border-radius:8px; background:var(--brand-soft); color:var(--brand);
+    font-size:14px; font-weight:600; flex:0 0 auto;
+  }
+  .sub{color:var(--muted); font-size:14px; margin:0 0 14px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px}
+  .grid{display:grid; gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .lead{
+    background:var(--card); border:1px solid var(--line); border-left:4px solid var(--brand);
+    border-radius:12px; padding:14px 18px; box-shadow:var(--shadow);
+  }
+  .lead strong{color:var(--brand)}
+  code, .mono{
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:13px; background:#f2f4fa; border:1px solid var(--line);
+    border-radius:6px; padding:1.5px 6px;
+  }
+  .chips{display:flex; flex-wrap:wrap; gap:9px; margin:4px 0 16px}
+  .chip{
+    cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink);
+    padding:9px 14px; border-radius:999px; font-size:14px; transition:.15s;
+    box-shadow:0 1px 2px rgba(16,24,40,.04);
+  }
+  .chip:hover{border-color:#c7cbf5; transform:translateY(-1px)}
+  .chip[aria-pressed="true"]{background:var(--brand); border-color:var(--brand); color:#fff}
+  .panel{display:none}
+  .panel.on{display:block; animation:fade .18s ease-out}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+  .rows{display:grid; gap:11px; margin:0}
+  .row{display:grid; grid-template-columns:96px 1fr; gap:12px; align-items:start}
+  .row dt{color:var(--muted); font-size:13.5px; padding-top:2px}
+  .row dd{margin:0}
+  ul.blocks{margin:0; padding-left:0; list-style:none; display:flex; flex-wrap:wrap; gap:6px}
+  ul.blocks li{background:var(--brand-soft); color:#3b34b8; border-radius:7px; padding:3px 9px; font-size:12.5px; font-family:ui-monospace,Menlo,monospace}
+  .pill{display:inline-block; font-size:12.5px; padding:3px 9px; border-radius:999px; background:#eef1f7; color:var(--muted)}
+  .pill.self{background:var(--ok-soft); color:#0b6b3d}
+  .pill.agent{background:var(--warn-soft); color:var(--warn)}
+  .steps{counter-reset:s; display:grid; gap:12px}
+  .step{position:relative; padding-left:44px}
+  .step::before{
+    counter-increment:s; content:counter(s);
+    position:absolute; left:0; top:2px; width:28px; height:28px; border-radius:9px;
+    background:var(--brand); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-size:14px; font-weight:600;
+  }
+  .fm{
+    font-family:ui-monospace,Menlo,monospace; font-size:12.7px; line-height:1.85;
+    background:#1e2233; color:#dfe3f5; border-radius:12px; padding:14px 16px; overflow-x:auto;
+  }
+  .fm .k{color:#9aa4d6}
+  .fm .hl{background:rgba(255,210,90,.18); border-radius:4px; padding:0 3px}
+  .fm .cm{color:#7b86b8}
+  .field{margin:0 0 10px}
+  .field label{display:block; font-size:13.5px; color:var(--muted); margin-bottom:4px}
+  input[type=text],input[type=date],select{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:10px;
+    font:inherit; font-size:14px; background:#fff; color:var(--ink);
+  }
+  input:focus,select:focus{outline:2px solid var(--brand-soft); border-color:var(--brand)}
+  .out{
+    margin-top:12px; background:#0f172a; color:#e6ebff; border-radius:12px; padding:13px 15px;
+    font-family:ui-monospace,Menlo,monospace; font-size:13px; word-break:break-all;
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+  }
+  .out button{background:#2b3557; color:#cdd6ff; border:1px solid #3a4571; border-radius:8px; padding:6px 11px; font-size:12.5px; cursor:pointer}
+  .out button:hover{background:#37426b}
+  .check{display:grid; gap:10px; margin:0 0 14px}
+  .check label{display:flex; gap:11px; align-items:flex-start; cursor:pointer; font-size:14.5px}
+  .check input{margin-top:4px; width:17px; height:17px; accent-color:var(--brand); flex:0 0 auto}
+  .verdict{border-radius:12px; padding:12px 16px; font-size:15px; font-weight:600; display:flex; align-items:center; gap:10px}
+  .verdict.v-wait{background:var(--bad-soft); color:var(--bad)}
+  .verdict.v-soon{background:var(--warn-soft); color:var(--warn)}
+  .verdict.v-go{background:var(--ok-soft); color:var(--ok)}
+  .bar{height:8px; border-radius:99px; background:#e9ecf5; overflow:hidden; margin:0 0 12px}
+  .bar > i{display:block; height:100%; width:0; background:linear-gradient(90deg,#4f46e5,#8b5cf6); transition:width .25s}
+  table{width:100%; border-collapse:collapse; font-size:14px}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{color:var(--muted); font-weight:600; font-size:13px; background:#fbfcfe}
+  tr:last-child td{border-bottom:none}
+  .no{color:var(--bad)} .yes{color:var(--ok)}
+  details{border:1px solid var(--line); border-radius:11px; padding:11px 14px; background:#fff; margin:0 0 9px}
+  details summary{cursor:pointer; font-weight:600; font-size:14.5px}
+  details[open] summary{margin-bottom:8px}
+  footer{border-top:1px solid var(--line); color:var(--muted); font-size:13px; padding:22px 24px 40px}
+  @media print{
+    nav.sticky{display:none} header.hero{background:#4f46e5 !important; -webkit-print-color-adjust:exact}
+    .panel{display:block !important} body{background:#fff}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>素材入口指南</h1>
+    <p>我该传什么、怎么传 —— 让工作线、项目线、知识库一起优质生长</p>
+    <div class="hero-tags">
+      <span>原件逐字 · 结论分层</span>
+      <span>一次事一页</span>
+      <span>小标题写清楚</span>
+      <span>不完美也能入，之后迭代</span>
+    </div>
+  </div>
+</header>
+
+<nav class="sticky">
+  <div class="wrap">
+    <a href="#rule">总则</a>
+    <a href="#channels">四条通道</a>
+    <a href="#picker">我要入什么？</a>
+    <a href="#create">建页三步</a>
+    <a href="#namer">文件名生成器</a>
+    <a href="#selfcheck">入库前自检</a>
+    <a href="#imperfect">不完美怎么办</a>
+    <a href="#mistakes">常见错误</a>
+    <a href="#rhythm">节奏</a>
+    <a href="#agent">什么时候找我</a>
+    <a href="#templates">模板清单</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <section id="rule">
+    <h2><span class="n">0</span>总则（一句话就够）</h2>
+    <div class="lead">
+      <strong>原件进 <code>sources/</code>（逐字、不可改），结论进结论层</strong>（对象页 / 事件页 / 分析笔记 / 主题簇页）。
+      一页只讲一件事；小标题要能被人读懂；不确定就先入后改。
+    </div>
+    <div class="grid g3" style="margin-top:14px">
+      <div class="card"><b>为什么原件要逐字</b><p class="sub" style="margin:6px 0 0">「他当时说的是『尽量』还是『必须』」会决定后续判断。改写过的原件，之后所有引用都指向二手件。</p></div>
+      <div class="card"><b>为什么结论要分层</b><p class="sub" style="margin:6px 0 0">问答时只依据召回内容作答。结论层能被精确定位到「哪一节」，原件只作证据。</p></div>
+      <div class="card"><b>为什么要小标题</b><p class="sub" style="margin:6px 0 0">库按 <code>#</code>/<code>##</code> 切块。<code>###</code> 不算块边界——长文档若只到三级标题，整篇只能算一个块，无法定点引用。</p></div>
+    </div>
+  </section>
+
+  <section id="channels">
+    <h2><span class="n">1</span>四条通道（对号入座）</h2>
+    <p class="sub">你已确认：<b>自己在 Workbench / Obsidian 里操作</b>，手记<b>直接写在 vault 里</b>。下面就是按这个方式排的。</p>
+    <div class="card">
+      <table>
+        <tr><th>你要入的东西</th><th>走哪条</th><th>谁做</th><th>落点</th><th>硬要求</th></tr>
+        <tr>
+          <td><b>会议逐字稿</b></td>
+          <td>Workbench 今日页「＋ 导入会议纪要」</td>
+          <td><span class="pill self">你自己</span></td>
+          <td><code>meetings/transcripts/</code> + 结构化笔记 + 提取项进审批页</td>
+          <td><b>.md / .txt</b>，且<b>带说话人与时间戳</b></td>
+        </tr>
+        <tr>
+          <td><b>手记</b><br><span class="sub">沟通 / 思考 / 主题结论</span></td>
+          <td>Obsidian 里用模板建页</td>
+          <td><span class="pill self">你自己</span></td>
+          <td>见「建页三步」的目录表</td>
+          <td>复制模板 → 改 3 处 → 保存</td>
+        </tr>
+        <tr>
+          <td><b>活动复盘</b><br><span class="sub">价值最高，别跳过</span></td>
+          <td>写进事件页的 <code>## 复盘：有效与无效</code></td>
+          <td><span class="pill self">你自己</span></td>
+          <td><code>community/events/&lt;活动&gt;.md</code></td>
+          <td><b>当天或次日</b>写，5 行即可</td>
+        </tr>
+        <tr>
+          <td><b>文档原件</b><br><span class="sub">方案 / 手册 / 制度 / 名单</span></td>
+          <td>逐字归档成 <code>source</code> 页</td>
+          <td><span class="pill self">你自己</span> <span class="pill agent">或交给我</span></td>
+          <td><code>&lt;线&gt;/sources/&lt;日期&gt;-&lt;短名&gt;.md</code></td>
+          <td>逐字不改；记 <code>ref</code> + <code>hash</code></td>
+        </tr>
+      </table>
+      <p class="sub" style="margin:14px 0 0">
+        ✅ 写完手记后 <b>下一次提问就能检索到</b> —— Workbench 每次提问都会增量同步索引，不需要手动重建。
+      </p>
+    </div>
+  </section>
+
+  <section id="picker">
+    <h2><span class="n">2</span>我要入什么？（点一下看怎么做）</h2>
+    <p class="sub">选最接近的一项，下面会告诉你：走哪条、放哪里、叫什么名、至少要有哪几段。</p>
+    <div class="chips" id="pickerChips"></div>
+    <div class="card" id="pickerPanel"></div>
+  </section>
+
+  <section id="create">
+    <h2><span class="n">3</span>手记：建页三步</h2>
+    <div class="card">
+      <div class="steps">
+        <div class="step">
+          <b>选模板</b>（<code>templates/</code> 里对着用途挑）：
+          <div class="grid g2" style="margin-top:10px">
+            <div class="card" style="box-shadow:none">
+              <table>
+                <tr><td>与某个人的长期沟通线</td><td><code>hr-person</code></td></tr>
+                <tr><td>一次沟通的结论</td><td><code>conversation-minutes</code></td></tr>
+                <tr><td>酒店 / 场地 / 供应商</td><td><code>vendor</code></td></tr>
+                <tr><td>物料采购进展</td><td><code>procurement</code></td></tr>
+              </table>
+            </div>
+            <div class="card" style="box-shadow:none">
+              <table>
+                <tr><td>活动复盘</td><td><code>event-retro</code></td></tr>
+                <tr><td>活动方案草稿</td><td><code>event-plan</code></td></tr>
+                <tr><td>主题结论沉淀</td><td><code>cluster</code></td></tr>
+                <tr><td>思考 / 脑暴</td><td><code>long-form-thought</code></td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <b>放到该去的地方</b>，文件名用 <code>&lt;YYYYMMDD&gt;-&lt;英文短名&gt;.md</code>：
+          <div class="card" style="box-shadow:none; margin-top:10px">
+            <table>
+              <tr><td>HR 按人</td><td><code>hr/people/&lt;拼音或英文名&gt;.md</code></td></tr>
+              <tr><td>HR 单次沟通结论</td><td><code>hr/notes/&lt;日期&gt;-&lt;主题&gt;.md</code></td></tr>
+              <tr><td>社群活动页 / 复盘</td><td><code>community/events/&lt;日期&gt;-&lt;活动&gt;.md</code></td></tr>
+              <tr><td>社群方案草稿</td><td><code>community/notes/&lt;日期&gt;-&lt;活动&gt;-plan.md</code></td></tr>
+              <tr><td>社群思考 / 脑暴</td><td><code>community/thinking/&lt;短名&gt;.md</code></td></tr>
+              <tr><td>社群主题结论</td><td><code>community/clusters/&lt;短名&gt;.md</code></td></tr>
+              <tr><td>酒店 / 场地 / 供应商</td><td><code>logistics/vendors/&lt;对象&gt;.md</code></td></tr>
+              <tr><td>物料类别</td><td><code>logistics/procurement/&lt;类别&gt;.md</code></td></tr>
+              <tr><td>行政制度 / 部门思考</td><td><code>logistics/clusters/&lt;短名&gt;.md</code></td></tr>
+              <tr><td>工作日志</td><td><code>&lt;线&gt;/logs/&lt;日期&gt;.md</code></td></tr>
+            </table>
+          </div>
+        </div>
+        <div class="step">
+          <b>只改 3 处，保存</b>：
+          <div class="grid g2" style="margin-top:10px">
+            <div>
+              <ol style="margin:0; padding-left:20px">
+                <li><code>title:</code> → 中文标题（<b>最值钱</b>，检索与双链都靠它）</li>
+                <li><code>workstream:</code> → <code>hii</code> / <code>it</code> / <code>community</code> / <code>logistics</code> / <code>hr</code> / <code>cross</code></li>
+                <li><code>project:</code>（可选）→ 去掉行首 <code>#</code> 再填项目 ID</li>
+              </ol>
+              <p class="sub" style="margin:10px 0 0">
+                机器<b>只强制</b> <code>date</code> / <code>type</code> / <code>status</code> 三个字段（已实测）；
+                其余是本库约定，模板都代填好了。<br>
+                <b>结论：改完 title 就一定能过校验。</b> <code>id</code> 里的 <code>xxxx</code> 换成任意 4 位更规范，但不换也不报错。
+              </p>
+            </div>
+            <div class="fm">
+<span class="cm">---</span>
+<span class="k">id:</span> <span class="hl">2026-09-20-a7f3</span>        <span class="cm"># Obsidian 自动填 date，xxxx 可留</span>
+<span class="k">title:</span> <span class="hl">"刘玉兰"</span>          <span class="cm"># ① 改成中文标题</span>
+<span class="k">area:</span> work
+<span class="k">workstream:</span> <span class="hl">hr</span>          <span class="cm"># ② hii/it/community/logistics/hr/cross</span>
+<span class="k">project:</span> <span class="hl">hr</span>             <span class="cm"># ③ 可选（模板里是注释，去掉 # 再填）</span>
+<span class="k">type:</span> note
+<span class="k">domain:</span> hr
+<span class="k">status:</span> active          <span class="cm"># 想能检索就别用 draft</span>
+<span class="k">created:</span> 2026-09-20
+<span class="k">updated:</span> 2026-09-20
+<span class="k">date:</span> 2026-09-20
+<span class="k">summary:</span> "一句话说明这页解决什么问题"
+<span class="k">tags:</span> [hr, people]
+<span class="k">aliases:</span> ["刘玉兰"]
+<span class="k">people:</span> [刘玉兰]
+<span class="k">org:</span> [HIC]
+<span class="k">confidential:</span> false
+<span class="cm">---</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="namer">
+    <h2><span class="n">4</span>文件名生成器</h2>
+    <p class="sub">选一下，直接得到「该放哪个目录、该叫什么名」。文件名一旦进库就不再改名（改名会让锚点失效）。</p>
+    <div class="card">
+      <div class="grid g3">
+        <div class="field"><label>这是哪条线</label>
+          <select id="nLine">
+            <option value="hr">HR（hr/）</option>
+            <option value="logistics">活满后勤&amp;行政（logistics/）</option>
+            <option value="community">活满社群（community/）</option>
+            <option value="it">IT 开发（it/）</option>
+            <option value="hii">HII 事宜（hii/）</option>
+          </select>
+        </div>
+        <div class="field"><label>我要入的是</label>
+          <select id="nKind"></select>
+        </div>
+        <div class="field"><label>日期</label><input type="date" id="nDate"></div>
+      </div>
+      <div class="field"><label>对象 / 主题（英文短名，小写 + 连字符，如 <code>zhang-lingzi</code>、<code>hotel-xinji</code>）</label>
+        <input type="text" id="nSlug" placeholder="zhang-lingzi" value="zhang-lingzi">
+      </div>
+      <div class="out"><span id="nOut">…</span><button id="nCopy" type="button">复制</button></div>
+      <p class="sub" style="margin:10px 0 0" id="nTip"></p>
+    </div>
+  </section>
+
+  <section id="selfcheck">
+    <h2><span class="n">5</span>入库前自检（勾一下就知道能不能入）</h2>
+    <div class="card">
+      <div class="bar"><i id="ckBar"></i></div>
+      <div class="check" id="ckList"></div>
+      <div class="verdict v-wait" id="ckVerdict">还不能入库</div>
+      <p class="sub" style="margin:12px 0 0">
+        前 3 项是「检索能不能用」的关键；后 3 项是「以后能不能维护」。<b>不必全绿才入</b>——第 6 项不满足时，
+        把总结挪到结论层页即可，原件保持逐字。
+      </p>
+    </div>
+  </section>
+
+  <section id="imperfect">
+    <h2><span class="n">6</span>不完美怎么办</h2>
+    <p class="sub">你说过「归档进去的都不是完美版本」——这本来就是设计前提。</p>
+    <div class="grid g2">
+      <div class="card"><b>先入，再迭代</b><p class="sub" style="margin:6px 0 0">缺东西就在正文写 <code>&lt;!-- 待补：… --&gt;</code>，或列进 <code>## 未决问题</code>。别为了等完整而不入——不入库的信息等于不存在。</p></div>
+      <div class="card"><b>想能检索，就别用 draft</b><p class="sub" style="margin:6px 0 0"><code>status: draft</code> <b>不进问答索引</b>。只在「确实不希望被引用」时才用；平常都用 <code>active</code>。</p></div>
+      <div class="card"><b>有新增就追加到原页</b><p class="sub" style="margin:6px 0 0">同一个人 / 同一个对象的后续沟通 → 加进它的 <code>## 时间线</code> 一行。<b>不要</b>新建一篇「补充说明」。</p></div>
+      <div class="card"><b>推翻旧结论不改旧文</b><p class="sub" style="margin:6px 0 0">新写一篇、旧篇 <code>status: superseded</code>，两篇在 <code>## 关联</code> 互链。原件永不修改。</p></div>
+    </div>
+  </section>
+
+  <section id="mistakes">
+    <h2><span class="n">7</span>常见错误（对照检查）</h2>
+    <div class="card">
+      <table>
+        <tr><th style="width:44%">❌ 别这样</th><th>✅ 应该这样</th></tr>
+        <tr><td>把三个月的记录塞进一个 <code>XX全部记录.md</code></td><td>一次事一个文件；同一对象的后续<b>追加到对象页时间线</b></td></tr>
+        <tr><td>把「我的总结」写进原件</td><td>原件逐字放 <code>sources/</code>，结论放对象页 / 分析笔记</td></tr>
+        <tr><td>原件没有 <code>##</code> 小标题</td><td>加 2–3 个能读懂的小标题（否则整篇只能算一个块）</td></tr>
+        <tr><td>一份文件里混着「定稿 + 过程稿」</td><td>过程稿另起一节，并<b>写明哪个是最终版</b></td></tr>
+        <tr><td>文件名带「最终版」/ <code>V2</code></td><td>状态用 <code>status</code> 字段表达，文件名保持稳定</td></tr>
+        <tr><td>只写在桌面 / 备忘录 / 微信</td><td>直接写在 vault 对应目录（否则检索永远看不到它）</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="rhythm">
+    <h2><span class="n">8</span>节奏</h2>
+    <div class="grid g3">
+      <div class="card"><b>复盘 · 当天或次日</b><p class="sub" style="margin:6px 0 0">记忆衰减最快，晚一天少一半信息。<b>5 行就够</b>：上午效果 / 下午效果 / 做对了什么 / 下次改 3 件事 / 要不要继续某个做法。</p></div>
+      <div class="card"><b>手记 · 攒批</b><p class="sub" style="margin:6px 0 0">每周或每完成一件事集中补，不必当场开对话。</p></div>
+      <div class="card"><b>会议稿 · 开完就导</b><p class="sub" style="margin:6px 0 0">导入后到审批页裁决；<b>只保存文件不会写回</b>，要点「应用（写回）」。</p></div>
+    </div>
+  </section>
+
+  <section id="agent">
+    <h2><span class="n">9</span>什么时候交给我更划算</h2>
+    <div class="card">
+      <p style="margin:0 0 12px">你自己做<b>更快</b>（而且下一次提问就能检索到）。这三类例外：</p>
+      <div class="grid g3">
+        <div class="card" style="box-shadow:none"><b>① 大文档原件归档</b><p class="sub" style="margin:6px 0 0">要逐字粘贴 + 算哈希 + 写要点 + 回链。15KB 的文档手工做很痛苦。</p></div>
+        <div class="card" style="box-shadow:none"><b>② 需要跨页回填</b><p class="sub" style="margin:6px 0 0">新建决策页要同时动台账、项目页、索引——一套动作，容易漏。</p></div>
+        <div class="card" style="box-shadow:none"><b>③ 一次 3 份以上</b><p class="sub" style="margin:6px 0 0">批量入库有幂等键与去重判断，交给我不容易乱。</p></div>
+      </div>
+      <p class="sub" style="margin:14px 0 0">另外：任何你觉得<b>「结构上拿不准」</b>的，直接问。改结构要连规范、模板、库三处一起动，这是我的活。</p>
+    </div>
+  </section>
+
+  <section id="templates">
+    <h2><span class="n">10</span>模板清单（16 个，<b>插入即合法</b>）</h2>
+    <p class="sub">已机械验证：在 Obsidian 里插入模板、只做 <code>{{date}}</code> 自动替换，也能通过 <code>wb vault check</code>。</p>
+    <div class="card">
+      <details><summary>日常最常用的 8 个</summary>
+        <table>
+          <tr><td><code>hr-person</code></td><td>HR 按人的长期沟通线</td></tr>
+          <tr><td><code>conversation-minutes</code></td><td>一次沟通的结论（共识 / 工作流 / 待办）</td></tr>
+          <tr><td><code>vendor</code></td><td>酒店 / 场地 / 供应商</td></tr>
+          <tr><td><code>procurement</code></td><td>物料类别采购进展</td></tr>
+          <tr><td><code>event-retro</code></td><td>活动复盘（含流程）</td></tr>
+          <tr><td><code>event-plan</code></td><td>活动方案草稿</td></tr>
+          <tr><td><code>cluster</code></td><td>主题结论沉淀</td></tr>
+          <tr><td><code>long-form-thought</code></td><td>思考 / 脑暴（三段式）</td></tr>
+        </table>
+      </details>
+      <details><summary>其余 8 个</summary>
+        <table>
+          <tr><td><code>note</code></td><td>分析笔记（拆解某份原件）</td></tr>
+          <tr><td><code>source</code></td><td>逐字原件（来源 / 要点 / 原文 / 关联）</td></tr>
+          <tr><td><code>decision</code></td><td>明确决定（7 区块）</td></tr>
+          <tr><td><code>conversation-note</code></td><td>单次沟通的结论拆解</td></tr>
+          <tr><td><code>meeting-note</code></td><td>结构化会议笔记（一般由 App 自动生成）</td></tr>
+          <tr><td><code>work-log</code></td><td>工作日志</td></tr>
+          <tr><td><code>project-main</code></td><td>项目主页（<b>固定 5 个，别新建</b>）</td></tr>
+          <tr><td><code>index</code></td><td>索引 / 导航页</td></tr>
+        </table>
+      </details>
+      <p class="sub" style="margin:12px 0 0">模板位于 <code>~/Documents/Work/_vault/templates/</code>；Obsidian 设置 → 核心插件「模板」→ 模板文件夹选 <code>templates/</code>。</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <b>素材入口指南</b> · 版本 v1（2026-09-14）· 与库内 <code>index/sop.md</code>「入口指南」一节同源。<br>
+    规范真源：库内 <code>conventions.md</code>（进库后长什么样）＋ 仓库 <code>docs/implementation/SEED-MATERIAL-SPEC.md</code>（素材怎么留）。<br>
+    本页所有「机器强制 / 插入即合法 / 下次提问即可检索」的说法都经过实测，不是推测。
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------- 交互一：我要入什么 ---------- */
+  var ITEMS = [
+    { id:"talk", label:"和人谈完（一次重要沟通）",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"hr/notes/&lt;日期&gt;-&lt;主题&gt;.md",
+      tmpl:"conversation-minutes.template.md",
+      name:"20260920-zhang-lingzi-1on1.md",
+      blocks:["## 一句话摘要","## 主要共识","## 已对齐的工作流","## 下一步待办","## 未决与待确认","## 关联"],
+      after:"逐字原稿放 <code>hr/sources/</code>；在该人的按人页 <code>## 时间线</code> 追加一行（带日期 + 出处）" },
+    { id:"person", label:"某个人的长期沟通线",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"hr/people/&lt;拼音或英文名&gt;.md",
+      tmpl:"hr-person.template.md",
+      name:"zhang-lingzi.md（对象页不加日期）",
+      blocks:["## 现在在哪","## 关键结论","## 未决问题","## 决策记录","## 时间线","## 关联"],
+      after:"这是<b>滚动页</b>：以后的沟通只追加 <code>## 时间线</code> 一行，不再新建文件" },
+    { id:"vendor", label:"和酒店 / 场地 / 供应商谈完",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"logistics/vendors/&lt;对象&gt;.md",
+      tmpl:"vendor.template.md",
+      name:"hotel-xinji.md",
+      blocks:["## 现在在哪","## 关键结论","## 未决问题","## 决策记录","## 时间线","## 关联"],
+      after:"本次往来原件放 <code>logistics/sources/</code>；口头承诺必须标「口头，未确认」" },
+    { id:"proc", label:"物料采购进展",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"logistics/procurement/&lt;类别&gt;.md",
+      tmpl:"procurement.template.md",
+      name:"name-badges.md",
+      blocks:["## 现在在哪","## 关键结论","## 未决问题","## 决策记录","## 时间线","## 关联"],
+      after:"一个物料类别一页；若比价变复杂，再拆成按供应商的对象页（粒度只升不降）" },
+    { id:"retro", label:"办完一次活动（复盘）",
+      channel:"写进事件页的 <code>## 复盘：有效与无效</code>", who:"你自己",
+      where:"community/events/&lt;日期&gt;-&lt;活动&gt;.md",
+      tmpl:"event-retro.template.md（没有事件页时才新建）",
+      name:"20260607-huoman-community-gathering.md",
+      blocks:["## 概况","## 经过与要点","## 复盘：有效与无效","## 可复用流程","## 关键结论","## 未决问题","## 关联"],
+      after:"<b>当天或次日</b>写。实测：一份 260 字的复盘就把活动方法论从「用过」升级成「有效 / 需调整」" },
+    { id:"plan", label:"写完一份活动方案",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"community/notes/&lt;日期&gt;-&lt;活动&gt;-plan.md",
+      tmpl:"event-plan.template.md（默认 status: draft）",
+      name:"20260920-huoman-autumn-plan.md",
+      blocks:["## 活动概况","## 人员与分工","## 关键时间节点（倒排）","## 议程（按场次 + 分钟级时间轴）","## 物料与预算","## 场域原则","## 风险与备用方案","## 活动后要补的"],
+      after:"写方案前先读 <code>community/clusters/activity-playbook.md</code>（环节库 + 复盘教训）" },
+    { id:"think", label:"社群构想 / 脑暴（未定型）",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"community/thinking/&lt;短名&gt;.md",
+      tmpl:"long-form-thought.template.md",
+      name:"community-pricing-thoughts.md",
+      blocks:["## 问题缘起","## 思考展开","## 当前结论","## 关联"],
+      after:"未定型的想法不要混进结论层（<code>clusters/</code>）；等它成熟了再提炼" },
+    { id:"cluster", label:"某个主题的结论",
+      channel:"手记（Obsidian 模板）", who:"你自己",
+      where:"&lt;线&gt;/clusters/&lt;短名&gt;.md",
+      tmpl:"cluster.template.md",
+      name:"activity-playbook.md",
+      blocks:["## 现在在哪","## 关键结论","## 未决问题","## 决策记录","## 时间线","## 关联"],
+      after:"新建后要在项目页 <code>## 主题簇</code> 与 <code>index/projects.md</code> 各登记一行" },
+    { id:"doc", label:"一份制度 / 手册 / 计划（原件）",
+      channel:"逐字归档成 source 页", who:"你自己，或交给我",
+      where:"&lt;线&gt;/sources/&lt;日期&gt;-&lt;短名&gt;.md",
+      tmpl:"source.template.md",
+      name:"20260920-admin-reimbursement-policy-v1.md",
+      blocks:["## 来源","## 要点","## 原文（逐字，未改写）","## 关联"],
+      after:"逐字不改；记 <code>ref</code>（原件路径）+ <code>hash</code>（sha256 前 16 位）——重复入库靠它去重" },
+    { id:"meeting", label:"一场会议（逐字稿）",
+      channel:"Workbench 今日页「＋ 导入会议纪要」", who:"你自己",
+      where:"App 自动写 <code>meetings/transcripts/</code> + 结构化笔记",
+      tmpl:"不用模板",
+      name:"带说话人与时间戳的 .md / .txt",
+      blocks:["App 自动生成九区块会议笔记"],
+      after:"导入后到审批页逐条裁决 → 点「应用（写回）」。<b>仅保存文件不会写回。</b>" }
+  ];
+
+  var chips = document.getElementById("pickerChips");
+  var panel = document.getElementById("pickerPanel");
+
+  function renderPanel(it){
+    panel.innerHTML =
+      '<dl class="rows">' +
+      '<div class="row"><dt>走哪条</dt><dd>' + it.channel + ' <span class="pill ' + (it.who.indexOf("交给")>=0?"agent":"self") + '">' + it.who + '</span></dd></div>' +
+      '<div class="row"><dt>放哪里</dt><dd><code>' + it.where + '</code></dd></div>' +
+      '<div class="row"><dt>叫什么名</dt><dd><code>' + it.name + '</code></dd></div>' +
+      '<div class="row"><dt>用哪个模板</dt><dd><code>' + it.tmpl + '</code></dd></div>' +
+      '<div class="row"><dt>至少要有</dt><dd><ul class="blocks">' + it.blocks.map(function(b){return "<li>"+b+"</li>";}).join("") + '</ul></dd></div>' +
+      '<div class="row"><dt>别忘</dt><dd>' + it.after + '</dd></div>' +
+      '</dl>';
+  }
+
+  ITEMS.forEach(function(it, i){
+    var b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = it.label;
+    b.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    b.addEventListener("click", function(){
+      Array.prototype.forEach.call(chips.children, function(c){ c.setAttribute("aria-pressed","false"); });
+      b.setAttribute("aria-pressed","true");
+      panel.classList.remove("on"); void panel.offsetWidth; panel.classList.add("on");
+      renderPanel(it);
+    });
+    chips.appendChild(b);
+  });
+  renderPanel(ITEMS[0]); panel.classList.add("on");
+
+  /* ---------- 交互二：文件名生成器 ---------- */
+  var KINDS = [
+    { v:"person",  t:"按人页（长期线）",        folder:"hr/people/",                 dated:false, line:false },
+    { v:"talk",    t:"单次沟通结论",            folder:"hr/notes/",                  dated:true,  line:false },
+    { v:"rel",     t:"与人的关系（按人，其他线）", folder:"{line}/people/",            dated:false, line:true  },
+    { v:"vendor",  t:"对象页（酒店/场地/供应商）", folder:"logistics/vendors/",        dated:false, line:false },
+    { v:"proc",    t:"物料类别（采购）",         folder:"logistics/procurement/",     dated:false, line:false },
+    { v:"event",   t:"活动事件页 / 复盘",        folder:"community/events/",          dated:true,  line:false },
+    { v:"plan",    t:"活动方案草稿",            folder:"community/notes/",           dated:true,  line:false, suffix:"-plan" },
+    { v:"think",   t:"思考 / 脑暴",             folder:"community/thinking/",        dated:false, line:false },
+    { v:"cluster", t:"主题簇页（结论沉淀）",      folder:"{line}/clusters/",           dated:false, line:true  },
+    { v:"log",     t:"工作日志",                folder:"{line}/logs/",               dated:true,  line:true, noSlug:true },
+    { v:"source",  t:"原件（逐字归档）",         folder:"{line}/sources/",            dated:true,  line:true  }
+  ];
+  var sel = document.getElementById("nKind");
+  KINDS.forEach(function(k){ var o=document.createElement("option"); o.value=k.v; o.textContent=k.t; sel.appendChild(o); });
+
+  var elLine=document.getElementById("nLine"), elDate=document.getElementById("nDate"),
+      elSlug=document.getElementById("nSlug"), elOut=document.getElementById("nOut"),
+      elTip=document.getElementById("nTip"), elCopy=document.getElementById("nCopy");
+  var today=new Date(); elDate.value = today.toISOString().slice(0,10);
+
+  function pad(n){ return (n<10?"0":"")+n; }
+  function build(){
+    var k = KINDS.filter(function(x){return x.v===sel.value;})[0];
+    var line = elLine.value;
+    var d = elDate.value || today.toISOString().slice(0,10);
+    var ymd = d.replace(/-/g,"");
+    var slug = (elSlug.value||"object").trim().toLowerCase().replace(/\s+/g,"-").replace(/[^a-z0-9-]/g,"").replace(/-+/g,"-").replace(/^-|-$/g,"") || "object";
+    var folder = k.folder.replace("{line}", line);
+    var name;
+    if (k.noSlug) name = ymd + ".md";
+    else if (k.dated) name = ymd + "-" + slug + (k.suffix||"") + ".md";
+    else name = slug + (k.suffix||"") + ".md";
+    elOut.textContent = folder + name;
+
+    var tips = [];
+    if (!k.dated) tips.push("对象页 / 人页 / 簇页<b>不带日期</b>（它们是滚动页）");
+    else tips.push("带日期用 <code>YYYYMMDD</code> 连写");
+    if (k.line) tips.push("这条线由「线」下拉决定：<code>" + line + "/</code>");
+    else tips.push("这一类固定落在 <code>" + folder.split("/")[0] + "/</code>，与「线」下拉无关");
+    if (slug !== (elSlug.value||"").trim()) tips.push("已按规范清洗短名（小写、连字符、去掉空格与非法字符）");
+    if (/\d{6,}|final|最终|v\d/i.test(slug)) tips.push("⚠️ 短名里别放「最终版 / V2 / 长串日期」——状态用 <code>status</code> 表达");
+    elTip.innerHTML = tips.join("；");
+    return folder + name;
+  }
+  [sel, elLine, elDate, elSlug].forEach(function(el){ el.addEventListener("input", build); el.addEventListener("change", build); });
+  build();
+  elCopy.addEventListener("click", function(){
+    var txt = elOut.textContent;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){ elCopy.textContent="已复制"; setTimeout(function(){elCopy.textContent="复制";},1200); });
+    else { elCopy.textContent="请手动选中"; setTimeout(function(){elCopy.textContent="复制";},1200); }
+  });
+
+  /* ---------- 交互三：入库前自检 ---------- */
+  var CHECKS = [
+    { t:"它是不是「<b>一次事</b>」？不是就拆开。", key:true },
+    { t:"文件名是 <code>&lt;日期&gt;-&lt;英文短名&gt;.md</code> 吗（无空格、无「最终版」）？", key:true },
+    { t:"正文有能读懂的 <code>##</code> 小标题吗？（原件也要有，否则整篇只能算一个块）", key:true },
+    { t:"<code>title</code> 改成中文标题了吗？", key:false },
+    { t:"<code>workstream</code> 填了吗（hii / it / community / logistics / hr / cross）？", key:false },
+    { t:"里面没有掺进「我的总结」吧？（原件必须保持逐字）", key:false }
+  ];
+  var ckList=document.getElementById("ckList"), ckBar=document.getElementById("ckBar"), ckV=document.getElementById("ckVerdict");
+  CHECKS.forEach(function(c,i){
+    var l=document.createElement("label");
+    l.innerHTML = '<input type="checkbox" data-i="'+i+'"><span>'+c.t+'</span>';
+    ckList.appendChild(l);
+  });
+  function score(){
+    var boxes = ckList.querySelectorAll("input");
+    var n = 0, keyMiss = 0;
+    Array.prototype.forEach.call(boxes, function(b){
+      var c = CHECKS[+b.dataset.i];
+      if (b.checked) n++;
+      else if (c.key) keyMiss++;
+    });
+    var total = CHECKS.length;
+    ckBar.style.width = Math.round(n/total*100) + "%";
+    ckV.className = "verdict " + (keyMiss > 0 ? "v-wait" : (n === total ? "v-go" : "v-soon"));
+    ckV.textContent = keyMiss > 0
+      ? "还不能入库 —— 前 3 项有 " + keyMiss + " 项没满足（它们决定检索能不能用）"
+      : (n === total ? "可以入库 —— 入库后下一次提问即可检索到" : "快好了 —— 还差 " + (total-n) + " 项，但已不影响检索");
+  }
+  ckList.addEventListener("change", score);
+  score();
+})();
+</script>
+</body>
+</html>
