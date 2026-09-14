@@ -441,6 +441,32 @@ def test_api_sources_read_returns_the_requested_block(tmp_path: Path) -> None:
     assert missing.status_code == 404
 
 
+def test_api_sources_read_rejects_empty_and_block_only_ids_instead_of_internal_error(
+    tmp_path: Path,
+) -> None:
+    """空引用与「只有 #区块、没有路径」的引用必须是 400，不能 500。
+
+    根因是 `Path("").with_suffix(".md")` 会抛 `ValueError: PosixPath('.') has an empty name`，
+    而它排在 400 守卫**之前**——前端传一个畸形参数就只能看到兜底的「服务内部错误」。
+    2026-09-14 在已装 build 41 上实测两种都是 500（`OPEN-VERIFICATION-ITEMS.md` §U.5
+    当时只记了空值这一种，实际「只有区块」走的是同一条路径）。
+    """
+    client, _vault = _client(tmp_path, seed_review=False)
+
+    empty = client.get("/api/sources/read", params={"source_id": ""})
+    assert empty.status_code == 400
+    assert empty.json()["ok"] is False
+
+    # 只有区块：前端拼「路径#区块」时路径部分丢了，属同一根因。
+    block_only = client.get("/api/sources/read", params={"source_id": "#关键结论"})
+    assert block_only.status_code == 400
+    assert block_only.json()["ok"] is False
+
+    # 纯空白与空引用等价。
+    blank = client.get("/api/sources/read", params={"source_id": "   "})
+    assert blank.status_code == 400
+
+
 def test_api_sources_read_rejects_non_utf8_file_instead_of_internal_error(tmp_path: Path) -> None:
     """误放进 vault 的二进制文件必须以 415 明确拒绝，不能 500。
 

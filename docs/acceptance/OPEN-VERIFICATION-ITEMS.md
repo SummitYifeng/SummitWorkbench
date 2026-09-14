@@ -12,10 +12,22 @@
 > [`UI-VERIFICATION-BATCHES.md`](UI-VERIFICATION-BATCHES.md)（批 0→7 **已全部跑完**），
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
-- 最近更新：2026-09-12
-- 当前基线：`v0.4.7`（分发版；**已发布**为 build 21，见
-  <https://github.com/yifeng93/SummitWorkbench-Updates/releases/tag/v0.4.7>；前端见
-  `build-meta.json`），远端 CI 全绿。
+- 最近更新：2026-09-14
+- 当前基线：`0.4.9` build **41**（`frontend_build = v2026.09.14-288f13d-4d072dbb`；
+  本机 `/Applications/SummitWorkbench.app` 实测 `build=41`、`git_revision=288f13d`）。
+  下面各轮条目里出现的 `v0.4.7` / build 21 之类是**各自当时**的事实，不回改。
+- **当前开放项总账（2026-09-14）**——本文件各处「当前开放项」的措辞只对**各自那一轮**成立，
+  容易被读成实时总数（此前就出现过「1 项（F1）」与 §J 里 D/E 两个 `⬜` 并存的矛盾）。
+  实时清单以此条为准：
+  1. **F1** Developer ID / 公证 / Intel / Windows —— 非缺陷，**明确不做**（见 §F、§H）。
+  2. **§J-补验 D / E**：审批预演闭环、导入抽屉的**应用级真实浏览器**验收 —— **仍未验证**。
+     ⚠️ 与 §C/§D/§E 组那些同名字母编号**不是一回事**，后者已在 §M/§N 关闭。
+  3. **跨端口草稿 / 历史是否迁移** —— 属已写明的产品边界，但**从未实测**（§J「G 仍未回答的子问题」）。
+  4. **D1 导入的「软预算 / 部分失败」路径** —— **仍未验证**（§D 注）。
+  5. **旧 server 进程偶尔不被回收** —— **未定位机理、未修**（§U.5 第二条）。
+     （§U.5 第一条「`/api/sources/read` 空值返回 500 而非 400」**已于 2026-09-14 修复**，见 §U.5。）
+  6. **A6 / A7 的现场结论做在 build 28 上**，按「历史 build 验过 ≠ 当前代码验过」的口径属待复跑；
+     A6 已量过差异（冲突恢复后端语义未变、11 条 `/api/sync/*` 契约逐字节相同），可缩减为抽查。
   本轮为**分发给同事**而做：把飞书 app_id / app_secret 作为默认值在构建时内置进包
   （`Contents/Resources/feishu-defaults.json`），并让配置与凭据按「显式配置/Keychain > 内置默认」
   回退，使同事装完点一下「授权飞书」即可，无需任何本机预置。**产品行为与数据格式未改动**；
@@ -49,7 +61,8 @@
   位置步的预检 flow 存在，见 `f9060a0`）。PAT 输入是本轮才接上的，因此 A7 不是回归而是首次验证。
 - **A6 与 A7 已于 2026-09-13 在 Studio + Air 上现场通过**（当前 build `2b534e0` / build 28），
   证据逐条见 §N；A 组至此全部关闭。
-- **当前开放项：1 项（F1，非缺陷，明确超出 `INTERNAL-DEV` 交付范围）**，另有**本轮复跑发现的
+- **当时开放项：1 项（F1，非缺陷，明确超出 `INTERNAL-DEV` 交付范围）**（口径限于那一轮，
+  实时总账见本文件开头 2026-09-14 一条），另有**本轮复跑发现的
   6 个产品缺陷（**全部已修**，见 §N 与提交 D1 `98fcd84` / D2 `95cc848` / D3 `b5d4a2b` / D4 `2b534e0` / D5 `d2b07bd` / D6 `9ce7205`）**：D1 新工作台不 `git init` / D2 转换后仍用启动快照导致同进程同步必失败 /
   D3 同步失败原因被吞成裸 error / D4 私有 clone 失败被兜底吞掉 / D5 向导草稿收尾不干净 /
   D6 干净工作区没有任何"主动拉取"入口。证据、复现与修法方向见
@@ -1861,12 +1874,21 @@ Python BM25」；`wb ask` 的兜底只捕 `(LLMError, ValueError)`，于是把 s
 
 ### U.5 本轮新发现、未修的缺陷
 
-- **`GET /api/sources/read?source_id=`（空值）返回 500，而不是代码意图的 400**：
-  `Path("")` 得到 `PosixPath('.')`，`''.suffix != '.md'` 于是走 `Path('.').with_suffix('.md')`，
-  抛 `ValueError: PosixPath('.') has an empty name`，在 `if not raw_id ... return 400` 之前就炸了。
-  复现：`curl -H "X-WB-Session-Token: …" "http://127.0.0.1:$PORT/api/sources/read?source_id="` → 500。
-  属错误码语义（公开契约范畴），**故意不在发版后偷改**：需要连同错误码快照/测试一起改并重跑 CI，
-  留作下一个提交的第一件事。
+> **2026-09-14 更新**：本节第一条**已修复**（见下），第二条仍未修。标题保留当时的「未修」措辞
+> 以免丢失历史，但**别再把第一条当成待办**。
+
+- ~~**`GET /api/sources/read?source_id=`（空值）返回 500，而不是代码意图的 400**~~
+  —— **已于 2026-09-14 修复**（`webapp/routers/review.py`）。
+  原根因：`Path("")` 得到 `PosixPath('.')`，`''.suffix != '.md'` 于是走
+  `Path('.').with_suffix('.md')`，抛 `ValueError: PosixPath('.') has an empty name`，
+  而这句排在 `if not raw_id ... return 400` **之前**。
+  修法：把「空引用」与「只有 `#区块`、没有路径」的判定提到碰 `Path` 之前（沿用同一段 400 语义）。
+  **修复前在已装 build 41 上实测**：空值 → `500`、`source_id=#关键结论` → **也 `500`**；
+  对照 `../secret.md` → `400`、正常路径 → `200`。
+  ⚠️ 当时只记了「空值」一种，实际**「只有 `#区块`」走同一条根因**——前端拼「路径#区块」时
+  路径丢了就会命中，也一并修掉。修复后由
+  `tests/unit/test_webapi.py::test_api_sources_read_rejects_empty_and_block_only_ids_instead_of_internal_error`
+  锁定为 400（含变异验证：移除守卫即红）。
 - 卸载/重启 App 时旧 server 进程偶尔不会被回收（本轮实测一度同时存在 3 个 `SummitWorkbenchServer`）。
   观察到的触发场景是客户端在请求中途被强杀；未定位到确定机理，也未修。
 

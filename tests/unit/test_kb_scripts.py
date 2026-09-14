@@ -188,6 +188,86 @@ def test_verify_quotes_catches_a_rewritten_archive(tmp_path: Path) -> None:
     assert len(findings) == 1 and "未逐字包含原件" in findings[0].reason
 
 
+def test_verify_quotes_accepts_the_real_source_page_shape(tmp_path: Path) -> None:
+    """真形状回归：逐字原文之后跟一个 `## 关联` 页尾区块，必须判为合格。
+
+    真库里 `## 关联` 前面**没有** `---` 分隔线，而旧判据只剥「``\\n---\\n\\n## 关联``」，
+    于是全库 6 个 `source` 页被集体误报成「在原件后面另加了内容」（2026-09-14 在真库上发现）。
+    这条用真形状而非简化 fixture，就是为了让那种口径错误再也不会溜过去。
+    """
+    original = "# 原件标题\n\n## 一、章节\n\n商标共识规范如下。\n"
+    body = (
+        "---\ndate: 2026-09-13\ntype: source\nstatus: active\n"
+        "source:\n  kind: doc\n  ref: a.md\n---\n\n"
+        "# 原文：原件标题\n\n## 来源\n\n- 原件：a.md\n\n## 要点\n\n- 要点一\n\n"
+        "## 原文（逐字，未改写）\n\n"
+        "# 原件标题\n\n## 一、章节\n\n商标共识规范如下。\n"
+        "\n## 关联\n\n- [[20260913-analysis|分析笔记]] —— 本页是这篇分析笔记的逐字出处。\n"
+    )
+    _vault, materials = _vault_with_source(tmp_path, original, body)
+    checked, findings = verify._check_verbatim(
+        {"hii/sources/20260913-a": body},
+        {"hii/sources/20260913-a": {"type": "source", "source": {"ref": "a.md"}}},
+        materials,
+        0,
+        [],
+    )
+    assert checked == 1 and findings == []
+
+
+def test_verify_quotes_catches_a_block_inserted_before_the_association_tail(
+    tmp_path: Path,
+) -> None:
+    """变异验证：在原件与页尾 `## 关联` 之间插一个区块，必须被判为「另加了内容」。
+
+    放行 `## 关联` 之后必须守住的就是这条线：**页尾区块以外**，原件后面不许有东西。
+    """
+    original = "# 原件标题\n\n## 一、章节\n\n商标共识规范如下。\n"
+    body = (
+        "---\ndate: 2026-09-13\ntype: source\nstatus: active\n"
+        "source:\n  kind: doc\n  ref: a.md\n---\n\n"
+        "## 原文（逐字，未改写）\n\n"
+        "# 原件标题\n\n## 一、章节\n\n商标共识规范如下。\n"
+        "\n## 编者按\n\n原件里没有这一段。\n"
+        "\n## 关联\n\n- [[20260913-analysis|分析笔记]]\n"
+    )
+    _vault, materials = _vault_with_source(tmp_path, original, body)
+    _checked, findings = verify._check_verbatim(
+        {"hii/sources/20260913-a": body},
+        {"hii/sources/20260913-a": {"type": "source", "source": {"ref": "a.md"}}},
+        materials,
+        0,
+        [],
+    )
+    assert len(findings) == 1 and "未逐字包含原件" in findings[0].reason
+
+
+def test_verify_quotes_accepts_an_original_that_ends_with_the_association_heading(
+    tmp_path: Path,
+) -> None:
+    """原件自己最后一个小节就叫 `## 关联`、笔记没有额外页尾区块时，也必须合格。
+
+    这条守住「按标题一刀切掉页尾区块」那种更省事的写法：切在原件内部会把
+    合格归档误判成改写（真库里的长原件完全可能自带同名小节）。
+    """
+    original = "# 原件标题\n\n## 一、章节\n\n正文。\n\n## 关联\n\n原件自带的关系段。\n"
+    body = (
+        "---\ndate: 2026-09-13\ntype: source\nstatus: active\n"
+        "source:\n  kind: doc\n  ref: a.md\n---\n\n"
+        "## 原文（逐字，未改写）\n\n"
+        "# 原件标题\n\n## 一、章节\n\n正文。\n\n## 关联\n\n原件自带的关系段。\n"
+    )
+    _vault, materials = _vault_with_source(tmp_path, original, body)
+    checked, findings = verify._check_verbatim(
+        {"hii/sources/20260913-a": body},
+        {"hii/sources/20260913-a": {"type": "source", "source": {"ref": "a.md"}}},
+        materials,
+        0,
+        [],
+    )
+    assert checked == 1 and findings == []
+
+
 def test_verify_quotes_cli_flags_a_fabricated_quote(tmp_path: Path) -> None:
     """端到端跑脚本：编造的「逐字引用」必须让它以退出码 1 结束并点名那条引用。"""
     source = "# 原件\n\n## 一、章节\n\n原文只说了这一句。\n"

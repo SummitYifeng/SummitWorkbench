@@ -189,21 +189,41 @@ def _strip_headings(text: str) -> list[str]:
     return out
 
 
-def _contains_run(haystack: list[str], needle: list[str], *, require_suffix: bool = False) -> bool:
-    """``needle`` 是否为 ``haystack`` 的**连续**子序列（逐字、含顺序）。
+_SEPARATOR_RE = re.compile(r"-{3,}")
+_ASSOCIATION_HEADING = "关联"
 
-    ``require_suffix=True`` 时进一步要求这一段一直延伸到 ``haystack`` 末尾——用于证明
-    归档正文是「脚手架 + 原件」，而**没有**在原件后面另加内容。
+
+def _is_allowed_scaffold_tail(tail: list[str]) -> bool:
+    """原件之后**允许**残留的内容：只有约定为页尾区块的 `## 关联`。
+
+    ``conventions`` §4.3 规定 `source` 页在逐字原文之后写一个 `## 关联` 区块，区块内部
+    可以自由写双链——它本来就在原件之外。所以「原件已经结束」的判据不是「笔记到此为止」，
+    而是「原件之后除了这个页尾区块以外没有别的东西」。
+
+    只看跳过分隔线（`---`）之后**第一个**真正的行：它必须是 `关联`
+    （``_strip_headings`` 已把 `## 关联` 变成裸 `关联`）。
     """
-    if not needle:
+    for line in tail:
+        if _SEPARATOR_RE.fullmatch(line.strip()):
+            continue
+        return line.strip() == _ASSOCIATION_HEADING
+    return True
+
+
+def _contains_original(have: list[str], want: list[str]) -> bool:
+    """``want``（原件）是否为 ``have``（笔记正文）中一段**连续且逐字**的片段，
+    并且它之后只允许约定的页尾脚手架（见 :func:`_is_allowed_scaffold_tail`）。
+
+    这是「原件不可变」的机械证明：归档时任何顺手改写、裁掉段落、往中间插一句话，
+    或者**在原件后面另加内容**，都会在这里暴露。逐位置扫描而不是只认第一处命中——
+    笔记自己的标题偶尔会与原件首行同名，那种位置不满足「其后是页尾区块」，应当跳过。
+    """
+    if not want:
         return True
-    first = needle[0]
-    for index in range(len(haystack) - len(needle) + 1):
-        if haystack[index] != first:
+    for index in range(len(have) - len(want) + 1):
+        if have[index : index + len(want)] != want:
             continue
-        if haystack[index : index + len(needle)] != needle:
-            continue
-        if not require_suffix or index + len(needle) == len(haystack):
+        if _is_allowed_scaffold_tail(have[index + len(want) :]):
             return True
     return False
 
@@ -217,8 +237,9 @@ def _check_verbatim(
 ) -> tuple[int, list[Finding]]:
     """source / 逐字稿笔记必须**逐字包含**其原始材料（只允许 ATX 标题层级不同）。
 
-    这是「原件不可变」的机械证明：归档时任何顺手改写、裁掉段落、往中间插一句话都会在这里暴露。
-    做法是在笔记正文里找原件的**连续行序列**，因此不依赖笔记自身的分节结构。
+    这是「原件不可变」的机械证明：归档时任何顺手改写、裁掉段落、往中间插一句话，或者
+    在原件后面另加内容，都会在这里暴露。做法是在笔记正文里找原件的**连续行序列**，因此
+    不依赖笔记自身的分节结构；原件之后只放行约定为页尾区块的 `## 关联`（conventions §4.3）。
     """
     for rel, body in bodies.items():
         meta = metas[rel]
@@ -234,13 +255,11 @@ def _check_verbatim(
             findings.append(Finding(rel, 1, ref, "原件不存在，无法核对逐字保留"))
             continue
         checked += 1
-        # 去掉笔记自己的「关联」尾巴（如果有），要求原件是剩余内容的**结尾**：
-        # 既证明原文逐字在库，也证明后面没有另加内容。
-        core = body.split("\n---\n\n## 关联", 1)[0]
-        if not _contains_run(
-            _strip_headings(core),
+        # 原件必须逐字、连续地出现在笔记正文里，且其后只允许约定的页尾 `## 关联` 区块：
+        # 既证明原文逐字在库，也证明没有在原件后面另加内容。
+        if not _contains_original(
+            _strip_headings(body),
             _strip_headings(original.read_text(encoding="utf-8")),
-            require_suffix=True,
         ):
             findings.append(Finding(rel, 1, ref, "正文未逐字包含原件（被改写、截断或另加了内容）"))
     return checked, findings

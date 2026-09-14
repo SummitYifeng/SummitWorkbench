@@ -87,15 +87,19 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
         # 引用可以是「路径#区块」：解析文件时只看路径部分，返回时按区块切片，
         # 让「每条结论带 路径#区块 出处」在来源面板里能直接跳到对应段落。
         path_part, _, block = raw_id.partition("#")
-        relative = Path(path_part)
+        path_text = path_part.strip()
+        # 空引用、以及「只有 #区块、没有路径」的引用，必须在**碰 Path 之前**挡掉：
+        # `Path("").with_suffix(".md")` 会抛 `ValueError: PosixPath('.') has an empty name`，
+        # 于是前端传一个畸形参数就变成 500（界面只能显示兜底的「服务内部错误」），
+        # 而这里本就有明确的 400 语义。2026-09-14 在已装 build 41 上实测：两者都是 500。
+        if not path_text:
+            return JSONResponse(
+                {"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400
+            )
+        relative = Path(path_text)
         if relative.suffix.lower() != ".md":
             relative = relative.with_suffix(".md")
-        if (
-            not raw_id
-            or relative.is_absolute()
-            or ".." in relative.parts
-            or not _is_knowledge_source(relative)
-        ):
+        if relative.is_absolute() or ".." in relative.parts or not _is_knowledge_source(relative):
             return JSONResponse(
                 {"ok": False, "message": "来源路径不在允许的知识范围内"}, status_code=400
             )

@@ -72,7 +72,20 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 .venv/bin/python scripts/kb_acceptance.py
 # 已装 App 验收（4 题模型口径；只重查一题用 --only 省 token）
 .venv/bin/python scripts/kb_acceptance_installed.py --only "Q1"
+# vault 自检（**全部零 token**；动了 vault 内容、归档判据或检索时必须跑）
+.venv/bin/wb vault check
+.venv/bin/python scripts/kb_verify_links.py
+# ⚠️ 逐字保留校验：**必须给 --materials-root**，否则只做引用的一半、不做「原件逐字在库」那一半。
+#    2026-09-14 修好之前，它在这一半上是 100% 误报（全库 6 个 source 页），所以没人跑它。
+.venv/bin/python scripts/kb_verify_quotes.py --vault ~/Documents/Work/_vault \
+  --materials-root "/Users/yifengstudio/Desktop/当前材料"
 ```
+
+> **教训（2026-09-14，已经踩过一次）**：归档类判据**不能只用简化 fixture 测**。
+> `kb_verify_quotes.py` 的单测 fixture 里根本没有 `## 关联` 区块，于是「剥页尾区块」那条分支
+> 从未被真实页面形状覆盖，脚本在真库上误报 6/6 而单测全绿。
+> 给这类判据补测试时，**fixture 要贴着真页面形状写**，并且要做**真库变异验证**
+> （在真库副本上改一个字/删一行/插一个区块，判据必须立刻红）。
 
 ⚠️ **别写 `... | tail`**：管道会吞掉退出码，脚本真失败也会看着像成功（本轮踩过）。
 证据落到 `docs/acceptance/evidence/`：
