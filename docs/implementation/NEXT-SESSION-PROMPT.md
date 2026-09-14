@@ -29,10 +29,11 @@
 ## 二、环境与身份（已核实，可直接用）
 
 - 仓库：`/Users/yifengstudio/Documents/GitHub/SummitWorkbench`；Python venv `.venv`；CLI `.venv/bin/wb`。
-- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**55 个内容页** + **14 个模板**；15 篇决策 + 8 个主题簇页；
+- vault：`~/Documents/Work/_vault`（纯 Markdown + git；**56 个内容页** + **14 个模板**；**16 篇决策** + 8 个主题簇页；
   `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
   `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
-  索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`（实测 55 篇 / 710 块）。
+  索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`
+  （篇数跟 vault 一致；块数随重建变化，`wb kb status` 为准）。
 - 远端（唯一真源，私有）：`https://github.com/yifeng93/WorkKnowledge.git`，分支 `main`。
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
@@ -193,10 +194,16 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    已完成：`projects/` 2→5、`SEED-MATERIAL-SPEC.md`、库内模板 9→14、既有 HII/IT 内容修缮）。
    但使用者要先与 Agent**探讨「该准备什么素材」**再去准备，所以 source/notes **一份都没产**。
    - 素材准备清单：`docs/implementation/SEED-MATERIAL-SPEC.md`（§3.1 四个场景「留什么/叫什么/哪几段」+ §4 自检 5 问）。
+   - **素材入口目录已建好**：`~/Desktop/当前材料/{活满社群,活满后勤行政,HR}/`，每个目录内有 `README-放这里.md`。
    - 库内模板：`_vault/templates/`（14 个；新增 `hr-person` / `event-retro` / `vendor` / `procurement` / `conversation-note`）。
+   - **已定边界（2026-09-14 决策）**：活满社群与活满后勤&行政是**两个独立部门、不跨线**——
+     后勤产出（酒店/场地/供应商/物料）一律记 `logistics/`，社群只记活动与社群自身的事。
+     见 `decisions/20260914-community-logistics-separate-departments#决定`。**别再提「社群管决策、后勤管执行」。**
+   - **已定日志归属**：按时间的日志进各线 `logs/`（`community/logs/`、`logistics/logs/`、`hr/logs/`），不单独成线。
+   - **明确不做（含将来）**：微信聊天记录、录音 / 转写（使用者已确认不会有）。
    - 入库仍走 C-lite 三件套（1 source + 1 分析笔记 / 对象页 / 事件页 + 0..N decision），规范见 `_vault/conventions.md` §11；
      幂等键 `source.ref + source.hash` **只在** `source` / `meeting-transcript` 页上判。
-   - `_vault` 里的内容可以删（使用者已授权）；素材目录 `/Users/yifengstudio/Desktop/当前材料` 目前仍只有 HII 4 + IT 4。
+   - `_vault` 里的内容可以删（使用者已授权）；目前三线素材目录仍是空的（只有 README）。
    **下一窗口起手式**：先读使用者新放入的素材 → 按 §3 的粒度落点建对象页 / 事件页 →
    跑 `wb vault check` + `kb_verify_links` + `kb_verify_quotes --materials-root` → 给三线各出一个真实问题量一遍。
 

@@ -1243,3 +1243,17 @@ pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff 全过、mypy（360 文
 2. `SEED-MATERIAL-SPEC.md` 是**设计稿**，尚未被真实素材检验；微信导出 / 录音转写两条路径本轮无样本。
 3. `index/people.md` 的裸双链与「别名=文件名」形态由脚本生成，已在 §8 登记为机器页豁免，未改脚本。
 4. 审计给出的「建议不动」项：`daily/`、`inbox.md` 的最小 frontmatter（已豁免）、§13 既有 R1/R2/R3/R5/R6 遗留。
+
+#### 使用者对「该准备什么素材」的四条答复（2026-09-14，同日落地）
+
+| # | 答复 | 落地 |
+|---|---|---|
+| 1 | **不会有微信聊天记录和录音，将来也不接入** | `SEED-MATERIAL-SPEC.md` §8 删除这两行（**不是「未验证」而是「不适用」**），§10 相应结案；`conventions.md` §14 增「明确不做（含将来）」 |
+| 2 | 认可「每条线先交 1 份」 | 建好素材入口目录：`~/Desktop/当前材料/{活满社群,活满后勤行政,HR}/`，每个目录放一份 `README-放这里.md`（写明命名与段落要求）；见 spec §8.1 |
+| 3 | **后勤和社群不跨越，是两个独立部门、职能完全不一样** | **落成决策** `decisions/20260914-community-logistics-separate-departments.md`（否决了 Agent 原提的「社群管决策 / 后勤管执行」跨线分工）；`conventions.md` §1.1 增规则；两条线项目页关闭「是否跨社群」未决项并记入 `## 决策记录`；`index/decisions.md` 与 `index/timeline.md` 同步 |
+| 4 | 认可「日志挂到对应线的 `logs/`，不单独成线」 | 新增 `logistics/logs/`、`hr/logs/`（`community/logs/` 原已预留）；`conventions.md` §1 目录树 + §3 `work-log` 行改为「各线自己的 `logs/`」；三条线项目页 `## 下一步` 各加一行 |
+
+> ⚠️ 第 3 条是**口头确认、无书面原件**，决策页已如实标注「不得当作逐字证据引用」，
+> 并写清真实出现过的两个选项（跨线分工 vs 独立两条线），未事后补编。
+> 门禁（56 篇）：`wb vault check` ✓、`kb_verify_links` ✓ 321 双链 / 393 块级引用、`kb_index_people --check` ✓
+> （新增决策页改变 HIC 计数 → 已重生成索引）。
