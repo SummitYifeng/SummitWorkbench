@@ -289,6 +289,17 @@
                 其余是本库约定，模板都代填好了。<br>
                 <b>结论：改完 title 就一定能过校验。</b> <code>id</code> 里的 <code>xxxx</code> 换成任意 4 位更规范，但不换也不报错。
               </p>
+              <div class="lead" style="margin-top:12px; border-left-color:#b45309">
+                <b>三个模板的默认值是「占位默认值」，用前必须改</b>（它们只为让模板插入即合法）：
+                <code>work-log</code> → <code>projects: [hr]</code>；
+                <code>meeting-note</code> → <code>projects: [it-development]</code>；
+                <code>project-main</code> → <code>project: hii-affairs</code>。<br>
+                <b>三个模板默认 <code>status: draft</code>（不进问答检索）</b>：
+                <code>cluster</code> / <code>long-form-thought</code> / <code>event-plan</code>——这是<b>有意</b>的
+                （未成熟 / 未定型不该被当事实引用）；想让它参与作答就改成 <code>active</code>。
+                （<code>note</code> 已于 2026-09-14 由 <code>draft</code> 改为 <code>active</code>：分析笔记是最常见产出，默认不可检索是陷阱。）<br>
+                ⚠️ <b>占位符没填完会被校验拒掉</b>（<code>wb vault check</code> 指出具体字段）——这是有意的防呆，此前这类坏值会静默通过。
+              </div>
             </div>
             <div class="fm">
 <span class="cm">---</span>

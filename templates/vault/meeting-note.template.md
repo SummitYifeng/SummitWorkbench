@@ -1,14 +1,15 @@
 ---
-date: {{date}}
+
+date: "{{date}}"
 type: meeting-note
 status: pending-review
-meeting_id: {{meeting_id}}
-note_id: {{note_id}}
+meeting_id: "{{meeting_id}}"
+note_id: "{{note_id}}"
 source: feishu-note
-projects: [{{project}}]
+projects: ["{{project}}"]
 transcript: "[[{{date}}-{{title}}-transcript]]"
-model: {{model_id}}
-prompt_version: {{prompt_version}}
+model: "{{model_id}}"
+prompt_version: "{{prompt_version}}"
 ---
 
 # {{title}}

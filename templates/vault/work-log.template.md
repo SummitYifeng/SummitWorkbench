@@ -1,19 +1,20 @@
 ---
-id: {{date}}-xxxx
-title: {{title}}
+
+id: "{{date}}-xxxx"
+title: "{{title}}"
 area: work
 workstream: 
 type: work-log
 domain: 
 status: active
-created: {{date}}
-updated: {{date}}
-date: {{date}}
+created: "{{date}}"
+updated: "{{date}}"
+date: "{{date}}"
 summary: 这次工作记录覆盖了什么
 tags: []
 aliases: []
 # 跨项目工作日志用 projects；单项目用 project（二者不可同时出现）
-projects: [{{project}}]
+projects: ["{{project}}"]
 ---
 
 # {{title}}

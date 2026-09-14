@@ -1449,3 +1449,52 @@ frontmatter 里的 `{{…}}` 未加引号，在 YAML 层就是非法映射，**�
    （`work-log` / `meeting-note` / `project-main`），**并需重建 App 才在装机版本生效**。
 2. **把「自助建页路线」做成可重复验证**（端到端）：模板插入 → 过 `wb vault check` → 建索引 → 问一句能召回。
    目前只有「模板插入即合法」这一环有守卫；整条路线仍是「我验证过一次」，不是机器守住。
+
+
+#### project 绑定守卫 + 自助入库路线端到端验证 —— 已完成（2026-09-14）
+
+承接上一轮「缺陷修复判据」的第 ① 类（**会持续制造新错误**）：给 `project` 绑定加机器守卫，
+并把「模板 → 合法页面 → 可检索」整条自助路线从「我验证过一次」变成**可重复验证**。
+
+**① 判据一度定错层，被两条既有测试当场纠正（重要记录）**
+第一版把「项目 ID 只允许 `[A-Za-z0-9_-]`」也加进 `validate_note`，结果
+`test_review_candidates.py` 的两条用例立刻变红——**会议提取管线里模型的 `projects:` 允许是自然语言项目名**
+（如 `网课系统`），之后才按别名解析成规范 ID、解析不到则落 `unresolved` → 全局收件箱。
+即 `meeting-note` / `meeting-transcript` 的 `projects:` 是**线索**而非最终绑定，在 schema 层按字符集判定
+会**打断会议导入**。⇒ 判据收窄为「**只拦一定错的**」：**未替换的模板占位符**（`{{…}}`）。
+这是「判据写错了要说清原因」的一次实操：**不是为了让测试变绿而放松**，而是原判据本身与产品行为冲突。
+
+**② 交付**：
+- `domain/vault.py`：新增 `PROJECT_ID_RE`（唯一真源，`project_registry.py` 改为复用它）+ `_check_project_placeholders`，
+  在 `validate_note` 里调用 → `wb vault check` 现在会拒绝 `project` / `projects` 里的 `{{…}}`，
+  并给出可执行提示（「请填真实项目 ID」）。
+- `tests/unit/test_vault_project_binding.py`（18 条）：占位符必须红；5 个真实 ID 与 `global` 必须绿；
+  **并把「会议管线允许自然语言项目名」钉成一条正向用例**（写明这是有意行为，收紧须同时改管线与测试）。
+- `tests/unit/test_intake_route.py`（5 条，**端到端**）：① 种子模板集合必须被测试完整覆盖；
+  ② 模板**留着占位符也必须能 YAML 解析**（原始缺陷的直接守卫）；③ 渲染成真实页面后必须过 `check_vault`；
+  ④ 新写入的页面必须**能被建索引并检索到**（＝「下一次提问就能检索到」）；
+  ⑤ 反向对照：`draft` 页面**不该**被检索到。
+- **不需要重建 App**（实测确认）：`webapp/` 与 `workflows/` **都不调用** `validate_note`，
+  校验只在 CLI / Agent 侧生效 ⇒ 改校验不动装机版本。
+
+**③ 顺带查出并修掉两组同类缺陷（都在「产品侧」，比库内更值钱）**：
+- **仓库自带的 13 个种子模板里，4 个也「插入即红」**（`meeting-note` / `meeting-transcript` /
+  `project-main` / `work-log`——占位符未加引号 → YAML 非法映射）。每个新工作台都带着它们。
+  已加引号修复，并给检查脚本新增 `--placeholders keep|substitute` 两种判据：
+  **keep**（占位符照留也必须合法）用于使用者库内模板；**substitute**（替换后再校验）用于参考骨架。
+  现状：库内 16/16 keep 绿、仓库种子 13/13 substitute 绿。
+- **`note.template.md` 默认 `status: draft` ＝ 不进问答检索**：分析笔记是最高频产出，
+  默认不可检索与「先入后改、可检索」直接冲突 ⇒ 改为 `active`。其余三个默认 `draft` 的模板
+  （`cluster` / `long-form-thought` / `event-plan`）**是刻意的**（未成熟/未定型不该被当事实引用），
+  保留并在两份指南里写明「想被引用就改 active」。
+- 库内 3 个仍带活跃占位符的模板（`work-log` / `meeting-note` / `project-main`）改为**真实默认值**
+  （`[hr]` / `[it-development]` / `hii-affairs`）+ 醒目提示，既保住「插入即合法」，又不会绑到不存在的项目。
+
+**④ 变异验证（全部真做）**：去掉 `_check_project_placeholders` 调用 → 8 条用例红；
+去掉种子模板里的引号 → `test_seed_templates_parse_even_with_placeholders_left` 红。
+⚠️ 第一次变异**没有红**——因为 E2E 在写入前就把占位符替换掉了，抓不到"未替换"这一形态；
+这条自身弱点由变异验证暴露，随后补了第 ② 组守卫（只做 Obsidian 自动替换、其余占位符原样保留）。
+
+**门禁**：pytest **1189 passed / 1 skipped / 83.84%**（较上轮 +23 条）；ruff（480 文件）；
+mypy（362 文件）；secret_scan；`wb vault check` 70 篇；`kb_verify_links` 全绿；
+模板守卫双模式全绿。

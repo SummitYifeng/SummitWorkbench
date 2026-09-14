@@ -80,8 +80,10 @@ npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测�
 # 已装 App 验收（4 题模型口径；只重查一题用 --only 省 token）
 .venv/bin/python scripts/kb_acceptance_installed.py --only "Q1"
 # 库内模板「插入即合法」守卫（**零 token**；动了 _vault/templates/ 必跑）
-# 判据＝只做 Obsidian 的 {{date}}/{{time}}/{{title}} 替换，其余占位符原样留着也必须过 schema。
+# keep 判据＝只做 Obsidian 的 {{date}}/{{time}}/{{title}} 替换，其余占位符原样留着也必须过 schema。
 .venv/bin/python scripts/kb_check_templates.py
+# 仓库种子模板（参考骨架）用 substitute 判据：先把占位符换成合法值再校验。
+.venv/bin/python scripts/kb_check_templates.py --templates templates/vault --placeholders substitute
 # vault 自检（**全部零 token**；动了 vault 内容、归档判据或检索时必须跑）
 .venv/bin/wb vault check
 .venv/bin/python scripts/kb_verify_links.py
@@ -266,6 +268,13 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
 - **2025 两场活动补齐（2026-09-14）**：`20250418-hangzhou-gathering`（Kick Off，含详细流程 Run of Show）与
   `20251216-year-end-gathering`（上海·音昱听堂）各入 source + 事件页 ⇒ **社群三场活动原件与事件页全部在库**；
   方法论页的 10 个环节里有 8 个已标出「验证于哪一场」，并把环节库提升为独立 `##` 块。**别重做**。
+- **project 绑定守卫 + 自助路线端到端验证（2026-09-14）**：`wb vault check` 现在拒绝
+  `project`/`projects` 里的未替换占位符（`_check_project_placeholders`）；新增
+  `tests/unit/test_vault_project_binding.py`（18 条）与 `tests/unit/test_intake_route.py`（5 条端到端：
+  模板留着占位符也要能解析 → 渲染后过校验 → 写进 vault 能被索引检索到 → draft 不被检索）。
+  顺带修了**仓库 4/13 个种子模板插入即红**与 **`note` 模板默认 `draft`** 两个产品侧缺陷。
+  ⚠️ **校验只在 CLI/Agent 侧**（`webapp/`、`workflows/` 都不调用 `validate_note`）⇒ **改校验不需要重建 App**。
+  **别重做**。
 - **素材入口指南（2026-09-14）**：库内 `index/sop.md` 新增「入口指南」一章（四条通道 / 建页三步 /
   不完美怎么办 / 常见错误 / 何时交 Agent），仓库 `docs/product/INTAKE-GUIDE.html` 为交互版
   （桌面另有一份副本）。**并且修掉了 16 个库内模板「插入不安全」的缺陷**（占位符未加引号 → YAML 非法），

@@ -30,6 +30,19 @@ STATUS_VOCAB = frozenset(
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# 项目 ID 字符集：**唯一真源**（`repositories/project_registry.py` 复用本常量）。
+# 注意它只在**创建项目**时强制（`wb project new`），schema 层**不**据此判定页面：
+#
+# 2026-09-14 踩坑记录：曾把字符集校验加进 `validate_note`，结果两条既有测试立刻变红——
+# 会议提取管线里，模型给出的 `projects:` 允许是**自然语言项目名**（例如 `网课系统`），
+# 之后才按别名解析成规范 ID；解析不到则落 `unresolved` → 全局收件箱。也就是说
+# `meeting-note` / `meeting-transcript` 的 `projects:` 是**线索**而不是最终绑定，
+# 在 schema 层按字符集判定会**打断会议导入**。⇒ 字符集约束保留为"创建时 + 约定"，不在此处强制。
+PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+# 未替换的模板占位符（Obsidian 只会替换 {{date}}/{{time}}/{{title}}，其余要人填）。
+_PLACEHOLDER_MARKERS = ("{{", "}}")
+
 
 @dataclass(frozen=True)
 class NoteTypeSpec:
@@ -175,7 +188,45 @@ def validate_note(meta: Mapping[str, object], body: str) -> list[ValidationIssue
 
     spec = NOTE_TYPES[note_type]
     issues.extend(_check_project_scope(spec, meta))
+    issues.extend(_check_project_placeholders(meta))
     issues.extend(_check_required_blocks(spec, body))
+    return issues
+
+
+def _check_project_placeholders(meta: Mapping[str, object]) -> list[ValidationIssue]:
+    """拒绝 ``project`` / ``projects`` 里**未替换的模板占位符**（与 scope 无关的硬规则）。
+
+    为什么只查占位符、不查字符集：
+    - **占位符一定错**：`project: "{{project}}"` 意味着模板没填完，页面会静默绑到一个不存在的项目。
+      这正是 2026-09-14 修掉的那类缺陷（`wb vault check` 此前完全不看 `project`，坏值也能通过）。
+    - **字符集不能在这里判**：会议提取管线允许 `projects:` 是自然语言项目名（如 `网课系统`），
+      稍后才按别名解析；解析不到则落 `unresolved`。按字符集判定会打断会议导入（有测试守着）。
+    - 也**不查项目是否已建档**：`type: project-inbox` / `thread-doc` 允许指向尚未建档的知识线程项目
+      （见 `repositories/project_scan.py` 的 registered 语义）。
+    """
+    issues: list[ValidationIssue] = []
+
+    candidates: list[tuple[str, object]] = []
+    project = meta.get("project")
+    if isinstance(project, str) and project.strip():
+        candidates.append(("project", project))
+    projects = meta.get("projects")
+    if isinstance(projects, list):
+        candidates.extend(("projects", item) for item in projects)
+
+    for field, value in candidates:
+        text = value.strip() if isinstance(value, str) else ""
+        if not text:
+            issues.append(ValidationIssue("项目 ID 必须是非空字符串", field=field))
+            continue
+        if any(marker in text for marker in _PLACEHOLDER_MARKERS):
+            issues.append(
+                ValidationIssue(
+                    f"项目 ID 里还有未替换的占位符 {text!r}；"
+                    "请填真实项目 ID（见 frontmatter 注释）",
+                    field=field,
+                )
+            )
     return issues
 
 

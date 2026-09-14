@@ -1,11 +1,12 @@
 ---
-date: {{date}}
+
+date: "{{date}}"
 type: meeting-transcript
 status: archived
-meeting_id: {{meeting_id}}
-note_id: {{note_id}}
+meeting_id: "{{meeting_id}}"
+note_id: "{{note_id}}"
 source: feishu-note
-projects: [{{project}}]
+projects: ["{{project}}"]
 ---
 
 # {{title}} · 完整逐字稿

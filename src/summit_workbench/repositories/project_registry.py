@@ -15,20 +15,19 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.review import UNRESOLVED
-from summit_workbench.domain.vault import NOTE_TYPES
+from summit_workbench.domain.vault import NOTE_TYPES, PROJECT_ID_RE
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.note_status import update_note_status
 from summit_workbench.repositories.vault import load_note
 
 # 规范项目 ID 的安全字符集：字母数字、下划线、连字符（用作文件名，禁空白/路径分隔符）。
-_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+# 项目 ID 字符集复用 schema 层的唯一真源（2026-09-14 起 `wb vault check` 也用它校验手写页面）。
 
 # 档案目录名：_vault/projects/。
 _PROJECTS_DIRNAME = "projects"
@@ -102,7 +101,7 @@ def create_project_note(
 
     只建第二大脑侧的项目档案（不碰任何 GitHub 仓库）。已存在则报错，避免覆盖历史。
     """
-    if not _PROJECT_ID_RE.match(project_id):
+    if not PROJECT_ID_RE.match(project_id):
         raise ValueError(
             f"非法项目 ID {project_id!r}：只允许字母、数字、下划线和连字符（用作文件名）"
         )
