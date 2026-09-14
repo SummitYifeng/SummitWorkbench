@@ -1,0 +1,114 @@
+SummitWorkbench · 2026-09-14 收口轮证据（逐字保留校验 + /api/sources/read）
+================================================================================
+代码提交：70f6753
+已安装 App：0.4.9 build 42（git_revision=70f6753、frontend_build=v2026.09.14-70f6753-4d072dbb）
+DMG：dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg
+      SHA-256 de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350
+
+================================================================================
+一、kb_verify_quotes.py --materials-root 在真库上的误报与修复
+================================================================================
+vault：/Users/yifengstudio/Documents/Work/_vault（53 篇）
+素材：/Users/yifengstudio/Desktop/当前材料
+
+修复前（HEAD = c8869c1）：
+  检查了 30 条逐字引用 / 时间点 / 原件比对，问题 6 条
+    ✗ hii/sources/20260911-hic-hii-royalty-rules.md:1          [正文未逐字包含原件（被改写、截断或另加了内容）]
+    ✗ hii/sources/20260912-hii-hic-ip-overview.md:1            [同上]
+    ✗ hii/sources/20260913-hic-hii-china-visit-manual.md:1     [同上]
+    ✗ hii/sources/20260913-hic-hii-current-visits.md:1         [同上]
+    ✗ it/sources/20260803-it-alignment-intelligent-minutes.md:1 [同上]
+    ✗ it/sources/20260912-hic-it-roadmap-progress.md:1         [同上]
+  → exit=1（6 条正好是全部 6 个 source 页）
+
+逐对核查（把原件去标题标记/空行后，在笔记正文里找连续子序列）：
+  hii/sources/20260911-hic-hii-royalty-rules.md            原件 750 行 起始于正文第 16 行 → ✓ 连续命中
+  hii/sources/20260912-hii-hic-ip-overview.md              原件 665 行 起始于正文第 16 行 → ✓ 连续命中
+  hii/sources/20260913-hic-hii-china-visit-manual.md       原件 604 行 起始于正文第 16 行 → ✓ 连续命中
+  hii/sources/20260913-hic-hii-current-visits.md           原件 372 行 起始于正文第 16 行 → ✓ 连续命中
+  it/sources/20260803-it-alignment-intelligent-minutes.md   原件  30 行 起始于正文第 15 行 → ✓ 连续命中
+  it/sources/20260912-hic-it-roadmap-progress.md           原件 708 行 起始于正文第 15 行 → ✓ 连续命中
+  每页「原件结束之后多出的行」= 空行 + `## 关联` + 若干双链条目
+  → 原件一字未改；多出来的只有 conventions §4.3 规定的页尾 `## 关联` 区块。
+
+根因：判据用 body.split("\n---\n\n## 关联", 1)[0] 剥页尾区块，而真库里 `## 关联` 前面
+      只有空行、没有 `---`，于是该区块被算作「原件之后另加的内容」。
+
+覆盖范围（修复后复核）：8 篇原件比对 = 6 个 source + 2 份 meeting-transcript
+  （两份逐字稿的 ref 指向「和IT相关的/罗艺峰的视频会议 (1|2).txt」，文件均存在）
+  → 修复前红的只有 6 个 source；逐字稿页没有页尾 `## 关联`，所以侥幸没被误伤，
+    与根因判断一致。
+
+修复后（HEAD = 70f6753）：
+  检查了 30 条逐字引用 / 时间点 / 原件比对，问题 0 条
+  → exit=0
+  （构成：逐字引用 0 条 + 时间点 22 条 + 原件比对 8 篇 = 30）
+
+================================================================================
+二、变异验证（在真库副本上注入违规）
+================================================================================
+方法：rsync 真库到 /tmp/wb-mut/<case>/，注入后在副本上跑脚本（真库本身不动）。
+
+  基线（未变异）                              问题 0 条  exit=0   ← 绿
+  变异 A′ 逐字区内改一个字母                  问题 1 条  exit=1   ← 红  ✓
+          （第 52 行 "Royalty"→"Royalti"。注：第一次变异打在 frontmatter 的 title 上，
+            正文没被动，脚本正确地仍然绿——是变异点选错，不是判据漏判）
+  变异 B  在原件与 `## 关联` 之间插一个        问题 1 条  exit=1   ← 红  ✓
+          `## 编者按` 区块
+  变异 C  从原件中间删掉一整行                问题 1 条  exit=1   ← 红  ✓
+          （hii/sources/20260913-hic-hii-current-visits.md 第 303 行）
+  变异 D  逐字区内同长度换字                  问题 1 条  exit=1   ← 红  ✓
+          （"HII"→"HHI"，长度不变）
+  变异 E  只删掉页尾 `## 关联`、原件未动        问题 0 条  exit=0   ← 绿  ✓
+          （反向对照：证明没有把判据改得过严）
+
+判别力证明（新测试确实能抓住旧 bug）——取出旧判据，喂同一条真形状 fixture：
+  用例 1 真形状（原件 + `## 关联` 页尾）       旧判据 → 红（报 1 条）   新判据 → 绿（0 条）
+  用例 3 原件自带 `## 关联`、无额外页尾        旧判据 → 绿（0 条）     新判据 → 绿（0 条）
+  ⇒ 用例 1 是真正的回归测试；用例 3 防的是「按标题一刀切」那种更省事的修法。
+
+判据强度说明：旧判据在「有 `---` + `## 关联`」的页面上本来就把 `## 关联` 之后的内容切掉了，
+所以「原件之后、页尾区块之前插内容」两种判据都抓；旧判据额外把「页尾 `## 关联` 区块本身」
+当违规——这正是 6/6 误报的来源。⇒ 在有效维度上强度等价，未放松。
+
+================================================================================
+三、GET /api/sources/read 空值 / 「只有 #区块」 500 → 400
+================================================================================
+修复前（已装 build 41，真机实测）：
+  空 source_id=                     → 500  {"ok":false,"code":"internal_error", ...}
+  source_id=#关键结论               → 500  {"ok":false,"code":"internal_error", ...}
+  source_id=../secret.md            → 400  （对照）
+  source_id=projects/hii-affairs.md → 200  （对照）
+
+修复后（已装 build 42，真机实测）：
+  空 source_id        → 400  {"ok":false,"message":"来源路径不在允许的知识范围内"}
+  只有 #区块           → 400  {"ok":false,"message":"来源路径不在允许的知识范围内"}
+  纯空白              → 400  {"ok":false,"message":"来源路径不在允许的知识范围内"}
+  越界路径（对照）      → 400  {"ok":false,"message":"来源路径不在允许的知识范围内"}
+  正常路径（对照）      → 200  {"ok":true,"source_id":"projects/hii-affairs.md","title":"HII 事宜", ...}
+
+根因：Path("").with_suffix(".md") 抛 ValueError: PosixPath('.') has an empty name，
+      而该句排在 `not raw_id ... return 400` 守卫**之前**。
+备注：OPEN-VERIFICATION-ITEMS.md §U.5 记着「留作下一个提交的第一件事」，一直没做；
+      且当时只记了空值一种，实测「只有 #区块」走同一条根因。
+
+变异验证：临时移除空值守卫（回到 build 41 的行为）→
+  FAILED tests/unit/test_webapi.py::test_api_sources_read_rejects_empty_and_block_only_ids_instead_of_internal_error
+  还原后 → 1 passed。
+
+================================================================================
+四、本轮其它门禁 / 自检
+================================================================================
+  pytest --cov -q            1133 passed, 1 skipped, 覆盖率 83.73%（门限 80%）
+  ruff check .               All checks passed!
+  ruff format --check .      473 files already formatted
+  mypy                       Success: no issues found in 359 source files
+  scripts/secret_scan.py     secret scan passed
+  npm run test:frontend      16 组全过（76 源文件）
+  wb vault check             ✓ 53 篇 Markdown 全部通过 schema 校验
+  kb_verify_links.py         53 篇｜双链 272 条｜路径#区块 引用 378 条｜全部可解析
+  kb_verify_quotes.py        30 项检查（含 8 篇原件比对）｜问题 0 条
+
+构建链自检（build 42）：
+  dist/releases/0.4.9/arm64/test-manifest.json  status=passed，13 项门禁全跑过
+  内置飞书默认凭据结构正确（值不打印）

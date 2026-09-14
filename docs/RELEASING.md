@@ -33,12 +33,13 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 41）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 42）
 
-SHA-256：`f590c93267069bdbbc071847cdbe84f039f98c744ae6c5befeaeb2662589ae5a`
+SHA-256：`de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`
 
-版本 `0.4.9`、build `41`，构建来源提交 `288f13d`（项目档案区块渲染真 Markdown），
-对应前端 build identity 为 `v2026.09.14-288f13d-4d072dbb`。
+版本 `0.4.9`、build `42`，构建来源提交 `70f6753`（逐字保留校验真库 6/6 误报 +
+`/api/sources/read` 空值与「仅区块」返回 500），
+对应前端 build identity 为 `v2026.09.14-70f6753-4d072dbb`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -50,6 +51,7 @@ SHA-256：`f590c93267069bdbbc071847cdbe84f039f98c744ae6c5befeaeb2662589ae5a`
 | 39 | `1ba837d` | Q1 主题通道 |
 | 40 | `425dff3` | 回答截断重试 + 指南补齐 |
 | 41 | `288f13d` | 项目档案区块渲染真 Markdown |
+| 42 | `70f6753` | 逐字保留校验真库 6/6 误报 + `sources/read` 空值/仅区块 500 |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -63,9 +65,8 @@ SHA-256：`f590c93267069bdbbc071847cdbe84f039f98c744ae6c5befeaeb2662589ae5a`
 
 **0.4.9 的验证（2026-09-14，已安装 App 实跑）**
 
-- 版本一致性：`/api/version` 报 `server_version=0.4.9`、`build=41`、`git_revision=288f13d`、
-  `frontend_build=v2026.09.14-288f13d-4d072dbb`（build 41 实测；证据见
-  `docs/acceptance/evidence/kb-acceptance-installed-2026-09-14-build41.txt`）。
+- 版本一致性：`/api/version` 报 `server_version=0.4.9`、`build=42`、`git_revision=70f6753`、
+  `frontend_build=v2026.09.14-70f6753-4d072dbb`（build 42 实测）。
   ⚠️ 升级版本号后必须跑一次 `uv pip install -e . --no-deps` 刷新 **venv 里的 distribution 元数据**，
   否则打包出的 server 会在诊断里报旧版本号（`server_version` 来自 `importlib.metadata`，不是 `pyproject`）。
 - 检索（R2 块边界）：app 自己回答「HIC 当前的 Royalty 完整计算公式」时，检索轨迹里出现
@@ -76,6 +77,25 @@ SHA-256：`f590c93267069bdbbc071847cdbe84f039f98c744ae6c5befeaeb2662589ae5a`
 - 审批落点：已安装前端产物内含新落点「知识沉淀」（`知识沉淀` / `knowledge-note` / `sink_target` 均命中）。
 - 第二大脑验收（build 41，2026-09-14 实跑）：`scripts/kb_acceptance_installed.py` 4 题模型口径
   **全部合格**；真实库 `scripts/kb_acceptance.py` 9 题（4 题真调模型 + 5 题零 token）**全部合格**。
+  证据见 `docs/acceptance/evidence/kb-acceptance-installed-2026-09-14-build41.txt`。
+- 缺陷修复实测（build 42）：`GET /api/sources/read` 的空值与「只有 `#区块`」由 **500 → 400**，
+  越界路径仍 400、正常路径仍 200；逐字保留校验在真库上由 6 条误报 → 0 条。
+  证据见 `docs/acceptance/evidence/kb-round-2026-09-14-verbatim-and-sources-read.txt`。
+
+### ⚠️ 构建前必须先提交（否则 `git_commit` 会指错）
+
+`release-metadata.json` 的 `git_commit` 与前端 `frontend_build` 都取自**构建那一刻的 HEAD**。
+2026-09-14 实测踩到：先把修复写完但**没提交**就构建，产物里的 `git_commit` 指向的是一个
+**不含该修复**的提交（当时的 `c8869c1`）。正确顺序是：
+
+1. 先提交代码（含测试）；
+2. 再构建 —— 产物 stamp 才等于该代码提交；
+3. 最后单独提交文档（把 build 号 / SHA 写进本文件）。
+
+那次脏 stamp 的产物已按先例移开（`dist/releases/0.4.9.superseded-b42-dirtystamp/`），
+并用同一个 build 号重建，避免留下一个「装了修复但对不上提交」的包。
+另注：构建会重新生成 `src/summit_workbench/webapp/static/` 里的前端产物，它内嵌 `git_revision`，
+所以**每次构建后这些文件都是脏的**，应与当轮的文档一起提交。
 
 脚本会执行临时目录构建、ad-hoc 签名、DMG、checksum、SBOM、动态端口离线 smoke 和
 完整性验证，不会访问飞书或 Apple 网络服务。
