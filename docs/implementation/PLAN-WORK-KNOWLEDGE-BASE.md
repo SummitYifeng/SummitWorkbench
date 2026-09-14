@@ -1156,3 +1156,91 @@ Q3 的 `it/clusters/enrollment#关键结论` 仍未召回；度量是 16 项二�
   输出里残留 Markdown 标记 **0**（表格 1、有序列表 5、粗体 21、wikilink 15）。
 - 门禁：`pytest --cov` 1129 passed / 83.72%；ruff / mypy / secret_scan / 前端 16 组全绿；
   0.4.9 **build 41** 已构建并安装（`frontend_build = v2026.09.14-288f13d-4d072dbb`）。
+
+### 收口轮 · 起点复核 + 文档漂移 + 条目 3 结案 —— 已完成（2026-09-14）
+
+本轮**没有改任何产品代码**。起因是按铁律复核起点，顺带把三处「文档写的和机器上实际的不一样」敲实。
+
+#### 1. 起点门禁（工作树干净，HEAD = `053a20e`）
+
+| 门 | 结果 |
+|---|---|
+| `pytest --cov -q` | ✓ **1129 passed / 1 skipped**，覆盖率 **83.72%** |
+| `ruff check` / `ruff format --check` | ✓ All checks passed / 472 files already formatted |
+| `mypy` | ✓ 359 源文件无问题 |
+| `scripts/secret_scan.py` | ✓ passed |
+| `npm --prefix web run test:frontend` | ✓ 16 组（76 源文件） |
+| `scripts/kb_acceptance.py`（真实库） | ✓ **9 题全部合格**（Q1–Q4 真调模型 + R1/R2/D1/V1/S1 零 token） |
+| `scripts/kb_acceptance_installed.py`（已装 build 41） | ✓ **4 题模型口径全部合格** |
+
+**补上一个真证据缺口**：此前只有 build 40 的已装验收证据，build 41 装完**没留**。本轮新增
+`docs/acceptance/evidence/kb-acceptance-installed-2026-09-14-build41.txt`
+（`build = 41`、`git_revision = 288f13d`、`frontend_build = v2026.09.14-288f13d-4d072dbb`，4 题全合格）。
+
+索引库在复核前后都完好：53 篇 / 685 块 / `PRAGMA integrity_check = ok`。
+
+> 会话提示词里写的「8 题」实为 **9 题**（脚本自报「9 题检索全部合格」）。以脚本为准。
+
+#### 2. 条目 3（飞书授权缓存）**结案：不是 bug，是文件名引起的误读**
+
+原观测担心「界面授权徽标若读 `feishu-auth-state.json`，重启后会误显示未授权」。**读代码 + 读真数据后否证**：
+
+| 文件 | 谁在读 | 语义 |
+|---|---|---|
+| `_vault/_signals/feishu-auth.json` | `observability/status.py:155` → `read_auth_state(vault_dir)` | **徽标真正读的**。vault 内、持久（`_signals/` 被 vault 的 `.gitignore` 忽略，属机器本地） |
+| `~/Library/Application Support/SummitWorkbench/feishu-auth-state.json` | `settings.py:93` 的 `_AuthorizationStates`（经 `_authorization_state_file`，两处构造点 `:320` / `:489`） | 只是 **OAuth CSRF `state` 的暂存表**，`_STATE_TTL = 600s`；重启后为空是**正确**行为 |
+
+- 前端链路：`web/src/features/settings/render.ts:139,146` 读 `/api/state` 的
+  `status.feishu_auth.needs_reauthorize`，`badge()` 据此决定「✓ 已授权 / ⚠ 需重新授权」。
+- 真实数据：`_signals/feishu-auth.json` 现为 `needs_reauthorize: false`，写入时间 08:13
+  **早于**本次 App 启动 08:58 —— 重启后徽标读到的仍是持久值，**没有**误显示未授权。
+- App Support 那个文件实测就是 `{"schema_version":1,"items":{}}`，与「10 分钟 TTL 的待授权 state
+  过期清空」完全一致。
+
+⇒ **不需要改代码**。也**不该**按原设想去「启动时从 Keychain 重建缓存」：那等于让一次性 OAuth
+待授权 `state` 跨进程存活，反而放松了它的语义。原观测按「已澄清、非 bug」关闭。
+
+#### 3. 修掉两处 build 号漂移（会让人拿错包）
+
+| 文件 | 之前 | 现在 |
+|---|---|---|
+| `docs/implementation/AIR-MACHINE-HANDOFF.md` §0 | build **40** / `v2026.09.14-425dff3-ceb4aa8a` | build **41** / `v2026.09.14-288f13d-4d072dbb`；§2 补 DMG 的 SHA-256，并写明「文件名不含 build 号，认包要核 SHA 或看设置页 build」 |
+| `docs/RELEASING.md`「最近一次产物」 | 标题写 build **38**，却配着 **build 37 的 SHA**（`54b0b912…` 属 b37）；「0.4.9 的验证」段还写 `build=37` | build **41**（`f590c932…`）+ 按各轮 `release-metadata.json` 逐个核出的 build→提交对照表 |
+
+后者是**双重错误**（标题 38 / SHA 取 37），正是这轮复核的价值所在。对照表：
+
+| build | 提交 | 内容 |
+|---|---|---|
+| 36 / 37 | `f202d3e` | 检索修复 + 知识沉淀落点（37 是刷新 distribution 元数据后的重建） |
+| 38 | `6ba2f60` | 「决策」页 |
+| 39 | `1ba837d` | Q1 主题通道 |
+| 40 | `425dff3` | 回答截断重试 + 指南补齐 |
+| 41 | `288f13d` | 项目档案区块渲染真 Markdown |
+
+#### 4. 第 4 条（下一批入库）核实结果：**库里没有，素材也没有**
+
+按要求先核了 HR 线以及「工作日志 / 思考」：
+
+| 工作线 | vault 现状 |
+|---|---|
+| HR | 只有骨架 `hr/hr-people.md`（`type: index`，页内明写「本轮仅骨架」） |
+| 活满社群 | 只有骨架 `community/community-overview.md` |
+| 工作日志 | **只有模板** `templates/work-log.template.md`，无实体页 |
+| 工作思考 | **只有模板** `templates/long-form-thought.template.md`，`insights/` 为空（仅 `.gitkeep`） |
+
+而 `/Users/yifengstudio/Desktop/当前材料` 里**只有 HII（4 份）+ IT（4 份）**，HR / 活满日志 / 思考
+**一份素材都没有**。
+
+⇒ 第 4 条当前**卡在素材**，不是卡在工程。素材进目录后才谈得上开 C-lite 三件套。
+
+#### 5. 会话提示词落盘
+
+新增 `docs/implementation/NEXT-SESSION-PROMPT.md`：把会话启动提示词存成仓库文件，并**按本轮实测发现
+改写**（原来的「8 题」、条目 3 的「风险」暗示、Air 作业单的 build 40 都已校正），免得下一轮把已证伪的
+说法再固化一遍。
+
+#### 6. 已知不足与未验证项（本轮没有变化）
+
+- Q3 的 `it/clusters/enrollment#关键结论` 仍未召回；同篇多结论块竞争仍在；16 项二值指标仍不适合当调参目标。
+- 本轮**未**重新构建/安装 App（没改产品代码），所以不涉及 TCC 弹窗与 ⌘R。
+- Air 侧 GUI 点击与系统权限弹窗**仍未验证**（必须在 Air 上做）。

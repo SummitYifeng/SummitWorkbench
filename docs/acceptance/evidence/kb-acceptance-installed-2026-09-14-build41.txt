@@ -1,0 +1,295 @@
+SummitWorkbench · 已安装 App 的第二大脑验收
+runtime record：/Users/yifengstudio/Library/Application Support/SummitWorkbench/runtime.json
+frontend_build：v2026.09.14-288f13d-4d072dbb
+/api/version：{"api_protocol": 2, "build": "41", "device_id": "0617854a-e193-4b3e-bb6d-fb5bb738937d", "frontend_build": "v2026.09.14-288f13d-4d072dbb", "git_revision": "288f13d", "mode": "production", "port": 64008, "product_id": "com.summitworkbench.panel", "server_instance": "ce7f1906-9072-47c6-a680-fcf423a5fcd1", "server_version": "0.4.9", "started_at": "2026-09-14T00:58:17.003357Z", "workspace_id": "fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd"}
+题目数：4（4 题对外验收口径）
+
+==============================================================================
+【Q1 商标共识规范】
+问：根据之前和 HII 的沟通，当前我们达成的商标共识规范是什么？
+------------------------------------------------------------------------------
+回答：根据现有来源，当前商标共识口径为：登记主体统一 HII，HIF→HII 只替换权利主体语境、历史头衔按事实保留；四套材料按 Commissioned Works 处理；Copyright year / Revision date / First Use date 三种年份不可互换；「和夫曼之旅」归 HII（注册中）、「活满」归 HIC（已注册）且不再作为 Hoffman Process 的中文名；filing 先于 License 执行。
+  • 商标共识（当前口径）：登记主体统一 HII；HIF→HII 只替换权利主体语境、历史头衔按事实保留；四套材料按 Commissioned Works 处理。
+      ← projects/hii-affairs#关键结论
+  • Copyright year / Revision date / First Use date 三种年份不可互换。
+      ← projects/hii-affairs#关键结论
+  • 「和夫曼之旅」归 HII（注册中）；「活满」归 HIC（已注册），且不再作为 Hoffman Process 的中文名；filing 先于 License。
+      ← projects/hii-affairs#关键结论
+  • 2026-09 HIC 管理层进一步明确的长期 IP 边界包括：7 天 6 晚与核心概念归 HII、排他性被许可并支付 royalty、和夫曼之旅归 HII、活满归 HIC 且已注册、HIC 自有资产发展方向、核心概念改写需与 HII 协商。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）
+  • HII 2026-06-23 邮件明确：License Contract 已接近最终版（near final）；版权与商标保护 filing 启动后，再执行许可合同；IP filing confirmation 将作为合同 Addenda。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+  • 商标条目的邮件口径：Quadrinity Symbol 邮件指定按 Design Mark 申请（美国律师 reference HOFF-23737-TM-CN）；Logo 邮件明确当时不计划单独申请 Logo trademark，理由是不是 HII 惯常覆盖方式。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+  • 商标名称表还包含 Negative Love Syndrome、负向之爱综合征（邮件明确其为 Negative Love Syndrome 的 Chinese translation）、Hoffman Process、Chinese translation of Hoffman Process、活满 / Huoman（HII 邮件写作 China center's trademark of "活满" "Huoman"）。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+  • 「和夫曼之旅」这一中文品牌名的文字本身来自 HIC 管理层补充口径，邮件正文并没有直接写出该中文翻译的具体文字。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+  • 阻塞项：HII / IP 律师侧的 filing 回执、商标申请号、License 最终版本未到，HIC 单方面无法推进；「活满」最终品牌定位未定（路径 A / B / C）。
+      ← projects/hii-affairs#阻塞
+  • 下一步包括：向 HII / IP 律师索取四套材料的最终 filing 清单与申请号（确认 4 还是 8 个 filing）；归档最终 License Agreement 与全部 Addenda，并复核 territory 定义、是否含港澳台、排他性例外；建立双轨 IP 台账与「IP 标准名称表」；推动「活满」品牌架构决策（路径 A / B / C 三选一）。
+      ← projects/hii-affairs#下一步
+
+检索轨迹里的路由：decision
+进入上下文的来源：6 条
+    · projects/hii-affairs#关键结论
+    · projects/hii-affairs#阻塞
+    · projects/hii-affairs#下一步
+    · it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+    · hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）
+    · hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行
+事实引用：5 条，其中块级 5 条
+追溯到证据层：hii/notes/20260912-hii-hic-ip-analysis → hii/sources/20260912-hii-hic-ip-overview（共 20 条）
+其中走到逐字稿：（无）
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>根据现有来源，当前商标共识口径为：登记主体统一 HII，HIF→HII 只替换权利主体语境、历史头衔按事实保留；四套材料按 Commissioned Works 处理；Copyright year / Revision date / First Use date 三种年份不可互换；「和夫曼之旅」归 HII（注册中）、「活满」归 HIC（已注册）且不再作为 Hoffman Process 的中文名；filing 先于 License 执行。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>商标共识（当前口径）：登记主体统一 HII；HIF→HII 只替换权利主体语境、历史头衔按事实保留；四套材料按 Commissioned Works 处理。 <span class='wikilink'>[[projects/hii-affairs#关键结论]]</span></li>
+<li>Copyright year / Revision date / First Use date 三种年份不可互换。 <span class='wikilink'>[[projects/hii-affairs#关键结论]]</span></li>
+<li>「和夫曼之旅」归 HII（注册中）；「活满」归 HIC（已注册），且不再作为 Hoffman Process 的中文名；filing 先于 License。 <span class='wikilink'>[[projects/hii-affairs#关键结论]]</span></li>
+<li>2026-09 HIC 管理层进一步明确的长期 IP 边界包括：7 天 6 晚与核心概念归 HII、排他性被许可并支付 royalty、和夫曼之旅归 HII、活满归 HIC 且已注册、HIC 自有资产发展方向、核心概念改写需与 HII 协商。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）]]</span></li>
+<li>HII 2026-06-23 邮件明确：License Contract 已接近最终版（near final）；版权与商标保护 filing 启动后，再执行许可合同；IP filing confirmation 将作为合同 Addenda。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行]]</span></li>
+<li>商标条目的邮件口径：Quadrinity Symbol 邮件指定按 Design Mark 申请（美国律师 reference HOFF-23737-TM-CN）；Logo 邮件明确当时不计划单独申请 Logo trademark，理由是不是 HII 惯常覆盖方式。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行]]</span></li>
+<li>商标名称表还包含 Negative Love Syndrome、负向之爱综合征（邮件明确其为 Negative Love Syndrome 的 Chinese translation）、Hoffman Process、Chinese translation of Hoffman Process、活满 / Huoman（HII 邮件写作 China center&#x27;s trademark of &quot;活满&quot; &quot;Huoman&quot;）。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行]]</span></li>
+<li>「和夫曼之旅」这一中文品牌名的文字本身来自 HIC 管理层补充口径，邮件正文并没有直接写出该中文翻译的具体文字。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行]]</span></li>
+<li>阻塞项：HII / IP 律师侧的 filing 回执、商标申请号、License 最终版本未到，HIC 单方面无法推进；「活满」最终品牌定位未定（路径 A / B / C）。 <span class='wikilink'>[[projects/hii-affairs#阻塞]]</span></li>
+<li>下一步包括：向 HII / IP 律师索取四套材料的最终 filing 清单与申请号（确认 4 还是 8 个 filing）；归档最终 License Agreement 与全部 Addenda，并复核 territory 定义、是否含港澳台、排他性例外；建立双轨 IP 台账与「IP 标准名称表」；推动「活满」品牌架构决策（路径 A / B / C 三选一）。 <span class='wikilink'>[[projects/hii-affairs#下一步]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>上述共识目前仍是「当前口径」，尚未闭环：filing 回执、商标申请号与 License 最终版本未到位，「活满」的品牌定位与修改四级分级机制是否写入合同也未有结论，因此在 HII 侧文件到位前不宜把该口径当作最终定案。</li>
+<li>「和夫曼之旅」归 HII 属 HIC 管理层补充口径而非 2026-06-23 邮件正文原文，后续与 HII 书面确认时建议明确该中文名的正式文字与申请主体。</li>
+<li>若要落地，可优先完成「IP 标准名称表」（含 Owner / Filing No. / 三种年份 / 是否需 HII 批准），作为后续沟通与台账的统一依据。</li>
+</ul>
+<p class="not-actionable">召回来源：[[projects/hii-affairs#关键结论]]、[[projects/hii-affairs#阻塞]]、[[projects/hii-affairs#下一步]]、[[it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做]]、[[hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）]]、[[hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>decision</code>（命中关键词 共识、规范）</p><p>检索词：根据之前和、HII、的沟通、当前我、前我们、我们达、们达成、达成的、成的商、的商标、商标共、标共识、共识规、识规范、规范是、范是什、是什么</p><p>双链扩展：</p><ul><li><code>community/community-overview</code> ← projects/hii-affairs</li><li><code>daily/2026-09-14</code> ← projects/hii-affairs</li><li><code>decisions/20260623-hii-registration-entity</code> ← projects/hii-affairs</li><li><code>decisions/20260623-ip-filing-before-license</code> ← projects/hii-affairs</li><li><code>decisions/20260911-hotel-cost-gross-amount</code> ← projects/hii-affairs</li><li><code>decisions/20260911-royalty-tier-restart-on-first-payment</code> ← projects/hii-affairs</li><li><code>decisions/20260911-scholarship-discount-no-royalty</code> ← projects/hii-affairs</li><li><code>decisions/20260912-digitization-finance-first</code> ← it/notes/20260912-hic-it-roadmap-analysis</li><li><code>decisions/20260912-huoman-separate-from-hefuman</code> ← projects/hii-affairs</li><li><code>decisions/20260913-china-visit-three-stage-sop</code> ← projects/hii-affairs</li><li><code>decisions/20260913-china-visit-trigger-rule</code> ← projects/hii-affairs</li><li><code>decisions/20260913-danny-work-personal-separation</code> ← projects/hii-affairs</li></ul><p>已排除：</p><ul><li><code>hii/sources/20260912-hii-hic-ip-overview#6.3 邮件中出现的商标/品牌正式名称</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2026-04｜中文版修订完成的内部标注口径</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#当前状态：🟢 已进入业务实际使用</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#七、HII 邮件中已明确的 IP 落地事项</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#二、最重要的结论：HII 与 HIC 是“双轨 IP 体系”</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#B. HII Licensed IP List</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#6.1 HII 开始推进旅行安排</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2026-06-25｜HII 补发邮件</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2013-10-05｜HII 课程材料早期使用记录</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#HII / USA 侧</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2. 建立正式的“HII IP / HIC IP”资产清单</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#HII</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>projects/hii-affairs#关键结论</code>（project-main）：正文命中（6.53）；标题命中 1；类型权威 project-main=0.95；查询点名了这篇笔记；元数据命中 1；主题命中 3（问题点名了这篇的主题）；结论型区块加权</li><li><code>projects/hii-affairs#阻塞</code>（project-main）：正文命中（0.50）；标题命中 1；类型权威 project-main=0.95；查询点名了这篇笔记；元数据命中 1；主题命中 3（问题点名了这篇的主题）；结论型区块加权</li><li><code>projects/hii-affairs#下一步</code>（project-main）：正文命中（0.42）；标题命中 1；类型权威 project-main=0.95；查询点名了这篇笔记；元数据命中 1；主题命中 3（问题点名了这篇的主题）；结论型区块加权</li><li><code>it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做</code>（note）：正文命中（5.02）；区块标题命中 1；类型权威 note=0.70；主题命中 1（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/notes/20260912-hii-hic-ip-analysis#结论十六｜关键时间线（7 个节点）</code>（note）：正文命中（2.68）；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 1（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/notes/20260912-hii-hic-ip-analysis#结论十四｜2026-06-23 邮件已明确的落地事项：IP filing 先于 License Contract 执行</code>（note）：正文命中（2.51）；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 1（问题点名了这篇的主题）；结论型区块加权</li></ul></details>
+
+==============================================================================
+【Q2 Danny 来华待收口】
+问：Danny 来华目前还差哪些必须收口？下一步谁做什么？
+------------------------------------------------------------------------------
+回答：截至 2026-09-13，Danny 来华的材料里，P0（抵达前必须收口）6 项、P1（私人段建议收口）6 项、P2（数字工具）5 项全部处于未完成状态，均未勾选；其中与抵达到场直接相关的硬缺口是：9 月 28 日具体航班号、抵达 terminal、Danny + Sim 到 TFU 后的最终接送方式、是否安排 HIC 司机/项目车辆、工作期间宿心集住宿预订是否已在 HIC 内部完成、工作段具体入住/退房日期。原件 §10A 给出的 8 项「立即收口」动作均未逐条指定负责人；已记录的角色是罗艺峰（HIC 对外主协调人、Danny 邮件主要回复者）、饶杰（HIC CEO，CC/关系上下文）、Simien Lin（角色未明确）、Sunny/张凌紫（被 CC，具体接待职责未明确）。笔记里另有一份按 §8 角色做的归属映射，但笔记自己声明那是推断、不是原件逐条指派，需罗艺峰确认后才能落成责任人。
+  • 截至 2026-09-13，P0「抵达前必须收口」共 6 项，全部为未完成状态：9 月 28 日具体航班号；抵达 terminal（如实际执行需要）；Danny + Sim 到 TFU 后的最终接送方式；是否安排 HIC 司机/项目车辆，还是自行到场地；工作期间宿心集住宿预订是否已在 HIC 内部完成；工作段具体入住/退房日期。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • 截至 2026-09-13，P1「私人段建议收口」共 6 项，全部未完成：10 月 5 日 Canopy 是否已经正式订房；成都→上海已出票航班的最终信息进入 Master Itinerary；上海酒店最终选择；北京酒店最终选择；上海→北京高铁最终车次；最终离境日期/航班。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • 截至 2026-09-13，P2「数字工具」共 5 项，全部未完成：Alipay 实际可支付；WeChat 可正常沟通；DiDi 可叫车；翻译工具已准备；如坐高铁，12306/车票安排清楚。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • 原件 §10A 的 8 项动作均未逐条指定负责人；笔记中的归属映射是依据 §8 角色记录所做的推断，需罗艺峰确认后落成责任人。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • §8 记录的角色：罗艺峰＝当前 HIC 对外主协调人 / Danny 邮件主要回复者；饶杰＝HIC CEO，作为管理层 CC / 关系上下文参与者；Simien Lin（Sim）＝初期曾设想可陪同两天，Danny 后来明确不需要 Sim 专门带其游览成都，最新邮件显示抵达时与 Sim 同行；Sunny / 张凌紫在 Danny 部分邮件链中被 CC，当前附件邮件没有进一步明确其具体接待职责。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 原件自认缺失：离境信息不全，私人段只出现「Leaving Beijing at 3PM」，没有完整离境日期 / 航班细节；私人段日期切分只到「10 月 12 日前往北京」与「Process 结束 10 月 5 日」，成都 / 上海 / 北京各段的具体日期与住宿 nights 未完整给出。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • 费用金额、结算周期与凭证要求未在邮件中展开，应由财务流程另行确认。
+      ← hii/visits/danny-kim-2026-09#未决问题
+  • 10-5 衔接的剩余依赖只有两项：P1 的「Canopy 是否已经正式订房」与 P2 的「Alipay / DiDi 抵达后实测可用」。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • HIC 已告诉 Danny：Process 结束后前往 Canopy by Hilton Chengdu City Centre 可行，预计约 1 小时车程；到中国后会帮助确保 Alipay 与 DiDi 可以使用；不需要提前很久订这段车，到现场后使用 DiDi 即可，并可由 HIC 协助确认。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 当前来华材料给出 Danny 线「立即收口」8 项动作，但未逐条指定负责人；笔记的归属映射（明确标注为判断、非原件逐条指派）为：1 向 Danny / Sim 确认完整抵达航班号（对外沟通→罗艺峰）；2 明确 TFU→宿心集最终交通方式（HIC 内部）；3 HIC 内部确认工作住宿 room reservation（原件写明「HIC 内部确认」）；4 生成 Danny Master Itinerary v1.0（罗艺峰）；5 生成一页 Venue & Arrival Card（罗艺峰）；6 出发前确认 Alipay / WeChat 安装情况（HIC 提醒 + Danny 配合）；7 抵达后实测 Alipay / DiDi（现场执行，HIC 协助）；8 10 月 5 日前确认 Canopy 住宿是否已定并协助完成宿心集→成都中心城区叫车（Danny 决定订房；HIC 协助叫车）。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 建议在 9 月 28 日前至少形成一个 v1.0 Final for Arrival 的 Arrival Pack（草稿字段含 Arrival / Flight XXX / Arrival companion: Sim / Transfer / Work Venue / Chinese Address / Process End: Oct 5 / Next Stop / HIC Contact / Digital Setup）。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 风险 1：Danny 到访近，但最新版行程仍分散在邮件中——航班、接送、项目酒店、私人段衔接分散，现场容易依赖个人记忆；建议立即建立带版本号的 Master Itinerary。风险 2：工作段与私人段容易混在一起，建议明确 Work / Personal 两段。风险 4：费用「先支付方」与「最终承担方」可能混淆，建议国际机票单独建立 settlement tracking。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 费用责任（工作段）：工作期间住宿、餐食、工作相关中国境内交通由 HIC 承担；国际机票最终属于 HIC 应承担的工作成本，但可能先由 HII 侧安排 / 支付，再阶段性统一结算。私人段（10 月 5 日 Process 结束后）：Danny 自主决定、原则上本人承担费用；HIC 可提供建议、可协助联系 / 预订，可酌情承担少量接待成本但不默认。
+      ← hii/visits/danny-kim-2026-09#关键结论
+  • 决定：工作段（四川 Process）由 HIC 保障到底；私人段（10 月 5 日 Process 结束后的成都 / 上海 / 北京）由 Danny 自主决定、原则上本人承担费用，HIC 不默认安排 HIC 同事全程陪同，也不默认英文导游。
+      ← decisions/20260913-danny-work-personal-separation#决定
+  • 决定：10 月 5 日衔接方式为 HIC 已确认宿心集→成都中心城区（Canopy）交通上可行、约 1 小时车程；不需要提前很久订车，到现场后由 Danny 使用 DiDi，HIC 协助确认 Alipay / DiDi 可用。
+      ← decisions/20260913-danny-work-personal-separation#决定
+  ▸ 冲突：8 项收口动作的负责人是否已确定
+  ▸ 冲突：Sim 抵达后是否陪同 / 实际分工
+
+检索轨迹里的路由：point
+进入上下文的来源：6 条
+    · hii/visits/danny-kim-2026-09#关键结论
+    · hii/visits/danny-kim-2026-09#未决问题
+    · decisions/20260913-danny-work-personal-separation#决定
+    · decisions/20260913-danny-work-personal-separation#选项
+    · hii/visits/nita-crystal-2026-12#关键结论
+    · hii/visits/danny-kim-2026-09#现在在哪
+事实引用：3 条，其中块级 3 条
+追溯到证据层：decisions/20260913-danny-work-personal-separation → hii/sources/20260913-hic-hii-china-visit-manual（共 12 条）
+其中走到逐字稿：（无）
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>截至 2026-09-13，Danny 来华的材料里，P0（抵达前必须收口）6 项、P1（私人段建议收口）6 项、P2（数字工具）5 项全部处于未完成状态，均未勾选；其中与抵达到场直接相关的硬缺口是：9 月 28 日具体航班号、抵达 terminal、Danny + Sim 到 TFU 后的最终接送方式、是否安排 HIC 司机/项目车辆、工作期间宿心集住宿预订是否已在 HIC 内部完成、工作段具体入住/退房日期。原件 §10A 给出的 8 项「立即收口」动作均未逐条指定负责人；已记录的角色是罗艺峰（HIC 对外主协调人、Danny 邮件主要回复者）、饶杰（HIC CEO，CC/关系上下文）、Simien Lin（角色未明确）、Sunny/张凌紫（被 CC，具体接待职责未明确）。笔记里另有一份按 §8 角色做的归属映射，但笔记自己声明那是推断、不是原件逐条指派，需罗艺峰确认后才能落成责任人。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>截至 2026-09-13，P0「抵达前必须收口」共 6 项，全部为未完成状态：9 月 28 日具体航班号；抵达 terminal（如实际执行需要）；Danny + Sim 到 TFU 后的最终接送方式；是否安排 HIC 司机/项目车辆，还是自行到场地；工作期间宿心集住宿预订是否已在 HIC 内部完成；工作段具体入住/退房日期。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>截至 2026-09-13，P1「私人段建议收口」共 6 项，全部未完成：10 月 5 日 Canopy 是否已经正式订房；成都→上海已出票航班的最终信息进入 Master Itinerary；上海酒店最终选择；北京酒店最终选择；上海→北京高铁最终车次；最终离境日期/航班。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>截至 2026-09-13，P2「数字工具」共 5 项，全部未完成：Alipay 实际可支付；WeChat 可正常沟通；DiDi 可叫车；翻译工具已准备；如坐高铁，12306/车票安排清楚。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>原件 §10A 的 8 项动作均未逐条指定负责人；笔记中的归属映射是依据 §8 角色记录所做的推断，需罗艺峰确认后落成责任人。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>§8 记录的角色：罗艺峰＝当前 HIC 对外主协调人 / Danny 邮件主要回复者；饶杰＝HIC CEO，作为管理层 CC / 关系上下文参与者；Simien Lin（Sim）＝初期曾设想可陪同两天，Danny 后来明确不需要 Sim 专门带其游览成都，最新邮件显示抵达时与 Sim 同行；Sunny / 张凌紫在 Danny 部分邮件链中被 CC，当前附件邮件没有进一步明确其具体接待职责。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>原件自认缺失：离境信息不全，私人段只出现「Leaving Beijing at 3PM」，没有完整离境日期 / 航班细节；私人段日期切分只到「10 月 12 日前往北京」与「Process 结束 10 月 5 日」，成都 / 上海 / 北京各段的具体日期与住宿 nights 未完整给出。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>费用金额、结算周期与凭证要求未在邮件中展开，应由财务流程另行确认。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#未决问题]]</span></li>
+<li>10-5 衔接的剩余依赖只有两项：P1 的「Canopy 是否已经正式订房」与 P2 的「Alipay / DiDi 抵达后实测可用」。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>HIC 已告诉 Danny：Process 结束后前往 Canopy by Hilton Chengdu City Centre 可行，预计约 1 小时车程；到中国后会帮助确保 Alipay 与 DiDi 可以使用；不需要提前很久订这段车，到现场后使用 DiDi 即可，并可由 HIC 协助确认。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>当前来华材料给出 Danny 线「立即收口」8 项动作，但未逐条指定负责人；笔记的归属映射（明确标注为判断、非原件逐条指派）为：1 向 Danny / Sim 确认完整抵达航班号（对外沟通→罗艺峰）；2 明确 TFU→宿心集最终交通方式（HIC 内部）；3 HIC 内部确认工作住宿 room reservation（原件写明「HIC 内部确认」）；4 生成 Danny Master Itinerary v1.0（罗艺峰）；5 生成一页 Venue &amp; Arrival Card（罗艺峰）；6 出发前确认 Alipay / WeChat 安装情况（HIC 提醒 + Danny 配合）；7 抵达后实测 Alipay / DiDi（现场执行，HIC 协助）；8 10 月 5 日前确认 Canopy 住宿是否已定并协助完成宿心集→成都中心城区叫车（Danny 决定订房；HIC 协助叫车）。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>建议在 9 月 28 日前至少形成一个 v1.0 Final for Arrival 的 Arrival Pack（草稿字段含 Arrival / Flight XXX / Arrival companion: Sim / Transfer / Work Venue / Chinese Address / Process End: Oct 5 / Next Stop / HIC Contact / Digital Setup）。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>风险 1：Danny 到访近，但最新版行程仍分散在邮件中——航班、接送、项目酒店、私人段衔接分散，现场容易依赖个人记忆；建议立即建立带版本号的 Master Itinerary。风险 2：工作段与私人段容易混在一起，建议明确 Work / Personal 两段。风险 4：费用「先支付方」与「最终承担方」可能混淆，建议国际机票单独建立 settlement tracking。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>费用责任（工作段）：工作期间住宿、餐食、工作相关中国境内交通由 HIC 承担；国际机票最终属于 HIC 应承担的工作成本，但可能先由 HII 侧安排 / 支付，再阶段性统一结算。私人段（10 月 5 日 Process 结束后）：Danny 自主决定、原则上本人承担费用；HIC 可提供建议、可协助联系 / 预订，可酌情承担少量接待成本但不默认。 <span class='wikilink'>[[hii/visits/danny-kim-2026-09#关键结论]]</span></li>
+<li>决定：工作段（四川 Process）由 HIC 保障到底；私人段（10 月 5 日 Process 结束后的成都 / 上海 / 北京）由 Danny 自主决定、原则上本人承担费用，HIC 不默认安排 HIC 同事全程陪同，也不默认英文导游。 <span class='wikilink'>[[decisions/20260913-danny-work-personal-separation#决定]]</span></li>
+<li>决定：10 月 5 日衔接方式为 HIC 已确认宿心集→成都中心城区（Canopy）交通上可行、约 1 小时车程；不需要提前很久订车，到现场后由 Danny 使用 DiDi，HIC 协助确认 Alipay / DiDi 可用。 <span class='wikilink'>[[decisions/20260913-danny-work-personal-separation#决定]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>优先收口 P0 前四项（航班号、terminal、TFU 后接送方式、是否用 HIC 司机/项目车辆），因为它们直接决定 9 月 28 日现场接机动线；工作住宿预订与入住退房日期属 HIC 内部动作，可与接送并行。</li>
+<li>让罗艺峰明确指定 §10A 8 项动作的责任人并落成书面责任人清单——来源已明确这些动作「均未逐条指定负责人」，目前的归属只是推断，不确认就等于无人负责。</li>
+<li>9 月 28 日前先出 Master Itinerary v1.0 与一页 Venue &amp; Arrival Card，把散在邮件里的航班、接送、酒店、10-5 衔接收进带版本号的单一文件，对应 Risk 1。</li>
+<li>私人段（Canopy、上海/北京酒店、高铁、离境）属 Danny 自主决定，HIC 可只做「提醒 + 协助」，不主动代订；同时把已出票的成都→上海航班信息补进 Master Itinerary。</li>
+<li>离境信息只有「Leaving Beijing at 3PM」，建议尽快向 Danny 索取完整离境日期与航班，否则私人段末尾无法闭环。</li>
+<li>国际机票建议单独建立 settlement tracking，避免 HII 先付款被误认为费用属于 HII。</li>
+</ul>
+<p class="not-actionable">召回来源：[[hii/visits/danny-kim-2026-09#关键结论]]、[[hii/visits/danny-kim-2026-09#未决问题]]、[[decisions/20260913-danny-work-personal-separation#决定]]、[[decisions/20260913-danny-work-personal-separation#选项]]、[[hii/visits/nita-crystal-2026-12#关键结论]]、[[hii/visits/danny-kim-2026-09#现在在哪]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>point</code>（命中关键词 谁）</p><p>检索词：Danny、来华目、华目前、目前还、前还差、还差哪、差哪些、哪些必、些必须、必须收、须收口、下一步、一步谁、步谁做、谁做什、做什么</p><p>双链扩展：</p><ul><li><code>decisions/20260913-china-visit-three-stage-sop</code> ← decisions/20260913-danny-work-personal-separation</li><li><code>decisions/20260913-china-visit-trigger-rule</code> ← hii/visits/danny-kim-2026-09</li><li><code>decisions/20260913-danny-work-personal-separation</code> ← hii/visits/danny-kim-2026-09</li><li><code>hii/clusters/relationships</code> ← hii/visits/danny-kim-2026-09</li><li><code>hii/sources/20260913-hic-hii-current-visits</code> ← hii/visits/danny-kim-2026-09</li><li><code>hii/visits/china-visit-sop</code> ← hii/visits/danny-kim-2026-09</li><li><code>hii/visits/danny-kim-2026-09</code> ← decisions/20260913-danny-work-personal-separation</li><li><code>hii/visits/nita-crystal-2026-12</code> ← hii/visits/danny-kim-2026-09</li><li><code>index/decisions</code> ← decisions/20260913-danny-work-personal-separation</li><li><code>index/people</code> ← hii/visits/danny-kim-2026-09</li><li><code>index/projects</code> ← hii/visits/danny-kim-2026-09</li><li><code>projects/hii-affairs</code> ← hii/visits/danny-kim-2026-09</li></ul><p>已排除：</p><ul><li><code>hii/sources/20260913-hic-hii-current-visits#4.2 当前邮件中仍未完整确认</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#7.1 已确认</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#3. Danny Kim｜沟通历程</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#4. Danny｜当前已确认与待确认</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#9.2 Danny 私人段</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#A. Danny｜优先级更高（9 月 28 日抵达）</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#Risk 1｜Danny 到访近，但最新版行程仍分散在邮件中</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#9.1 Danny 工作段</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#3.2 Danny 提出私人旅行需求</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#HIC × HII 当前来华事项总结｜Danny / Nita / Crystal</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#5. Danny｜建议生成的 Final Arrival Pack</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#HIC</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>hii/visits/danny-kim-2026-09#关键结论</code>（note）：正文命中（7.68）；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/visits/danny-kim-2026-09#未决问题</code>（note）：正文命中（6.96）；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权</li><li><code>decisions/20260913-danny-work-personal-separation#决定</code>（decision）：正文命中（2.82）；标题命中 1；类型权威 decision=0.95；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权</li><li><code>decisions/20260913-danny-work-personal-separation#选项</code>（decision）：正文命中（2.69）；标题命中 1；类型权威 decision=0.95；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/visits/nita-crystal-2026-12#关键结论</code>（note）：正文命中（7.36）；类型权威 note=0.70；主题命中 1（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/visits/danny-kim-2026-09#现在在哪</code>（note）：正文命中（2.87）；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权</li></ul></details>
+
+==============================================================================
+【Q3 IT 进度与下一阶段】
+问：IT 当前的开发进度是什么，下一个阶段该怎么做？
+------------------------------------------------------------------------------
+回答：第一阶段目标「将核心系统的开发和维护能力重新收回公司内部」已基本完成，IT 已进入「系统稳定运营 + 权限精细化 + 业务自主使用 + 数字资产治理 + 业务电子化 + AI 化」的新阶段，并形成五条主线；下一阶段的策略口径是「先稳定报名系统和门户 → 同时推进 AI 与业务电子化 → 启动手机端」。同时，9 月 P0 的实际完成状态、数字资产台账载体等问题在来源中仍属未记录的阻塞项。
+  • 第一阶段目标「将核心系统的开发和维护能力重新收回公司内部」已基本完成；IT 工作从「把功能做出来、系统跑起来」进入「系统稳定运营 + 权限精细化 + 业务自主使用 + 数字资产治理 + 业务电子化 + AI 化」的新阶段，五条主线已基本形成：报名及课程生命周期系统、门户网站 / CMS / 权限体系、手机端、本地 AI / 企业知识库、各部门业务电子化。
+      ← it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+  • 逐项进度：报名及课程系统 🟢 已正式运行（精细化运营）；门户 / CMS 🟢 已投入业务使用（稳定与权限优化）；权限体系 🟡 持续建设（细颗粒数据权限）；IT 账户治理 🟡 刚开始形成体系（需要重点补齐）；手机端 ⚪ 尚未开发（即将启动）；本地 AI 🟡 模型可运行（准备内部产品化）；企业知识库 🔵 已明确方向（准备 PoC / 内测）；部门业务电子化 🟡 已启动（财务先行）。
+      ← it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+  • 下一阶段的策略口径是「先稳定报名系统和门户 → 同时推进 AI 与业务电子化 → 启动手机端」，分月安排与「年底完成」判据见原件后两节。
+      ← it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+  • 四组能力已可实际运行（用户与基础数据 / 课程 / 报名与交易 / 教学准备与履约），四项缺口集中在支付之后的资金与通知环节。
+      ← projects/it-development#关键结论
+  • 门户下一阶段四项重点是稳定性 / 权限 / 培训 / SOP，原件明确「不应该继续无限增加 CMS 功能」，目标是「业务自己运营，IT 负责系统」。
+      ← projects/it-development#关键结论
+  • 账户治理的第一原则：服务器核心账户、微信支付母账户、支付宝母账户由公司法人持有最终所有权，再分配管理员权限——原件写明「这一原则应该继续保持」；API Token / Secret / Access Key 等本质上都是公司数字资产。
+      ← projects/it-development#关键结论
+  • 业务电子化不是「把人工流程原封不动搬到电脑里」，而是「先把业务标准化，再决定什么值得系统化」；财务试点的真正交付物是可复用的方法论与模板，而不是财务系统。
+      ← projects/it-development#关键结论
+  • 本地 AI 的两个方向共享同一批用户与知识源，但验收标准不同：Chat 验收「统一入口 + 内测范围」，知识库验收「有来源的可信回答」。
+      ← projects/it-development#关键结论
+  • 手机端的口径纠正：原件把它列为五条主线之一、2026 年优先级第四，状态是「尚未启动 / 即将启动」，不是 paused（上一版库的 paused 判断已被原件推翻）。
+      ← projects/it-development#关键结论
+  • 阻塞项：9 月 P0 的实际完成状态未知（原件只写截止 2026-09-30，未记录任何已完成项）；数字资产台账的载体未定（「统一登记」落在哪个系统 / 台账、由谁维护未写，「员工离职 / 岗位变更 IT 权限 Checklist」是否已起草、放在哪里也未写）；口径效力待拍板（权限 Level 1–5 在原件章节标题里是「建议」、正文是「未来可以逐步形成」，未见拍板人与日期）；门户部署的账号与仓库权限移交本批 IT 原件未记录。
+      ← projects/it-development#阻塞
+  • 关于 9 月 P0 的决定：原件选择「在 2026 年 9 月底前正式完成一次前 IT 人员离场权限审计与清退，并把过程沉淀为 Checklist」，并把「9 月底完成」定为 P0、写明「这是明确 P0」；原件未记录其它候选方案。
+      ← decisions/20260912-account-governance-p0#选项
+  • 门户项目部署的执行要求：韩文博需在获取对应操作权限后，独立完成门户项目的部署操作，支撑后续罗艺峰提出的各类更新需求；权限同步进度为「罗艺峰已向韩文博发送门户仓库的访问邀请，云服务器新账户信息将分别同步至韩文博飞书及会议群」，原件只写「已发送邀请」，未写是否已被接受。
+      ← meetings/notes/20260803-it-alignment#事实与进展
+
+检索轨迹里的路由：point
+进入上下文的来源：6 条
+    · it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做
+    · projects/it-development#关键结论
+    · projects/it-development#阻塞
+    · decisions/20260912-account-governance-p0#选项
+    · hii/visits/china-visit-sop#现在在哪
+    · meetings/notes/20260803-it-alignment#事实与进展
+事实引用：5 条，其中块级 5 条
+追溯到证据层：decisions/20260912-account-governance-p0 → hii/sources/20260913-hic-hii-current-visits（共 15 条）
+其中走到逐字稿：projects/it-development → meetings/transcripts/2026-08-24-luo-yifeng-video-meeting-1-transcript
+本题要求走到逐字稿：是
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>第一阶段目标「将核心系统的开发和维护能力重新收回公司内部」已基本完成，IT 已进入「系统稳定运营 + 权限精细化 + 业务自主使用 + 数字资产治理 + 业务电子化 + AI 化」的新阶段，并形成五条主线；下一阶段的策略口径是「先稳定报名系统和门户 → 同时推进 AI 与业务电子化 → 启动手机端」。同时，9 月 P0 的实际完成状态、数字资产台账载体等问题在来源中仍属未记录的阻塞项。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>第一阶段目标「将核心系统的开发和维护能力重新收回公司内部」已基本完成；IT 工作从「把功能做出来、系统跑起来」进入「系统稳定运营 + 权限精细化 + 业务自主使用 + 数字资产治理 + 业务电子化 + AI 化」的新阶段，五条主线已基本形成：报名及课程生命周期系统、门户网站 / CMS / 权限体系、手机端、本地 AI / 企业知识库、各部门业务电子化。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做]]</span></li>
+<li>逐项进度：报名及课程系统 🟢 已正式运行（精细化运营）；门户 / CMS 🟢 已投入业务使用（稳定与权限优化）；权限体系 🟡 持续建设（细颗粒数据权限）；IT 账户治理 🟡 刚开始形成体系（需要重点补齐）；手机端 ⚪ 尚未开发（即将启动）；本地 AI 🟡 模型可运行（准备内部产品化）；企业知识库 🔵 已明确方向（准备 PoC / 内测）；部门业务电子化 🟡 已启动（财务先行）。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做]]</span></li>
+<li>下一阶段的策略口径是「先稳定报名系统和门户 → 同时推进 AI 与业务电子化 → 启动手机端」，分月安排与「年底完成」判据见原件后两节。 <span class='wikilink'>[[it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做]]</span></li>
+<li>四组能力已可实际运行（用户与基础数据 / 课程 / 报名与交易 / 教学准备与履约），四项缺口集中在支付之后的资金与通知环节。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>门户下一阶段四项重点是稳定性 / 权限 / 培训 / SOP，原件明确「不应该继续无限增加 CMS 功能」，目标是「业务自己运营，IT 负责系统」。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>账户治理的第一原则：服务器核心账户、微信支付母账户、支付宝母账户由公司法人持有最终所有权，再分配管理员权限——原件写明「这一原则应该继续保持」；API Token / Secret / Access Key 等本质上都是公司数字资产。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>业务电子化不是「把人工流程原封不动搬到电脑里」，而是「先把业务标准化，再决定什么值得系统化」；财务试点的真正交付物是可复用的方法论与模板，而不是财务系统。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>本地 AI 的两个方向共享同一批用户与知识源，但验收标准不同：Chat 验收「统一入口 + 内测范围」，知识库验收「有来源的可信回答」。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>手机端的口径纠正：原件把它列为五条主线之一、2026 年优先级第四，状态是「尚未启动 / 即将启动」，不是 paused（上一版库的 paused 判断已被原件推翻）。 <span class='wikilink'>[[projects/it-development#关键结论]]</span></li>
+<li>阻塞项：9 月 P0 的实际完成状态未知（原件只写截止 2026-09-30，未记录任何已完成项）；数字资产台账的载体未定（「统一登记」落在哪个系统 / 台账、由谁维护未写，「员工离职 / 岗位变更 IT 权限 Checklist」是否已起草、放在哪里也未写）；口径效力待拍板（权限 Level 1–5 在原件章节标题里是「建议」、正文是「未来可以逐步形成」，未见拍板人与日期）；门户部署的账号与仓库权限移交本批 IT 原件未记录。 <span class='wikilink'>[[projects/it-development#阻塞]]</span></li>
+<li>关于 9 月 P0 的决定：原件选择「在 2026 年 9 月底前正式完成一次前 IT 人员离场权限审计与清退，并把过程沉淀为 Checklist」，并把「9 月底完成」定为 P0、写明「这是明确 P0」；原件未记录其它候选方案。 <span class='wikilink'>[[decisions/20260912-account-governance-p0#选项]]</span></li>
+<li>门户项目部署的执行要求：韩文博需在获取对应操作权限后，独立完成门户项目的部署操作，支撑后续罗艺峰提出的各类更新需求；权限同步进度为「罗艺峰已向韩文博发送门户仓库的访问邀请，云服务器新账户信息将分别同步至韩文博飞书及会议群」，原件只写「已发送邀请」，未写是否已被接受。 <span class='wikilink'>[[meetings/notes/20260803-it-alignment#事实与进展]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>按来源中的判断，这套安排把「已上线系统的治理」排在「新功能」之前，因此 9 月的重心不是开发量，而是权限清退、权限颗粒度、培训与 SOP。</li>
+<li>结合「9 月 P0 完成状态未知」这一阻塞项，下一步可先核实前 IT 人员权限清退与离职权限 Checklist 的实际完成情况，再决定 9 月剩余时间的排期。</li>
+<li>数字资产台账的载体与维护人尚未确定，可作为下一阶段优先明确的事项之一；门户部署的账号与仓库权限移交也需复核 2026-08-03 对齐会议笔记。</li>
+<li>手机端为「尚未启动 / 即将启动」，按策略口径排在报名系统与门户稳定、AI 与业务电子化之后启动。</li>
+</ul>
+<p class="not-actionable">召回来源：[[it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做]]、[[projects/it-development#关键结论]]、[[projects/it-development#阻塞]]、[[decisions/20260912-account-governance-p0#选项]]、[[hii/visits/china-visit-sop#现在在哪]]、[[meetings/notes/20260803-it-alignment#事实与进展]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>point</code>（命中关键词 是什么、当前、进度）</p><p>检索词：当前的、前的开、的开发、开发进、发进度、进度是、度是什、是什么、下一个、一个阶、个阶段、阶段该、段该怎、该怎么、怎么做、IT</p><p>双链扩展：</p><ul><li><code>daily/2026-09-14</code> ← projects/it-development</li><li><code>decisions/20260912-account-governance-p0</code> ← projects/it-development</li><li><code>decisions/20260912-digitization-finance-first</code> ← it/notes/20260912-hic-it-roadmap-analysis</li><li><code>decisions/20260912-enrollment-redefined-as-course-lifecycle</code> ← projects/it-development</li><li><code>decisions/20260912-local-ai-two-directions</code> ← projects/it-development</li><li><code>decisions/20260912-mobile-v1-student-first</code> ← projects/it-development</li><li><code>decisions/20260912-permission-model-five-levels</code> ← projects/it-development</li><li><code>decisions/20260913-china-visit-trigger-rule</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>decisions/20260913-danny-work-personal-separation</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>hii/clusters/relationships</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>hii/visits/china-visit-sop</code> ← decisions/20260913-china-visit-three-stage-sop</li><li><code>hii/visits/nita-crystal-2026-12</code> ← decisions/20260913-china-visit-three-stage-sop</li></ul><p>已排除：</p><ul><li><code>it/sources/20260912-hic-it-roadmap-progress#三十、HIC IT 的三个发展阶段</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#十一、权限体系：目前 IT 建设的重要核心</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#一、Executive Summary</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#二十九、2027 年 IT 年会共创</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#阶段一：重新建立内部 IT 开发能力</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260803-it-alignment-intelligent-minutes#智能纪要：IT对齐 2026年8月3日</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#三、8 月以来 IT 工作阶段变化</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#6. Nita / Crystal｜沟通历程</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#7. Nita / Crystal｜当前状态</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#B. Nita / Crystal｜场地确认是当前关键路径</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260913-hic-hii-current-visits#9. Cost Responsibility｜本次应如何应用</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>it/sources/20260912-hic-it-roadmap-progress#十四、IT 账户与数字资产治理</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>it/notes/20260912-hic-it-roadmap-analysis#一句话回答：IT 当前的开发进度是什么，下一个阶段该怎么做</code>（note）：正文命中（85.06）；区块标题命中 16；标题命中 1；类型权威 note=0.70；元数据命中 1；主题命中 7（问题点名了这篇的主题）；结论型区块加权</li><li><code>projects/it-development#关键结论</code>（project-main）：正文命中（1.21）；标题命中 1；类型权威 project-main=0.95；查询点名了这篇笔记；元数据命中 1；主题命中 3（问题点名了这篇的主题）；结论型区块加权；双链扩展（来自 it/notes/20260912-hic-it-roadmap-analysis）</li><li><code>projects/it-development#阻塞</code>（project-main）：正文命中（1.63）；标题命中 1；类型权威 project-main=0.95；查询点名了这篇笔记；元数据命中 1；主题命中 3（问题点名了这篇的主题）；结论型区块加权</li><li><code>decisions/20260912-account-governance-p0#选项</code>（decision）：正文命中（1.42）；标题命中 1；类型权威 decision=0.95；元数据命中 1；主题命中 1（问题点名了这篇的主题）；结论型区块加权；双链扩展（来自 projects/it-development）</li><li><code>hii/visits/china-visit-sop#现在在哪</code>（note）：正文命中（1.53）；类型权威 note=0.70；元数据命中 1；主题命中 2（问题点名了这篇的主题）；结论型区块加权；双链扩展（来自 decisions/20260913-china-visit-three-stage-sop）</li><li><code>meetings/notes/20260803-it-alignment#事实与进展</code>（meeting-note）：正文命中（0.87）；标题命中 1；类型权威 meeting-note=0.70；元数据命中 1；主题命中 1（问题点名了这篇的主题）；结论型区块加权；双链扩展（来自 projects/it-development）</li></ul></details>
+
+==============================================================================
+【Q4 活满 vs 和夫曼】
+问：「活满」与「和夫曼之旅」为什么分开管理？当时还有哪些选项？
+------------------------------------------------------------------------------
+回答：分开管理的核心原因是：「活满」不应再被当作 Hoffman Process 的中文名称或另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界；因此把「和夫曼之旅」（HII 授权品牌资产）与「活满」（HIC 自有品牌资产）从此分开管理。当时「活满」的未来定位存在三个候选路径——A｜HIC 公司/平台品牌、B｜毕业生与持续成长品牌、C｜完全独立的新业务品牌，另有原件明确要避免的候选（继续当作 Hoffman Process 的另一中文别名）；路径 A/B/C 的方向当时尚未最终决定，状态表标为「未确认｜管理层仍需决策」。
+  • 「活满」与「和夫曼之旅」从此分开管理，原件 §9.2 称这是当前内部 IP 台账最值得立即执行的一项。
+      ← decisions/20260912-huoman-separate-from-hefuman#决定
+  • 分开管理后的资产分类为：HII 授权品牌资产（Hoffman Process、和夫曼之旅、其他 HII 核心商标/符号）；HIC 自有品牌资产（活满、后续 HIC 自行开发的新品牌）。
+      ← decisions/20260912-huoman-separate-from-hefuman#决定
+  • 在商标台账、网站、合同、Marketing 素材和产品 PRD 中都应标注清楚品牌归属。
+      ← decisions/20260912-huoman-separate-from-hefuman#决定
+  • 「活满」不应再被当作 Hoffman Process 的中文名称，而应作为 HIC 自有品牌资产单独设计品牌架构。
+      ← decisions/20260912-huoman-separate-from-hefuman#决定
+  • 当时存在的候选路径之一：路径 A｜HIC 公司/平台品牌——「活满」作为 HIC 的上层本土品牌，下面承载毕业生社群、数字产品、AI 产品、支线产品、其他非 Hoffman 核心课程业务；Hoffman Process / 和夫曼之旅作为其中一个被授权运营的独立产品体系存在。
+      ← decisions/20260912-huoman-separate-from-hefuman#选项
+  • 当时存在的候选路径之一：路径 B｜毕业生与持续成长品牌——「活满」主要服务完成 Hoffman Process 之后的人群，形成 alumni / community / lifelong growth 产品体系。
+      ← decisions/20260912-huoman-separate-from-hefuman#选项
+  • 当时存在的候选路径之一：路径 C｜完全独立的新业务品牌——「活满」逐渐发展为独立于 Hoffman Process 的 HIC 新业务品牌，与 Hoffman 只保留股东、团队或用户层面的关联。
+      ← decisions/20260912-huoman-separate-from-hefuman#选项
+  • 原件明确要避免的候选（历史沿用状态）：继续把「活满」当作 Hoffman Process 的另一中文别名，即延续「活满之旅」式的用法；原文为「应尽量避免再次把『活满』定义成 Hoffman Process 的另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界」。
+      ← decisions/20260912-huoman-separate-from-hefuman#选项
+  • 待决状态：路径 A / B / C 三选一「方向尚未最终决定」，原件 §十三 状态表把「活满未来品牌定位」标为「未确认｜管理层仍需决策」。
+      ← decisions/20260912-huoman-separate-from-hefuman#选项
+  • 「和夫曼之旅」是 Hoffman Process 的中文品牌名，权利归 HII，目前处于注册过程中；长期品牌架构上「应该被放在 HII 核心授权 IP 一侧管理」，HIC 可在授权范围内运营、营销、使用，但不应把它当作 HIC 独立自有品牌资产处理。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+  • 「活满」品牌已经注册；HIC 认为该品牌属于自身资产；HII 最初曾同意使用「活满之旅」作为 Hoffman Process 的中文品牌名，后续又不再允许这种使用方式；HIC 团队仍希望保留和发展；但「活满」未来放在哪一个业务板块尚未最终确定。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+  • 分开管理的口径：原件 §9.2 直接写「『活满』与『和夫曼之旅』必须从此分开管理——这是当前内部 IP 台账最值得立即执行的一项」，并把资产分为 HII 授权品牌资产与 HIC 自有品牌资产两类，要求在商标台账、网站、合同、Marketing 素材和产品 PRD 中都标注清楚品牌归属。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+  • 该笔记的判断：分开管理的理由是这段历史意味着「『活满』不应该再被简单当成 Hoffman Process 的中文名称」，且「应尽量避免再次把『活满』定义成 Hoffman Process 的另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界」。
+      ← hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+  • 「活满」的最终品牌定位（与 HII 侧的品牌架构决策联动）属于未决问题。
+      ← community/community-overview#未决问题
+  • HII 与 HIC 的 IP 关系已按「双轨」框架成形，本轮已定下三条内部口径（登记主体、filing 先于 License、活满与和夫曼之旅分开管理）；其余卡在外部事实（License Agreement 是否签署、商标/版权申请号、4 vs 8 filings）与一项管理层决策（活满品牌定位）。
+      ← hii/clusters/ip-trademark#现在在哪
+
+检索轨迹里的路由：decision
+进入上下文的来源：6 条
+    · decisions/20260912-huoman-separate-from-hefuman#决定
+    · decisions/20260912-huoman-separate-from-hefuman#选项
+    · hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理
+    · community/community-overview#未决问题
+    · hii/clusters/ip-trademark#现在在哪
+    · meetings/notes/20260907-portal-permission-alignment#事实与进展
+事实引用：5 条，其中块级 5 条
+追溯到证据层：community/community-overview → hii/sources/20260913-hic-hii-current-visits（共 13 条）
+其中走到逐字稿：（无）
+✓ 通过：关键证据已召回、引用为块级且可解析、能追到证据层
+
+—— 面板会渲染的 HTML（含检索轨迹折叠块）——
+<p><strong>分开管理的核心原因是：「活满」不应再被当作 Hoffman Process 的中文名称或另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界；因此把「和夫曼之旅」（HII 授权品牌资产）与「活满」（HIC 自有品牌资产）从此分开管理。当时「活满」的未来定位存在三个候选路径——A｜HIC 公司/平台品牌、B｜毕业生与持续成长品牌、C｜完全独立的新业务品牌，另有原件明确要避免的候选（继续当作 Hoffman Process 的另一中文别名）；路径 A/B/C 的方向当时尚未最终决定，状态表标为「未确认｜管理层仍需决策」。</strong></p>
+<h4>事实（带来源）</h4><ul>
+<li>「活满」与「和夫曼之旅」从此分开管理，原件 §9.2 称这是当前内部 IP 台账最值得立即执行的一项。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#决定]]</span></li>
+<li>分开管理后的资产分类为：HII 授权品牌资产（Hoffman Process、和夫曼之旅、其他 HII 核心商标/符号）；HIC 自有品牌资产（活满、后续 HIC 自行开发的新品牌）。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#决定]]</span></li>
+<li>在商标台账、网站、合同、Marketing 素材和产品 PRD 中都应标注清楚品牌归属。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#决定]]</span></li>
+<li>「活满」不应再被当作 Hoffman Process 的中文名称，而应作为 HIC 自有品牌资产单独设计品牌架构。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#决定]]</span></li>
+<li>当时存在的候选路径之一：路径 A｜HIC 公司/平台品牌——「活满」作为 HIC 的上层本土品牌，下面承载毕业生社群、数字产品、AI 产品、支线产品、其他非 Hoffman 核心课程业务；Hoffman Process / 和夫曼之旅作为其中一个被授权运营的独立产品体系存在。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#选项]]</span></li>
+<li>当时存在的候选路径之一：路径 B｜毕业生与持续成长品牌——「活满」主要服务完成 Hoffman Process 之后的人群，形成 alumni / community / lifelong growth 产品体系。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#选项]]</span></li>
+<li>当时存在的候选路径之一：路径 C｜完全独立的新业务品牌——「活满」逐渐发展为独立于 Hoffman Process 的 HIC 新业务品牌，与 Hoffman 只保留股东、团队或用户层面的关联。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#选项]]</span></li>
+<li>原件明确要避免的候选（历史沿用状态）：继续把「活满」当作 Hoffman Process 的另一中文别名，即延续「活满之旅」式的用法；原文为「应尽量避免再次把『活满』定义成 Hoffman Process 的另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界」。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#选项]]</span></li>
+<li>待决状态：路径 A / B / C 三选一「方向尚未最终决定」，原件 §十三 状态表把「活满未来品牌定位」标为「未确认｜管理层仍需决策」。 <span class='wikilink'>[[decisions/20260912-huoman-separate-from-hefuman#选项]]</span></li>
+<li>「和夫曼之旅」是 Hoffman Process 的中文品牌名，权利归 HII，目前处于注册过程中；长期品牌架构上「应该被放在 HII 核心授权 IP 一侧管理」，HIC 可在授权范围内运营、营销、使用，但不应把它当作 HIC 独立自有品牌资产处理。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理]]</span></li>
+<li>「活满」品牌已经注册；HIC 认为该品牌属于自身资产；HII 最初曾同意使用「活满之旅」作为 Hoffman Process 的中文品牌名，后续又不再允许这种使用方式；HIC 团队仍希望保留和发展；但「活满」未来放在哪一个业务板块尚未最终确定。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理]]</span></li>
+<li>分开管理的口径：原件 §9.2 直接写「『活满』与『和夫曼之旅』必须从此分开管理——这是当前内部 IP 台账最值得立即执行的一项」，并把资产分为 HII 授权品牌资产与 HIC 自有品牌资产两类，要求在商标台账、网站、合同、Marketing 素材和产品 PRD 中都标注清楚品牌归属。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理]]</span></li>
+<li>该笔记的判断：分开管理的理由是这段历史意味着「『活满』不应该再被简单当成 Hoffman Process 的中文名称」，且「应尽量避免再次把『活满』定义成 Hoffman Process 的另一中文别名，否则会重新模糊 HII 与 HIC 的资产边界」。 <span class='wikilink'>[[hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理]]</span></li>
+<li>「活满」的最终品牌定位（与 HII 侧的品牌架构决策联动）属于未决问题。 <span class='wikilink'>[[community/community-overview#未决问题]]</span></li>
+<li>HII 与 HIC 的 IP 关系已按「双轨」框架成形，本轮已定下三条内部口径（登记主体、filing 先于 License、活满与和夫曼之旅分开管理）；其余卡在外部事实（License Agreement 是否签署、商标/版权申请号、4 vs 8 filings）与一项管理层决策（活满品牌定位）。 <span class='wikilink'>[[hii/clusters/ip-trademark#现在在哪]]</span></li>
+</ul>
+<h4>建议（模型推断）</h4><ul>
+<li>若需推进「活满」品牌架构，可先在已定口径下落地「标注品牌归属」这一项（商标台账、网站、合同、Marketing 素材、产品 PRD），因为该动作不依赖路径 A/B/C 的最终选择。</li>
+<li>路径 A/B/C 的选择被来源标为「未确认｜管理层仍需决策」，且与 HII 侧品牌架构决策联动，可作为一项待决事项持续跟踪。</li>
+<li>社区文档中「是否需要一个独立的 projects/huoman.md」与「社群产品边界」两个未决问题，可能与「活满」品牌定位路径的选择相互影响，可一并讨论。</li>
+</ul>
+<p class="not-actionable">召回来源：[[decisions/20260912-huoman-separate-from-hefuman#决定]]、[[decisions/20260912-huoman-separate-from-hefuman#选项]]、[[hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理]]、[[community/community-overview#未决问题]]、[[hii/clusters/ip-trademark#现在在哪]]、[[meetings/notes/20260907-portal-permission-alignment#事实与进展]]</p>
+<details class='kb-trace'><summary>检索轨迹</summary><p>路由：<code>decision</code>（命中关键词 选项）</p><p>检索词：和夫曼之旅、为什么、什么分、么分开、分开管、开管理、当时还、时还有、还有哪、有哪些、哪些选、些选项、活满、与</p><p>双链扩展：</p><ul><li><code>conventions</code> ← hii/clusters/ip-trademark</li><li><code>decisions/20260623-hii-registration-entity</code> ← decisions/20260912-huoman-separate-from-hefuman</li><li><code>decisions/20260623-ip-filing-before-license</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>decisions/20260912-huoman-separate-from-hefuman</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>hii/clusters/ip-trademark</code> ← decisions/20260912-huoman-separate-from-hefuman</li><li><code>hii/clusters/relationships</code> ← hii/clusters/ip-trademark</li><li><code>hii/clusters/royalty</code> ← hii/clusters/ip-trademark</li><li><code>hii/notes/20260912-hii-hic-ip-analysis</code> ← decisions/20260912-huoman-separate-from-hefuman</li><li><code>hii/sources/20260912-hii-hic-ip-overview</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>index/decisions</code> ← decisions/20260912-huoman-separate-from-hefuman</li><li><code>index/people</code> ← hii/notes/20260912-hii-hic-ip-analysis</li><li><code>index/projects</code> ← community/community-overview</li></ul><p>已排除：</p><ul><li><code>meetings/transcripts/2026-09-07-luo-yifeng-video-meeting-2-transcript</code>：类型 meeting-transcript 不进初始召回</li><li><code>hii/sources/20260912-hii-hic-ip-overview#9.2 「活满」与「和夫曼之旅」必须从此分开管理</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#4.1 「和夫曼之旅」</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#P1｜完成「活满」品牌架构决策</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#3. 「活满」需要一次真正的品牌架构决策</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#B. HII Licensed IP List</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#4.2 「活满」</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#十七、一句话总览</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#C. HIC-Owned IP List</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#6.3 邮件中出现的商标/品牌正式名称</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2026-09｜HIC 管理层进一步明确长期 IP 边界</code>：同源去重（派生笔记优先，原件降权保留）</li><li><code>hii/sources/20260912-hii-hic-ip-overview#2.2 HIC 自有 IP / 业务资产体系</code>：同源去重（派生笔记优先，原件降权保留）</li></ul><p>命中块与命中理由：</p><ul><li><code>decisions/20260912-huoman-separate-from-hefuman#决定</code>（decision）：正文命中（10.89）；标题命中 5；类型权威 decision=0.95；路由优先类型；主题命中 8（问题点名了这篇的主题）；结论型区块加权</li><li><code>decisions/20260912-huoman-separate-from-hefuman#选项</code>（decision）：正文命中（1.84）；标题命中 5；类型权威 decision=0.95；路由优先类型；主题命中 8（问题点名了这篇的主题）；结论型区块加权；双链扩展（来自 hii/notes/20260912-hii-hic-ip-analysis）</li><li><code>hii/notes/20260912-hii-hic-ip-analysis#结论四｜「和夫曼之旅」归 HII、注册中；「活满」归 HIC、已注册；两者必须从此分开管理</code>（note）：正文命中（14.42）；区块标题命中 4；类型权威 note=0.70；结论型区块加权</li><li><code>community/community-overview#未决问题</code>（index）：正文命中（3.37）；标题命中 1；类型权威 index=0.45；路由优先类型；查询点名了这篇笔记；主题命中 1（问题点名了这篇的主题）；结论型区块加权</li><li><code>hii/clusters/ip-trademark#现在在哪</code>（note）：正文命中（9.92）；类型权威 note=0.70；结论型区块加权</li><li><code>meetings/notes/20260907-portal-permission-alignment#事实与进展</code>（meeting-note）：正文命中（2.26）；区块标题命中 1；标题命中 1；类型权威 meeting-note=0.70；结论型区块加权</li></ul></details>
+
+==============================================================================
+✓ 已安装 App 验收通过：4 题全部合格。

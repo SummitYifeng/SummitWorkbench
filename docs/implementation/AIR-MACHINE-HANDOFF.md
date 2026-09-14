@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| App 版本 | `0.4.9`（build **40**，`frontend_build = v2026.09.14-425dff3-ceb4aa8a`） |
+| App 版本 | `0.4.9`（build **41**，`frontend_build = v2026.09.14-288f13d-4d072dbb`） |
 | 工作区 id | `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd` |
 | Studio device id | `0617854a-e193-4b3e-bb6d-fb5bb738937d` |
 | 主设备声明 | 就是 Studio，generation **1** |
@@ -42,7 +42,10 @@
 ## 2. Air 上的操作步骤
 
 1. **装 App**：把 Studio 上这一份装到 Air（同一个 DMG：
-   `dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`）。
+   `dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`，
+   build **41**，SHA-256 `f590c93267069bdbbc071847cdbe84f039f98c744ae6c5befeaeb2662589ae5a`）。
+   **DMG 文件名里没有 build 号**，而第 3 节要求「两台装同一个 build」——所以到 Air 上先核一眼
+   SHA-256（`shasum -a 256 <那个.dmg>`），或装完在「设置」里确认 build 是 **41**，别只认文件名。
    内部 ad-hoc 签名，没有公证：第一次打开若被拦，右键「打开」→ 确认一次即可。
 2. **首次启动** → 向导选「从另一台 Mac 克隆」→ 填第 1 节的四项 → 点「**连接并检查**」。
    通过后会显示工作区短码与兼容性（此时还没正式落盘，可改地址重来）。
