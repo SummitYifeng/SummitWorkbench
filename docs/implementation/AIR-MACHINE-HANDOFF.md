@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| App 版本 | `0.4.9`（build **42**，`frontend_build = v2026.09.14-70f6753-4d072dbb`） |
+| App 版本 | `0.4.9`（build **43**，`frontend_build = v2026.09.14-73d495a-4d072dbb`） |
 | 工作区 id | `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd` |
 | Studio device id | `0617854a-e193-4b3e-bb6d-fb5bb738937d` |
 | 主设备声明 | 就是 Studio，generation **1** |
@@ -37,15 +37,27 @@
 > 只接受 `https://`。`git@…` 和 `http://` 会被当场拒掉，这是有意的。
 > PAT 只用于本次连接，确认后存进系统钥匙串的 workspace 级条目，**不写进仓库、不写进草稿、不回显**。
 
+### ⚠️ 三条踩过的坑（2026-09-14 实机验证）
+
+1. **先建父目录 `~/Documents/Work`，但不要建 `_vault`。** 克隆要求目标 vault 的**父目录已存在**
+   （`stage_remote_clone` 里的 `target.parent.is_dir()`），否则会报
+   `目标 vault 的父目录不存在`。父目录建好、`_vault` 留给向导创建。
+2. **目标文件夹写 `~/Documents/Work/_vault` 或绝对路径都行**（build 43 起）。build 42 上如果写成
+   **`~用户名`**（例如 `~yifengstudio/…`）而 Air 上没有这个用户，会直接崩、且界面只显示一句英文
+   「The string did not match the expected pattern.」——那是**旧版的一个真 bug**，build 43 已修：
+   现在会给一句能看懂的 400 文案。（绝对路径在任何版本上都安全。）
+3. **PAT 粘贴后把光标移到末尾按一下 delete 再提交**（去掉从 GitHub 页面复制时带上的换行/空格）。
+   build 43 起前后端都会 strip，但养成这个习惯没坏处。
+
 ---
 
 ## 2. Air 上的操作步骤
 
 1. **装 App**：把 Studio 上这一份装到 Air（同一个 DMG：
    `dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`，
-   build **42**，SHA-256 `de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`）。
+   build **43**，SHA-256 `9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219`）。
    **DMG 文件名里没有 build 号**，而第 3 节要求「两台装同一个 build」——所以到 Air 上先核一眼
-   SHA-256（`shasum -a 256 <那个.dmg>`），或装完在「设置」里确认 build 是 **42**，别只认文件名。
+   SHA-256（`shasum -a 256 <那个.dmg>`），或装完在「设置」里确认 build 是 **43**，别只认文件名。
    内部 ad-hoc 签名，没有公证：第一次打开若被拦，右键「打开」→ 确认一次即可。
 2. **首次启动** → 向导选「从另一台 Mac 克隆」→ 填第 1 节的四项 → 点「**连接并检查**」。
    通过后会显示工作区短码与兼容性（此时还没正式落盘，可改地址重来）。
@@ -99,6 +111,16 @@ Air 的接入路径不是「应该能行」，而是**在 Studio 上拿真远端
 - 用**另一个设备 id**（模拟 Air）对该 vault 判定角色 → **secondary**；
   用 Studio 自己的 device id 判定 → **automation-primary**。即第 3 节第 1 条的预期结果。
 - 克隆出来的 staging 与临时目录已清理，Studio 侧工作树干净。
+- **首启向导那条路本身也验过了**（2026-09-14，用**隔离 `HOME`** 让**已安装的 build 43** 进首启模式，
+  直接打 `/api/onboarding/remote/stage`）：
+
+  | 输入 | 结果 |
+  | --- | --- |
+  | `~nosuchuser/Documents/Work/_vault` | `400 invalid_path`：「解析不了「~nosuchuser」：这台机器上没有这个用户。…请写成 ~/… 或直接用绝对路径」 |
+  | `~/Documents/Work/_vault` | `409 target_parent_missing`——说明 `~` **已解析成功**、走到了克隆预检 |
+
+  第一条正是 build 42 上让向导只显示一句英文的那个输入；第二条印证了第 1 节的新注意事项
+  「父目录得先存在」。
 
 尚未验证的只有 Air 本机上的 GUI 点击与系统权限弹窗——那必须在 Air 上做。
 

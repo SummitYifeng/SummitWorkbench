@@ -1,0 +1,104 @@
+SummitWorkbench · 2026-09-14 Air 首启向导故障（实机暴露 → 修复 → 真机产物复验）
+================================================================================
+代码提交：73d495a
+已安装 App：0.4.9 build 43（git_revision=73d495a、frontend_build=v2026.09.14-73d495a-4d072dbb）
+DMG：dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg
+      SHA-256 9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219
+
+================================================================================
+一、现象（使用者在 Air 上首启，build 42）
+================================================================================
+按作业单填完「从另一台 Mac 克隆」四项（含新建的细粒度 PAT）后，界面只显示一句英文：
+
+    The string did not match the expected pattern.
+
+================================================================================
+二、真实原因（来自 Air 的 ~/Library/Logs/summitworkbench-server.log）
+================================================================================
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  ...
+  File "summit_workbench/webapp/routers/onboarding.py", line 243, in restricted_remote_stage
+  File "pathlib.py", line 1406, in expanduser
+RuntimeError: Could not determine home directory.
+
+三层叠加：
+1. 「目标文件夹」填的是 `~用户名` 形式，而该用户在 Air 上不存在。
+   `posixpath.expanduser` 对未知用户**返回原串**，`pathlib` 于是抛 RuntimeError。
+   （本地对照：`Path("~gandalf/x").expanduser()` 抛出的文案与日志**逐字相同**；
+   而 `Path.home()` 一切正常——这解释了为什么服务能正常启动、只有这一步炸。）
+2. 首启向导跑的是**受限 app**，它当时**只装 422 处理器**，没有兜底 → 异常漏到 uvicorn。
+3. 向导的 `api()` **无条件 `response.json()`** → 非 JSON 响应 → WebKit 抛
+   `SyntaxError: The string did not match the expected pattern.` → 真实原因彻底不可见。
+
+================================================================================
+三、一次被实测否证的推断（诚实记录，避免下次重走）
+================================================================================
+中途据「冻结包 _internal 里没有 pwd」推断「进程没有 HOME 且 CPython 的 passwd 兜底不可用」，
+并据此提出「打包 pwd」的修法。用冻结包实测否证：
+
+    $ env -u HOME .../SummitWorkbenchServer --kb-diagnostic
+    {"bm25_fallback_hit": [...], "fts5_trigram": true, "sqlite_version": "3.53.1"}
+    $ env -u HOME <同样的服务> ...          # 仍能启动，且仍解析出 workspace_id=fb9494a4-…
+    → 说明 pwd 可用、Path.home() 可用；「没有 HOME」不是本次原因。
+
+该修法已撤回，未写进代码。
+
+================================================================================
+四、改了什么（四层一起修）
+================================================================================
+- config/paths.py：新增 UserPathError + resolve_user_path()（使用者输入路径的唯一解析入口）。
+  ~ / ~/… 按「显式 home > Path.home() > $HOME > passwd」解析；~用户名 解析不了 → 可显示文案。
+  **绝不**退回「当作当前用户」。
+- webapp/routers/onboarding.py：9 处 Path(...).expanduser() 全替换；PAT 改用 _pat_secret() 去空白。
+- webapp/request_boundary.py：install_validation_handler 同时装 UserPathError → 400；
+  新增 install_unexpected_handler() 并**在受限 app 也安装**。
+- webapp/onboarding_view.py：api() 先读 text 再 JSON.parse，非 JSON 报「HTTP 状态 + 片段」；
+  pat 补 .trim()。
+
+================================================================================
+五、验证
+================================================================================
+【单元/接口测试】新增 11 条（test_config_paths.py 6 + test_webapi_onboarding.py 5），全过。
+  其中 `~用户名` 那条是**测试先红**抓出实现疏漏（第一版仍在检查前就调了 expanduser()）。
+
+【变异验证】
+  ① 去掉 `~用户名` 的 RuntimeError 守卫
+     → FAILED test_resolve_user_path_reports_an_unknown_tilde_user_instead_of_raising
+  ② 不注册 UserPathError → 400 的处理器
+     → FAILED test_remote_clone_stage_reports_an_unknown_tilde_user_as_a_readable_400
+        （退化成 500）
+  还原后 27 passed。
+
+【真机产物复验】用隔离 HOME 让**已安装的 build 43** 进首启模式，直接打
+  /api/onboarding/remote/stage（X-WB-Session-Token 取自探针进程）：
+
+  输入：~nosuchuser/Documents/Work/_vault
+    → HTTP 400
+      {"ok":false,"code":"invalid_path",
+       "message":"解析不了「~nosuchuser」：这台机器上没有这个用户。如果你指的是当前用户的家目录，
+                  请写成 ~/… 或直接用绝对路径（例如 /Users/你的用户名/Documents/Work/_vault）"}
+
+  输入：~/Documents/Work/_vault
+    → HTTP 409
+      {"ok":false,"code":"target_parent_missing","message":"目标 vault 的父目录不存在", ...}
+      （即 `~` **已解析成功**，走到了克隆预检；隔离 HOME 里父目录确实不存在）
+
+【全量门禁】
+  pytest --cov -q            1166 passed, 1 skipped, 覆盖率 83.80%
+  ruff check .               All checks passed!
+  ruff format --check .      475 files already formatted
+  mypy                       Success: no issues found in 360 source files
+  scripts/secret_scan.py     secret scan passed
+  npm run test:frontend      16 组全过（76 源文件）
+
+【构建产物】
+  build 43；hdiutil verify = VALID；与 SHA256SUMS 一致；
+  test-manifest.json status=passed（13 项门禁）。
+
+================================================================================
+六、给 Air 的三条操作要点（已写进 AIR-MACHINE-HANDOFF.md）
+================================================================================
+1. 先建父目录 ~/Documents/Work（**不要**建 _vault）：克隆要求 target.parent.is_dir()。
+2. ~/… 或绝对路径都可以（build 43 起）；build 42 上写 ~用户名 会崩且只显示英文。
+3. PAT 粘贴后把光标移到末尾退格一次（build 43 起前后端都会 strip）。

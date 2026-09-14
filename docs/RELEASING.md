@@ -33,13 +33,13 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 42）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 43）
 
-SHA-256：`de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`
+SHA-256：`9ca464c920dd4a391364cd62f670f5eb4ce4c15b48c8d8dd6cf362caf9196219`
 
-版本 `0.4.9`、build `42`，构建来源提交 `70f6753`（逐字保留校验真库 6/6 误报 +
-`/api/sources/read` 空值与「仅区块」返回 500），
-对应前端 build identity 为 `v2026.09.14-70f6753-4d072dbb`。
+版本 `0.4.9`、build `43`，构建来源提交 `73d495a`（修 Air 首启向导 `~用户名` 崩溃 +
+错误被 WebKit 那句英文盖掉），
+对应前端 build identity 为 `v2026.09.14-73d495a-4d072dbb`。
 
 同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
 或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
@@ -52,6 +52,7 @@ SHA-256：`de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`
 | 40 | `425dff3` | 回答截断重试 + 指南补齐 |
 | 41 | `288f13d` | 项目档案区块渲染真 Markdown |
 | 42 | `70f6753` | 逐字保留校验真库 6/6 误报 + `sources/read` 空值/仅区块 500 |
+| 43 | `73d495a` | Air 首启向导 `~用户名` 崩溃 + 向导错误被 WebKit 盖掉 |
 
 > ⚠️ 本文件上一版把 **build 38 的标题配了 build 37 的 SHA-256**（`54b0b912…` 实际属于 b37）。
 > 上表按每个 build 自己的 `release-metadata.json` 重新核对，是本轮的修正。
@@ -65,8 +66,8 @@ SHA-256：`de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`
 
 **0.4.9 的验证（2026-09-14，已安装 App 实跑）**
 
-- 版本一致性：`/api/version` 报 `server_version=0.4.9`、`build=42`、`git_revision=70f6753`、
-  `frontend_build=v2026.09.14-70f6753-4d072dbb`（build 42 实测）。
+- 版本一致性：`/api/version` 报 `server_version=0.4.9`、`build=43`、`git_revision=73d495a`、
+  `frontend_build=v2026.09.14-73d495a-4d072dbb`（build 43 实测）。
   ⚠️ 升级版本号后必须跑一次 `uv pip install -e . --no-deps` 刷新 **venv 里的 distribution 元数据**，
   否则打包出的 server 会在诊断里报旧版本号（`server_version` 来自 `importlib.metadata`，不是 `pyproject`）。
 - 检索（R2 块边界）：app 自己回答「HIC 当前的 Royalty 完整计算公式」时，检索轨迹里出现
@@ -81,6 +82,10 @@ SHA-256：`de7cb309e07ddd4307ae85ca72b1aad10f9f46e17a6909ecd54686a8ab02d350`
 - 缺陷修复实测（build 42）：`GET /api/sources/read` 的空值与「只有 `#区块`」由 **500 → 400**，
   越界路径仍 400、正常路径仍 200；逐字保留校验在真库上由 6 条误报 → 0 条。
   证据见 `docs/acceptance/evidence/kb-round-2026-09-14-verbatim-and-sources-read.txt`。
+- 首启向导实测（build 43）：在**隔离 `HOME`** 下让已安装产物进首启模式打
+  `/api/onboarding/remote/stage` —— `~nosuchuser/…` 得 **400 `invalid_path`**（可读文案），
+  `~/Documents/Work/_vault` 得 **409 `target_parent_missing`**（说明 `~` 已解析成功）。
+  证据见 `docs/acceptance/evidence/onboarding-air-2026-09-14.txt`。
 
 ### ⚠️ 构建前必须先提交（否则 `git_commit` 会指错）
 

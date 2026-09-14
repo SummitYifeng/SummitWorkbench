@@ -1063,3 +1063,78 @@ Air 作业单与 `RELEASING.md` 已同步到 build 42。
 ① 「同篇但块不同」**不算命中**（算了会让 44% 虚高到 10/16）；
 ② `CASES` 形状（4×4 = 16、证据层 4 / 答案层 12）不变，否则历史数字不可比。
 变异验证：把「同篇不同块」放松为命中 → **恰好那一条测试红**，还原即绿。
+
+### 首启向导实机故障轮 · `~用户名` 崩溃 + 真实错误被 WebKit 那句英文盖掉 —— 已完成（build 43）
+
+**这是本项目第一次「使用者在另一台机器上把首启走挂」**，也第一次靠**实机日志**而不是本地复现定位。
+
+#### 现象与证据链
+
+使用者在 Air 上填完「从另一台 Mac 克隆」四项（含**新建的细粒度 PAT**）后，界面只显示一句英文：
+
+> The string did not match the expected pattern.
+
+而 `~/Library/Logs/summitworkbench-server.log` 里的真实原因是：
+
+```
+File "summit_workbench/webapp/routers/onboarding.py", line 243, in restricted_remote_stage
+File "pathlib.py", line 1406, in expanduser
+RuntimeError: Could not determine home directory.
+```
+
+#### 根因（三层叠加，缺一层都不会这么难查）
+
+1. **路径解析**：使用者在「目标文件夹」里填的是 **`~用户名`** 形式，而该用户在这台机器上不存在。
+   `posixpath.expanduser` 对未知用户**返回原串**，`pathlib` 于是抛 `RuntimeError`。
+   实测确认：`Path("~gandalf/x").expanduser()` 抛的正是这条文案，而 `Path.home()` 一切正常
+   ——这解释了为什么服务能正常启动、**只有这一步**炸。
+2. **受限 app 没有兜底**：首启向导跑的是**受限 app**，它当时**只装 422 处理器** →
+   异常一路漏到 uvicorn。
+3. **前端盖错误**：向导的 `api()` **无条件 `response.json()`** → 非 JSON 响应 →
+   WebKit 抛 `SyntaxError: The string did not match the expected pattern.` → 使用者只看到这一句。
+
+> ⚠️ **诚实记录一次被实测否证的推断**：中途我据「冻结包 `_internal` 里没有 `pwd`」推断
+> 「进程没有 HOME 且 CPython 的 passwd 兜底不可用」，并据此提了「打包 `pwd`」的修法。
+> 用冻结包实测**否证**了它：`env -u HOME` 下冻结服务仍能启动、也仍能解析出 workspace，
+> 说明 `pwd` 是可用的。那条修法**已撤回**，没有写进代码。真正的原因是上面第 1 条的 `~用户名`。
+
+#### 改法（四层一起修，缺一层下次还会踩）
+
+| 层 | 改动 |
+|---|---|
+| 路径解析 | 新增 `config/paths.py::resolve_user_path()` + `UserPathError`：`~` / `~/…` 按「显式 home > `Path.home()` > `$HOME` > passwd」依次解析；`~用户名` 解析不了就抛**可显示的文案**（点名那个用户 + 教他改用绝对路径）。**绝不**退回「就当它是当前用户」——那会把库建到错的位置 |
+| 路由 | `webapp/routers/onboarding.py` 的 **9 处** `Path(...).expanduser()` 全部改用它（`create` / `connect` / `upgrade` / `remote/stage` / `remote/confirm` 都会用到） |
+| 异常边界 | `install_validation_handler` 同时装 `UserPathError` → **400**；新增 `install_unexpected_handler()` 并**在受限 app 也安装**（此前完整 app 有兜底、首启向导没有——最需要看懂错误的那一次恰好最看不懂） |
+| 前端 | `api()` 先读 `response.text()` 再 `JSON.parse`，非 JSON 时报「HTTP 状态码 + 片段（或空响应）」；`pat` 补 `.trim()`（其它三个字段本来就 trim 了） |
+| 凭据 | 新增 `_pat_secret()`：PAT 去空白，**全空白视为「没给」**（从 GitHub 复制 token 常带尾随换行，而它随后要当 git 密码用） |
+
+#### 验证（含真机产物验证）
+
+- **新增 11 条测试**：`test_config_paths.py` 6 条 + `test_webapi_onboarding.py` 5 条。
+  其中 `~用户名` 那条是**测试先红**抓出我自己的疏漏：第一版仍在检查前就调了 `expanduser()`。
+- **变异验证**：① 去掉 `~用户名` 的 RuntimeError 守卫 → 对应用例红；
+  ② 不注册 `UserPathError` → 400 的处理器 → API 用例红（退化成 500）。还原后全绿。
+- **真实产物验证**（用隔离 `HOME` 让**已安装的 build 43** 进首启模式，直接打那条接口）：
+
+  | 输入 | 结果 |
+  |---|---|
+  | `~nosuchuser/Documents/Work/_vault` | **HTTP 400 `invalid_path`**：「解析不了「~nosuchuser」：这台机器上没有这个用户。…请写成 ~/… 或直接用绝对路径」 |
+  | `~/Documents/Work/_vault` | **HTTP 409 `target_parent_missing`** —— 说明 `~` **已解析成功**、走到了克隆预检（我的隔离 HOME 里父目录不存在） |
+
+- 全量门禁：pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff check + format（475 文件）；
+  mypy 360 文件；secret_scan；前端 16 组。
+
+#### 给 Air 的三条操作要点（已写进作业单）
+
+1. **先建 `~/Documents/Work`（只建父目录），不要建 `_vault`**——`stage_remote_clone` 要求
+   `target.parent.is_dir()`，否则报 `target_parent_missing`（本轮实测）。
+2. **`~/…` 与绝对路径现在都可以**；build 42 上填 `~用户名` 会崩，build 43 起会给出可读的 400。
+3. 已在 Studio 上复现不了的流程（Studio 已完成接入 → 只注册 5 条 onboarding 路由），
+   可以用**隔离 HOME** 让打包产物进首启模式来验：`HOME=<临时目录>` + `WB_RUNTIME_RECORD=<临时文件>`。
+
+#### 教训（候选铁律）
+
+1. **使用者输入路径的解析点必须只有一个**，且**不允许把库抛的原始异常漏给界面**。
+2. **受限 app 与完整 app 的异常边界不该不一致**。
+3. **前端不许无条件 `.json()`**：非 JSON 响应会把任何错误变成一句浏览器方言。
+4. **分享到另一台机器时，首启流程必须真机跑一遍**——本轮正是靠使用者实机才暴露。
