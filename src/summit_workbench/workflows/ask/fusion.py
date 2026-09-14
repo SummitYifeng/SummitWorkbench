@@ -55,6 +55,12 @@ class Weights:
     support_penalty: float = 0.8
     # 笔记引言块（heading 为空 = 文首标题+引言那段）：它是「这篇讲什么」，不是答案，降权。
     preamble_penalty: float = 0.45
+    # 主题通道（Q1 的深层短板）：问题点名了这篇笔记的**主题**（标题/别名/domain/tags）时，
+    # 它的结论型区块更可能就是答案。2026-09-14 实测：宽泛问题「当前达成的商标共识规范是什么」
+    # 的最优答案是主题簇页那份 20 条的 `## 关键结论`，但它排在第 26 名（模型看不到）。
+    # 步长 0.4、上限 2.4：命中越多越可信，但**不能压过正文相关度**。
+    topic_step: float = 0.4
+    topic_cap: float = 2.4
     # 单篇笔记最多贡献几个块进上下文：防止一篇长文独占预算
     max_chunks_per_note: int = 3
 
@@ -131,6 +137,32 @@ TYPE_AUTHORITY: dict[str, float] = {
     "project-inbox": 0.3,
     "qa-insight": 0.2,
 }
+
+
+_CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+")
+_LATIN_RE = re.compile(r"[A-Za-z0-9]{2,}")
+
+
+def _topic_hits(query: str, info: NoteMeta) -> int:
+    """问题是否点名了这篇笔记的主题：命中标题/别名/domain/tags 的**2-gram 与拉丁词**。
+
+    为什么用 2-gram（而正文匹配用 3-gram）：中文的两字概念（「商标」「权限」「来华」）
+    才是主题词，而 trigram 索引**最小只能匹配 3 个字**，2 字概念在词项层就丢了。
+    在**短元数据字段**上做 2-gram 匹配精度很高（标题里出现「商标」就是「这篇是讲商标的」），
+    但如果拿它去匹配正文，泛词（「当前」「什么」）会立刻变成噪声——所以只用于元数据。
+    """
+    blob = " ".join((info.title, info.domain, *info.aliases, *info.tags)).casefold()
+    if not blob.strip():
+        return 0
+    grams: set[str] = set()
+    for run in _CJK_RE.findall(query):
+        for index in range(len(run) - 1):
+            gram = run[index : index + 2]
+            if len(gram) == 2:
+                grams.add(gram)
+    for word in _LATIN_RE.findall(query):
+        grams.add(word.casefold())
+    return sum(1 for gram in grams if gram in blob)
 
 
 def _block_role(heading: str) -> str:
@@ -306,6 +338,11 @@ def fuse(
                 why.append("证据层降权（source）")
         role = _block_role(hit.heading)
         if role == "conclusion":
+            topic_hits = _topic_hits(query, info)
+            # `topic_step=0` 表示通道关闭：既不抬分也不留标记（否则轨迹会自相矛盾）
+            if topic_hits and weights.topic_step > 0:
+                score *= min(weights.topic_cap, 1.0 + weights.topic_step * topic_hits)
+                why.append(f"主题命中 {topic_hits}（问题点名了这篇的主题）")
             score *= weights.conclusion_boost
             why.append("结论型区块加权")
         elif role == "support":

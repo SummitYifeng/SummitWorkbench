@@ -492,3 +492,57 @@ def test_evidence_request_lifts_the_source_penalty(tmp_path: Path) -> None:
     assert all("证据层降权（source）" in chunk.why for chunk in plain_sources)
     assert asked_sources, "问题明确要原文时，原件块必须进候选"
     assert all("证据层降权（source）" not in chunk.why for chunk in asked_sources)
+
+
+def test_topic_channel_boosts_the_subject_notes_conclusion_block(tmp_path: Path) -> None:
+    """Q1 的深层短板：问题点名某**主题**时，该笔记的结论型区块要被抬起来。
+
+    背景：宽泛问题（「当前达成的商标共识规范是什么」）的最优答案是主题簇页那份很长的
+    `## 关键结论`，但它的正文相关度竞争不过短而泛的块，2026-09-14 实测排在第 26 名、
+    模型根本看不到（模型只看 plan.limit 内的候选）。
+
+    为什么 2-gram 只匹配元数据：中文两字概念（「商标」）才是主题词，而索引层最小只匹配 3 个字；
+    拿 2-gram 去匹配正文则会把「当前」「什么」这类泛词变成噪声。
+
+    做法：A/B 对照——同一批命中，分别开着与关掉主题通道（``topic_step=0``）跑一次，
+    断言同一块的分数被抬高且轨迹里出现主题标记。这条不依赖排序运气。
+
+    变异验证：把 fusion 里的 `_topic_hits` 分支删掉，本用例必须变红。
+    """
+    root = tmp_path / "vault"
+    _note(
+        root,
+        "hii/clusters/ip-trademark.md",
+        "# 商标 IP\n\n## 关键结论\n\n商标共识规范：登记主体统一为 HII。\n",
+        type="note",
+        aliases="[商标 IP 主题簇]",
+        domain="ip-trademark",
+        project="hii-affairs",
+    )
+    # 离题笔记：字面相关度远高于主题簇页，用来压住它
+    _note(
+        root,
+        "decisions/unrelated.md",
+        "# 无关决定\n\n## 决定\n\n" + ("商标共识规范 " * 40) + "\n",
+        type="decision",
+    )
+
+    question = "当前达成的商标共识规范是什么？"
+    boosted, _ = _search(root, tmp_path, question)
+    plain, _ = _search(root, tmp_path, question, weights=Weights(topic_step=0.0))
+
+    target = "hii/clusters/ip-trademark#关键结论"
+    boosted_score = _anchor_score(boosted, target)
+    plain_score = _anchor_score(plain, target)
+    assert boosted_score is not None and plain_score is not None, "两块都应进入候选"
+    assert boosted_score > plain_score, (
+        f"主题通道没有抬高主题簇页的结论块：{boosted_score} vs {plain_score}"
+    )
+    marker = next((chunk for chunk in boosted if chunk.anchor == target), None)
+    assert marker is not None and any("主题命中" in reason for reason in marker.why), marker
+    assert all(
+        "主题命中" not in reason
+        for chunk in plain
+        if chunk.anchor == target
+        for reason in chunk.why
+    ), "关掉主题通道时不该出现主题标记"
