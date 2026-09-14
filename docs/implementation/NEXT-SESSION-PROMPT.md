@@ -70,7 +70,7 @@
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
 .venv/bin/python -m pytest --cov -q          # 期望 1166 passed, 1 skipped, 覆盖率 ≥80%（当前 83.80%）
-.venv/bin/ruff check . && .venv/bin/ruff format --check .   # 476 文件
+.venv/bin/ruff check . && .venv/bin/ruff format --check .   # 全过（文件数随未跟踪产物浮动，别写死）
 .venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
 npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测试（76 源文件）

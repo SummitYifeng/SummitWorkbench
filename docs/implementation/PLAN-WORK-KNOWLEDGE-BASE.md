@@ -1166,7 +1166,7 @@ RuntimeError: Could not determine home directory.
 
 #### 起点复核（全绿）
 
-pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff（476 文件）、mypy（360 文件）、secret_scan、
+pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff 全过、mypy（360 文件）、secret_scan、
 前端 16 组；`wb vault check` 53 篇；`kb_verify_links` 272 双链 / 378 块级引用；`kb_verify_quotes` 30 条 0 问题；
 `kb_measure --no-rebuild` 二值 7/16、分档 7/3/6、排名均值 4.4、锚点 16/16（与文档一致）。
 已装 App `0.4.9 build 43`（`frontend_build v2026.09.14-73d495a`）、`/api/sync/status = ready 0/0`。
@@ -1225,7 +1225,7 @@ pytest --cov **1166 passed / 1 skipped / 83.80%**；ruff（476 文件）、mypy�
 | `kb_verify_quotes --materials-root` | ✓ 30 条比对 0 问题（**逐字原件未被改动**：`it/sources/…roadmap-progress.md` 的 `## 原文` 区与 HEAD 逐段 `diff -q` 一致） |
 | `kb_index_people.py --check` | ✓ 与 frontmatter 一致（14 人 / 3 组织）；顺带修好旧的**索引过期**（Kate Mayer、曹木子 缺失） |
 | `kb_measure`（重建索引） | 二值 **7/16=44%**（不变）、分档 **7/3/6**（不变）、锚点 16/16；**排名均值 4.4 → 4.9** |
-| pytest / ruff / mypy / secret / 前端 | ✓ 1166 passed / 83.80%；476 文件；360 文件；passed；16 组 |
+| pytest / ruff / mypy / secret / 前端 | ✓ 1166 passed / 83.80%；ruff 全过；360 文件；passed；16 组 |
 
 #### 度量位移的原因（已定位，不调参）
 
