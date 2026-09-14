@@ -33,16 +33,29 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.8/arm64/SummitWorkbench-0.4.8-arm64-INTERNAL-DEV.dmg`
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`
 
-SHA-256：`d707449612bcaaed55f7203ffe917202e0e28be042fa9f2dec81c642bb96c90b`
+SHA-256：`54b0b9128cca5ee426f7e6a63236f669b9f477cc23560afba4e5c6c83a9eea58`
 
-版本 `0.4.8`、build `35`，构建来源提交 `455c8977073987ad356d319ccb7798a3609107a6`，
-对应前端 build identity 为 `v2026.09.13-455c897-ae564ff2`，
-并已内置飞书默认凭据（`REQUIRE_BUNDLED_FEISHU=true`）。发布目录同时包含
+版本 `0.4.9`、build `37`，构建来源提交 `f202d3e8eec5ef55f4d6f8a2e49fcac49c2ca9da`，
+对应前端 build identity 为 `v2026.09.14-f202d3e-7f744ba1`，
+并已内置飞书默认凭据（`REQUIRE_BUNDLED_FEISHU=true`，凭据与 0.4.8 包逐项一致）。发布目录同时包含
 `SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`notary-log.json`、`test-manifest.json`
-和本地验证摘要。安装后经已安装 App 自己的 `/api/ask` 验过两个真实问题，详见
-`docs/acceptance/OPEN-VERIFICATION-ITEMS.md` §T。
+和本地验证摘要。`test-manifest.json` 的 `checks` 列出本次构建真跑过的 13 项门禁
+（ruff / mypy / pytest / 路由契约 / 前端契约 / 前端构建 / 打包 server / Swift 编译 / 严格签名 /
+离线 smoke / 打包集成 smoke / DMG 校验和）。
+
+**0.4.9 的验证（2026-09-14，已安装 App 实跑）**
+
+- 版本一致性：`/api/version` 报 `server_version=0.4.9`、`build=37`、`frontend_build=v2026.09.14-f202d3e-7f744ba1`。
+  ⚠️ 升级版本号后必须跑一次 `uv pip install -e . --no-deps` 刷新 **venv 里的 distribution 元数据**，
+  否则打包出的 server 会在诊断里报旧版本号（`server_version` 来自 `importlib.metadata`，不是 `pyproject`）。
+- 检索（R2 块边界）：app 自己回答「HIC 当前的 Royalty 完整计算公式」时，检索轨迹里出现
+  `hii/sources/20260912-hii-hic-ip-overview#三、授权关系…`、`#十七、一句话总览` 这类**原件一级章节锚点**——
+  在 0.4.8（只按 `##` 切块）里这些块根本不存在。
+- 检索（验收题）：app 自己回答「Danny 来华目前还差哪些必须收口？下一步谁做什么？」，
+  逐条给出 P0/P1/P2 并引 `hii/visits/danny-kim-2026-09#未决问题`、`#关键结论`。
+- 审批落点：已安装前端产物内含新落点「知识沉淀」（`知识沉淀` / `knowledge-note` / `sink_target` 均命中）。
 
 脚本会执行临时目录构建、ad-hoc 签名、DMG、checksum、SBOM、动态端口离线 smoke 和
 完整性验证，不会访问飞书或 Apple 网络服务。
