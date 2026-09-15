@@ -129,6 +129,9 @@ def append_work_log(
     projects_list = list(dict.fromkeys(projects))
     meta: dict[str, object] = {
         "date": day,
+        # `area: work` 是工作库的既有约定（16 个模板全都带它）。SK 侧的综合类问题按 `area`
+        # 过滤「笔记总览」，缺这一行会让日志从总览清单里静默消失——写入方必须补上。
+        "area": "work",
         "type": "work-log",
         # 推进日志是**用户自己的原始记录**，始终落 `generated`：按共享检索契约的权威顺序，
         # 工作日志属于「低权威 generated 内容」一层——可参与回答，但不能单独支撑高置信事实。
@@ -210,6 +213,8 @@ def save_thread_artifact(
 
     meta: dict[str, object] = {
         "date": day,
+        # 同 append_work_log：`area: work` 保证产物能进 SK 的笔记总览清单。
+        "area": "work",
         "type": "thread-doc",
         "status": "generated" if summary else "draft",
         "project": project,

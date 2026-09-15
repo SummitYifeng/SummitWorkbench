@@ -234,6 +234,9 @@ def test_write_brief_creates_note_with_frontmatter(tmp_path: Path) -> None:
     path = write_brief(vault, "2026-09-01", "# 简报\n内容 A")
     text = path.read_text(encoding="utf-8")
     assert "type: daily" in text and "project: global" in text
+    # `area: work` 是工作库约定；缺它会让当日简报进不了 SK 的「笔记总览」清单
+    # （综合类问题按 area 过滤）。变异验证：删掉 _frontmatter 里的 area，本断言变红。
+    assert "area: work" in text
     assert BRIEF_START in text and BRIEF_END in text
     assert "内容 A" in text
 
