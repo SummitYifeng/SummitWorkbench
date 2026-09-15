@@ -11,7 +11,12 @@ SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位�
 SummitWorkbench 将这套工作方式收敛为两层能力：
 
 - **外置执行管理层**：每天从可验证信号中挑出最多 5 个行动，提醒停滞、承诺和阻塞，但不把模型推断冒充事实。
-- **第二大脑**：自动保存会议逐字稿与结构化笔记，积累项目状态、决策和工作记录，并通过带来源的 `wb ask` 回答工作问题。
+- **第二大脑**：自动保存会议逐字稿与结构化笔记，积累项目状态、决策和工作记录，并通过带 `路径#区块` 来源的轻量 `wb ask` 回答工作问题。
+
+> **与 SummitKnowledge 的边界**：SWB 是工作库的**唯一写入方**（看板、采集、审批、源数据处理），
+> 保证自动沉淀的 Markdown 可被稳定索引、引用与判权威；**高级语义检索（向量召回、云端精排、
+> 多步生成问答）唯一归属 [SummitKnowledge]**，工作库对 SK 只读。共享契约见
+> [`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`](docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md)。
 
 ## 预期的日常图景
 
@@ -85,7 +90,7 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PR
 - 产品进程本地运行，模型推理全部使用可配置的云端模型 API；不引入本地模型。
 - 所有会议内容可进入已配置的云端模型；录像不下载、不发送。
 - 未经用户确认的会议提取项不得写入项目状态或创建飞书任务。
-- **不建云端服务端、常驻守护进程、向量库或 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。
+- **不建云端服务端、常驻守护进程、向量库或语义 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。高级语义检索（embedding / 向量库 / 精排）归 SummitKnowledge，SWB 只做块级本地检索与强制引用。
 - 凭据只进入 macOS Keychain 或运行时环境，禁止进入 Git、vault、日志、fixture 和模型上下文。
 - **本机机器日志与工作台内容分开**：同步/推送失败只写稳定原因码、计数与异常类名到
   `~/Library/Logs/summitworkbench-server.log`（JSONL、0600、5 MiB 轮转，见
@@ -122,7 +127,7 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 - `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。网页端一键生成会显式提交本次生成的简报、快照、用量和授权状态文件，不会使用 `add -A` 带入用户其他改动。
 - `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
 - `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
-- `wb ask "问题" [--save --project P --limit N]`：本地按路径/frontmatter/全文召回相关笔记，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。
+- `wb ask "问题" [--save --project P --limit N]`：本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合 + 双链扩展）召回相关区块，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。候选条数默认由**路由计划**决定（`--limit` 可显式覆盖），CLI / 验收脚本 / App 面板同口径。`wb ask` 是轻量兜底，不是语义 RAG——语义检索请用 SummitKnowledge。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 

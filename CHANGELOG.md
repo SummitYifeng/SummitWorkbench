@@ -85,6 +85,23 @@
 - 门禁：`pytest --cov` **1133 passed / 1 skipped**，覆盖率 **83.73%**；`ruff check` +
   `ruff format --check`；`mypy` 359 文件；`scripts/secret_scan.py`；前端 **16 组**（76 源文件）。
 
+### 检索契约（SWB ↔ SummitKnowledge，本批次新增）
+
+- **可执行检索契约**（`domain/retrieval_contract.py`）：把「能被 SummitKnowledge 稳定索引/引用」
+  变成校验——`validate_retrieval_readiness`（固定区块 + 围栏代码外 H1/H2 不重复 + superseded
+  决策必须带替代链接）、`is_fact_retrieval_eligible`（draft/pending-review/ignored 不进事实问答；
+  archived 是合法历史知识、不等于被推翻）。type/status 词表与固定区块分类全部复用 vault schema。
+- **自动产物确定性规范化**（`workflows/knowledge_normalization.py`）：清重复文首 H1、保留原 H2/H3、
+  补缺失的 `## 关联项目`；重复标题 / 未闭合围栏 / 空标题 → 拒绝落盘、不写半成品。
+  `append_work_log` 与 `save_thread_artifact` 走同一规范化器，写盘后同时执行 schema 与检索就绪校验。
+- **审批链路加固**：会议笔记生成即做检索就绪校验；写回拒绝重复区块标题与无法解析的 anchor；
+  逐字稿原件在处理前后逐字节不变。
+- **`wb ask` 候选条数统一口径**（`router.routed_limit`）：CLI 过去写死 8、验收脚本与 App 面板
+  默认 6、路由计划另为 12–16；现在由路由计划唯一决定，显式 `--limit` 仍可覆盖。
+- **文档**：新增 [`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`](docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md)；
+  PRD §3.1.2/§3.1.3/§3.1.4/§3.1.6/§3.2.6 与 README、PROJECTDESC 的过时「不切片 / ripgrep」
+  描述改为当前真实实现，并登记 T2 已满足、高级语义检索归属 SummitKnowledge。
+
 ### 验证与产物
 
 - `0.4.9` build **42**（`git_commit=70f6753`、前端 `v2026.09.14-70f6753-4d072dbb`）已构建并安装到

@@ -5,7 +5,7 @@
 | 字段 | 内容 |
 |---|---|
 | 项目名称 | SummitWorkbench |
-| 产品定位 | 外置执行管理层 + 第二大脑 |
+| 产品定位 | 外置执行管理层 + 第二大脑；作为工作知识库的**唯一写入方**（看板、采集、审批、源数据处理），**高级语义检索归属 SummitKnowledge** |
 | 当前阶段 | `v0.4.7` 内部使用版（分发版：构建时内置飞书默认凭据，同事装完点一下即可授权；build 由 CI `run_number` 决定）/ P1-07D、P2-01B、P2-02、UI/UX 交付稳定性维护均已完成，并已做过交付前最后一轮清理（无行为改动）；M3 与 P2-03 均不实施。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
@@ -13,6 +13,7 @@
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
 | 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/第二大脑/项目/指南/设置）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
 | 权威规格 | `docs/product/PRD.md` v1.3 |
+| 检索契约 | `docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`（与 SummitKnowledge 共享的引用/状态/权威顺序契约） |
 
 ## Mission
 
@@ -31,9 +32,9 @@
 - 保存完整逐字稿与结构化会议笔记两个 Markdown 文件。
 - 通过可配置云端模型提取事实、决策、明确行动项、未决问题与 AI 建议。
 - 通过 Obsidian 集中待确认页批准、拒绝或修改执行性提取结果。
-- 使用 `wb ask` 基于本地 Markdown 筛选结果生成带来源回答。
+- 使用 `wb ask` 基于本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合）生成带 `路径#区块` 来源的回答。
 - 生成每日晨间简报和每周跨项目复盘。
-- 对项目档案、会议笔记、工作记录和 inbox 做本地检索，并通过 `wb ask` 生成带来源回答。
+- 对项目档案、会议笔记、工作记录和 inbox 做本地检索，并通过 `wb ask` 生成带来源回答；候选条数由路由计划统一决定。
 - 通过 `wb task` 与 `wb note` 低摩擦录入承诺和想法。
 
 ## 关键产品规则
@@ -69,7 +70,7 @@
 
 - 云端服务端、常驻守护进程或多用户部署。（后加入的 `wb web` 本地面板与原生 macOS 桌面 App 是**纯本地、按需启动**的可选便利层，复用同一套领域逻辑，不引入服务端、不改变数据边界——`.app` 双击启动 bundle 内 server + WKWebView 面板。）
 - 本地模型、敏感会议分流或多模型自动切换。
-- 向量数据库、Embedding、RAG 或在本项目重建 SummitKnowledge。
+- 在 SWB 内建向量数据库、Embedding、精排或语义 RAG。高级语义检索（多库切换 + 云端精排 + 多步生成问答）唯一归属 `SummitKnowledge`，工作库对 SK **只读**；SWB 只做块级本地检索与强制引用，并保证自动沉淀的 Markdown 满足共享检索契约。
 - 下载飞书会议录像。
 - 编排 WorkBuddy、读取飞书消息、通用云文档或多维表格。
 - MVP 阶段在 Mac Air 部署自动任务。
