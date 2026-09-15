@@ -136,7 +136,9 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 5. `superseded` 决策必须带替代链接（§3 硬规则 3）。
 6. `archived` 是合法历史知识；`generated` 合法但低权威；`draft`/`pending-review`/`ignored` 合法保存但不进事实语料。
 
-校验失败时写入方**拒绝落盘**，不写半成品。
+校验失败时写入方**拒绝落盘**，不写半成品。已存在的库文件由 `wb vault check`
+一并扫描（`check_vault` 先跑 `validate_note`、再跑 `validate_retrieval_readiness`），
+因此「重复 H2 / superseded 缺替代链接」不会等到 SK 侧引用退化才暴露。
 
 ---
 
@@ -146,9 +148,11 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 |---|---|
 | 会议逐字稿（`meeting-transcript`） | 原件不可变；不套用规范化器 |
 | 结构化会议笔记（`meeting-note`） | `validate_note` + `validate_retrieval_readiness`；生成态 `pending-review` |
-| 推进日志（`work-log`）、AI 产物（`thread-doc`） | 确定性结构规范化（清重复文首 H1、保留原 H2/H3、补关联项目区块）+ 双重校验 |
+| 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级 |
+| AI 产物（`thread-doc`） | 确定性结构规范化 + 双重校验；无 `summary` 为 `draft`，有 `summary` 为 `generated` |
 | 审批写回（主档案 / inbox / 知识沉淀） | 目标页与区块必须存在且**唯一**；锚点无法解析即拒批 |
 | 原件（`source`） | 逐字保存，不由模型改写 |
+| 存量库文件 | `wb vault check`（`wb doctor` 复用）批量扫描两层校验 |
 
 ---
 

@@ -94,10 +94,17 @@
 - **自动产物确定性规范化**（`workflows/knowledge_normalization.py`）：清重复文首 H1、保留原 H2/H3、
   补缺失的 `## 关联项目`；重复标题 / 未闭合围栏 / 空标题 → 拒绝落盘、不写半成品。
   `append_work_log` 与 `save_thread_artifact` 走同一规范化器，写盘后同时执行 schema 与检索就绪校验。
+- **推进日志恒为 `generated`**：此前「模型不可用只存原文」落 `status: draft`，而 `draft` 会被检索
+  契约整体排除出事实问答——恰恰把最需要的原始证据挡在门外。现在摘要有无只由 `summary` 字段表达，
+  状态统一为低权威 `generated`（可参与回答，不能单独支撑高置信事实）。`thread-doc` 保持
+  「无 summary → draft / 有 summary → generated」。
 - **审批链路加固**：会议笔记生成即做检索就绪校验；写回拒绝重复区块标题与无法解析的 anchor；
   逐字稿原件在处理前后逐字节不变。
 - **`wb ask` 候选条数统一口径**（`router.routed_limit`）：CLI 过去写死 8、验收脚本与 App 面板
   默认 6、路由计划另为 12–16；现在由路由计划唯一决定，显式 `--limit` 仍可覆盖。
+- **`wb vault check` 同时跑检索就绪契约**：`check_vault` 在 schema 之后追加
+  `validate_retrieval_readiness`（`wb doctor` 复用），存量库文件里的重复 H2 /
+  superseded 缺替代链接不再等到 SK 侧引用退化才暴露。
 - **文档**：新增 [`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`](docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md)；
   PRD §3.1.2/§3.1.3/§3.1.4/§3.1.6/§3.2.6 与 README、PROJECTDESC 的过时「不切片 / ripgrep」
   描述改为当前真实实现，并登记 T2 已满足、高级语义检索归属 SummitKnowledge。

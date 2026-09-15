@@ -104,7 +104,7 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PR
 ```bash
 uv sync --extra dev          # 安装运行时与开发依赖（含可选 web 面板依赖）
 uv run wb doctor             # 端到端就绪预检（底座 / 配置 / vault / 凭据 / launchd，默认离线无副作用）
-uv run wb vault check        # 校验工作 vault 的 frontmatter 与固定区块
+uv run wb vault check        # 校验工作 vault 的 frontmatter、固定区块与检索就绪契约
 ```
 
 本地 Web 面板依赖是可选 extra：仅装运行时用 `uv sync`，需要 `wb web` 再加 `--extra web`（`--extra dev` 已包含）。
