@@ -39,10 +39,17 @@ def _append_under_heading(
     if marker in text:
         return False
     lines = text.splitlines()
-    try:
-        start = lines.index(heading) + 1
-    except ValueError as exc:
-        raise ValueError(f"写回目标缺少固定区块 {heading!r}：{path}") from exc
+    matches = [index for index, line in enumerate(lines) if line.rstrip() == heading]
+    if not matches:
+        raise ValueError(f"写回目标缺少固定区块 {heading!r}：{path}")
+    if len(matches) > 1:
+        # 重复区块标题会让「写回哪一节」变得不确定（旧实现静默写进第一处）。
+        # 这里拒绝并给出可读原因，让使用者在审批页看到问题、先合并区块。
+        raise ValueError(
+            f"写回目标存在重复区块标题 {heading!r}（{len(matches)} 处）：{path}；"
+            "请先合并为唯一区块再批准"
+        )
+    start = matches[0] + 1
     end = len(lines)
     for index in range(start, len(lines)):
         if lines[index].startswith("## "):
@@ -200,6 +207,8 @@ def parse_sink_target(sink_target: str) -> tuple[PurePosixPath, str]:
     针对路径穿越的用例必须变红。
     """
     raw = sink_target.strip()
+    if "\n" in raw or "\r" in raw:
+        raise ValueError(f"知识沉淀目标不能含换行：{sink_target!r}")
     page, _, block = raw.partition("#")
     page = page.strip()
     if page.endswith(".md"):
@@ -209,7 +218,14 @@ def parse_sink_target(sink_target: str) -> tuple[PurePosixPath, str]:
     rel = PurePosixPath(page)
     if rel.is_absolute() or ".." in rel.parts:
         raise ValueError(f"知识沉淀目标必须是 vault 相对路径（不得越出库）：{sink_target!r}")
-    title = block.strip().lstrip("#").strip() or _DEFAULT_KNOWLEDGE_HEADING.lstrip("# ")
+    # 区块标题允许 `关键结论` 或 `## 关键结论`；剥掉前导 `#` 后仍含 `#` 说明锚点无法解析
+    # （例如 `page#a#b`）——旧实体会拼出一个永远匹配不到的 `## a#b` 标题，报错指向
+    # 「缺少固定区块」而不是真因，所以在这一层就拒绝。
+    title = block.strip().lstrip("#").strip()
+    if "#" in title:
+        raise ValueError(f"知识沉淀目标的区块标题无法解析（含多余的 '#'）：{sink_target!r}")
+    if not title:
+        title = _DEFAULT_KNOWLEDGE_HEADING.removeprefix("## ")
     return rel, f"## {title}"
 
 

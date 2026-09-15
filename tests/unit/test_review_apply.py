@@ -7,6 +7,10 @@ from datetime import UTC, datetime
 
 from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState
+from summit_workbench.domain.retrieval_contract import (
+    is_fact_retrieval_eligible,
+    validate_retrieval_readiness,
+)
 from summit_workbench.domain.review import (
     UNRESOLVED,
     ApprovalCandidate,
@@ -21,6 +25,7 @@ from summit_workbench.repositories.external_action_outbox import latest_for_cand
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.review_audit import completed_ids
 from summit_workbench.repositories.review_page import parse_review_page, refresh_review_page
+from summit_workbench.repositories.vault import load_note
 from summit_workbench.workflows.external_actions import mark_sending, mark_succeeded, prepare_action
 from summit_workbench.workflows.review_apply import apply_meeting_review
 
@@ -396,3 +401,60 @@ def test_succeeded_outbox_reuses_remote_id_without_creator_call(tmp_path):
     report = apply_meeting_review(vault, work, apply=True, task_creator=creator)
     assert report.applied == 1
     assert calls == 0
+
+
+# ---- T3：审批后状态收口与事实资格 ----
+
+
+def _meeting_note_file(vault, project: str = "P1"):
+    path = vault / "meetings" / "notes" / "note.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\n"
+        "date: 2026-08-31\n"
+        "type: meeting-note\n"
+        "status: pending-review\n"
+        "transcript: '[[2026-08-31-评审会-transcript]]'\n"
+        f"projects:\n- {project}\n"
+        "---\n\n"
+        "# 评审会\n\n"
+        "## 一分钟摘要\n\nx\n\n## 会议信息\n\nx\n\n## 事实与进展\n\nx\n\n"
+        "## 已形成决策\n\nx\n\n## 明确行动项\n\nx\n\n## 未决问题\n\nx\n\n"
+        "## AI 建议\n\nx\n\n## 关联项目\n\n"
+        f"- {project}\n\n## 证据索引\n\nx\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_approved_meeting_note_moves_pending_review_to_applied(tmp_path):
+    """pending-review 不是事实语料；批准后状态稳定变为 applied、恢复事实资格。"""
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    _project_main(vault)
+    note_path = _meeting_note_file(vault)
+    refresh_review_page(
+        vault,
+        [
+            _entry(
+                "m:n#decision-0",
+                decision=CandidateDecision.APPROVED,
+                route=RouteTarget.PROJECT_MAIN,
+                kind=CandidateKind.DECISION,
+            )
+        ],
+    )
+    _pending(vault)
+    before = load_note(note_path)
+    assert before.meta["status"] == "pending-review"
+    assert is_fact_retrieval_eligible(before.meta) is False
+    assert validate_retrieval_readiness(before.meta, before.body) == []
+
+    report = apply_meeting_review(
+        vault, work, apply=True, now=datetime(2026, 8, 31, 12, tzinfo=UTC)
+    )
+    assert report.applied == 1
+    after = load_note(note_path)
+    assert after.meta["status"] == "applied"
+    assert is_fact_retrieval_eligible(after.meta) is True
+    assert after.body == before.body  # 状态收口只改 frontmatter，正文原样保留

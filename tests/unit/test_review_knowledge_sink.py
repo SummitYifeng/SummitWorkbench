@@ -249,3 +249,35 @@ def test_apply_reports_a_clear_reason_when_sink_page_is_missing(tmp_path: Path) 
     report = apply_meeting_review(vault, work, apply=True, now=datetime(2026, 9, 14, tzinfo=UTC))
     assert report.applied == 0
     assert any(action.reason and "写回目标不存在" in action.reason for action in report.actions)
+
+
+# ---- T3：写回前拒绝重复目标标题与无法解析的 anchor ----
+
+
+def test_append_knowledge_note_rejects_duplicate_target_block(tmp_path: Path) -> None:
+    """重复区块标题会让「写回哪一节」不确定；必须拒批，且不动页面。"""
+    vault = tmp_path / "vault"
+    page = vault / "hii" / "clusters" / "dup.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(
+        "---\ndate: 2026-09-14\ntype: note\nstatus: active\n---\n\n"
+        "# 重复区块\n\n## 关键结论\n\na\n\n## 关键结论\n\nb\n",
+        encoding="utf-8",
+    )
+    before = page.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="重复区块标题"):
+        append_knowledge_note(vault, "hii/clusters/dup#关键结论", "新结论ABC", "m:n#decision-0")
+    assert page.read_text(encoding="utf-8") == before  # 失败不留下部分修改
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "hii/clusters/x#a#b",  # 多余的 # ⇒ 拼不出合法标题
+        "hii/clusters/x#关键#结论",
+        "hii/clusters/x\n#关键结论",  # 目标里夹换行
+    ],
+)
+def test_parse_sink_target_rejects_unparseable_anchor(bad: str) -> None:
+    with pytest.raises(ValueError):
+        parse_sink_target(bad)

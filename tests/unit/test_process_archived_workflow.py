@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import httpx
 from pydantic import SecretStr
 
 from summit_workbench.domain.pipeline import ProcessingState, SourceKind
+from summit_workbench.domain.retrieval_contract import (
+    is_fact_retrieval_eligible,
+    validate_retrieval_readiness,
+)
 from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.repositories.meeting_state import latest_task
+from summit_workbench.repositories.vault import load_note
 from summit_workbench.workflows.meetings import (
     DiscoveredMeeting,
     archive_meeting,
@@ -126,3 +132,28 @@ def test_exhaustion_queues_error_without_note_then_retry_recovers(tmp_path):
     )
     assert recovered.state == ProcessingState.PENDING_REVIEW
     assert failed.error_path.exists() is False
+
+
+# ---- T3：原件（证据层）不可变 + 笔记状态决定事实资格 ----
+
+
+def test_transcript_is_immutable_and_note_waits_for_review(tmp_path):
+    """处理前后逐字稿哈希不变；生成的会议笔记是 pending-review，不进事实问答。"""
+    archived = _archived(tmp_path)
+    assert archived.path is not None
+    before = hashlib.sha256(archived.path.read_bytes()).hexdigest()
+    report = process_archived_transcript(
+        tmp_path,
+        archived.path,
+        CFG,
+        SecretStr("secret"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_ok_client(),
+        sleep=lambda _: None,
+    )
+    assert hashlib.sha256(archived.path.read_bytes()).hexdigest() == before  # 原件逐字节不变
+    assert report.note_path is not None
+    note = load_note(report.note_path)
+    assert validate_retrieval_readiness(note.meta, note.body) == []  # 理解层可直接被检索
+    assert is_fact_retrieval_eligible(note.meta) is False  # 但批准前不构成事实

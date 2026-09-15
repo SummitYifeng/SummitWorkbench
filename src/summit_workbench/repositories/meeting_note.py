@@ -9,6 +9,7 @@ import yaml
 
 from summit_workbench.domain.meeting import MeetingExtraction
 from summit_workbench.domain.pipeline import SourceKind
+from summit_workbench.domain.retrieval_contract import validate_retrieval_readiness
 from summit_workbench.domain.review import UNRESOLVED
 from summit_workbench.domain.vault import validate_note
 from summit_workbench.repositories._atomic import atomic_write_text
@@ -133,8 +134,13 @@ def render_meeting_note(inp: MeetingNoteInput) -> str:
     rendered = f"---\n{fm}\n---\n\n{body}"
     meta, parsed_body, error = parse_frontmatter(rendered)
     issues = [] if error else validate_note(meta, parsed_body)
-    if error or issues:
-        detail = error or "; ".join(str(issue) for issue in issues)
+    # 检索就绪校验（T3）：结构化会议笔记是「理解层」，必然被 SK 检索引用，因此除了
+    # vault schema 还要满足检索契约（固定区块 + 可引用标题不重复 + 围栏闭合）。
+    retrieval = [] if error else validate_retrieval_readiness(meta, parsed_body)
+    if error or issues or retrieval:
+        problems = [*(str(issue) for issue in issues)]
+        problems += [f"检索就绪：{issue}" for issue in retrieval]
+        detail = error or "; ".join(problems)
         raise ValueError(f"结构化会议笔记不符合 vault schema：{detail}")
     return rendered
 
