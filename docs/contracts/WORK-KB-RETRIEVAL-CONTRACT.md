@@ -150,7 +150,7 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 | 结构化会议笔记（`meeting-note`） | `validate_note` + `validate_retrieval_readiness`；生成态 `pending-review` |
 | 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级 |
 | AI 产物（`thread-doc`） | 确定性结构规范化 + 双重校验；无 `summary` 为 `draft`，有 `summary` 为 `generated` |
-| 审批写回（主档案 / inbox / 知识沉淀） | 目标页与区块必须存在且**唯一**；锚点无法解析即拒批 |
+| 审批写回（主档案 / inbox / 知识沉淀） | 目标页与区块必须存在且**唯一**；锚点无法解析即拒批；**知识沉淀写回必须带可解析的 `<会议笔记 source_id>#<区块>` 出处**（附证据锚点），不得只留裸时间戳 |
 | 原件（`source`） | 逐字保存，不由模型改写 |
 | 存量库文件 | `wb vault check`（`wb doctor` 复用）批量扫描两层校验 |
 

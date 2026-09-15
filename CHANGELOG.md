@@ -105,6 +105,10 @@
 - **`wb vault check` 同时跑检索就绪契约**：`check_vault` 在 schema 之后追加
   `validate_retrieval_readiness`（`wb doctor` 复用），存量库文件里的重复 H2 /
   superseded 缺替代链接不再等到 SK 侧引用退化才暴露。
+- **知识沉淀出处改为可解析的 `路径#区块`**：此前写回主题簇页的结论只带逐字稿时间戳
+  （`出处：木子 00:03`），从检索侧看是**无法解析**的悬空指针；现在带
+  `<会议笔记 source_id>#<区块> · <证据锚点>`（区块按候选类型映射到会议笔记固定区块），
+  会议笔记文件缺失时退回证据锚点，不编造指向不存在文件的引用。
 - **文档**：新增 [`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`](docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md)；
   PRD §3.1.2/§3.1.3/§3.1.4/§3.1.6/§3.2.6 与 README、PROJECTDESC 的过时「不切片 / ripgrep」
   描述改为当前真实实现，并登记 T2 已满足、高级语义检索归属 SummitKnowledge。

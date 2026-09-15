@@ -228,7 +228,35 @@ def test_apply_writes_knowledge_note_into_cluster_page(tmp_path: Path) -> None:
     assert report.failed == 0
     text = page.read_text(encoding="utf-8")
     assert "登记主体统一为 HII" in text
+    # T3：出处必须是**可解析**的 `路径#区块`（契约 §2 的 anchor），证据锚点作补充。
+    assert "出处：meetings/notes/2026-09-02-沟通对齐会#已形成决策 · 木子 00:03" in text
+    source_id, _, heading = "meetings/notes/2026-09-02-沟通对齐会#已形成决策".partition("#")
+    assert (vault / f"{source_id}.md").is_file()
+    assert f"## {heading}" in (vault / f"{source_id}.md").read_text(encoding="utf-8")
+
+
+def test_knowledge_note_source_ref_falls_back_to_evidence_without_note_file(
+    tmp_path: Path,
+) -> None:
+    """会议笔记文件不在库内时，不编造指向不存在文件的引用，退回可读证据锚点。"""
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    page = _cluster_page(vault)  # 刻意不建 _meeting_note(vault)
+    refresh_review_page(
+        vault,
+        [
+            _entry(
+                "m:n#decision-0",
+                decision=CandidateDecision.APPROVED,
+                sink_target="hii/clusters/ip-trademark#关键结论",
+            )
+        ],
+    )
+    report = apply_meeting_review(vault, work, apply=True, now=datetime(2026, 9, 14, tzinfo=UTC))
+    assert report.applied == 1
+    text = page.read_text(encoding="utf-8")
     assert "出处：木子 00:03" in text
+    assert "meetings/notes/" not in text  # 不产生悬空引用
 
 
 def test_apply_reports_a_clear_reason_when_sink_page_is_missing(tmp_path: Path) -> None:

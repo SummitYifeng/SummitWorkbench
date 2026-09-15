@@ -14,6 +14,7 @@ from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
     UNRESOLVED,
     CandidateDecision,
+    CandidateKind,
     ReviewEntry,
     RouteTarget,
 )
@@ -217,7 +218,7 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
             str(item.sink_target or ""),
             item.description,
             item.candidate_id,
-            source_ref=item.evidence.anchor if item.evidence else None,
+            source_ref=_knowledge_source_ref(vault_dir, entry),
         )
         return str(path), None
     raise ValueError(f"非本地 route：{item.route.value}")
@@ -385,6 +386,38 @@ def _note_path(vault_dir: Path, note_link: str) -> Path | None:
         return None
     relative = note_link[2:-2]
     return vault_dir / f"{relative}.md"
+
+
+# 候选类型 → 会议笔记中承载它的固定区块（来源锚点用；区块名与 vault schema 一致，不得改名）。
+_KIND_SECTION: dict[CandidateKind, str] = {
+    CandidateKind.DECISION: "已形成决策",
+    CandidateKind.ACTION_ITEM: "明确行动项",
+    CandidateKind.PROJECT_STATUS_CHANGE: "事实与进展",
+    CandidateKind.TASK_CREATE: "明确行动项",
+}
+
+
+def _knowledge_source_ref(vault_dir: Path, entry: ReviewEntry) -> str | None:
+    """知识沉淀的「出处」：可解析的 ``<会议笔记 source_id>#<区块>``（附证据锚点）。
+
+    为什么必须是 ``路径#区块``：写进主题簇页的结论要能被 SummitKnowledge 顺着引用核对回
+    原话（契约 §2 的 ``anchor`` 定义）。此前这里直接塞了逐字稿时间戳（如 ``木子 00:03``），
+    从检索侧看是个**无法解析**的悬空指针。
+
+    会议笔记缺失时退回证据锚点（宁可给出可读证据，也不编造一个指向不存在文件的引用）。
+    """
+    source_id: str | None = None
+    note_path = _note_path(vault_dir, entry.note_link)
+    if note_path is not None and note_path.is_file():
+        try:
+            source_id = note_path.relative_to(vault_dir).with_suffix("").as_posix()
+        except ValueError:  # note_link 指到 vault 之外：不接受
+            source_id = None
+    heading = _KIND_SECTION.get(entry.candidate.kind)
+    anchor = f"{source_id}#{heading}" if source_id and heading else source_id
+    evidence = entry.candidate.evidence.anchor if entry.candidate.evidence else None
+    parts = [part for part in (anchor, evidence) if part]
+    return " · ".join(parts) or None
 
 
 def _queue_note_project(
