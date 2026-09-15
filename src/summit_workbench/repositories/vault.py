@@ -13,6 +13,7 @@ from pathlib import Path
 
 import yaml
 
+from summit_workbench.domain.retrieval_contract import validate_retrieval_readiness
 from summit_workbench.domain.vault import ValidationIssue, validate_note
 from summit_workbench.repositories.ignore import is_internal_dirname
 
@@ -96,14 +97,23 @@ def load_note(path: Path) -> ParsedNote:
 
 
 def check_vault(root: Path) -> dict[Path, list[ValidationIssue]]:
-    """校验 ``root`` 下全部 Markdown，返回 {文件: 问题列表}（仅含有问题的文件）。"""
+    """校验 ``root`` 下全部 Markdown，返回 {文件: 问题列表}（仅含有问题的文件）。
+
+    两层校验：vault schema（``validate_note``）+ 工作库检索就绪契约
+    （``validate_retrieval_readiness``，见 ``docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md``）。
+    后者保证写进库的内容能被 SummitKnowledge 稳定切块引用；只写不检索的类型不做检索校验。
+    """
     results: dict[Path, list[ValidationIssue]] = {}
     for path in iter_markdown_files(root):
         note = load_note(path)
         if note.parse_error is not None:
             results[path] = [ValidationIssue(note.parse_error)]
             continue
-        issues = validate_note(note.meta, note.body)
+        issues = list(validate_note(note.meta, note.body))
+        issues += [
+            ValidationIssue(f"检索就绪：{issue.message}", field=issue.field)
+            for issue in validate_retrieval_readiness(note.meta, note.body)
+        ]
         if issues:
             results[path] = issues
     return results

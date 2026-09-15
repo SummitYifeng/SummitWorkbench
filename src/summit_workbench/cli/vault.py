@@ -23,7 +23,10 @@ def check(
         None, help="要校验的 vault 目录；默认取配置解析出的 vault_dir。"
     ),
 ) -> None:
-    """校验 vault 内全部 Markdown 的 frontmatter 与固定区块。
+    """校验 vault 内全部 Markdown 的 frontmatter、固定区块与检索就绪契约。
+
+    检索就绪契约见 ``docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md``：保证写进库的内容
+    能被 SummitKnowledge 稳定切块引用（可引用标题不重复、围栏闭合、superseded 决策带替代链接）。
 
     退出码：全部通过 0；存在问题 1；vault 不存在 2。
     """
@@ -36,7 +39,7 @@ def check(
     results = check_vault(vault_dir)
 
     if not results:
-        typer.echo(f"✓ {vault_dir}：{total} 篇 Markdown 全部通过 schema 校验")
+        typer.echo(f"✓ {vault_dir}：{total} 篇 Markdown 全部通过 schema 与检索就绪校验")
         raise typer.Exit(code=0)
 
     for file_path, issues in results.items():

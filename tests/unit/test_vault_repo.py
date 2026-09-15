@@ -122,3 +122,36 @@ def test_load_note_reports_non_utf8_instead_of_raising(tmp_path):
     # 批量校验应把它汇总成一条问题，而不是让整次扫描崩溃。
     results = check_vault(tmp_path)
     assert binary in results
+
+
+def test_check_vault_flags_duplicate_citable_heading(tmp_path):
+    """检索就绪契约已进 `wb vault check`：重复的 ## 标题必须被标出。
+
+    变异验证：把 ``check_vault`` 里的 ``validate_retrieval_readiness`` 调用删掉，
+    本用例必须变红（只有 vault schema 检查时，重复 H2 不会被发现）。
+    """
+    page = tmp_path / "notes" / "dup.md"
+    page.parent.mkdir()
+    page.write_text(
+        "---\ndate: 2026-09-14\ntype: note\nstatus: active\n---\n\n"
+        "# 主题\n\n## 关键结论\n\na\n\n## 关键结论\n\nb\n",
+        encoding="utf-8",
+    )
+    results = check_vault(tmp_path)
+    assert page in results
+    assert any("检索就绪" in str(issue) for issue in results[page])
+
+
+def test_check_vault_ignores_duplicate_headings_in_evidence_layer(tmp_path):
+    """逐字稿里的重复 `##` 是原件内容，不进检索就绪结构判定之外的约束。
+
+    证据层不可变：`wb vault check` 不因逐字稿正文里的 Markdown 形态而变红。
+    """
+    page = tmp_path / "meetings" / "transcripts" / "t.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "---\ndate: 2026-09-14\ntype: meeting-transcript\nstatus: archived\n"
+        "projects: [P]\n---\n\n# 逐字稿\n\n## 说话人\n\n原文，未改写。\n",
+        encoding="utf-8",
+    )
+    assert check_vault(tmp_path) == {}
