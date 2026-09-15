@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 
 # 所有笔记必须包含的 frontmatter 字段（PRD 3.1.5）。
@@ -140,6 +140,94 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
 }
 
 
+# ---- 检索就绪（SummitKnowledge 接入）共享分类 ----
+# 这些分类**只在这里定义一次**：检索契约（``domain/retrieval_contract.py``）与生成物
+# 规范化（``workflows/knowledge_normalization.py``）都从这里取，避免各写一份词表而漂移。
+
+# 会被 SummitKnowledge 工作库检索实际读入的类型。其余类型（导航页、规范页、收件箱、
+# 模板、派生洞察、项目收件箱）只写不检索，不做检索就绪校验。
+NON_RETRIEVED_TYPES = frozenset(
+    {
+        "index",
+        "conventions",
+        "inbox",
+        "approval-page",
+        "prompt",
+        "workflow",
+        "standard",
+        "template",
+        "qa-insight",
+        "project-inbox",
+    }
+)
+
+RETRIEVED_TYPES = frozenset(NOTE_TYPES) - NON_RETRIEVED_TYPES
+
+# 有固定区块要求的类型：结构被 Agent / 定点取块依赖，检索就绪校验必须守住。
+FIXED_BLOCK_TYPES = frozenset(name for name, spec in NOTE_TYPES.items() if spec.required_blocks)
+
+# 可合法保存、但**不构成事实问答语料**的状态：草稿与待确认内容不得被当成已确认事实。
+NON_FACT_STATUSES = frozenset({"draft", "pending-review", "ignored"})
+
+# 低权威派生内容：可以参与回答，但不能单独支撑高置信事实。
+DERIVED_STATUSES = frozenset({"generated"})
+
+# 围栏代码块（``` / ~~~）与标题的识别；索引/引用只认**代码块之外**的标题。
+_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*?)[ \t]*$")
+
+
+def iter_headings(body: str) -> Iterator[tuple[int, str]]:
+    """按文档顺序产出**围栏代码块之外**的 Markdown 标题 ``(级别, 标题文字)``。
+
+    标题文字已去掉 ``#`` 前缀与首尾空白（与检索契约的 ``heading`` 定义一致）。
+    围栏代码里的 ``#`` 是代码示例，不是引用区块边界——若按行首匹配，一段内嵌的
+    Markdown 示例会被误判成区块，进而产生假的重复标题。
+    """
+    fence: str | None = None
+    for line in body.splitlines():
+        opener = _FENCE_RE.match(line)
+        if opener:
+            marker = opener.group(1)[0]
+            if fence is None:
+                fence = marker
+            elif marker == fence:
+                fence = None
+            continue
+        if fence is not None:
+            continue
+        match = _HEADING_RE.match(line)
+        if match:
+            yield len(match.group(1)), match.group(2).strip()
+
+
+def has_unbalanced_fence(body: str) -> bool:
+    """正文是否含未闭合的代码围栏。未闭合时后续内容无法判断是否为区块边界。"""
+    fence: str | None = None
+    for line in body.splitlines():
+        opener = _FENCE_RE.match(line)
+        if not opener:
+            continue
+        marker = opener.group(1)[0]
+        if fence is None:
+            fence = marker
+        elif marker == fence:
+            fence = None
+    return fence is not None
+
+
+def iter_missing_required_blocks(note_type: str, body: str) -> tuple[str, ...]:
+    """该类型在正文里缺失的固定区块（未知类型返回空元组）。
+
+    是 ``validate_note`` 固定区块规则的**只读复用入口**：检索契约据此判定
+    「结构是否还能被定点取块」，而不必复制一份区块表。
+    """
+    spec = NOTE_TYPES.get(note_type)
+    if spec is None:
+        return ()
+    return _missing_blocks(spec, body)
+
+
 @dataclass(frozen=True)
 class ValidationIssue:
     """一条校验问题。``field`` 可选，指向出问题的 frontmatter 字段。"""
@@ -265,7 +353,10 @@ def _check_project_scope(spec: NoteTypeSpec, meta: Mapping[str, object]) -> list
     return issues
 
 
-def _check_required_blocks(spec: NoteTypeSpec, body: str) -> list[ValidationIssue]:
+def _missing_blocks(spec: NoteTypeSpec, body: str) -> tuple[str, ...]:
     lines = {line.rstrip() for line in body.splitlines()}
-    missing = [block for block in spec.required_blocks if block not in lines]
-    return [ValidationIssue(f"缺少固定区块 {block!r}") for block in missing]
+    return tuple(block for block in spec.required_blocks if block not in lines)
+
+
+def _check_required_blocks(spec: NoteTypeSpec, body: str) -> list[ValidationIssue]:
+    return [ValidationIssue(f"缺少固定区块 {block!r}") for block in _missing_blocks(spec, body)]

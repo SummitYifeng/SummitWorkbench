@@ -18,6 +18,13 @@ from summit_workbench.domain.pipeline import (
     local_idempotency_key,
     remote_idempotency_key,
 )
+from summit_workbench.domain.retrieval_contract import (
+    RetrievalIssue,
+    is_derived_low_authority,
+    is_fact_retrieval_eligible,
+    is_non_fact_status,
+    validate_retrieval_readiness,
+)
 from summit_workbench.domain.review import (
     UNRESOLVED,
     ApprovalCandidate,
@@ -44,6 +51,12 @@ __all__ = [
     "STATUS_VOCAB",
     "ValidationIssue",
     "validate_note",
+    # 工作库检索就绪契约
+    "RetrievalIssue",
+    "is_derived_low_authority",
+    "is_fact_retrieval_eligible",
+    "is_non_fact_status",
+    "validate_retrieval_readiness",
     # 会议提取 schema
     "ActionItem",
     "MeetingExtraction",
