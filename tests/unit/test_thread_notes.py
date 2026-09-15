@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
-from summit_workbench.domain.vault import validate_note
+from summit_workbench.domain.vault import iter_headings, validate_note
 from summit_workbench.repositories.thread_notes import append_work_log, save_thread_artifact
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
@@ -159,3 +159,70 @@ def test_artifact_endpoint_rejects_unregistered_project(tmp_path: Path) -> None:
     r = c.post("/api/threads/artifacts", json={"project": "Ghost", "text": "x"})
     assert r.json()["ok"] is False
     assert "未建档" in r.json()["message"]
+
+
+# ---- T2：自动产物的确定性结构规范化 ----
+
+
+def test_append_work_log_keeps_verbatim_text_and_single_related_block(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _mk_project(vault, "FinanceOps")
+    text = "第一行含 # 不是标题\n\n第二行含 [[双链]] 与 `code`：1500/次。"
+    path = append_work_log(
+        vault,
+        projects=["FinanceOps"],
+        text=text,
+        now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+    )
+    note = load_note(path)
+    assert validate_note(note.meta, note.body) == []
+    assert text in note.body  # 原文字符逐字保留
+    assert "## 原文" in note.body  # 既有读者（project_view 兜底片段）依赖该区块
+    assert note.body.count("## 关联项目") == 1  # 不重复生成关联区块
+
+
+def test_append_work_log_rejects_duplicate_heading_without_writing(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _mk_project(vault, "FinanceOps")
+    with pytest.raises(ValueError, match="规范化"):
+        append_work_log(
+            vault,
+            projects=["FinanceOps"],
+            text="## 原文\n\n用户自己又写了一个同名区块。\n",
+            now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+        )
+    assert not (vault / "logs").exists()  # 不落半成品
+
+
+def test_save_thread_artifact_preserves_existing_h2_and_single_h1(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _mk_project(vault, "FinanceOps")
+    path = save_thread_artifact(
+        vault,
+        project="FinanceOps",
+        text="# 背景包\n\n## 背景\n\n原文一段。\n\n### 细节\n\n原文二段。\n",
+        title="背景包 V2",
+        summary="摘要",
+        kind=ArtifactKind.SUMMARY,
+        now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+    )
+    note = load_note(path)
+    assert validate_note(note.meta, note.body) == []
+    assert [text for level, text in iter_headings(note.body) if level == 1] == ["背景包 V2"]
+    assert "## 背景" in note.body  # 已有 H2 不被展平
+    assert "### 细节" in note.body  # H3 不被提升
+    assert note.body.count("## 关联项目") == 1
+    assert "原文一段。" in note.body
+
+
+def test_save_thread_artifact_rejects_duplicate_heading_without_writing(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _mk_project(vault, "FinanceOps")
+    with pytest.raises(ValueError, match="规范化"):
+        save_thread_artifact(
+            vault,
+            project="FinanceOps",
+            text="## 关键结论\n\na\n\n## 关键结论\n\nb\n",
+            now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+        )
+    assert not (vault / "artifacts").exists()  # 不落半成品

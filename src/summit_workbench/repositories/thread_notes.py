@@ -24,6 +24,10 @@ from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
+from summit_workbench.workflows.knowledge_normalization import (
+    format_normalization_error,
+    normalize_generated_body,
+)
 
 if TYPE_CHECKING:
     from summit_workbench.workflows.thread_activity_migration import ThreadActivityMigration
@@ -54,30 +58,28 @@ def _write_note(path: Path, meta: dict[str, object], body: str) -> Path:
 
 
 def _check(path: Path) -> None:
-    """写盘后自检：load + schema 校验失败即抛错（不落坏笔记）。"""
+    """写盘后自检：schema + 检索就绪双重校验失败即抛错（不落坏笔记）。
+
+    检索就绪校验（``validate_retrieval_readiness``）保证自动产物可被 SummitKnowledge
+    稳定切块引用；两条校验都在**落盘之后立即**执行，失败即抛错并把问题写清。
+    """
+    from summit_workbench.domain.retrieval_contract import validate_retrieval_readiness
     from summit_workbench.domain.vault import validate_note
 
     note = load_note(path)
     if note.parse_error is not None:
         raise ValueError(f"笔记 frontmatter 无法解析：{path}：{note.parse_error}")
-    issues = validate_note(note.meta, note.body)
-    if issues:
-        raise ValueError(f"笔记不符合 vault schema：{path}：" + "; ".join(str(i) for i in issues))
+    problems = [str(issue) for issue in validate_note(note.meta, note.body)]
+    problems += [
+        f"检索就绪：{issue}" for issue in validate_retrieval_readiness(note.meta, note.body)
+    ]
+    if problems:
+        raise ValueError(f"笔记不符合 vault schema：{path}：" + "; ".join(problems))
 
 
 def _clean_text(text: str) -> str:
     """去掉首尾空白但保留正文换行（不要像单行捕捉那样折叠）。"""
     return text.strip()
-
-
-def _project_links(projects: Sequence[str]) -> str:
-    """正文的「关联项目」回链：每条 ``- [[projects/<id>]]``。
-
-    vault 以 ``_vault`` 为 Obsidian 库根，``[[projects/<id>]]`` 即指向
-    ``_vault/projects/<id>.md`` 主档案——日志/产物由此在 Obsidian 图谱里
-    连回项目（frontmatter 关联之外的实体双链）。
-    """
-    return "\n".join(f"- [[projects/{project}]]" for project in projects)
 
 
 def _touch_projects_activity(vault_dir: Path, projects: Iterable[str], day: str) -> None:
@@ -144,12 +146,22 @@ def append_work_log(
     if decision:
         meta["decision"] = decision
 
-    body = f"# 推进日志 {day}（{projects_list[0]} 等）\n\n"
-    body += "## 原文\n\n" + body_text + "\n"
+    heading = f"推进日志 {day}（{projects_list[0]} 等）"
+    # 保留 ``## 原文`` 区块名与「原文 + AI 摘要」两段结构：project_view 的兜底片段
+    # 按 ``## 原文`` 读取日志首段，并发落盘测试也以该区块为契约。规范化器只在
+    # 「输入没有 H2」时才生成 ``## 工作记录`` 默认区块，这里走「已有 H2 → 保留结构」。
+    raw_body = f"# {heading}\n\n## 原文\n\n{body_text}\n"
     if summary:
-        body += "\n## AI 摘要\n\n" + summary + "\n"
-    # 实体双链（改进 1）：正文回链到所关联项目的主档案，供 Obsidian 图谱/反链使用。
-    body += "\n## 关联项目\n\n" + _project_links(projects_list) + "\n"
+        raw_body += f"\n## AI 摘要\n\n{summary}\n"
+    normalized = normalize_generated_body(
+        note_type="work-log",
+        title=heading,
+        text=raw_body,
+        project_links=projects_list,
+    )
+    if normalized.issues:
+        raise ValueError("无法规范化日志正文：" + format_normalization_error(normalized.issues))
+    body = normalized.body
     # 序号分配 + 落盘 + 关联档案 touch 整体持锁（P0-4）：两个并发写入不会算出同一
     # 序号互相静默覆盖；写前若目标已被占（如人工预占名）则重取序号，绝不覆盖既有文件。
     with workspace_lock(vault_dir.parent):
@@ -213,10 +225,16 @@ def save_thread_artifact(
             seq += 1
             path = artifacts_dir / f"{project}-{seq:03d}.md"
         heading = title or f"{project} 产物 {seq}"
-        body = f"# {heading}\n\n" + body_text + "\n"
-        # 实体双链（改进 1）：产物回链到所属项目的主档案（Obsidian 图谱/反链）。
-        body += "\n## 关联项目\n\n" + _project_links([project]) + "\n"
-        _write_note(path, meta, body)
+        # 规范化在写盘前完成：失败即抛错，目标文件不会出现（不落半成品）。
+        normalized = normalize_generated_body(
+            note_type="thread-doc",
+            title=heading,
+            text=body_text,
+            project_links=[project],
+        )
+        if normalized.issues:
+            raise ValueError("无法规范化产物正文：" + format_normalization_error(normalized.issues))
+        _write_note(path, meta, normalized.body)
         _check(path)
         _touch_projects_activity(vault_dir, [project], day)
         if activity_migration is not None:
