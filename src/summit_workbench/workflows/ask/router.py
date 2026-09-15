@@ -229,6 +229,16 @@ def route_query(
     return replace(_PLANS[kind], reason=reason)
 
 
+def routed_limit(query: str) -> int:
+    """当前问题经路由后应召回的候选块上限——**CLI / 脚本 / App 面板的唯一口径**。
+
+    为什么单独暴露这个小函数：过去 CLI 写死 ``--limit 8``、Web 面板不传 limit（默认 6）、
+    路由计划另有一套 12–16，同一个问题在三个入口召回条数不同，而「召回多少」是
+    路由决策的一部分。Web 层要拿这个数就调这里，**不得**复制一份路由关键词表。
+    """
+    return route_query(query).limit
+
+
 def query_mentions(query: str, index: KnowledgeIndex) -> set[str]:
     """查询里点名了哪些笔记的 ``aliases`` / 标题（用于元数据命中加权）。"""
     lowered = query.casefold()

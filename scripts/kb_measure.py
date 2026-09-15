@@ -355,6 +355,9 @@ def main() -> int:
                     cfg,
                     api_key,
                     prompt=prompt,
+                    # 与上面的候选检索同口径：脚本要比较的是同一批候选；
+                    # 漏传会让 answer_question 按路由另取一套条数。
+                    limit=args.limit,
                     index_path=index_path,
                 )
                 cited = tuple(fact.source_id for fact in result.answer.facts)

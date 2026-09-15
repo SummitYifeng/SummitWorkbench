@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from summit_workbench.workflows.ask.chunking import chunk_markdown
-from summit_workbench.workflows.ask.router import QueryKind, heuristic_route, route_query
+from summit_workbench.workflows.ask.router import (
+    QueryKind,
+    heuristic_route,
+    route_query,
+    routed_limit,
+)
 from summit_workbench.workflows.ask.terms import fts_query, query_terms, short_terms
 
 BODY = """# 标题
@@ -191,3 +196,19 @@ def test_classifier_is_optional_and_never_breaks_routing() -> None:
 
     fallback = route_query("商标共识规范是什么", classifier=boom)
     assert fallback.kind is QueryKind.DECISION  # 回落启发式，而不是抛异常
+
+
+def test_routed_limit_is_the_single_source_of_candidate_count() -> None:
+    """候选条数只有一个口径：``routed_limit`` 必须与 ``route_query(...).limit`` 一致。
+
+    CLI / 验收脚本 / App 面板都从这里取数——三处各写一个默认值正是 T4 修掉的缺陷。
+    """
+    for question in (
+        "HII 的登记主体是谁",
+        "IT 开发的来龙去脉",
+        "目前有哪些系统，分别是什么状态",
+    ):
+        assert routed_limit(question) == route_query(question).limit
+    assert routed_limit("HII 的登记主体是谁") == 16  # 点查
+    assert routed_limit("IT 开发的来龙去脉") == 16  # 回溯
+    assert routed_limit("目前有哪些系统，分别是什么状态") == 14  # 综合

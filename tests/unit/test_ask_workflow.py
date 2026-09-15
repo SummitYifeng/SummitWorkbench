@@ -12,7 +12,8 @@ from summit_workbench.prompts import Prompt, load_prompt
 from summit_workbench.providers.llm.client import CompletionResult, Usage
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMSchemaError
-from summit_workbench.workflows.ask.ask import AskTurn, answer_question
+from summit_workbench.workflows.ask.ask import AskResult, AskTurn, answer_question
+from summit_workbench.workflows.ask.router import routed_limit
 
 CFG = ModelConfig(capability="qa", model_id="m", base_url="http://x", credential_account="shared")
 # 必须与 prompts/qa-answer.md 的 frontmatter 对齐（由下方 test_qa_answer_prompt_version 锁住）
@@ -286,3 +287,77 @@ def test_retry_narrows_the_sources(tmp_path: Path) -> None:
     first, second = completer.calls
     assert first.count("source_id:") >= 4, first[:200]
     assert second.count("source_id:") < first.count("source_id:")
+
+
+# ---- T4：候选条数与路由同口径（CLI / 脚本 / App 面板一致） ----
+
+
+def _many_notes_vault(tmp_path: Path, count: int) -> Path:
+    vault = tmp_path / "many"
+    for index in range(count):
+        path = vault / "notes" / f"n{index:02d}.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"---\ndate: 2026-09-14\ntype: note\nstatus: active\n---\n\n"
+            f"# 笔记 {index}\n\nalpha 结论 {index}。\n",
+            encoding="utf-8",
+        )
+    return vault
+
+
+def test_answer_question_defaults_to_routed_limit(tmp_path):
+    """默认按路由计划取候选：点查 plan.limit=16，模型实际收到 16 条。"""
+    question = "有关 alpha 的结论是什么"
+    assert routed_limit(question) == 16
+    completer = FakeCompleter({"summary": "x"})
+    result = answer_question(
+        _many_notes_vault(tmp_path, 20),
+        question,
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+    )
+    assert len(result.sources) == 16
+    assert completer.calls[0][1].count("<source>") == 16
+
+
+def test_answer_question_explicit_limit_still_overrides_routing(tmp_path):
+    completer = FakeCompleter({"summary": "x"})
+    result = answer_question(
+        _many_notes_vault(tmp_path, 20),
+        "有关 alpha 的结论是什么",
+        CFG,
+        SecretStr("k"),
+        prompt=PROMPT,
+        completer=completer,
+        limit=3,
+    )
+    assert len(result.sources) == 3
+
+
+def test_ask_html_passes_routed_limit_to_answer_question(tmp_path, monkeypatch):
+    """Web 面板不得写死候选条数：必须传当前路由计划的 limit。"""
+    from summit_workbench.config import secrets as secrets_mod
+    from summit_workbench.domain.qa import QaAnswer
+    from summit_workbench.providers import llm as llm_mod
+    from summit_workbench.webapp import ask_view
+    from summit_workbench.workflows.ask import ask as ask_mod
+
+    question = "有关 alpha 的结论是什么"
+    monkeypatch.setattr(llm_mod, "load_model_config", lambda *_a, **_k: CFG)
+    monkeypatch.setattr(secrets_mod, "resolve_credential", lambda _ref: SecretStr("k"))
+    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: PROMPT)
+    monkeypatch.setattr(
+        "summit_workbench.repositories.kb_index.default_index_path",
+        lambda: tmp_path / "kb.sqlite",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_answer(vault_dir, query, cfg, api_key, **kwargs):
+        captured.update(kwargs)
+        return AskResult(question=query, answer=QaAnswer(summary="s"), sources=(), usage=None)
+
+    monkeypatch.setattr(ask_mod, "answer_question", fake_answer)
+    ask_view._ask_html(tmp_path / "vault", question)
+    assert captured["limit"] == routed_limit(question) == 16

@@ -46,7 +46,13 @@ def ask_command(
     question: str = typer.Argument(..., help="要向第二大脑提出的问题。"),
     save: bool = typer.Option(False, "--save", help="把回答存为 qa-insight（默认不保存）。"),
     project: str | None = typer.Option(None, "--project", help="仅在指定项目相关的笔记中召回。"),
-    limit: int = typer.Option(8, "--limit", min=1, max=32, help="最多召回的来源块数。"),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        max=32,
+        help="最多召回的来源块数；默认按问题路由决定（与 App 面板同口径）。",
+    ),
     trace: bool = typer.Option(True, "--trace/--no-trace", help="打印检索轨迹。"),
     use_index: bool = typer.Option(
         True,

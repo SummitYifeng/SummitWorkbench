@@ -57,6 +57,7 @@ def _ask_html(
     from summit_workbench.providers.llm import LLMError, load_model_config
     from summit_workbench.repositories.kb_index import default_index_path
     from summit_workbench.workflows.ask.ask import answer_question
+    from summit_workbench.workflows.ask.router import routed_limit
 
     try:
         if config_file is None and workspace_id is None:
@@ -71,6 +72,9 @@ def _ask_html(
             cfg,
             api_key,
             prompt=prompt,
+            # 候选条数由路由计划决定（与 `wb ask` / 验收脚本同一口径）；Web 层
+            # 不得自己复制路由词表，也不写死默认条数。
+            limit=routed_limit(question),
             history=history,
             project=project,
             index_path=default_index_path(),

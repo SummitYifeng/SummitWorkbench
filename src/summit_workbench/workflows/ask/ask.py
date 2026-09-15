@@ -26,6 +26,7 @@ from summit_workbench.workflows.ask.retrieval import (
     retrieve_candidates,
     retrieve_via_index,
 )
+from summit_workbench.workflows.ask.router import routed_limit
 from summit_workbench.workflows.meetings.processor import estimate_tokens
 
 _BACKOFF_BASE = 0.5
@@ -214,7 +215,7 @@ def answer_question(
     *,
     prompt: Prompt,
     project: str | None = None,
-    limit: int = 6,
+    limit: int | None = None,
     history: tuple[AskTurn, ...] = (),
     completer: Completer | None = None,
     now: datetime | None = None,
@@ -228,12 +229,16 @@ def answer_question(
     ``history`` 提供追问上下文：前几轮问题原文进入 prompt 作背景（非来源），
     历史轮引用过的来源 id 会被重新纳入本次候选（笔记已删除/越界则跳过），
     保证「那后来呢 / 具体哪次会」这类追问能引用同一批笔记。
+
+    ``limit=None``（默认）表示「按问题路由决定召回条数」——CLI / 脚本 / App 面板
+    由此共用同一口径（``router.routed_limit``）；显式传值仍可覆盖（如测量脚本）。
     """
     query = query.strip()
     if not query:
         raise ValueError("问题不能为空")
     history = history[-_MAX_HISTORY_TURNS:]
     history_text = _render_history(history)
+    effective_limit = limit if limit is not None else routed_limit(query)
 
     trace: Trace | None = None
     if index_path is not None:
@@ -243,12 +248,12 @@ def answer_question(
             query,
             index_path=index_path,
             project=project,
-            limit=limit,
+            limit=effective_limit,
             weights=weights,
             today=today,
         )
     else:
-        candidates = retrieve_candidates(vault_dir, query, project=project, limit=limit)
+        candidates = retrieve_candidates(vault_dir, query, project=project, limit=effective_limit)
     # 追问轮：把历史引用过的来源补回候选（去重、保持新鲜召回在前）。
     seen: set[str] = set()
     merged: list[Candidate] = []
