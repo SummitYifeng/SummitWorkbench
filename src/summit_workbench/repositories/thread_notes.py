@@ -130,7 +130,11 @@ def append_work_log(
     meta: dict[str, object] = {
         "date": day,
         "type": "work-log",
-        "status": "generated" if summary else "draft",
+        # 推进日志是**用户自己的原始记录**，始终落 `generated`：按共享检索契约的权威顺序，
+        # 工作日志属于「低权威 generated 内容」一层——可参与回答，但不能单独支撑高置信事实。
+        # 这里不再用 `draft` 表示「模型未消化」：`draft` 会被检索契约整体排除出事实语料，
+        # 而「原文照存」恰恰是最需要的证据（摘要是否存在写在 `summary` 里，不写进 status）。
+        "status": "generated",
         "projects": projects_list,
     }
     if summary:

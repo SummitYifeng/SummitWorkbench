@@ -131,7 +131,10 @@ def test_log_endpoint_falls_back_to_raw_when_model_offline(
     note_path = Path(body["path"])
     note = load_note(note_path)
     assert validate_note(note.meta, note.body) == []
-    assert note.meta["status"] == "draft"
+    # 推进日志恒为 `generated`（低权威但可参与事实问答）；`draft` 会被检索契约整体排除，
+    # 而「模型不可用只存原文」恰恰是最需要被检索到的证据。摘要有无写在 summary 字段。
+    assert note.meta["status"] == "generated"
+    assert "summary" not in note.meta
 
 
 def test_artifact_endpoint_resolves_alias_and_falls_back(
@@ -226,3 +229,27 @@ def test_save_thread_artifact_rejects_duplicate_heading_without_writing(tmp_path
             now=datetime(2026, 9, 3, 12, tzinfo=UTC),
         )
     assert not (vault / "artifacts").exists()  # 不落半成品
+
+
+def test_work_log_without_summary_is_generated_and_fact_eligible(tmp_path: Path) -> None:
+    """无摘要的推进日志仍是 `generated`（低权威可检索），不是被排除的 `draft`。"""
+    from summit_workbench.domain.retrieval_contract import (
+        is_derived_low_authority,
+        is_fact_retrieval_eligible,
+        validate_retrieval_readiness,
+    )
+
+    vault = tmp_path / "vault"
+    _mk_project(vault, "FinanceOps")
+    path = append_work_log(
+        vault,
+        projects=["FinanceOps"],
+        text="模型不可用，只存原文：和木子确认 Coach 时间表。",
+        now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+    )
+    note = load_note(path)
+    assert note.meta["status"] == "generated"
+    assert "summary" not in note.meta  # 摘要缺失由字段表达，不降级成 draft
+    assert is_fact_retrieval_eligible(note.meta) is True
+    assert is_derived_low_authority(note.meta) is True  # 但不能单独支撑高置信事实
+    assert validate_retrieval_readiness(note.meta, note.body) == []
