@@ -12,7 +12,7 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.md-render-test-tmp');
 const entry = `
-import { esc, mdToHtml } from './md';
+import { esc, inlineMd, mdToHtml } from './md';
 
 export const cases = {
   // 真实形状：一个段落被硬换行拆成三行——必须并成**一个** <p>。
@@ -52,6 +52,11 @@ export const cases = {
     '- [[a"onmouseover="alert(1)|标签]]',
   ].join('\\n')),
   escaped: esc('A<&"\\''),
+  nbspBold: inlineMd('**&#xA0;在 Overleaf 上做文字修改**'),
+  dirtyBold: inlineMd('\\*\\***2025 两场活动的一手复盘\\*\\***（待补：等材料到位）'),
+  nbspVariants: [inlineMd('&nbsp;A'), inlineMd('&#160;B'), inlineMd('&#xA0;C'), inlineMd('&#x0000A0;D')],
+  fencedDirty: mdToHtml(['\`\`\`md', '\\\\*\\\\**不应规范化\\\\*\\\\**', '\`\`\`'].join('\\n')),
+  loneEscapedStar: inlineMd('单独的 \\* 保持原样'),
 };
 `;
 mkdirSync(tmpDir, { recursive: true });
@@ -123,6 +128,14 @@ try {
   // 引号被转义后不可能逃出 title 属性
   assert.doesNotMatch(c.xss, /onmouseover="alert/);
   assert.equal(c.escaped, 'A&lt;&amp;&quot;&#39;');
+
+  // 展示边界兼容历史脏数据：NBSP 与转义粗体只在正文展示时恢复。
+  assert.match(c.nbspBold, /<strong> 在 Overleaf 上做文字修改<\/strong>/);
+  assert.doesNotMatch(c.nbspBold, /&#xA0;|\*\*/i);
+  assert.equal(c.dirtyBold, '<strong>2025 两场活动的一手复盘<\/strong>（待补：等材料到位）');
+  assert.deepEqual(c.nbspVariants, [' A', ' B', ' C', ' D']);
+  assert.match(c.fencedDirty, /\*\*不应规范化\*\*/);
+  assert.equal(c.loneEscapedStar, '单独的 \\* 保持原样');
 
   console.log('Markdown subset render tests passed');
 } finally {
