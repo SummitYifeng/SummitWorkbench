@@ -138,6 +138,12 @@ def test_p101_automation_manager_handles_all_smappservice_states() -> None:
     assert 'helperBundle.bundleIdentifier == "com.summitworkbench.panel.automation"' in manager
 
 
+def test_automation_helper_does_not_run_unsupported_meeting_sync() -> None:
+    source = _source("AutomationHelperMain.swift")
+    assert 'for job in ["brief", "weekly"]' in source
+    assert '"meeting-sync"' not in source
+
+
 def test_p101_native_state_behavior_test_is_in_repository() -> None:
     script = (_ROOT / "scripts" / "test-native-automation.sh").read_text(encoding="utf-8")
     test = (_ROOT / "native" / "tests" / "AutomationServiceManagerTests.swift").read_text(

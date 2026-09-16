@@ -82,35 +82,63 @@ def test_disabled_primary_skips_without_vault_write(tmp_path: Path) -> None:
     assert not (vault / "_signals").exists()
 
 
-def test_scheduled_worker_is_idempotent_after_wakeup(tmp_path: Path) -> None:
+def test_scheduled_brief_is_idempotent_after_wakeup(tmp_path: Path, monkeypatch) -> None:
     context, workspace_id, vault, home = _context(tmp_path, DeviceRole.AUTOMATION_PRIMARY)
     claim_automation_primary(vault, workspace_id, context.device_id or "device")
     settings = load_automation_settings(workspace_id, home=home)
-    settings.jobs[AutomationJob.MEETING_SYNC] = AutomationSchedule(
+    settings.jobs[AutomationJob.BRIEF] = AutomationSchedule(
         enabled=True, hour=8, minute=0, weekdays=[0, 1, 2, 3, 4, 5, 6]
     )
     settings_path = save_automation_settings(settings, home=home)
+    monkeypatch.setattr(
+        "summit_workbench.workflows.automation_worker.run_brief",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            result=SimpleNamespace(ranking=SimpleNamespace(degraded=False)),
+            feishu_unavailable=None,
+            persisted_paths=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "summit_workbench.workflows.automation_worker.record_run_safely",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "summit_workbench.workflows.automation_worker.sync_coordinator.current_snapshot",
+        lambda *_args, **_kwargs: SyncSnapshot(workspace_id=workspace_id, state=SyncState.READY),
+    )
     now = datetime(2026, 9, 7, 9, 0, tzinfo=UTC)
-    first = run_automation_job(context, AutomationJob.MEETING_SYNC, now=now)
-    first_saved = load_automation_settings(workspace_id, home=home).for_job(
-        AutomationJob.MEETING_SYNC
-    )
-    second = run_automation_job(context, AutomationJob.MEETING_SYNC, now=now)
-    second_saved = load_automation_settings(workspace_id, home=home).for_job(
-        AutomationJob.MEETING_SYNC
-    )
-    assert first.status.value == "skipped"
+    first = run_automation_job(context, AutomationJob.BRIEF, now=now)
+    first_saved = load_automation_settings(workspace_id, home=home).for_job(AutomationJob.BRIEF)
+    second = run_automation_job(context, AutomationJob.BRIEF, now=now)
+    second_saved = load_automation_settings(workspace_id, home=home).for_job(AutomationJob.BRIEF)
+    assert first.status.value == "success"
     assert second.status.value == "skipped"
     assert first_saved.last_run_at is not None
     assert second_saved.last_run_at == first_saved.last_run_at
     assert settings_path.is_file()
 
 
+def test_unsupported_meeting_sync_does_not_record_attempt(tmp_path: Path) -> None:
+    context, workspace_id, vault, home = _context(tmp_path, DeviceRole.AUTOMATION_PRIMARY)
+    claim_automation_primary(vault, workspace_id, context.device_id or "device")
+    settings = load_automation_settings(workspace_id, home=home)
+    settings.jobs[AutomationJob.MEETING_SYNC] = AutomationSchedule(enabled=True)
+    settings_path = save_automation_settings(settings, home=home)
+    before = settings_path.read_text(encoding="utf-8")
+
+    result = run_automation_job(context, AutomationJob.MEETING_SYNC, force=True)
+
+    assert result.status.value == "failed"
+    assert result.error_code == "automation_not_supported"
+    assert settings_path.read_text(encoding="utf-8") == before
+    assert not (vault / "_signals").exists()
+
+
 def test_dirty_protected_worker_does_not_write_vault(tmp_path: Path, monkeypatch) -> None:
     context, workspace_id, vault, home = _context(tmp_path, DeviceRole.AUTOMATION_PRIMARY)
     claim_automation_primary(vault, workspace_id, context.device_id or "device")
     settings = load_automation_settings(workspace_id, home=home)
-    settings.jobs[AutomationJob.MEETING_SYNC] = AutomationSchedule(
+    settings.jobs[AutomationJob.BRIEF] = AutomationSchedule(
         enabled=True, hour=8, minute=0, weekdays=list(range(7))
     )
     save_automation_settings(settings, home=home)
@@ -125,7 +153,7 @@ def test_dirty_protected_worker_does_not_write_vault(tmp_path: Path, monkeypatch
     )
 
     result = run_automation_job(
-        context, AutomationJob.MEETING_SYNC, now=datetime(2026, 9, 7, 9, 0, tzinfo=UTC)
+        context, AutomationJob.BRIEF, now=datetime(2026, 9, 7, 9, 0, tzinfo=UTC)
     )
 
     assert result.status.value == "failed"

@@ -14,10 +14,12 @@ from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.locking import LockBusy
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.domain.automation import (
+    AUTOMATION_UNAVAILABLE_REASON,
     AutomationJob,
     AutomationRunStatus,
     AutomationSchedule,
     AutomationSettings,
+    automation_is_supported,
 )
 from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.heartbeat import record_run_safely
@@ -229,6 +231,13 @@ def _run_automation_job_unlocked(
     """按 workspace/profile/主设备门控执行一次自动化任务。"""
     if context.paths is None or context.profile is None or context.workspace_id is None:
         return WorkerResult(job, AutomationRunStatus.SKIPPED, "尚未选择工作区")
+    if not automation_is_supported(job):
+        return WorkerResult(
+            job,
+            AutomationRunStatus.FAILED,
+            AUTOMATION_UNAVAILABLE_REASON,
+            error_code="automation_not_supported",
+        )
     claim = load_automation_primary(context.paths.vault_dir)
     gate = sync_coordinator.automation_gate(
         context.profile,

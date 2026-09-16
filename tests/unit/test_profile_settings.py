@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from summit_workbench.config.profiles import resolve_active_workspace
@@ -152,6 +153,8 @@ def test_automation_settings_api_roundtrips_and_validates_schedule(
     assert listed.status_code == 200
     assert listed.json()["workspace_id"] == profile.workspace_id
     assert listed.json()["jobs"]["brief"]["enabled"] is False
+    assert listed.json()["jobs"]["meeting-sync"]["supported"] is False
+    assert listed.json()["jobs"]["meeting-sync"]["unavailable_reason"]
 
     saved = client.put(
         "/api/settings/automation",
@@ -214,6 +217,33 @@ def test_automation_manual_run_forces_execution_after_same_day_run(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     assert calls == [True]
+
+
+def test_unsupported_meeting_sync_cannot_enable_or_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profile = _profile(tmp_path, "unsupported-meeting")
+    set_active_profile(profile.workspace_id, home=tmp_path)
+    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
+    client = TestClient(create_app(WebContext.from_active_workspace(context)))
+
+    saved = client.put(
+        "/api/settings/automation",
+        json={
+            "job": "meeting-sync",
+            "enabled": True,
+            "hour": 8,
+            "minute": 30,
+            "weekdays": list(range(7)),
+        },
+    )
+    assert saved.status_code == 409
+    assert saved.json()["code"] == "automation_not_supported"
+
+    run = client.post("/api/settings/automation/run", json={"job": "meeting-sync"})
+    assert run.status_code == 409
+    assert run.json()["code"] == "automation_not_supported"
 
 
 def test_provider_secret_is_scoped_and_never_written_to_profile(

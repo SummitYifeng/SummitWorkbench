@@ -23,6 +23,7 @@ interface AutomationJob {
   last_run_at?: string | null; last_success_at?: string | null;
   retry_at?: string | null; next_run_at?: string | null;
   last_error_code?: string | null; last_status: string; last_detail?: string | null;
+  supported?: boolean; unavailable_reason?: string | null;
 }
 interface AutomationSettings { jobs: Record<string, AutomationJob> }
 
@@ -65,17 +66,20 @@ function automationHtml(job: string, schedule: AutomationJob): string {
   const success = schedule.last_success_at ? esc(formatBusinessTime(schedule.last_success_at)) : '—';
   const next = schedule.retry_at ?? schedule.next_run_at;
   const nextLine = next ? esc(formatBusinessTime(next)) : '—';
+  const supported = schedule.supported !== false;
+  const unavailable = supported ? '' : '<div class="meta automation-detail">自动会议同步暂不可用；请到「今日」页点击“导入会议纪要”上传逐字稿。</div>';
+  const disabled = supported ? '' : ' disabled';
   return '<form class="card automation-form" data-job="' + esc(job) + '"><div class="automation-row"><div><strong>' +
     esc(AUTOMATION_LABELS[job] ?? job) + '</strong><div class="meta" title="内部状态码：' + esc(schedule.last_status) + '">最近：' +
     esc(status[schedule.last_status] ?? '未知状态') +
     attempt + '</div><div class="meta">上次成功：' + success + ' · 下次尝试：' + nextLine + '</div>' +
-    (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') +
-    '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
+    (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') + unavailable +
+    '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + disabled + '>' + (supported ? '启用' : '暂不可用') + '</label></div>' +
     '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label><span class="meta">星期</span>' +
     WEEKDAY_LABELS.map((label, index) => '<label class="weekday"><input name="weekday" type="checkbox" value="' + index + '"' +
       (schedule.weekdays.includes(index) ? ' checked' : '') + '>' + label + '</label>').join('') + '</div>' +
     '<div class="row"><button class="primary" type="submit">保存</button><button class="ghost" type="button" data-action="automation-run" data-job="' +
-    esc(job) + '">立即运行</button></div></form>';
+    esc(job) + '"' + disabled + '>立即运行</button></div></form>';
 }
 
 function httpsCandidate(url: string | null | undefined): string {

@@ -28,6 +28,14 @@ class AutomationRunStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+AUTOMATION_UNAVAILABLE_REASON = "自动会议同步暂不可用；请到「今日」页导入会议逐字稿"
+
+
+def automation_is_supported(job: AutomationJob) -> bool:
+    """当前版本可执行的自动化能力。"""
+    return job is not AutomationJob.MEETING_SYNC
+
+
 class AutomationSchedule(BaseModel):
     """单个任务的本机调度设置与最近结果。"""
 

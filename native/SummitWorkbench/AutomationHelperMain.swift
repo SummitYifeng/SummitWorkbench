@@ -24,7 +24,7 @@ struct SummitWorkbenchAutomationHelper {
     }
 
     private static func runJobs(worker: URL) {
-        for job in ["brief", "weekly", "meeting-sync"] {
+        for job in ["brief", "weekly"] {
             let process = Process()
             process.executableURL = worker
             process.arguments = ["--job", job]

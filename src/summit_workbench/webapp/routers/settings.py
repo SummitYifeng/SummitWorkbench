@@ -27,7 +27,11 @@ from summit_workbench.config.app_support import (
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.secrets import CredentialError
-from summit_workbench.domain.automation import AutomationJob
+from summit_workbench.domain.automation import (
+    AUTOMATION_UNAVAILABLE_REASON,
+    AutomationJob,
+    automation_is_supported,
+)
 from summit_workbench.domain.workspace import LocalProfile
 from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConfigError
 from summit_workbench.providers.llm.errors import LLMError
@@ -1111,13 +1115,18 @@ def register_settings_routes(
             raise HTTPException(
                 status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
             ) from exc
+        jobs: dict[str, object] = {}
+        for job in AutomationJob:
+            schedule = settings.for_job(job)
+            item = schedule.model_dump(mode="json")
+            supported = automation_is_supported(job)
+            item["supported"] = supported
+            item["unavailable_reason"] = None if supported else AUTOMATION_UNAVAILABLE_REASON
+            jobs[job.value] = item
         return {
             "ok": True,
             "workspace_id": settings.workspace_id,
-            "jobs": {
-                job.value: schedule.model_dump(mode="json")
-                for job, schedule in ((job, settings.for_job(job)) for job in AutomationJob)
-            },
+            "jobs": jobs,
         }
 
     @app.get("/api/settings/automation", response_model=None)
@@ -1138,6 +1147,14 @@ def register_settings_routes(
                 detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
             )
         job = AutomationJob(payload.job)
+        if not automation_is_supported(job) and payload.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "automation_not_supported",
+                    "message": AUTOMATION_UNAVAILABLE_REASON,
+                },
+            )
         try:
             with automation_job_lock(ctx.workspace_id, job, home=_settings_home(), timeout=2.0):
                 settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
@@ -1169,9 +1186,18 @@ def register_settings_routes(
                 status_code=409,
                 detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
             )
+        job = AutomationJob(payload.job)
+        if not automation_is_supported(job):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "automation_not_supported",
+                    "message": AUTOMATION_UNAVAILABLE_REASON,
+                },
+            )
         # 「立即运行」是人工触发，不应被当天已执行过的调度记录拦截；
         # 定时 worker 仍使用默认的 schedule due 门控。
-        result = run_automation_job(ctx.active_workspace, AutomationJob(payload.job), force=True)
+        result = run_automation_job(ctx.active_workspace, job, force=True)
         # secondary/未启用的「跳过」是预期结果，不是错误：返回 ok=true 让前端以提示而非
         # 报错呈现（P1-07D 要求 Air 自动化安全跳过，绝不运行定时 writer）。
         return {
