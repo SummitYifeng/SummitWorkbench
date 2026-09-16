@@ -50,7 +50,7 @@ try {
   const { full, empty } = await import(pathToFileURL(outFile).href + '?t=' + Date.now());
 
   for (const html of [full, empty]) {
-    assert.equal((html.match(/class="today-tool/g) || []).length, 2);
+    assert.equal((html.match(/class="today-tool /g) || []).length, 2);
     assert.equal((html.match(/class="today-panel/g) || []).length, 3);
     assert.match(html, /记点什么/);
     assert.match(html, /导入会议纪要/);
@@ -62,14 +62,19 @@ try {
     assert.match(html, /id="file-input"/);
     assert.match(html, /id="btn-pick"/);
     assert.match(html, /data-action="run-brief"/);
-    assert.ok(html.indexOf('待办任务') < html.indexOf('会议'));
-    assert.ok(html.indexOf('会议') < html.indexOf('需要行动'));
+    const taskAt = html.indexOf('class="bf-sec-title">待办任务');
+    const meetingAt = html.indexOf('class="bf-sec-title">会议');
+    const actionAt = html.indexOf('class="bf-sec-title">需要行动');
+    assert.ok(taskAt < meetingAt);
+    assert.ok(meetingAt < actionAt);
     assert.doesNotMatch(html, /项目推进|待确认审批|AI 提议|最近完成/);
   }
 
   assert.match(full, /项目甲/);
+  assert.match(full, /<span class="bf-task-title"><strong>跟进事项<\/strong><\/span>/);
+  assert.match(full, /<span class="bf-mt-title"><strong>周会<\/strong><\/span>/);
   assert.match(full, /<strong>给项目甲发邮件<\/strong>/);
-  assert.match(full, /明天前发送/);
+  assert.match(full, /<strong>明天前发送<\/strong>/);
   assert.doesNotMatch(empty, /这份旧版简报不应被整份展示/);
   assert.match(empty, /今日无待办任务/);
   assert.match(empty, /今日无会议/);

@@ -165,7 +165,8 @@ function briefTaskBlock(b: BriefData, todayIso: string): string {
     '待办任务', sorted.length,
     annotated > 0 ? annotated + ' 项今日优先（AI 排序）' : ''
   );
-  return '<div class="bf-section">' + head + rows + '</div>';
+  return '<div class="bf-section">' + head +
+    (rows || '<div class="bf-empty">今日无待办任务</div>') + '</div>';
 }
 
 function briefOrphanActions(b: BriefData): BriefAction[] {
@@ -229,33 +230,8 @@ function briefOrphanBlock(
       briefDueBadge(a.due_date, todayIso) + '</div>' + meta + '</div>';
   }).join('');
   return '<div class="bf-section">' +
-    briefSectionHead('需要行动', list.length, '任务清单之外') + rows + '</div>';
-}
-
-function briefFoldBlock(label: string, count: number, rowsHtml: string): string {
-  return '<details class="bf-fold"><summary><span class="bf-chev">›</span><span>' + esc(label) + '</span>' +
-    '<span class="bf-count">' + count + '</span></summary>' + rowsHtml + '</details>';
-}
-
-function briefProposalBlock(list: BriefAction[], projectNames: Record<string, string>): string {
-  const rows = list.map((p) => {
-    const pieces: string[] = [];
-    if (p.project) pieces.push(projectNames[p.project] ?? p.project);
-    const refName = briefRefLabel(p, projectNames);
-    if (refName) pieces.push(refName);
-    return '<div class="bf-minor-row"><span class="bf-minor-main">' + inlineMd(p.title) + '</span>' +
-      (pieces.length
-        ? '<span class="bf-minor-text">' + pieces.map(esc).join(' · ') + '</span>'
-        : '') + '</div>';
-  }).join('');
-  return briefFoldBlock('AI 提议（非事实）', list.length, rows);
-}
-
-function briefCompletionBlock(list: BriefCompletion[]): string {
-  const rows = list.map((c) =>
-    '<div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ ' + inlineMd(c.text) + '</span></div>'
-  ).join('');
-  return briefFoldBlock('最近完成', list.length, rows);
+    briefSectionHead('需要行动', list.length, '任务清单之外') +
+    (rows || '<div class="bf-empty">当前没有任务清单之外的行动</div>') + '</div>';
 }
 
 /**
@@ -269,26 +245,16 @@ export function briefCardHtml(
   todayIso: string,
   projectNames: Record<string, string> = {},
 ): string {
-  const parts: string[] = [];
-  if (b.health.level !== 'ok') {
-    const tone = b.health.level === 'alert' ? 'bad' : 'warn';
-    parts.push('<div class="bf-alert ' + tone + '"><span class="dot ' + tone + '"></span>' +
-      '<span>健康度 ' + esc(b.health.label) + '</span>' +
-      (b.health.reasons.length
-        ? '<span class="bf-alert-reasons">' + b.health.reasons.map(esc).join(' · ') + '</span>'
-        : '') + '</div>');
-  }
-  // 「待确认 N 条」在今日页只保留一处（下方那张带「去处理 →」的审批卡）；
-  // 简报里再重复一遍数字只会让同一屏出现两个同样的计数（2026-09-14 去重）。
-  // 上下两块（2026-09-14）：会议在上、紧凑；待办任务在下、占满整宽。
-  // 原先左右各占一半，会议少时空半屏、待办一多就被半宽卡住。
-  const schedule = briefMeetingBlock(b.meetings);
-  const taskColumn: string[] = [briefTaskBlock(b, todayIso)];
-  const orphans = briefOrphanActions(b);
-  if (orphans.length) taskColumn.push(briefOrphanBlock(orphans, todayIso, projectNames));
-  parts.push('<div class="bf-stack"><div class="bf-col bf-col-schedule">' + schedule + '</div>' +
-    '<div class="bf-col bf-col-tasks">' + taskColumn.join('') + '</div></div>');
-  if (b.proposals.length) parts.push(briefProposalBlock(b.proposals, projectNames));
-  if (b.completions.length) parts.push(briefCompletionBlock(b.completions));
-  return parts.join('');
+  return '<section class="today-panel">' + briefTaskBlock(b, todayIso) + '</section>' +
+    '<section class="today-panel">' + briefMeetingBlock(b.meetings) + '</section>' +
+    '<section class="today-panel">' + briefOrphanBlock(briefOrphanActions(b), todayIso, projectNames) + '</section>';
+}
+
+export function emptyBriefCardHtml(): string {
+  return '<section class="today-panel"><div class="bf-section"><div class="bf-sec-head">' +
+    '<span class="bf-sec-title">待办任务</span></div><div class="bf-empty">今日无待办任务</div></div></section>' +
+    '<section class="today-panel"><div class="bf-section"><div class="bf-sec-head">' +
+    '<span class="bf-sec-title">会议</span></div><div class="bf-empty">今日无会议</div></div></section>' +
+    '<section class="today-panel"><div class="bf-section"><div class="bf-sec-head">' +
+    '<span class="bf-sec-title">需要行动</span></div><div class="bf-empty">当前没有任务清单之外的行动</div></div></section>';
 }

@@ -96,8 +96,8 @@ export const logChoices = logProjectChoices(
   [{ name: 'huoman-logistics', title: '活满后勤&行政', is_thread: true, registered: true, status: 'active' }],
   ['huoman-logistics'],
 );
-// 上下两块的新布局（旧的两列网格标记必须消失）。
-export const stackedShell = { hasStack: briefHtml.indexOf('bf-stack') >= 0, hasGrid: briefHtml.indexOf('bf-grid') >= 0 };
+// 今日页三个独立内容区（旧的两列网格标记必须消失）。
+export const todayPanels = { count: (briefHtml.match(/class="today-panel"/g) || []).length, hasGrid: briefHtml.indexOf('bf-grid') >= 0 };
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -152,9 +152,9 @@ try {
   // ④ 错误文案：网络错误不把 `TypeError: Failed to fetch` 原样给使用者。
   assert.equal(mod.networkError, '连不上本地服务，请确认工作台还在运行');
 
-  // ⑤ 今日页上下两块：新标记在、旧的两列网格标记不在。
-  assert.equal(mod.stackedShell.hasStack, true, 'the brief must use the stacked shell');
-  assert.equal(mod.stackedShell.hasGrid, false, 'the old two-column brief grid must be gone');
+  // ⑤ 今日页三个独立内容区：新标记在、旧的两列网格标记不在。
+  assert.equal(mod.todayPanels.count, 3, 'the brief must keep three content panels');
+  assert.equal(mod.todayPanels.hasGrid, false, 'the old two-column brief grid must be gone');
 
   // ⑥ 「追加推进日志」的项目勾选：可见文本只有中文名，英文 ID 只进 title 属性。
   // 去掉属性（title 与表单 value 都允许携带 ID），只看剩下的可见文本。
