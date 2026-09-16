@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.review import UNRESOLVED
 from summit_workbench.domain.vault import NOTE_TYPES, PROJECT_ID_RE
 from summit_workbench.repositories._atomic import atomic_write_text
@@ -110,7 +111,7 @@ def create_project_note(
         path = vault_dir / "projects" / f"{project_id}.md"
         if path.exists():
             raise FileExistsError(f"项目已存在：{path}")
-        day = (now or datetime.now(UTC)).date().isoformat()
+        day = business_date(now or datetime.now(UTC))
         clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
         alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
         blocks = (*NOTE_TYPES["project-main"].required_blocks, "## 跟进事项")
@@ -148,7 +149,7 @@ def read_project_registration(vault_dir: Path, project_id: str) -> tuple[bool, s
 def _set_status(vault_dir: Path, project_id: str, status: str, now: datetime | None) -> Path:
     """把已有档案的 status 与 updated 一并改写（保留正文，原子写）。"""
     path = project_note_path(vault_dir, project_id)
-    day = (now or datetime.now(UTC)).date().isoformat()
+    day = business_date(now or datetime.now(UTC))
     update_note_status(vault_dir, path, status, extra={"updated": day})
     return path
 

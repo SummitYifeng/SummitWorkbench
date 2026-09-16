@@ -21,6 +21,7 @@ from uuid import uuid4
 import yaml
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
@@ -38,7 +39,7 @@ _ARTIFACTS_DIRNAME = "artifacts"
 
 
 def _day(now: datetime | None) -> str:
-    return (now or datetime.now(UTC)).date().isoformat()
+    return business_date(now or datetime.now(UTC))
 
 
 def _next_seq(directory: Path, prefix: str) -> int:

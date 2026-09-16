@@ -1,4 +1,5 @@
 import { api } from '../../api/request';
+import { formatBusinessTime } from '../../core/time';
 import { mutation } from '../../lifecycle/connection';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
 import { esc } from '../../md';
@@ -30,7 +31,7 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
       //   其余全部（状态码 / 分支 / 远端 / 仓库 / 设备 id / 导出）收进折叠区。
       const diverged = data.state === 'diverged-protected';
       const metaBits = ['待推送 ' + String(data.pending_commits ?? 0)];
-      if (data.last_sync_at) metaBits.push('最后成功 ' + data.last_sync_at);
+      if (data.last_sync_at) metaBits.push('最后成功 ' + formatBusinessTime(data.last_sync_at));
       const generation = data.automation_primary_generation;
       const detailRows: Array<[string, string]> = [
         ['状态码', data.state],

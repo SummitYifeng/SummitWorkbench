@@ -1,5 +1,6 @@
 /** 设置页渲染与只读数据读取（原 features/settings/index.ts，Step 8c 拆分）。 */
 import { esc } from '../../md';
+import { formatBusinessTime } from '../../core/time';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
 import { syncStateLabel } from '../sync/labels';
 
@@ -61,7 +62,7 @@ function automationHtml(job: string, schedule: AutomationJob): string {
   return '<form class="card automation-form" data-job="' + esc(job) + '"><div class="automation-row"><div><strong>' +
     esc(AUTOMATION_LABELS[job] ?? job) + '</strong><div class="meta" title="内部状态码：' + esc(schedule.last_status) + '">最近：' +
     esc(status[schedule.last_status] ?? '未知状态') +
-    (schedule.last_run_at ? ' · ' + esc(schedule.last_run_at) : '') + '</div>' +
+    (schedule.last_run_at ? ' · ' + esc(formatBusinessTime(schedule.last_run_at)) : '') + '</div>' +
     (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') +
     '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
     '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label><span class="meta">星期</span>' +

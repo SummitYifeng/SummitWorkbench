@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.review import CandidateKind
 from summit_workbench.repositories._atomic import atomic_write_text
 
@@ -20,7 +21,7 @@ def _ensure_global_inbox(path: Path) -> None:
     """全局 inbox 是「目标项目不明」的兜底落点，缺失时按 vault schema 创建。"""
     if path.is_file():
         return
-    today = datetime.now(UTC).date().isoformat()
+    today = business_date(datetime.now(UTC))
     atomic_write_text(
         path,
         f"---\ndate: {today}\ntype: inbox\nstatus: active\nproject: global\n---\n\n"
@@ -144,7 +145,7 @@ def _ensure_thread_inbox(path: Path, project: str) -> None:
     """知识线程项目的 inbox 落点：``_vault/inboxes/<project>.md``（无 Work 文件夹时）。"""
     if path.is_file():
         return
-    today = datetime.now(UTC).date().isoformat()
+    today = business_date(datetime.now(UTC))
     atomic_write_text(
         path,
         f"---\ndate: {today}\ntype: project-inbox\nstatus: active\nproject: {project}\n---\n\n"
@@ -252,7 +253,7 @@ def append_knowledge_note(
         path = vault_dir / rel.with_suffix(".md")
         if not path.is_file():
             raise ValueError(f"写回目标不存在：{path}")
-        stamp = today or date.today().isoformat()
+        stamp = today or business_date(datetime.now(UTC))
         line = f"{stamp} {description.strip()}"
         if source_ref and source_ref.strip():
             line += f"（出处：{source_ref.strip()}）"

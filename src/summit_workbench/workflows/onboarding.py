@@ -40,6 +40,7 @@ from summit_workbench.domain.onboarding import (
     OnboardingResult,
     PreflightReport,
 )
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.workspace import (
     SUPPORTED_WORKSPACE_SCHEMA,
     Compatibility,
@@ -338,7 +339,7 @@ def _make_result(
 
 def _copy_seed_templates(staging: Path, templates_dir: Path, day: str | None) -> None:
     """把 allowlist 种子模板拷入 staging（``{{date}}`` 填当天日期）。"""
-    stamp = day or datetime.now(UTC).date().isoformat()
+    stamp = day or business_date(datetime.now(UTC))
     for source_name, target_rel in TEMPLATE_TARGETS.items():
         source = templates_dir / source_name
         if not source.is_file():

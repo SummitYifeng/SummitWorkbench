@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.config.settings import default_config_file
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.workspace import Compatibility
 
 
@@ -50,7 +50,7 @@ class WebContext:
         return Compatibility.READ_WRITE
 
     def today(self) -> str:
-        return datetime.now(ZoneInfo(self.timezone)).date().isoformat()
+        return business_date(datetime.now(UTC))
 
     @property
     def git_backend_kind(self) -> str | None:

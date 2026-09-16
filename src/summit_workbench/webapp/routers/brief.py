@@ -10,8 +10,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -73,7 +72,7 @@ def register_brief_routes(dependencies: RouteDependencies, *, runtime: MutationR
             result = generate_weekly(
                 ctx.work_root,
                 ctx.vault_dir,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
+                today=date.fromisoformat(ctx.today()),
                 write=True,
             )
             return {"ok": True, "message": f"已生成周复盘 {result.review.week}"}
@@ -126,7 +125,7 @@ def register_brief_page_routes(
             result = generate_weekly(
                 ctx.work_root,
                 ctx.vault_dir,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date(),
+                today=date.fromisoformat(ctx.today()),
                 write=True,
             )
             msg = f"已生成周复盘 {result.review.week}"

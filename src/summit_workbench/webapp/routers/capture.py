@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from summit_workbench.domain.time import business_date
 from summit_workbench.repositories.signal_snapshot import (
     mark_meeting_edited,
     mark_task_completed,
@@ -77,7 +77,7 @@ def register_capture_routes(
                 api_key,
                 prompt,
                 text,
-                today=datetime.now(ZoneInfo(ctx.timezone)).date().isoformat(),
+                today=business_date(datetime.now(UTC)),
             )
             kind = cls.kind
             due_date = cls.due_date

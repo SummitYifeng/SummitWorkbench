@@ -7,6 +7,7 @@ import {
   onConnectionRestored,
 } from './api/request';
 import { workspaceStore } from './core/workspace-store';
+import { formatBusinessTime } from './core/time';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
   clearDraftSnapshot,
@@ -755,7 +756,7 @@ async function refreshState(): Promise<boolean> {
     if (requestId !== latestStateRequest) return false;
     state = nextState;
     stateLoadError = null;
-    lastStateReadAt = new Date().toLocaleString('zh-CN', { hour12: false });
+    lastStateReadAt = formatBusinessTime(new Date().toISOString());
   } catch (err) {
     if (isStaleWorkspaceResponse(err)) return false;
     stateLoadError = String(err);
@@ -781,7 +782,7 @@ async function refreshReview(): Promise<boolean> {
     if (requestId !== latestReviewRequest) return false;
     review = nextReview;
     reviewLoadError = null;
-    lastReviewReadAt = new Date().toLocaleString('zh-CN', { hour12: false });
+    lastReviewReadAt = formatBusinessTime(new Date().toISOString());
   } catch (err) {
     if (isStaleWorkspaceResponse(err)) return false;
     reviewLoadError = String(err);

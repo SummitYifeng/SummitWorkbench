@@ -7,14 +7,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import CredentialError, resolve_credential
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.domain.brief import ActionSignal, fallback_ranking
+from summit_workbench.domain.time import business_date
 from summit_workbench.observability.status import build_status
 from summit_workbench.prompts import load_prompt
 from summit_workbench.providers.feishu import FeishuError
@@ -32,7 +32,7 @@ from summit_workbench.workflows.brief.ranking import RankingResult, rank_actions
 
 
 def today_iso(timezone: str) -> str:
-    return datetime.now(ZoneInfo(timezone)).date().isoformat()
+    return business_date(datetime.now(UTC))
 
 
 @dataclass(frozen=True)

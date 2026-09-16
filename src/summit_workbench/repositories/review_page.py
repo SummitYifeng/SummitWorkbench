@@ -6,7 +6,7 @@ import base64
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import yaml
@@ -20,6 +20,7 @@ from summit_workbench.domain.review import (
     ReviewEntry,
     RouteTarget,
 )
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.vault import validate_note
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import parse_frontmatter
@@ -95,7 +96,7 @@ def _render_entry(entry: ReviewEntry) -> str:
 
 def render_review_page(entries: list[ReviewEntry], *, today: date | None = None) -> str:
     front = {
-        "date": (today or date.today()).isoformat(),
+        "date": today.isoformat() if today is not None else business_date(datetime.now(UTC)),
         "type": "approval-page",
         "status": "active",
         "project": "global",
