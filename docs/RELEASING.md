@@ -1,5 +1,12 @@
 # SummitWorkbench macOS 发布
 
+## 当前 main 本机交付状态（2026-09-16）
+
+`main` 当前提交为 `61260b0`。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091603`，前端身份为 `v2026.09.16-479f967-5236bd8a`；
+`tests/integration/test_packaged_app.py` 已使用该安装包通过（1 passed）。以下历史
+发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
+
 当前 v0.4.4 build 9 的本地内部包已经完成发布验证。它是 arm64、M2+、ad-hoc 的
 `INTERNAL-DEV` 包，不是 Developer ID/notarized 公网发行包。发布结论依据本地门禁和本机交互验收；
 远端 CI 质量门（`.github/workflows/ci.yml`）已在 `SummitYifeng/SummitWorkbench` 上全绿。

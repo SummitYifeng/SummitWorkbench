@@ -2,7 +2,7 @@
 
 状态：✅ 已合并到 `main`，源码自动化验收通过（2026-09-16）
 
-本记录对应 `main` 提交 `8fe8341`，基线提交为 `25d6094`。实现先在
+本记录对应 `main` 当前提交 `61260b0`，基线提交为 `25d6094`。实现先在
 `codex/reliability-luna` 上完成，再以 fast-forward 方式合并并推送；没有修改 API
 返回字段、飞书数据或 vault 原文。
 
@@ -26,6 +26,9 @@
 - uv run mypy：通过，372 source files。
 - uv run pytest：1300 passed，1 skipped，5 warnings。唯一跳过项为未设置
   WB_PACKAGED_APP 的打包 smoke test。
+- `WB_PACKAGED_APP=/Applications/SummitWorkbench.app .venv/bin/python -m pytest
+  tests/integration/test_packaged_app.py -q`：通过，1 passed；验证包版本为 `0.4.9`、
+  build `2026091603`，前端身份为 `v2026.09.16-479f967-5236bd8a`。
 
 ## 功能验收
 
@@ -50,4 +53,4 @@
 - vault /Users/yifengstudio/Documents/Work/_vault 在检查后工作树为 clean；本轮没有
   vault 文件变更。
 
-历史 build 的验收记录和结论未改写；本文件记录当前 `main` 实现与本机 App 更新前后的验收状态。
+历史 build 的验收记录和结论未改写；本文件记录当前 `main` 实现与本机 App 更新后的验收状态。
