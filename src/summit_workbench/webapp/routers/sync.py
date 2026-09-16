@@ -76,6 +76,8 @@ def register_sync_routes(dependencies: RouteDependencies, *, runtime: MutationRu
             "state": snapshot.state.value,
             "pending_commits": snapshot.pending_commits,
             "last_sync_at": snapshot.last_sync_at,
+            "remote_checked_at": snapshot.remote_checked_at,
+            "remote_check_status": snapshot.remote_check_status.value,
             "next_step": snapshot.next_step,
             "detail": snapshot.detail,
             "ahead": snapshot.ahead,

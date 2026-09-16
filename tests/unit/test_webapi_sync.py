@@ -57,6 +57,9 @@ def test_sync_status_and_run_on_plain_vault(tmp_path, monkeypatch, client) -> No
     data = status.json()
     assert data["ok"] is True
     assert data["state"] == "unconfigured"
+    assert data["remote_check_status"] == "unknown"
+    assert data["remote_checked_at"] is None
+    assert data["last_sync_at"] is None
     run = client.post("/api/sync/run")
     assert run.status_code == 200
     assert run.json()["ok"] is True

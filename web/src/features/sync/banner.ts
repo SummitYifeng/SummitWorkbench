@@ -4,7 +4,7 @@ import { mutation } from '../../lifecycle/connection';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
 import { esc } from '../../md';
 import { toast } from '../shell';
-import { syncStateLabel } from './labels';
+import { syncEvidenceLabel, syncStateLabel } from './labels';
 import { getSyncDeps } from './state';
 import type { SyncStatusPayload } from './types';
 
@@ -22,7 +22,7 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
   if (!el) return null;
   try {
     const data = await api<SyncStatusPayload>('/api/sync/status');
-    const interesting = data.state !== 'ready' && data.state !== 'unconfigured';
+    const interesting = data.state !== 'unconfigured';
     el.hidden = !interesting;
     if (interesting) {
       // 形状（2026-09-14 使用者反馈「状态句太长挤在网格里 + 太高占地方」后重做）：
@@ -32,6 +32,7 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
       const diverged = data.state === 'diverged-protected';
       const metaBits = ['待推送 ' + String(data.pending_commits ?? 0)];
       if (data.last_sync_at) metaBits.push('最后成功 ' + formatBusinessTime(data.last_sync_at));
+      metaBits.unshift(syncEvidenceLabel(data.remote_check_status, data.remote_checked_at));
       const generation = data.automation_primary_generation;
       const detailRows: Array<[string, string]> = [
         ['状态码', data.state],

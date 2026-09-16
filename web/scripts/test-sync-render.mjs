@@ -18,6 +18,7 @@ import {
   conflictKindLabel,
   conflictRevision,
   conflictSelectionLabel,
+  syncEvidenceLabel,
 } from './features/sync';
 
 const detail = (over: Record<string, unknown> = {}) => ({
@@ -67,6 +68,9 @@ export const cases = {
     local_sha256: 'abcdef1234567890',
     remote_sha256: 'zzz',
   })),
+  evidenceSuccess: syncEvidenceLabel('success', '2026-09-16T00:00:00Z'),
+  evidenceUnknown: syncEvidenceLabel('unknown', null),
+  evidenceFailed: syncEvidenceLabel('failed', '2026-09-15T00:00:00Z'),
 };
 `;
 
@@ -115,6 +119,9 @@ try {
   );
   assert.equal(cases.digestOneSide, '设备 dev-b · 时间 t2 · 操作 op-2');
   assert.equal(cases.digestHashes, '摘要 本机 abcdef123456… · 远端 zzz');
+  assert.equal(cases.evidenceSuccess, '截至北京时间 2026-09-16 08:00:00 已同步');
+  assert.equal(cases.evidenceUnknown, '尚未核对远端');
+  assert.equal(cases.evidenceFailed, '本次远端核对失败 · 上次成功核对 2026-09-15 08:00:00');
 
   console.log('Sync pure label tests passed');
 } finally {

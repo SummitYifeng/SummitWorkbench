@@ -2,7 +2,7 @@
 import { esc } from '../../md';
 import { formatBusinessTime } from '../../core/time';
 import { sendNativeMessage } from '../../lifecycle/native-bridge';
-import { syncStateLabel } from '../sync/labels';
+import { syncEvidenceLabel, syncStateLabel } from '../sync/labels';
 
 export interface ProfileSummary {
   workspace_id: string;
@@ -29,6 +29,8 @@ interface AutomationSettings { jobs: Record<string, AutomationJob> }
 
 /** `/api/sync/status` 里与 automation-primary 归属有关的字段（G1）。 */
 export interface SyncPrimaryStatus {
+  remote_checked_at?: string | null;
+  remote_check_status?: string;
   automation_primary_device_id?: string | null;
   automation_primary_generation?: number | null;
 }
@@ -185,7 +187,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       (localStorage.getItem('wb.update.auto-check') !== 'false' ? ' checked' : '') + '>每天自动检查新版本（只提示，不自动安装）</label></div></div>';
     const profiles = response.profiles.map((profile) => '<article class="card entry ' + (profile.active ? 'ok' : '') + '"><div class="entry-top"><strong>' +
       esc(profile.display_name) + '</strong><span class="badge">' + esc(profile.active ? '当前' : '其他工作台') + '</span></div><p class="meta">' +
-      esc(profile.path) + '</p><p class="meta">同步：' + esc(syncStateLabel(profile.sync_summary.state)) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
+      esc(profile.path) + '</p><p class="meta">同步：' + esc(syncStateLabel(profile.sync_summary.state)) + ' · ' + esc(syncEvidenceLabel(sync?.remote_check_status, sync?.remote_checked_at)) + ' · 连接：' + badge('model', profile.provider_status.model) + ' ' +
       badge('feishu', profile.provider_status.feishu, feishuReauth) + '</p>' +
       (profile.active ? '' : '<button class="primary" data-action="profile-switch" data-workspace="' + esc(profile.workspace_id) + '">切换到它</button>') +
       // 移除此 Mac 上的 profile：只删本机 profile/runtime/草稿，vault、远端与 Keychain 不动。

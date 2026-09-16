@@ -1,4 +1,5 @@
 /** 同步冲突弹层的纯文本标签（无 DOM、无状态；从 legacy-main 抽出，Step 1）。 */
+import { formatBusinessTime } from '../../core/time';
 import type { ConflictPathDetail, ConflictSelection } from './types';
 
 /**
@@ -27,6 +28,21 @@ const SYNC_STATE_LABELS: Record<string, string> = {
 /** 状态码 → 中文短句；未知码兜底为「需要处理」，绝不把英文码直接显示出来。 */
 export function syncStateLabel(state: string): string {
   return SYNC_STATE_LABELS[state] ?? '需要处理';
+}
+
+export function syncEvidenceLabel(
+  status: string | undefined,
+  checkedAt: string | null | undefined,
+): string {
+  if (status === 'success' && checkedAt) {
+    return '截至北京时间 ' + formatBusinessTime(checkedAt) + ' 已同步';
+  }
+  if (status === 'failed') {
+    return checkedAt
+      ? '本次远端核对失败 · 上次成功核对 ' + formatBusinessTime(checkedAt)
+      : '本次远端核对失败';
+  }
+  return '尚未核对远端';
 }
 
 export function conflictKindLabel(kind: string): string {

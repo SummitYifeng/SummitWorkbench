@@ -28,6 +28,7 @@ export {
   conflictKindLabel,
   conflictRevision,
   conflictSelectionLabel,
+  syncEvidenceLabel,
 } from './labels';
 export type {
   ConflictDetails,

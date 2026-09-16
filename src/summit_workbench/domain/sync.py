@@ -67,6 +67,14 @@ class SyncState(StrEnum):
     ERROR = "error"
 
 
+class RemoteCheckStatus(StrEnum):
+    """本机最近一次明确核对远端的结果。"""
+
+    UNKNOWN = "unknown"
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
 class AutomationOutcome(StrEnum):
     """automation（定时 writer）入口的角色门结果。"""
 
@@ -84,6 +92,8 @@ class SyncSnapshot(BaseModel):
     workspace_id: str
     state: SyncState = SyncState.UNCONFIGURED
     last_sync_at: str | None = None
+    remote_checked_at: str | None = None
+    remote_check_status: RemoteCheckStatus = RemoteCheckStatus.UNKNOWN
     pending_commits: int = 0  # 离线/失败未推送的本地 wb 提交数
     ahead: int = 0
     behind: int = 0

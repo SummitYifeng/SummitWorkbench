@@ -342,4 +342,6 @@ def _sync_summary(workspace_id: str, *, home: Path) -> dict[str, object]:
         "state": snapshot.state.value,
         "pending_commits": snapshot.pending_commits,
         "last_sync_at": snapshot.last_sync_at,
+        "remote_checked_at": snapshot.remote_checked_at,
+        "remote_check_status": snapshot.remote_check_status.value,
     }

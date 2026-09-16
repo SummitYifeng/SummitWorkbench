@@ -38,6 +38,7 @@ from summit_workbench.repositories.workspace_manifest import (
 )
 from summit_workbench.workflows.sync_coordinator import (
     automation_gate,
+    current_snapshot,
     mutation_guard,
     push_after_commit,
     sync_workspace,
@@ -121,6 +122,8 @@ def test_sync_state_persists_and_roundtrips(tmp_path) -> None:
         workspace_id="workspace-sync",
         state=SyncState.OFFLINE_LOCAL_AHEAD,
         pending_commits=3,
+        remote_checked_at="2026-09-16T00:00:00+00:00",
+        remote_check_status="success",
     )
     save_sync_state(snapshot, home=home)
     assert sync_state_path("workspace-sync", home=home).is_file()
@@ -128,6 +131,42 @@ def test_sync_state_persists_and_roundtrips(tmp_path) -> None:
     assert loaded is not None
     assert loaded.state is SyncState.OFFLINE_LOCAL_AHEAD
     assert loaded.pending_commits == 3
+    assert loaded.remote_checked_at == "2026-09-16T00:00:00+00:00"
+    assert loaded.remote_check_status == "success"
+
+
+def test_current_snapshot_does_not_fabricate_remote_check_or_fetch(tmp_path, monkeypatch) -> None:
+    _remote, (a_root, _a), _ = _two_device_fixture(tmp_path)
+    home = tmp_path / "home"
+    sync_workspace(a_root, home=home)
+    saved = load_sync_state(load_workspace_manifest(a_root).workspace_id, home=home)
+    assert saved is not None and saved.remote_checked_at is not None
+    before = saved.remote_checked_at
+
+    def offline_fetch(self, remote: str = "origin") -> None:
+        raise GitError("连接超时 fetch 失败")
+
+    monkeypatch.setattr(GitRepo, "fetch", offline_fetch)
+    failed_state, _outcomes, _failed_snapshot = sync_workspace(a_root, home=home)
+    failed_saved = load_sync_state(saved.workspace_id, home=home)
+    assert failed_state is SyncState.OFFLINE_LOCAL_AHEAD
+    assert failed_saved is not None
+    assert failed_saved.remote_check_status == "failed"
+    assert failed_saved.remote_checked_at == before
+
+    calls = {"fetch": 0}
+
+    def forbidden_fetch(self, remote: str = "origin") -> None:
+        calls["fetch"] += 1
+        raise AssertionError("current_snapshot must not fetch")
+
+    monkeypatch.setattr(GitRepo, "fetch", forbidden_fetch)
+    snapshot = current_snapshot(a_root, home=home)
+
+    assert calls["fetch"] == 0
+    assert snapshot.remote_checked_at == before
+    assert snapshot.remote_check_status == "failed"
+    assert snapshot.last_sync_at == saved.last_sync_at
 
 
 def test_mutation_guard_and_role_gate() -> None:

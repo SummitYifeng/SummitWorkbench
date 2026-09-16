@@ -6,6 +6,8 @@ export interface SyncStatusPayload {
   state: string;
   pending_commits?: number;
   last_sync_at?: string | null;
+  remote_checked_at?: string | null;
+  remote_check_status?: 'unknown' | 'success' | 'failed' | string;
   ahead?: number;
   behind?: number;
   branch?: string | null;

@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.domain.sync import (
     AutomationOutcome,
+    RemoteCheckStatus,
     SyncSnapshot,
     SyncState,
     classify_repo_error,
@@ -111,12 +112,16 @@ def _snapshot(
     branch: str | None = None,
     remote_host: str | None = None,
     last_sync_at: str | None = None,
+    remote_checked_at: str | None = None,
+    remote_check_status: RemoteCheckStatus = RemoteCheckStatus.UNKNOWN,
     repo_states: list[str] | None = None,
 ) -> SyncSnapshot:
     return SyncSnapshot(
         workspace_id=workspace_id,
         state=state,
-        last_sync_at=_now() if state is SyncState.READY else last_sync_at,
+        last_sync_at=last_sync_at,
+        remote_checked_at=remote_checked_at,
+        remote_check_status=remote_check_status,
         pending_commits=pending,
         ahead=ahead,
         behind=behind,
@@ -312,11 +317,20 @@ def sync_workspace(
     except GitError:
         pass
     last_sync_at: str | None
+    remote_checked_at: str | None
     if combined is SyncState.READY:
         pending = 0
         last_sync_at = _now()
+        remote_checked_at = last_sync_at
+        remote_check_status = RemoteCheckStatus.SUCCESS
     else:
         last_sync_at = previous.last_sync_at if previous is not None else None
+        remote_checked_at = previous.remote_checked_at if previous is not None else None
+        remote_check_status = (
+            RemoteCheckStatus.UNKNOWN
+            if combined is SyncState.UNCONFIGURED
+            else RemoteCheckStatus.FAILED
+        )
     snapshot = _snapshot(
         workspace_id,
         state=combined,
@@ -326,6 +340,8 @@ def sync_workspace(
         behind=behind,
         branch=branch,
         remote_host=remote_host,
+        remote_checked_at=remote_checked_at,
+        remote_check_status=remote_check_status,
         repo_states=[f"{name}:{state.value}" for name, state in outcomes],
         detail=describe_repo_reasons(reasons),
     )
@@ -378,13 +394,25 @@ def push_after_commit(
                 username=username,
             ),
             last_sync_at=previous.last_sync_at if previous is not None else None,
+            remote_checked_at=previous.remote_checked_at if previous is not None else None,
+            remote_check_status=previous.remote_check_status
+            if previous is not None
+            else RemoteCheckStatus.UNKNOWN,
         )
         return state, snapshot
     push_reason: str | None = None
     try:
         repo.push()
         state = SyncState.READY
-        snapshot = _snapshot(ws_id, state=state, pending=0, last_sync_at=_now())
+        checked_at = _now()
+        snapshot = _snapshot(
+            ws_id,
+            state=state,
+            pending=0,
+            last_sync_at=checked_at,
+            remote_checked_at=checked_at,
+            remote_check_status=RemoteCheckStatus.SUCCESS,
+        )
     except GitAuthError:
         push_reason = "auth-rejected"
         state = SyncState.AUTH_REQUIRED
@@ -402,6 +430,8 @@ def push_after_commit(
             ),
             detail="凭据需要重新配置（auth-rejected）",
             last_sync_at=previous.last_sync_at if previous is not None else None,
+            remote_checked_at=previous.remote_checked_at if previous is not None else None,
+            remote_check_status=RemoteCheckStatus.FAILED,
         )
     except GitNonFastForward:
         push_reason = "non-fast-forward"
@@ -420,6 +450,8 @@ def push_after_commit(
             ),
             detail="远端分叉，本地提交已保留（non-fast-forward）",
             last_sync_at=previous.last_sync_at if previous is not None else None,
+            remote_checked_at=previous.remote_checked_at if previous is not None else None,
+            remote_check_status=RemoteCheckStatus.FAILED,
         )
     except GitError as exc:
         if is_offline_error(exc):
@@ -439,6 +471,8 @@ def push_after_commit(
                 ),
                 detail="离线，本地提交已保留（offline）",
                 last_sync_at=previous.last_sync_at if previous is not None else None,
+                remote_checked_at=previous.remote_checked_at if previous is not None else None,
+                remote_check_status=RemoteCheckStatus.FAILED,
             )
         else:
             push_reason = repo_error_reason(exc)
@@ -459,6 +493,8 @@ def push_after_commit(
                 # 主机名或路径）写进持久化状态与界面。
                 detail=repo_reason_detail(repo_error_reason(exc)),
                 last_sync_at=previous.last_sync_at if previous is not None else None,
+                remote_checked_at=previous.remote_checked_at if previous is not None else None,
+                remote_check_status=RemoteCheckStatus.FAILED,
             )
     if push_reason is not None:
         # G3：wb 提交后的中心推送失败同样落一行（push_after_commit 不经过 sync_workspace）。
@@ -548,6 +584,10 @@ def current_snapshot(
             pending=saved.pending_commits if saved is not None else 0,
             detail="vault 尚未启用 Git",
             last_sync_at=saved.last_sync_at if saved is not None else None,
+            remote_checked_at=saved.remote_checked_at if saved is not None else None,
+            remote_check_status=saved.remote_check_status
+            if saved is not None
+            else RemoteCheckStatus.UNKNOWN,
         )
     if not repo.has_remote():
         return _snapshot(
@@ -556,6 +596,10 @@ def current_snapshot(
             pending=saved.pending_commits if saved is not None else 0,
             detail="未配置 Git 远端",
             last_sync_at=saved.last_sync_at if saved is not None else None,
+            remote_checked_at=saved.remote_checked_at if saved is not None else None,
+            remote_check_status=saved.remote_check_status
+            if saved is not None
+            else RemoteCheckStatus.UNKNOWN,
         )
     try:
         reachable = True
@@ -585,6 +629,10 @@ def current_snapshot(
             behind=behind,
             branch=repo.current_branch() if reachable else None,
             remote_host=_remote_host_of(repo) if reachable else None,
+            remote_checked_at=saved.remote_checked_at if saved is not None else None,
+            remote_check_status=saved.remote_check_status
+            if saved is not None
+            else RemoteCheckStatus.UNKNOWN,
             detail="工作树存在未提交改动，已停止同步与共享写入",
         )
     state = state_from_counts(pending=pending, ahead=ahead, behind=behind, reachable=reachable)
@@ -597,6 +645,10 @@ def current_snapshot(
         behind=behind,
         branch=repo.current_branch() if reachable else None,
         remote_host=_remote_host_of(repo) if reachable else None,
+        remote_checked_at=saved.remote_checked_at if saved is not None else None,
+        remote_check_status=saved.remote_check_status
+        if saved is not None
+        else RemoteCheckStatus.UNKNOWN,
         repo_states=saved.repo_states if saved is not None else None,
     )
 
