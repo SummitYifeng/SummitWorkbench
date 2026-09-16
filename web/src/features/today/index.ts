@@ -73,7 +73,7 @@ export function mountToday(
 }
 
 export { todayHtml } from './render';
-export { completeTask, createTodayActions, openRowEditModal, runBrief } from './actions';
+export { completeTask, createTodayActions, openRowEditModal, retryImport, runBrief } from './actions';
 export { mountTodayActions } from './mount';
 export { resetTodayForWorkspace, todayUi } from './state';
 export type { ImportReceipt, TodayActions, TodayRenderOptions, TodayState } from './types';

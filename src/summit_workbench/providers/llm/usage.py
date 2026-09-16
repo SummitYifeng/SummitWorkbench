@@ -54,4 +54,5 @@ def record_from_result(
         currency=cfg.pricing.currency,
         price_input_per_mtok=cfg.pricing.input_per_mtok,
         price_output_per_mtok=cfg.pricing.output_per_mtok,
+        extra={"finish_reason": result.finish_reason or "unknown"},
     )

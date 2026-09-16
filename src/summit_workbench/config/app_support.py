@@ -75,6 +75,11 @@ def runtime_dir(workspace_id: str, home: Path | None = None) -> Path:
     return profile_dir(workspace_id, home) / "runtime"
 
 
+def meeting_import_jobs_file(workspace_id: str, home: Path | None = None) -> Path:
+    """某 workspace 的会议导入任务账本（本机运行时状态，不进 vault）。"""
+    return runtime_dir(workspace_id, home) / "meeting-import-jobs.json"
+
+
 def backups_dir(home: Path | None = None) -> Path:
     """配置/迁移/升级前备份根目录（不同步；P0-08 onboarding 用）。"""
     return app_support_dir(home) / "backups"

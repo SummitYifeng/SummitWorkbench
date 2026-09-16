@@ -119,6 +119,20 @@ def test_retry_after_header_is_honored():
     assert slept == [9.0]
 
 
+def test_completion_exposes_finish_reason():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "{}"}, "finish_reason": "length"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 4096},
+            },
+        )
+
+    result = _client(handler).complete("s", "u", max_retries=0)
+    assert result.finish_reason == "length"
+
+
 def test_api_key_not_in_error():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"error": "bad"})

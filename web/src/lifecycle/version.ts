@@ -28,7 +28,7 @@ export function validateVersionPayload(value: unknown): VersionPayload {
   ) {
     throw new Error('版本响应字段无效');
   }
-  if (payload.api_protocol < 2) throw new Error('版本响应协议不兼容');
+  if (payload.api_protocol < 3) throw new Error('版本响应协议不兼容');
   if (payload.workspace_id !== undefined && typeof payload.workspace_id !== 'string') {
     throw new Error('版本响应 workspace 作用域无效');
   }

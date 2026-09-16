@@ -175,7 +175,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<p class="settings-card-desc">简报、任务分类和智能问答都靠它。第一次使用只需粘贴 API Key，点「连接并验证」。</p>' +
       '<form id="model-settings-form" autocomplete="off"><label>DeepSeek API Key<input id="model-secret" type="password" autocomplete="new-password" placeholder="sk-…"></label>' +
       '<div class="row"><button class="primary" type="submit">连接并验证</button><button class="ghost" id="model-show-advanced" type="button">自定义模型（一般不用）</button></div>' +
-      '<div class="settings-advanced" id="model-advanced" hidden><div class="grid2"><label>模型 ID<input id="model-id" value="deepseek-v4-flash"></label>' +
+      '<div class="settings-advanced" id="model-advanced" hidden><div class="grid2"><label>模型 ID<input id="model-id" value="deepseek-flash"></label>' +
       '<label>服务地址<input id="model-base-url" value="https://api.deepseek.com/v1"></label></div><p class="hint">默认使用 DeepSeek 官方地址；只有特殊网关才需要改。</p></div></form><div id="model-result"></div></div>';
     const feishu = '<div class="card settings-card"><div class="card-head"><strong>飞书</strong>' + badge('feishu', feishuStatus, feishuReauth) + '</div>' +
       '<p class="settings-card-desc">授权后，工作台才能读日历和任务，也能把完成动作写回飞书。</p><div class="row"><button class="primary" data-action="feishu-reauth">' +
@@ -254,7 +254,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
 
 async function saveModel(view: HTMLElement, actions: SettingsActions): Promise<void> {
   const secret = view.querySelector<HTMLInputElement>('#model-secret')?.value.trim() ?? '';
-  const modelId = view.querySelector<HTMLInputElement>('#model-id')?.value.trim() || 'deepseek-v4-flash';
+  const modelId = view.querySelector<HTMLInputElement>('#model-id')?.value.trim() || 'deepseek-flash';
   const baseUrl = view.querySelector<HTMLInputElement>('#model-base-url')?.value.trim() || 'https://api.deepseek.com/v1';
   const result = view.querySelector<HTMLElement>('#model-result');
   if (!secret) { actions.toast('请先粘贴 DeepSeek API Key', 'err'); return; }

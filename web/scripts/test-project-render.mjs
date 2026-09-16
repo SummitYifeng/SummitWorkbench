@@ -66,6 +66,7 @@ export const cases = {
     next_step: '**&#xA0;先完成验收**',
   }], '2026-09-01', true),
   archivedOnly: projectsListHtml('', [base, { ...base, name: 'Archived', status: 'archived' }], '2026-09-01', true, 'archived'),
+  grouped: projectsListHtml('', [base, { ...base, name: 'New folder', registered: false, status: null }, { ...base, name: 'Archived', status: 'archived' }], '2026-09-01', true),
   detail: projectDetailHtml({
     ok: true,
     name: 'Alpha',
@@ -114,22 +115,30 @@ try {
   assert.equal(mod.cases.empty, '<div class="empty"><p>暂无项目文件夹</p></div>');
   assert.equal(
     mod.cases.activeRow,
-    '<div class="card project-row"><div class="project-row-main"><div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="Alpha" title="打开线视图">Alpha</button><span class="badge is-home">在工作台</span></div><div class="project-step"><span class="step-label">下一步</span><span class="step-text">先完成验收</span></div></div><div class="project-row-actions"><button class="ghost" data-action="open-log" data-project="Alpha" title="追加推进日志">✎ 日志</button><button class="ghost" data-action="open-artifact" data-project="Alpha" title="把 AI 产物存入本线程/项目档案">存产物</button><button class="ghost" data-action="project-archive" data-name="Alpha">归档</button></div></div>',
+    '<section class="project-group active-group"><h4>在工作台</h4><div class="project-group-grid"><div class="card project-row"><div class="project-row-main"><div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="Alpha" title="打开项目详情">Alpha</button><span class="badge is-home">在工作台</span></div></div><div class="project-row-actions"><button class="ghost" data-action="project-archive" data-name="Alpha">归档</button></div></div></div></section>',
   );
   assert.ok(mod.cases.homeCard.includes('<div class="card project">'));
   assert.ok(mod.cases.homeCard.includes('class="project-clear-state">未发现同步提醒</span>'));
   assert.ok(mod.cases.homeCard.includes('class="project-step"><span class="step-label">下一步</span>'));
   assert.ok(!mod.cases.stale14.includes('⚠'));
-  assert.match(mod.cases.stale15, /⚠ 15 天未更新/);
+  assert.doesNotMatch(mod.cases.stale15, /⚠ 15 天未更新/);
   assert.equal(
     mod.cases.missingDate,
-    '<div class="card project-row"><div class="project-row-main"><div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="Thread-no-date" title="打开线视图">Thread-no-date</button><span class="badge is-home">在工作台</span></div><div class="chips"><span class="chip">知识线程</span></div><div class="project-step"><span class="step-label">下一步</span><span class="step-text">先完成验收</span></div></div><div class="project-row-actions"><button class="ghost" data-action="open-log" data-project="Thread-no-date" title="追加推进日志">✎ 日志</button><button class="ghost" data-action="open-artifact" data-project="Thread-no-date" title="把 AI 产物存入本线程/项目档案">存产物</button><button class="ghost" data-action="project-archive" data-name="Thread-no-date">归档</button></div></div>',
+    '<section class="project-group active-group"><h4>在工作台</h4><div class="project-group-grid"><div class="card project-row"><div class="project-row-main"><div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="Thread-no-date" title="打开项目详情">Thread-no-date</button><span class="badge is-home">在工作台</span></div></div><div class="project-row-actions"><button class="ghost" data-action="project-archive" data-name="Thread-no-date">归档</button></div></div></div></section>',
   );
   assert.match(mod.cases.escaped, /data-name="A&lt;&amp;".*>显示名<\/button>/);
   assert.match(mod.cases.titleSearch, /data-name="A&lt;&amp;".*显示名/);
-  assert.match(mod.cases.markdown, /<span class="step-text"><strong> 先完成验收<\/strong><\/span>/);
+  assert.doesNotMatch(mod.cases.markdown, /下一步/);
   assert.doesNotMatch(mod.cases.archivedOnly, />Alpha</);
   assert.match(mod.cases.archivedOnly, /data-name="Archived"/);
+  assert.match(mod.cases.grouped, /在工作台/);
+  assert.match(mod.cases.grouped, /新文件夹/);
+  assert.match(mod.cases.grouped, /已归档 1/);
+  assert.match(mod.cases.grouped, /<details class="project-group archived-group"/);
+  assert.doesNotMatch(mod.cases.grouped, /data-action="open-log"/);
+  assert.doesNotMatch(mod.cases.grouped, /data-action="open-artifact"/);
+  assert.match(mod.cases.grouped, /data-action="open-view" data-name="Alpha"/);
+  assert.doesNotMatch(mod.cases.grouped, /data-action="open-view" data-name="New folder"/);
   assert.match(mod.cases.detail, /data-action="project-detail-back"/);
   assert.match(mod.cases.detail, /返回今日/);
   assert.match(mod.cases.detail, /显示名/);

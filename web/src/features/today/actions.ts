@@ -7,6 +7,45 @@ import type { ImportReceipt, TodayActions } from './types';
 /** 「今日」页写回动作（原 legacy-main 逐条搬迁，Step 8d）。 */
 
 export function createTodayActions(view: HTMLElement): TodayActions {
+  const applyJob = (job: { job_id: string; file_name: string; bytes?: number; status: string; stage: string; error?: string | null; result?: { message?: string; candidates?: number } | null }): void => {
+    const index = todayUi.importResults.findIndex((item) => item.jobId === job.job_id);
+    const status: ImportReceipt['status'] = job.status === 'succeeded'
+      ? 'success' : job.status === 'partial' ? 'partial' : job.status === 'failed' ? 'error' : 'processing';
+    const message = job.error || job.result?.message || ({
+      uploaded: '已上传，等待归档', archived: '已归档，等待结构化', structuring: '正在结构化…',
+      candidates: '正在生成候选…', completed: '已完成',
+    } as Record<string, string>)[job.stage] || '排队中…';
+    const receipt: ImportReceipt = { jobId: job.job_id, fileName: job.file_name, bytes: job.bytes ?? 0, status, message };
+    if (index >= 0) todayUi.importResults[index] = receipt;
+    else todayUi.importResults.push(receipt);
+  };
+  const loadRecentImports = async (): Promise<void> => {
+    try {
+      const response = await api<{ ok: boolean; jobs?: any[] }>('/api/meetings/imports');
+      if (!response.ok || !response.jobs) return;
+      for (const job of response.jobs) applyJob(job);
+      renderToday(view);
+    } catch { /* 状态读取失败不应阻塞今日页 */ }
+  };
+  void loadRecentImports();
+  const pollJob = async (jobId: string): Promise<void> => {
+    const started = Date.now();
+    while (true) {
+      try {
+        const job = await api<any>('/api/meetings/imports/' + encodeURIComponent(jobId));
+        if (!job.ok) throw new Error(job.message || '任务读取失败');
+        applyJob(job);
+        renderToday(view);
+        if (['succeeded', 'partial', 'failed'].includes(job.status)) return;
+      } catch (err) {
+        const index = todayUi.importResults.findIndex((item) => item.jobId === jobId);
+        if (index >= 0) todayUi.importResults[index] = { ...todayUi.importResults[index], status: 'error', message: String(err) };
+        return;
+      }
+      const delay = Date.now() - started < 30_000 ? 2_000 : 5_000;
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+    }
+  };
   return {
     capture: async (text) => {
       if (todayUi.capturing) return { ok: false };
@@ -64,7 +103,8 @@ export function createTodayActions(view: HTMLElement): TodayActions {
         try {
           const result = await mutation(() => api<{
             ok: boolean;
-            status?: 'success' | 'partial' | 'failed';
+            status?: string;
+            job_id?: string;
             message: string;
             details?: string[];
             estimate?: { est_cost?: number; currency?: string; crosses_soft_budget?: boolean };
@@ -72,16 +112,18 @@ export function createTodayActions(view: HTMLElement): TodayActions {
             method: 'POST', body: form,
           }));
           const status: ImportReceipt['status'] = result.status === 'partial'
-            ? 'partial' : result.status === 'failed' || !result.ok ? 'error' : 'success';
+            ? 'partial' : result.status === 'failed' || !result.ok ? 'error' : 'processing';
           todayUi.importResults[receiptIndex] = {
+            jobId: result.job_id,
             fileName: file.name,
             bytes: file.size,
             status,
-            message: result.message,
+            message: result.job_id ? '已归档，后台继续处理' : result.message,
             details: result.details,
             estimate: result.estimate,
           };
-          toast(result.message, status === 'success' ? 'ok' : status === 'partial' ? 'info' : 'err');
+          toast(result.message, status === 'processing' ? 'info' : status === 'partial' ? 'info' : 'err');
+          if (result.job_id) await pollJob(result.job_id);
         } catch (err) {
           todayUi.importResults[receiptIndex] = { fileName: file.name, bytes: file.size, status: 'error', message: String(err) };
           toast(err, 'err');
@@ -95,6 +137,22 @@ export function createTodayActions(view: HTMLElement): TodayActions {
     toggleImport: (open) => { todayUi.importOpen = open; },
     refresh: () => { void refreshState(); },
   };
+}
+
+export async function retryImport(jobId: string): Promise<void> {
+  if (!jobId) return;
+  try {
+    const result = await mutation(() => api<{ ok: boolean; message?: string }>('/api/meetings/imports/' + encodeURIComponent(jobId) + '/retry', { method: 'POST' }));
+    if (result.ok) {
+      const receipt = todayUi.importResults.find((item) => item.jobId === jobId);
+      if (receipt) {
+        receipt.status = 'processing';
+        receipt.message = '已重新排队…';
+      }
+      void refreshState();
+    }
+    toast(result.message || '已重新排队', result.ok ? 'info' : 'err');
+  } catch (err) { toast(err, 'err'); }
 }
 
 export async function runBrief(): Promise<void> {

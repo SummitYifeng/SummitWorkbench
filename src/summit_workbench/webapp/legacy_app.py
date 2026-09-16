@@ -38,6 +38,7 @@ from summit_workbench.webapp.knowledge_sources import (
 from summit_workbench.webapp.knowledge_sources import (
     _is_knowledge_source as _is_knowledge_source,
 )
+from summit_workbench.webapp.meeting_import import MeetingImportManager
 from summit_workbench.webapp.meeting_import import _run_web_import as _run_web_import
 from summit_workbench.webapp.mutation_runtime import (
     MutationRuntime,
@@ -142,6 +143,7 @@ def create_app(
         try:
             yield
         finally:
+            meeting_importer.close()
             feishu_clients.close()
 
     app = FastAPI(title="SummitWorkbench 面板", lifespan=lifespan)
@@ -155,6 +157,8 @@ def create_app(
         return str(operation_id or "unknown")
 
     runtime = MutationRuntime(ctx, operation_id=_operation_id)
+    meeting_importer = MeetingImportManager(ctx, runtime)
+    meeting_importer.start()
 
     install_exception_handlers(app, operation_id=_operation_id)
 
@@ -206,7 +210,7 @@ def create_app(
     register_thread_document_routes(dependencies, runtime=runtime)
     register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_brief_routes(dependencies, runtime=runtime)
-    register_meetings_routes(dependencies, runtime=runtime)
+    register_meetings_routes(dependencies, runtime=runtime, importer=meeting_importer)
     register_undo_routes(dependencies, runtime=runtime)
     register_shutdown_route(dependencies)
 

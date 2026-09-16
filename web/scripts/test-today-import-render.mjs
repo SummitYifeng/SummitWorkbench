@@ -116,7 +116,8 @@ const api = (url: string, options?: any) => {
     url === '/api/capture' ? { ok: true, message: '已捕捉：合成捕捉文本' } :
     url === '/api/run/brief' ? { ok: true, message: '简报已生成' } :
     url === '/api/tasks/complete' ? { ok: false, message: '写回失败' } :
-    url === '/api/meetings/import' ? { ok: true, status: 'success', message: '导入完成：处理 1、跳过 0、失败 0' } :
+    url === '/api/meetings/import' ? { ok: true, status: 'queued', job_id: 'job-1', message: '已归档，后台继续处理' } :
+    url === '/api/meetings/imports/job-1' ? { ok: true, job_id: 'job-1', file_name: 'transcript.md', bytes: 10, status: 'succeeded', stage: 'completed', result: { message: '导入完成' } } :
     { ok: true, message: '任务已更新' };
   if (gate) { const pending = gate; gate = null; return pending.promise; }
   return Promise.resolve(payload);

@@ -49,22 +49,29 @@ redirect_uri = "http://localhost:8765/callback"
 #   wb feishu smoke                 # 刷新 token 并调 user_info，验证链路
 
 # ── 云端模型（M0-6）──────────────────────────────────────────────────────────
-# 五类能力 meeting/qa/review/ranking/capture 分别配置；首版可只写 [models.shared] 共用。
+# 五类能力 meeting/qa/review/ranking/capture 分别配置；未单独配置的能力回退 shared。
 # capture 用于快速捕捉的「承诺/想法」分类（Web 工作台），可指向更便宜的模型。
 # 只放非敏感项；api key 进 Keychain（见下）。base_url 填 API 根，代码会拼 /chat/completions。
 [models.shared]
-model_id = "deepseek-chat"              # 你的模型 ID（如 DeepSeek V4 Flash 的实际 ID）
+model_id = "deepseek-chat"              # 快速能力的模型 ID
 base_url = "https://api.deepseek.com/v1"
 credential_account = "shared"           # 对应 Keychain 里 api key 的 account
 timeout_seconds = 60
 max_output_tokens = 4096
-context_window_tokens = 65536         # 所用模型的上下文窗口
+context_window_tokens = 65536         # 快速能力的上下文窗口
 context_safety_ratio = 0.85           # 输入+预留输出达到窗口 85% 时启用分段
 
 [models.shared.pricing]                 # 单价用于费用估算（每百万 token），按你的实际计费填
 currency = "CNY"
 input_per_mtok = 0.0
 output_per_mtok = 0.0
+
+# 会议专用预算：长逐字稿使用官方 deepseek-flash 能力与更高上限；不会改变快速能力。
+[models.meeting]
+model_id = "deepseek-flash"
+timeout_seconds = 300
+max_output_tokens = 8192
+context_window_tokens = 1000000
 
 # 需要某能力用不同模型时，加对应表覆盖 shared，例如：
 # [models.ranking]

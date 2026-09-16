@@ -133,21 +133,19 @@ export function projectsHtml(projects: ProjectState[], today: string): string {
   );
 }
 
-function projectRow(p: ProjectState, today: string): string {
-  const chipsHtml = projectChipsHtml(projectChips(p, today));
-  const step = projectNextStepHtml(p.next_step);
+function projectRow(p: ProjectState): string {
   const action = isOnHome(p)
     ? '<button class="ghost" data-action="project-archive" data-name="' + esc(p.name) + '">归档</button>'
     : '<button class="ghost" data-action="project-activate" data-name="' + esc(p.name) + '">加入工作台</button>';
-  const quick = p.registered ? projectQuickActions(p.name) : '';
+  const name = p.registered
+    ? '<button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开项目详情">' + esc(projectDisplayName(p)) + '</button>'
+    : '<span class="project-name">' + esc(projectDisplayName(p)) + '</span>';
   return (
     '<div class="card project-row">' +
     '<div class="project-row-main">' +
-    '<div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(projectDisplayName(p)) + '</button>' + projectStatusBadge(p) + '</div>' +
-    chipsHtml +
-    step +
+    '<div class="project-row-title">' + name + projectStatusBadge(p) + '</div>' +
     '</div>' +
-    '<div class="project-row-actions">' + quick + action + '</div>' +
+    '<div class="project-row-actions">' + action + '</div>' +
     '</div>'
   );
 }
@@ -208,6 +206,7 @@ export function projectsListHtml(
   loaded: boolean,
   filter: ProjectListFilter = 'all',
 ): string {
+  void today;
   if (!loaded) return '<div class="loading">加载中…</div>';
   const q = query.trim().toLowerCase();
   const matchesFilter = (p: ProjectState): boolean =>
@@ -233,7 +232,17 @@ export function projectsListHtml(
       : '';
     return '<div class="empty"><p>' + reason + '</p>' + retry + '</div>';
   }
-  const rank = (p: ProjectState): number => (isOnHome(p) ? 0 : isNewProject(p) ? 1 : 2);
-  const sorted = [...matched].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-  return sorted.map((p) => projectRow(p, today)).join('');
+  const sortByName = (items: ProjectState[]): ProjectState[] =>
+    [...items].sort((a, b) => projectDisplayName(a).localeCompare(projectDisplayName(b)));
+  const active = sortByName(matched.filter(isOnHome));
+  const fresh = sortByName(matched.filter(isNewProject));
+  const archived = sortByName(matched.filter((p) => p.status === 'archived'));
+  const group = (label: string, items: ProjectState[], className = '') => items.length
+    ? '<section class="project-group ' + className + '"><h4>' + esc(label) + '</h4><div class="project-group-grid">' + items.map(projectRow).join('') + '</div></section>'
+    : '';
+  const archivedOpen = q.length > 0 || filter === 'archived';
+  const archivedHtml = archived.length
+    ? '<details class="project-group archived-group"' + (archivedOpen ? ' open' : '') + '><summary><span>已归档 ' + archived.length + '</span><span class="hint">点击展开</span></summary><div class="project-group-grid">' + archived.map(projectRow).join('') + '</div></details>'
+    : '';
+  return group('在工作台', active, 'active-group') + group('新文件夹', fresh, 'new-group') + archivedHtml;
 }

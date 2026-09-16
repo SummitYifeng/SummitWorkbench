@@ -155,21 +155,14 @@ def test_oversized_fields_and_batches_use_422_envelope(tmp_path: Path) -> None:
     assert batch.json()["code"] == "validation_error"
 
 
-def test_upload_reads_in_chunks_and_rejects_after_10_mib(monkeypatch, tmp_path: Path) -> None:
-    seen: dict[str, str] = {}
-
-    def fake_import(_ctx: object, path: Path) -> dict[str, object]:
-        seen["path"] = path.name
-        return {"ok": True, "path": path.name}
-
-    monkeypatch.setattr("summit_workbench.webapp.app._run_web_import", fake_import)
+def test_upload_reads_in_chunks_and_rejects_after_10_mib(tmp_path: Path) -> None:
     client = _client(tmp_path)
     exact = client.post(
         "/api/meetings/import",
         files={"file": ("../meeting.md", io.BytesIO(b"x" * (10 * 1024 * 1024)), "text/markdown")},
     )
-    assert exact.status_code == 200
-    assert seen["path"] == "meeting.md"
+    assert exact.status_code == 202
+    assert exact.json()["job_id"]
 
     oversized = client.post(
         "/api/meetings/import",
