@@ -13,6 +13,7 @@ final class LifecycleCoordinator {
     private var currentClientServerInstance: String?
     private var startInFlight = false
     private var recoveryAttempts = 0
+    private var terminationStarted = false
 
     func start(reason: String) {
         guard !startInFlight else {
@@ -26,6 +27,9 @@ final class LifecycleCoordinator {
                 configuration = config
                 let log = StructuredLogger(appBuild: config.manifest.frontendBuild)
                 logger = log
+                if let unfinished = UnfinishedOperationRecord.load() {
+                    log.log("unfinished_operation_detected", fields: ["kind": unfinished.kind])
+                }
                 automationService = AutomationServiceManager(logger: log)
                 updateCoordinator = UpdateCoordinator(
                     logger: log,
@@ -57,14 +61,14 @@ final class LifecycleCoordinator {
                               userInfo: [NSLocalizedDescriptionKey: "生命周期组件初始化失败"])
             }
             window.showStatus("正在启动 SummitWorkbench…")
-            service.ensureReady { [weak self] identity in
-                self?.startInFlight = false
-                guard let self, let identity else {
+                service.ensureReady { [weak self] identity in
+                    self?.startInFlight = false
+                    guard let self, let identity else {
                     self?.presentFailure()
                     return
                 }
-                self.loadReadyService(identity)
-            }
+                    self.loadReadyService(identity)
+                }
         } catch {
             startInFlight = false
             logger?.log("manifest_invalid", level: "error", fields: ["message": error.localizedDescription])
@@ -101,7 +105,21 @@ final class LifecycleCoordinator {
 
     func applicationTerminating() {
         logger?.log("app_terminated")
-        supervisor?.shutdownForApplicationTermination()
+        if !terminationStarted { supervisor?.shutdownForApplicationTermination() }
+    }
+
+    func applicationShouldTerminate() {
+        guard !terminationStarted else { return }
+        terminationStarted = true
+        logger?.log("app_termination_started")
+        panel?.showStatus("正在退出…")
+        supervisor?.stop { [weak self] in
+            self?.panel?.close()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        if supervisor == nil {
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
     }
 
     private func loadReadyService(_ identity: ServiceIdentity) {
@@ -135,10 +153,7 @@ final class LifecycleCoordinator {
         case .quit:
             logger?.log("user_quit_requested")
             panel?.showStatus("正在退出…")
-            supervisor?.stop { [weak self] in
-                self?.panel?.close()
-                NSApp.terminate(nil)
-            }
+            NSApp.terminate(nil)
         case .restartService:
             guard let supervisor else { return }
             startInFlight = true

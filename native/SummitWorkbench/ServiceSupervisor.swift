@@ -15,6 +15,9 @@ final class ServiceSupervisor {
     private var failures: [Date] = []
     private var restartWork: DispatchWorkItem?
     private var launchGeneration = UUID()
+    private var stopInFlight = false
+    private var stopCompletions: [() -> Void] = []
+    private var unfinishedOperationID: String?
     var onStateChange: ((SupervisorState) -> Void)?
     /// 服务在**无进行中 ensureReady 周期**的后台恢复中到达 ready 时回调（如崩溃重启、
     /// 服务实例变化），供生命周期层重新装载面板。初始启动由 ensureReady 的 completion
@@ -56,37 +59,49 @@ final class ServiceSupervisor {
     }
 
     func stop(completion: (() -> Void)? = nil) {
+        if let completion { stopCompletions.append(completion) }
+        guard !stopInFlight else { return }
+        stopInFlight = true
         desiredStop = true
         restartWork?.cancel()
+        let executorID = launchGeneration.uuidString
         launchGeneration = UUID()
         setState(.stopping)
         logger.log("user_quit_requested")
         guard let process else {
-            RuntimeRecord.remove(forPID: -1)
-            setState(.stopped)
-            completion?()
+            finishStop(processPID: nil)
             return
         }
         guard process.isRunning else {
-            RuntimeRecord.remove(forPID: process.processIdentifier)
-            setState(.stopped)
-            completion?()
+            finishStop(processPID: process.processIdentifier)
             return
         }
         let processPID = process.processIdentifier
-        process.terminationHandler = { [weak self] _ in
-            DispatchQueue.main.async {
-                RuntimeRecord.remove(forPID: processPID)
-                self?.setState(.stopped)
-                completion?()
+        let operationID = "service-termination-\(processPID)"
+        unfinishedOperationID = operationID
+        UnfinishedOperationRecord(
+            operationID: operationID,
+            executorID: executorID,
+            kind: "service",
+            startedAt: Date()
+        ).save()
+        BoundedProcessTerminator.stop(
+            process,
+            owns: { [weak self, weak process] in
+                guard let self, let process else { return false }
+                return self.ownsCurrentProcess(process)
             }
-        }
-        process.terminate()
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.0) { [weak process] in
-            guard let process, process.isRunning else { return }
-            guard let record = RuntimeRecord.load(forPID: process.processIdentifier),
-                  record.owns(process) else { return }
-            kill(process.processIdentifier, SIGTERM)
+        ) { [weak self, weak process] in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if process?.isRunning == false {
+                    RuntimeRecord.remove(forPID: processPID)
+                } else {
+                    self.logger.log("service_shutdown_unconfirmed", level: "error",
+                                    fields: ["pid": String(processPID)])
+                }
+                self.finishStop(processPID: processPID)
+            }
         }
     }
 
@@ -106,14 +121,36 @@ final class ServiceSupervisor {
     /// App 进程终止时的同步收尾：取消重启、终止自管服务并清理 runtime record。
     /// 不做等待（进程即将退出），与用户主动 quit 的异步 stop() 语义区分。
     func shutdownForApplicationTermination() {
-        desiredStop = true
-        restartWork?.cancel()
         logger.log("service_shutdown_for_termination")
-        if let process, process.isRunning {
-            process.terminationHandler = nil
-            process.terminate()
+        stop()
+    }
+
+    private func ownsCurrentProcess(_ process: Process) -> Bool {
+        if let record = RuntimeRecord.load(forPID: process.processIdentifier) {
+            return record.owns(process) && record.ownsServer(at: configuration.wbBinary)
         }
-        if let process { RuntimeRecord.remove(forPID: process.processIdentifier) }
+        // If the child removed its runtime record during shutdown, the exact
+        // Process handle created by this supervisor remains the trusted
+        // identity.  Never fall back to PID-only or process-name matching.
+        let expected = URL(fileURLWithPath: configuration.wbBinary).standardizedFileURL.path
+        let actual = process.executableURL?.standardizedFileURL.path
+        return process.isRunning && actual == expected
+    }
+
+    private func finishStop(processPID: Int32?) {
+        if let processPID, process?.isRunning == false {
+            RuntimeRecord.remove(forPID: processPID)
+            process = nil
+            if let unfinishedOperationID {
+                UnfinishedOperationRecord.remove(ifOperationID: unfinishedOperationID)
+                self.unfinishedOperationID = nil
+            }
+        }
+        setState(.stopped)
+        stopInFlight = false
+        let completions = stopCompletions
+        stopCompletions.removeAll()
+        completions.forEach { $0() }
     }
 
     private func accept(_ identity: ServiceIdentity) {

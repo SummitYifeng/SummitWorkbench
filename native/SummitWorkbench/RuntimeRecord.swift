@@ -111,3 +111,44 @@ struct RuntimeRecord: Codable {
         return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
     }
 }
+
+/// Minimal local evidence left when App shutdown cannot confirm its child
+/// stopped.  It is deliberately outside the synced vault and contains no
+/// business body, credentials, or PID ownership claim.
+struct UnfinishedOperationRecord: Codable {
+    let operationID: String
+    let executorID: String
+    let kind: String
+    let startedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case operationID = "operation_id", executorID = "executor_id", kind, startedAt = "started_at"
+    }
+
+    static var url: URL {
+        RuntimeRecord.url.deletingLastPathComponent()
+            .appendingPathComponent("unfinished-operation.json")
+    }
+
+    static func load() -> UnfinishedOperationRecord? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(UnfinishedOperationRecord.self, from: data)
+    }
+
+    func save() {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(self) else { return }
+        let directory = Self.url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try? data.write(to: Self.url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.url.path)
+    }
+
+    static func remove(ifOperationID operationID: String) {
+        guard let current = load(), current.operationID == operationID else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
