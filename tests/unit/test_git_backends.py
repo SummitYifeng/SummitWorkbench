@@ -398,6 +398,21 @@ def test_dulwich_clean_status_honors_blob_ids_and_ignored_files(tmp_path: Path) 
     assert repo.is_dirty()
 
 
+def test_dulwich_clean_status_ignores_workspace_lock_file(tmp_path: Path) -> None:
+    """工作台内部锁不是用户改动，不应把共享 vault 误判为 dirty-protected。"""
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    repo = DulwichGitBackend(tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / "tracked.md").write_text("stable\n", encoding="utf-8")
+    repo.add(["tracked.md"])
+    repo.commit("wb: clean baseline", author=ID)
+
+    (tmp_path / "repo" / ".wb.lock").touch()
+
+    assert not repo.is_dirty()
+
+
 def test_backends_produce_equal_semantics(tmp_path: Path) -> None:
     """两种后端跑同一场景：提交主题列表与触碰文件完全一致。"""
     results: dict[str, tuple[list[str], list[str]]] = {}

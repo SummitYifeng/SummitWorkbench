@@ -112,6 +112,15 @@ def _credential_check(name: str, ref: CredentialRef) -> Check:
     return Check(name, CheckStatus.OK, f"Keychain 可解析（{ref}）")
 
 
+def _feishu_app_secret_check(cfg: FeishuConfig) -> Check:
+    """验证飞书 app_secret 的实际解析路径（Keychain 或安装包内置凭据）。"""
+    try:
+        FeishuSession(cfg)._app_secret()
+    except (CredentialError, FeishuError) as exc:
+        return Check("飞书 app_secret", CheckStatus.FAIL, f"凭据无法解析：{exc}")
+    return Check("飞书 app_secret", CheckStatus.OK, "Keychain 或安装包内置凭据可解析")
+
+
 def _feishu_checks(
     config_file: Path, *, online: bool, workspace_id: str | None = None
 ) -> list[Check]:
@@ -122,7 +131,7 @@ def _feishu_checks(
 
     checks = [
         Check("飞书配置", CheckStatus.OK, f"app_id={cfg.app_id}"),
-        _credential_check("飞书 app_secret", cfg.app_secret_ref),
+        _feishu_app_secret_check(cfg),
         _credential_check("飞书 refresh_token", cfg.refresh_token_ref),
     ]
     if online:

@@ -566,10 +566,11 @@ def current_snapshot(
     )
     if saved is not None and saved.state in {
         SyncState.DIVERGED_PROTECTED,
-        SyncState.DIRTY_PROTECTED,
         SyncState.AUTH_REQUIRED,
         SyncState.ERROR,
     }:
+        # diverged/auth/error 需要保留明确的远端或凭据结论；dirty 则必须每次
+        # 重新检查工作树，因为它可能只是上一次运行留下的内部临时文件状态。
         pending = pending_wb_commits(
             vault_dir,
             backend_kind=backend_kind,

@@ -444,6 +444,10 @@ class DulwichGitBackend:
             dirs[:] = [d for d in dirs if d not in {".git", "__pycache__"}]
             for name in files:
                 rel = os.path.relpath(os.path.join(root, name), self._path).replace(os.sep, "/")
+                # .wb.lock 是工作台跨进程锁。它可能位于历史版本使用的 vault 根，
+                # 但始终是机器内部状态，不是用户内容，不应触发 dirty-protected。
+                if rel == ".wb.lock":
+                    continue
                 if rel in index:
                     if self._blob_id(Path(root, name).read_bytes()).encode("ascii") != index[rel]:
                         changed.add(rel)

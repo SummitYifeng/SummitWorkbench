@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from pydantic import SecretStr
 from typer.testing import CliRunner
 
 from summit_workbench.cli import doctor
@@ -87,3 +88,33 @@ def test_feishu_online_check_reports_reauthorize(monkeypatch):
     check = _feishu_online_check(cfg)
     assert check.status is CheckStatus.FAIL
     assert "wb feishu login" in check.detail
+
+
+def test_feishu_checks_accepts_bundled_app_secret(monkeypatch, tmp_path):
+    """打包 App Secret 可用时，doctor 不应错误报告 Keychain 缺失。"""
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(
+        '[feishu]\napp_id = "cli_test"\nredirect_uri = "http://localhost/callback"\n',
+        encoding="utf-8",
+    )
+
+    def resolve(ref):
+        if ref.account.endswith(":refresh_token"):
+            return SecretStr("refresh-token")
+        raise CredentialError("item could not be found")
+
+    class BundledSession:
+        def __init__(self, _cfg):
+            pass
+
+        def _app_secret(self):
+            return SecretStr("bundled-secret")
+
+    monkeypatch.setattr(doctor, "resolve_credential", resolve)
+    monkeypatch.setattr(doctor, "FeishuSession", BundledSession)
+
+    checks = doctor._feishu_checks(config_file, online=False, workspace_id="workspace")
+    by_name = {check.name: check for check in checks}
+
+    assert by_name["飞书 app_secret"].status is CheckStatus.OK
+    assert "内置" in by_name["飞书 app_secret"].detail

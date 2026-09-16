@@ -172,6 +172,24 @@ def test_current_snapshot_does_not_fabricate_remote_check_or_fetch(tmp_path, mon
     assert snapshot.last_sync_at == saved.last_sync_at
 
 
+def test_current_snapshot_rechecks_stale_dirty_protection(tmp_path) -> None:
+    """历史 dirty 状态不能永久粘滞；工作树已恢复干净时应重新计算。"""
+    from summit_workbench.domain.sync import SyncSnapshot
+
+    _remote, (a_root, _a), _ = _two_device_fixture(tmp_path)
+    manifest = load_workspace_manifest(a_root)
+    assert manifest is not None
+    home = tmp_path / "home"
+    save_sync_state(
+        SyncSnapshot(workspace_id=manifest.workspace_id, state=SyncState.DIRTY_PROTECTED),
+        home=home,
+    )
+
+    snapshot = current_snapshot(a_root, home=home)
+
+    assert snapshot.state is not SyncState.DIRTY_PROTECTED
+
+
 def test_mutation_guard_and_role_gate() -> None:
     from summit_workbench.domain.sync import SyncSnapshot
 
