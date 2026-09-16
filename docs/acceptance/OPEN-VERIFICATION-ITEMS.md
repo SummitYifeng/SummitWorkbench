@@ -1,8 +1,12 @@
 # 未验证清单（单一真源）
 
-## 2026-09-16 当前源码候选说明
+## 2026-09-16 main 当前交付说明
 
-本轮可靠性候选位于分支 codex/reliability-luna，静态 bundle 的源码身份为 84db2d3，bundle 提交为 dfe6655。源码质量门已取得 1297 passed / 1 skipped、mypy 372 文件、前端完整契约测试、生产构建和三个 native 脚本的证据；唯一跳过项是未设置 WB_PACKAGED_APP 的打包 smoke test。当前 /Applications 中仍是历史安装包，因此以下真机/候选包项目不能由本轮源码测试代替。
+本轮可靠性优化以及“今日”页精简与全局 Markdown 展示修复已合并到 `main` 提交
+`8fe8341`。静态 bundle 的源码身份为 `v2026.09.16-6abd287-5236bd8a`。源码质量门已取得
+1300 passed / 1 skipped、mypy 372 文件、前端完整契约测试和生产构建的证据；唯一跳过项
+仍是未设置 `WB_PACKAGED_APP` 的打包 smoke test。本机 `/Applications` 将替换为从
+`main` 当前提交构建的最新 App，替换完成后再补录包身份与安装验证。
 
 > **这是唯一权威的「还没验证什么」清单。** 其他文档（README、验收记录、交接档案、ADR）只描述
 > 各自范围内的结论并链接到这里，不再各自维护一份可能漂移的副本。
@@ -17,9 +21,9 @@
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
 - 最近更新：2026-09-16
-- 当前源码候选基线：`0.4.9`，分支 `codex/reliability-luna`；静态 bundle
-  `frontend_build = v2026.09.16-84db2d3-d7ba2132`，bundle 提交 `dfe6655`。
-  `/Applications/SummitWorkbench.app` 仍是历史安装包，不因本轮源码测试自动更新。
+- 当前源码基线：`0.4.9`，分支 `main`，提交 `8fe8341`；静态 bundle 的源码身份为
+  `v2026.09.16-6abd287-5236bd8a`。
+- `/Applications/SummitWorkbench.app` 的包身份与打包 smoke test 将在本轮本机替换后更新。
   下面各轮条目里出现的 `v0.4.7` / build 21 之类是**各自当时**的事实，不回改。
 - **当前开放项总账（2026-09-16）**——本文件各处「当前开放项」的措辞只对**各自那一轮**成立，
   容易被读成实时总数（此前就出现过「1 项（F1）」与 §J 里 D/E 两个 `⬜` 并存的矛盾）。

@@ -1,9 +1,10 @@
 # 「今日」页精简与全局 Markdown 展示验收记录
 
-状态：✅ 源码候选自动化验收通过（2026-09-16）
+状态：✅ 已合并到 `main`，源码自动化验收通过（2026-09-16）
 
-本记录对应 codex/reliability-luna worktree，基线提交为 25d6094。本轮没有从
-main 开工，也没有修改 API 返回字段、飞书数据或 vault 原文。
+本记录对应 `main` 提交 `8fe8341`，基线提交为 `25d6094`。实现先在
+`codex/reliability-luna` 上完成，再以 fast-forward 方式合并并推送；没有修改 API
+返回字段、飞书数据或 vault 原文。
 
 ## 提交顺序
 
@@ -12,7 +13,7 @@ main 开工，也没有修改 API 返回字段、飞书数据或 vault 原文。
 3. 768e586 — test: pin the five-section today layout
 4. 6abd287 — refactor: simplify today into five clear sections
 5. 77ee5cc — build: refresh frontend bundle
-6. 本记录 — docs: record today-page and markdown acceptance
+6. 8fe8341 — docs: record today-page and markdown acceptance
 
 ## 自动化验收
 
@@ -21,7 +22,7 @@ main 开工，也没有修改 API 返回字段、飞书数据或 vault 原文。
 - cd web && npm run build：通过；候选前端身份为
   v2026.09.16-6abd287-5236bd8a，静态产物提交为 77ee5cc。
 - uv run ruff check .：通过。
-- uv run ruff format --check .：通过，494 files already formatted。
+- uv run ruff format --check .：通过，已跟踪 Python 文件均已格式化。
 - uv run mypy：通过，372 source files。
 - uv run pytest：1300 passed，1 skipped，5 warnings。唯一跳过项为未设置
   WB_PACKAGED_APP 的打包 smoke test。
@@ -49,4 +50,4 @@ main 开工，也没有修改 API 返回字段、飞书数据或 vault 原文。
 - vault /Users/yifengstudio/Documents/Work/_vault 在检查后工作树为 clean；本轮没有
   vault 文件变更。
 
-历史 build 的验收记录和结论未改写；本文件只记录当前源码候选。
+历史 build 的验收记录和结论未改写；本文件记录当前 `main` 实现与本机 App 更新前后的验收状态。

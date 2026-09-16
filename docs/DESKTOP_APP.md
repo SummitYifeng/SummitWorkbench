@@ -1,5 +1,12 @@
 # 桌面 App（macOS）
 
+## 当前 main 交付状态（2026-09-16）
+
+当前源码已合并到 `main` 提交 `8fe8341`。本机安装包应从该提交重新构建，
+并通过 `scripts/install-macos-app.sh ... --replace-running` 替换
+`/Applications/SummitWorkbench.app`；安装后的版本、build 和前端身份以 App 内
+`/api/version` 与 `Contents/Resources/web/static/build-meta.json` 为准。
+
 当前生产路径是自包含的 Swift/AppKit + WebKit 壳：App 先验证 `/api/version`，服务 ready 后才创建页面导航，随后由唯一的 WKWebView 加载带 build identity 的 canonical URL。Chrome 已不再是运行或构建依赖。
 
 v0.4.4 build 9 的验证身份为 `v2026.09.10-df4ba1f-1cb9c2eb`。App 使用动态 loopback 端口，
