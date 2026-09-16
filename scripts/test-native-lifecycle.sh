@@ -19,3 +19,11 @@ xcrun swiftc -O -target arm64-apple-macosx13.0 \
   -o "$TEST_ROOT/RuntimeRecoveryRecordTests"
 
 HOME="$TEST_ROOT/home" "$TEST_ROOT/RuntimeRecoveryRecordTests"
+
+xcrun swiftc -O -target arm64-apple-macosx13.0 \
+  "$REPO_ROOT/native/SummitWorkbench/ProcessTermination.swift" \
+  "$REPO_ROOT/native/SummitWorkbench/AutomationTaskRunner.swift" \
+  "$REPO_ROOT/native/tests/AutomationTaskRunnerTests.swift" \
+  -o "$TEST_ROOT/AutomationTaskRunnerTests"
+
+"$TEST_ROOT/AutomationTaskRunnerTests"

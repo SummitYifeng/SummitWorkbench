@@ -20,8 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from summit_workbench.config.locking import workspace_lock
-from summit_workbench.domain.time import business_date
 from summit_workbench.domain.review import UNRESOLVED
+from summit_workbench.domain.time import business_date
 from summit_workbench.domain.vault import NOTE_TYPES, PROJECT_ID_RE
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.note_status import update_note_status

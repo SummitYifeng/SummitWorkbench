@@ -1,5 +1,6 @@
 import { workspaceStore } from '../core/workspace-store';
 import { createApiClient } from './client';
+import type { ApiRequestOptions } from './client';
 
 /** 工作区在请求往返期间被切换（换代）时抛出，调用方据此丢弃过期响应。 */
 export class StaleWorkspaceResponseError extends Error {
@@ -40,13 +41,13 @@ const apiClient = createApiClient({
 });
 
 /** 统一的 JSON 请求入口：带工作区换代与请求序号头，并在换代后丢弃结果。 */
-export async function api<T>(url: string, init?: RequestInit): Promise<T> {
+export async function api<T>(url: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T> {
   const generation = workspaceStore.generation;
   const requestSequence = ++apiRequestSequence;
   const headers = new Headers(init?.headers);
   headers.set('X-WB-Workspace-Generation', String(generation));
   headers.set('X-WB-Request-Sequence', String(requestSequence));
-  const result = await apiClient.request<T>(url, { ...init, headers });
+  const result = await apiClient.request<T>(url, { ...init, headers }, options);
   if (generation !== workspaceStore.generation) throw new StaleWorkspaceResponseError();
   return result;
 }

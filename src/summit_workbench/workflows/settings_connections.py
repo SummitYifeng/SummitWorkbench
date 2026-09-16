@@ -108,6 +108,7 @@ __all__ = [
     "complete_feishu_authorization",
     "ensure_feishu_credentials",
     "feishu_config",
+    "FeishuSession",
     "model_config",
     "verify_model",
 ]

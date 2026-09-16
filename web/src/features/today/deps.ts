@@ -5,7 +5,7 @@
  * 逐字不变；`setTodayDeps()` 在 `renderShell()` 之后重新绑定。
  */
 export interface TodayDeps {
-  api: <T>(url: string, init?: RequestInit) => Promise<T>;
+  api: <T>(url: string, init?: RequestInit, options?: ApiRequestOptions) => Promise<T>;
   mutation: <T>(request: () => Promise<T>) => Promise<T>;
   toast: (msg: unknown, kind?: 'ok' | 'err' | 'info') => void;
   refreshState: () => Promise<boolean>;
@@ -36,3 +36,4 @@ export function setTodayDeps(deps: TodayDeps): void {
 export function getTodayDeps(): TodayDeps | null {
   return todayDeps;
 }
+import type { ApiRequestOptions } from '../../api/client';

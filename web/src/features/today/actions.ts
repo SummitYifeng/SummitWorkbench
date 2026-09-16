@@ -100,7 +100,9 @@ export function createTodayActions(view: HTMLElement): TodayActions {
 export async function runBrief(): Promise<void> {
   toast('正在生成今日简报…', 'info');
   try {
-    const r = await mutation(() => api<{ ok: boolean; message: string }>('/api/run/brief', { method: 'POST' }));
+    const r = await mutation(() => api<{ ok: boolean; message: string }>(
+      '/api/run/brief', { method: 'POST' }, { timeoutMs: 300_000 },
+    ));
     toast(r.message, r.ok ? 'ok' : 'err');
   } catch (err) {
     toast(err, 'err');

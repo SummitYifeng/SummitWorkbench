@@ -131,6 +131,17 @@ def test_keychain_failure_reasons_are_stable(
     assert excinfo.value.reason == reason
 
 
+def test_keychain_timeout_has_distinct_public_error_code() -> None:
+    from summit_workbench.webapp.routers.settings import _credential_error_code
+
+    assert _credential_error_code(CredentialError("timeout", reason="timeout")) == (
+        "credential_timeout"
+    )
+    assert _credential_error_code(CredentialError("denied", reason="denied")) == (
+        "feishu_credentials_unavailable"
+    )
+
+
 def test_authorize_url_blocks_before_redirect_when_credentials_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

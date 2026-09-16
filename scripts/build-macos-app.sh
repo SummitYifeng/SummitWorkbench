@@ -170,6 +170,8 @@ HELPER_APP="$APP/Contents/Library/LoginItems/SummitWorkbenchAutomation.app"
 mkdir -p "$HELPER_APP/Contents/MacOS"
 xcrun swiftc -O -target "$ARCH-apple-macosx13.0" \
   -parse-as-library \
+  "$REPO_ROOT/native/SummitWorkbench/ProcessTermination.swift" \
+  "$REPO_ROOT/native/SummitWorkbench/AutomationTaskRunner.swift" \
   "$REPO_ROOT/native/SummitWorkbench/AutomationHelperMain.swift" \
   -o "$HELPER_APP/Contents/MacOS/SummitWorkbenchAutomation"
 chmod +x "$HELPER_APP/Contents/MacOS/SummitWorkbenchAutomation"

@@ -29,6 +29,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from summit_workbench.config.locking import LockBusy
 from summit_workbench.config.paths import UserPathError
 from summit_workbench.domain.workspace import Compatibility
 from summit_workbench.webapp.context import WebContext
@@ -143,6 +144,17 @@ def install_exception_handlers(app: FastAPI, *, operation_id: Callable[[Request]
             content=error_payload(
                 code="sync_diverged",
                 message=str(exc),
+                operation_id=operation_id(request),
+            ),
+        )
+
+    @app.exception_handler(LockBusy)
+    async def _lock_busy_error(request: Request, _exc: LockBusy) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content=error_payload(
+                code="workspace_busy",
+                message="工作区正被另一个操作使用，请稍后重试",
                 operation_id=operation_id(request),
             ),
         )

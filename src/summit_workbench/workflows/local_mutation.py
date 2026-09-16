@@ -54,6 +54,7 @@ def run_local_mutation[T](
     backend_kind: str | None = None,
     author: CommitIdentity | None = None,
     push_after_commit: Callable[[], object] | None = None,
+    lock_timeout: float | None = 2.0,
 ) -> LocalMutationResult[T]:
     """在同一工作区临界区完成本地 mutation 与自动提交。
 
@@ -70,7 +71,10 @@ def run_local_mutation[T](
             f"workspace 处于 {sync_snapshot.state.value}，修改共享 vault 的操作已被阻止"
         )
     operation_id = str(uuid4())
-    with workspace_lock(vault_dir.parent):
+    # Web/manual mutations fail visibly after a short wait and leave the
+    # caller's draft intact; background workers can pass their existing longer
+    # policy explicitly.
+    with workspace_lock(vault_dir.parent, timeout=lock_timeout):
         # The snapshot supplied by a web request can become stale while this
         # mutation waits for the workspace lock. Re-read it inside the same
         # critical section immediately before touching the vault.

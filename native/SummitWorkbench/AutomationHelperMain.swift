@@ -34,8 +34,7 @@ struct SummitWorkbenchAutomationHelper {
             ]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
-            try? process.run()
-            process.waitUntilExit()
+            _ = AutomationTaskRunner.run(process, workerURL: worker)
         }
     }
 }

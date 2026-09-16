@@ -21,6 +21,10 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiRequestOptions {
+  timeoutMs?: number;
+}
+
 /** 从校验错误 envelope 提取第一条可执行原因（后端 details: [{loc, msg}]）。 */
 function firstValidationDetail(details: unknown): string {
   if (!Array.isArray(details) || details.length === 0) return '';
@@ -68,7 +72,7 @@ export function errorText(error: unknown): string {
 }
 
 export interface ApiClient {
-  request<T>(url: string, init?: RequestInit): Promise<T>;
+  request<T>(url: string, init?: RequestInit, options?: ApiRequestOptions): Promise<T>;
   dispose(): void;
 }
 
@@ -79,10 +83,27 @@ export function createApiClient(options: {
   const controllers = new Set<AbortController>();
   let disposed = false;
   return {
-    async request<T>(url: string, init?: RequestInit): Promise<T> {
+    async request<T>(url: string, init?: RequestInit, requestOptions: ApiRequestOptions = {}): Promise<T> {
       if (disposed) throw new ApiError('工作台请求已结束', 499, 'client_disposed');
       const controller = new AbortController();
       controllers.add(controller);
+      const callerSignal = init?.signal;
+      const timeoutMs = requestOptions.timeoutMs ?? (
+        (init?.method ?? 'GET').toUpperCase() === 'GET' ? 15_000 : 30_000
+      );
+      let timedOut = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const abortFromCaller = (): void => controller.abort();
+      if (callerSignal) {
+        if (callerSignal.aborted) controller.abort();
+        else callerSignal.addEventListener('abort', abortFromCaller, { once: true });
+      }
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
+      }
       try {
         const response = await fetch(url, { ...init, signal: controller.signal });
         if (!response.ok) {
@@ -95,9 +116,12 @@ export function createApiClient(options: {
         return await response.json() as T;
       } catch (error) {
         if (error instanceof ApiError) throw error;
+        if (timedOut) throw new ApiError('请求超时，结果尚未确认，请查看页面状态后再继续', 408, 'request_timeout');
         options.onFailure?.();
         throw error;
       } finally {
+        if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+        callerSignal?.removeEventListener('abort', abortFromCaller);
         controllers.delete(controller);
       }
     },

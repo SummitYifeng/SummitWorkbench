@@ -98,7 +98,7 @@ export async function autoSyncIfIdle(): Promise<void> {
   if (syncBusy || !status || status.state !== 'ready') return;
   syncBusy = true;
   try {
-    await api('/api/sync/run', { method: 'POST' });
+    await api('/api/sync/run', { method: 'POST' }, { timeoutMs: 300_000 });
     await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
   } catch {
     // 离线或瞬时失败：保持静默，不打扰用户；下一次 tick 会再试。
@@ -111,7 +111,9 @@ export async function retrySync(): Promise<void> {
   if (syncBusy) return;
   syncBusy = true;
   try {
-    const data = await mutation(() => api<{ ok: boolean; message?: string }>('/api/sync/run', { method: 'POST' }));
+    const data = await mutation(() => api<{ ok: boolean; message?: string }>(
+      '/api/sync/run', { method: 'POST' }, { timeoutMs: 300_000 },
+    ));
     toast(data.ok ? '同步完成' : (data.message ?? '同步失败'), data.ok ? 'ok' : 'err');
     await Promise.all([refreshSyncBanner(), getSyncDeps()?.refreshState()]);
   } catch (err) {

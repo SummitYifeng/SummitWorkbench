@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from summit_workbench.config.locking import workspace_lock
-from summit_workbench.domain.time import business_date
 from summit_workbench.domain.review import CandidateKind
+from summit_workbench.domain.time import business_date
 from summit_workbench.repositories._atomic import atomic_write_text
 
 _GLOBAL_INBOX_HEADING = "## 待处理条目"

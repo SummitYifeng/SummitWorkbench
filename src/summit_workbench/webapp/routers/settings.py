@@ -314,6 +314,10 @@ def _credential_error_message(error: CredentialError) -> str:
     }[error.reason]
 
 
+def _credential_error_code(error: CredentialError) -> str:
+    return "credential_timeout" if error.reason == "timeout" else "feishu_credentials_unavailable"
+
+
 def _workspace_connection_inputs(
     active_workspace: ActiveWorkspaceContext,
     workspace_id: str,
@@ -387,7 +391,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 dependencies,
                 request,
                 status_code=409,
-                code="feishu_credentials_unavailable",
+                code=_credential_error_code(exc),
                 message=f"飞书授权暂时不可用：{_credential_error_message(exc)}",
             )
         except Exception as exc:
@@ -624,7 +628,7 @@ def register_restricted_connection_routes(
             return JSONResponse(
                 status_code=409,
                 content=error_payload(
-                    code="feishu_credentials_unavailable",
+                    code=_credential_error_code(exc),
                     message=f"飞书授权暂时不可用：{_credential_error_message(exc)}",
                     operation_id=operation_id(request),
                 ),
