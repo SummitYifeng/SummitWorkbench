@@ -1,5 +1,5 @@
 import { api } from '../api/request';
-import { esc } from '../md';
+import { esc, inlineMd, mdToHtml } from '../md';
 import { modalBackdrop, openModal } from './shell';
 
 /**
@@ -20,6 +20,13 @@ export interface SourceReadPayload {
 
 let sourceReadSequence = 0;
 
+export function sourceReaderHtml(result: SourceReadPayload, id: string): string {
+  return '<h3>' + inlineMd(result.title ?? id) + '</h3>' +
+    '<p class="hint">来源：' + esc(result.source_id ?? id) + ' · 日期：' + esc(result.date ?? '未知') + '</p>' +
+    (result.truncated ? '<p class="hint">正文已截断，以下内容仅供核查。</p>' : '') +
+    '<div class="source-reader">' + mdToHtml(result.body ?? '') + '</div>';
+}
+
 export function invalidateSourceReads(): void {
   sourceReadSequence += 1;
 }
@@ -38,12 +45,7 @@ export async function openSource(sourceId: string): Promise<void> {
         '</p><p class="hint">请刷新审批后重试；系统不会用猜测内容替代来源。</p>');
       return;
     }
-    openModal(
-      '<h3>' + esc(result.title ?? id) + '</h3>' +
-      '<p class="hint">来源：' + esc(result.source_id ?? id) + ' · 日期：' + esc(result.date ?? '未知') + '</p>' +
-      (result.truncated ? '<p class="hint">正文已截断，以下内容仅供核查。</p>' : '') +
-      '<pre class="source-reader">' + esc(result.body) + '</pre>'
-    );
+    openModal(sourceReaderHtml(result, id));
   } catch (err) {
     const backdrop = modalBackdrop();
     if (requestId !== sourceReadSequence || backdrop?.hidden) return;

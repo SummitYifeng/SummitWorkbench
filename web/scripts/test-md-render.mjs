@@ -12,7 +12,7 @@ const webRoot = resolve(scriptPath, '..', '..');
 const srcDir = join(webRoot, 'src');
 const tmpDir = join(webRoot, '.md-render-test-tmp');
 const entry = `
-import { esc, inlineMd, mdToHtml } from './md';
+import { esc, inlineMd, mdToHtml, normalizeDisplayMarkdown } from './md';
 
 export const cases = {
   // 真实形状：一个段落被硬换行拆成三行——必须并成**一个** <p>。
@@ -53,10 +53,14 @@ export const cases = {
   ].join('\\n')),
   escaped: esc('A<&"\\''),
   nbspBold: inlineMd('**&#xA0;在 Overleaf 上做文字修改**'),
-  dirtyBold: inlineMd('\\*\\***2025 两场活动的一手复盘\\*\\***（待补：等材料到位）'),
+  dirtyBold: inlineMd('\\\\*\\\\***2025 两场活动的一手复盘\\\\*\\\\***（待补：等材料到位）'),
+  dirtyNormalized: normalizeDisplayMarkdown('\\\\*\\\\***2025 两场活动的一手复盘\\\\*\\\\***（待补：等材料到位）'),
   nbspVariants: [inlineMd('&nbsp;A'), inlineMd('&#160;B'), inlineMd('&#xA0;C'), inlineMd('&#x0000A0;D')],
   fencedDirty: mdToHtml(['\`\`\`md', '\\\\*\\\\**不应规范化\\\\*\\\\**', '\`\`\`'].join('\\n')),
-  loneEscapedStar: inlineMd('单独的 \\* 保持原样'),
+  loneEscapedStar: inlineMd('单独的 \\\\* 保持原样'),
+  normalized: normalizeDisplayMarkdown('**&#xA0;标题**'),
+  normalizedTwice: normalizeDisplayMarkdown(normalizeDisplayMarkdown('**&#xA0;标题**')),
+  entities: inlineMd('&lt; &gt; &amp;'),
 };
 `;
 mkdirSync(tmpDir, { recursive: true });
@@ -134,8 +138,11 @@ try {
   assert.doesNotMatch(c.nbspBold, /&#xA0;|\*\*/i);
   assert.equal(c.dirtyBold, '<strong>2025 两场活动的一手复盘<\/strong>（待补：等材料到位）');
   assert.deepEqual(c.nbspVariants, [' A', ' B', ' C', ' D']);
-  assert.match(c.fencedDirty, /\*\*不应规范化\*\*/);
+  assert.match(c.fencedDirty, /\\\*\\\*\*不应规范化\\\*\\\*\*/);
   assert.equal(c.loneEscapedStar, '单独的 \\* 保持原样');
+  assert.equal(c.normalized, '** 标题**');
+  assert.equal(c.normalizedTwice, c.normalized);
+  assert.equal(c.entities, '&amp;lt; &amp;gt; &amp;amp;');
 
   console.log('Markdown subset render tests passed');
 } finally {

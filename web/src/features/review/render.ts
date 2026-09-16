@@ -1,5 +1,5 @@
 import { projectDisplayName } from '../projects/render';
-import { esc } from '../../md';
+import { esc, inlineMd } from '../../md';
 import type { ProjectState } from '../projects/types';
 import type {
   ExternalAction,
@@ -86,7 +86,7 @@ function entryCard(
     e.start_at
       ? '会议时间：' + esc(e.start_at.replace('T', ' ')) + (e.end_at ? ' ~ ' + esc(e.end_at.replace('T', ' ')) : '')
       : '',
-    e.evidence ? '依据：' + esc(e.evidence) : '',
+    e.evidence ? '依据：' + inlineMd(e.evidence) : '',
     e.historical ? '历史补导' : '',
   ].filter(Boolean).join(' · ');
   const warn = e.actionable ? '' : '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>';
@@ -111,7 +111,7 @@ function entryCard(
         ' aria-label="选择：' + esc(e.description) + '">' : '') +
     '<span class="kind">' + esc(kind) + '</span>' +
     '<span class="badge ' + e.decision + '">' + esc(decision) + '</span></div>' +
-    '<p class="desc">' + esc(e.description) + '</p>' +
+    '<p class="desc">' + inlineMd(e.description) + '</p>' +
     warn + err +
     '<div class="meta">' + meta + '</div>' +
     '<div class="meta">来源：' + sources + '</div>' +
@@ -237,7 +237,7 @@ export function reviewHtml(
           : '';
         return '<div class="meeting-head">' +
           '<span class="meeting-date">' + esc(g.meeting_date) + '</span>' +
-          '<span class="meeting-title">' + esc(g.meeting_title) + '</span>' +
+          '<span class="meeting-title">' + inlineMd(g.meeting_title) + '</span>' +
           '<span class="group-actions">' +
           '<button class="ghost" data-action="group-decide" data-decision="approved" data-group="' + g.sourceIndex + '"' +
           (groupApprovable === 0 ? ' disabled' : '') + approvalTitle + '>✓ 全批(' + groupApprovable + ')</button>' +

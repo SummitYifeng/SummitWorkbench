@@ -45,7 +45,7 @@ function projectChipsHtml(chips: string[]): string {
 
 function projectNextStepHtml(nextStep: string | null): string {
   return nextStep
-    ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + esc(nextStep) + '</span></div>'
+    ? '<div class="project-step"><span class="step-label">下一步</span><span class="step-text">' + inlineMd(nextStep) + '</span></div>'
     : '';
 }
 
@@ -172,7 +172,7 @@ export function projectDetailHtml(v: ProjectView, backLabel = '返回项目列�
         '<li class="tl-kind-' + esc(t.kind) + '">' +
         '<span class="tl-date">' + esc(t.date) + '</span>' +
         '<span class="tl-label">' + esc(t.label) + '</span>' +
-        '<span class="tl-title">' + esc(t.title) + '</span>' +
+        '<span class="tl-title">' + inlineMd(t.title) + '</span>' +
         (t.snippet ? '<div class="tl-snippet">' + inlineMd(t.snippet) + '</div>' : '') +
         '</li>'
       ).join('') + '</ul>'

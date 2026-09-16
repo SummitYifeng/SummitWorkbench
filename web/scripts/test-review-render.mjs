@@ -111,6 +111,14 @@ export const cases = {
   }, 1, '2026-09-01', [], [], null, {
     filter: 'all', selectedIds: new Set(['m1#decision-0']),
   }),
+  markdown: reviewHtml({
+    groups: [{ meeting_date: '2026-08-27', meeting_title: '**排版会**', entries: [{
+      ...baseEntry,
+      description: '**采用&#xA0;双栏排版**',
+      evidence: '**依据**',
+    }] }],
+    errors: [],
+  }, 1, '2026-09-01', [], []),
 };
 `;
 
@@ -160,6 +168,9 @@ try {
   assert.match(mod.cases.selectedSummary, /已选 1 条/);
   assert.match(mod.cases.selectedSummary, /批量批准/);
   assert.match(mod.cases.selectedSummary, /批量拒绝/);
+  assert.match(mod.cases.markdown, /<p class="desc"><strong>采用 双栏排版<\/strong><\/p>/);
+  assert.match(mod.cases.markdown, /依据：<strong>依据<\/strong>/);
+  assert.match(mod.cases.markdown, /<span class="meeting-title"><strong>排版会<\/strong><\/span>/);
   // 「一键拒绝过期项」必须先显示自身范围，且没有过期项时不可点。
   assert.match(mod.cases.pending, /一键拒绝过期项（1）/);
   assert.match(mod.cases.empty, /data-action="reject-expired"[^>]*disabled[^>]*>一键拒绝过期项（0）</);

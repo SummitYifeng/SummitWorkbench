@@ -17,6 +17,28 @@ export function esc(value: unknown): string {
   });
 }
 
+const DISPLAY_FENCE = /^\s*```/;
+
+function normalizeDisplayLine(line: string): string {
+  return line
+    .replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, ' ')
+    .replace(/(\\\*\\\*)\*{2,}([^\n]*?)(\\\*\\\*)\*{2,}/g, '**$2**')
+    .replace(/\\\*\\\*([^\n]*?)\\\*\\\*/g, '**$1**');
+}
+
+/** 只为正文展示兼容历史转义残留，不改变原始 vault 内容。 */
+export function normalizeDisplayMarkdown(text: string): string {
+  const lines = String(text ?? '').split('\n');
+  let inFence = false;
+  return lines.map((line) => {
+    if (DISPLAY_FENCE.test(line)) {
+      inFence = !inFence;
+      return line;
+    }
+    return inFence ? line : normalizeDisplayLine(line);
+  }).join('\n');
+}
+
 /** [[目标|显示名]] → 只显示「显示名」（有 title 保留目标）；[[目标]] → 显示目标。 */
 function wikilinks(text: string): string {
   return text.replace(/\[\[([^\]]+?)\]\]/g, (_match: string, inner: string): string => {
@@ -35,7 +57,7 @@ export function inlineMd(text: string): string {
 }
 
 function inlineMarkup(text: string): string {
-  const safe = esc(text);
+  const safe = esc(normalizeDisplayMarkdown(text));
   const bold = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   const em = bold.replace(/(^|[^*])\*([^*\n]+?)\*/g, '$1<em>$2</em>');
   const code = em.replace(/`([^`]+?)`/g, '<code>$1</code>');

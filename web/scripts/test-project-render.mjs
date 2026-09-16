@@ -61,6 +61,10 @@ export const cases = {
     name: 'A<&',
     title: '显示名',
   }], '2026-09-01', true),
+  markdown: projectsListHtml('', [{
+    ...base,
+    next_step: '**&#xA0;先完成验收**',
+  }], '2026-09-01', true),
   archivedOnly: projectsListHtml('', [base, { ...base, name: 'Archived', status: 'archived' }], '2026-09-01', true, 'archived'),
   detail: projectDetailHtml({
     ok: true,
@@ -83,7 +87,7 @@ export const cases = {
     followup_pending: 1,
     inbox_pending: 0,
     timeline: [
-      { date: '2026-09-01', kind: 'log', label: '日志', title: '已检查', snippet: '合成记录' },
+      { date: '2026-09-01', kind: 'log', label: '日志', title: '**已检查**', snippet: '合成记录' },
       { date: '2026-09-02', kind: 'meeting-note', label: '会议', title: '对齐', snippet: '缺口在**网课与老师账户未绑定**' },
     ],
   }, '返回今日'),
@@ -123,12 +127,14 @@ try {
   );
   assert.match(mod.cases.escaped, /data-name="A&lt;&amp;".*>显示名<\/button>/);
   assert.match(mod.cases.titleSearch, /data-name="A&lt;&amp;".*显示名/);
+  assert.match(mod.cases.markdown, /<span class="step-text"><strong> 先完成验收<\/strong><\/span>/);
   assert.doesNotMatch(mod.cases.archivedOnly, />Alpha</);
   assert.match(mod.cases.archivedOnly, /data-name="Archived"/);
   assert.match(mod.cases.detail, /data-action="project-detail-back"/);
   assert.match(mod.cases.detail, /返回今日/);
   assert.match(mod.cases.detail, /显示名/);
   assert.match(mod.cases.detail, /合成记录/);
+  assert.match(mod.cases.detail, /<span class="tl-title"><strong>已检查<\/strong><\/span>/);
   // 档案区块正文是真 Markdown：不许再把源码漏给使用者看
   assert.doesNotMatch(mod.cases.detail, /\*\*/);
   assert.doesNotMatch(mod.cases.detail, /\[\[/);

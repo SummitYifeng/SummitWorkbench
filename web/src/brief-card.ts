@@ -2,7 +2,7 @@
 // 纯字符串渲染、无 DOM 依赖，便于单元验证与生成静态预览。
 // 安全：所有用户/模型文本一律经 esc 转义后输出。
 
-import { esc } from './md';
+import { esc, inlineMd } from './md';
 
 export interface BriefHealth {
   level: string;
@@ -112,7 +112,7 @@ function briefMeetingBlock(list: BriefMeeting[]): string {
     const trailing = edit ? '<span class="bf-trailing">' + edit + '</span>' : '';
     return '<div class="bf-row bf-mt' + (past ? ' past' : '') + '">' +
       '<span class="bf-time">' + esc(m.start_time) + '</span>' +
-      '<span class="bf-mt-title">' + esc(m.title) + '</span>' +
+      '<span class="bf-mt-title">' + inlineMd(m.title) + '</span>' +
       trailing + '</div>';
   });
   return '<div class="bf-section">' + head + rows.join('') + '</div>';
@@ -158,7 +158,7 @@ function briefTaskBlock(b: BriefData, todayIso: string): string {
     if (ann) annotated += 1;
     return '<div class="bf-row bf-task">' +
       briefDueBadge(t.due_date, todayIso) +
-      '<span class="bf-task-title">' + esc(t.summary) + '</span>' +
+      '<span class="bf-task-title">' + inlineMd(t.summary) + '</span>' +
       briefTaskTrailing(t, ann) + '</div>';
   }).join('');
   const head = briefSectionHead(
@@ -216,16 +216,16 @@ function briefOrphanBlock(
 ): string {
   const rows = list.map((a) => {
     const pieces: string[] = [];
-    if (a.project) pieces.push(projectNames[a.project] ?? a.project);
-    if (a.detail) pieces.push(a.detail);
+    if (a.project) pieces.push(esc(projectNames[a.project] ?? a.project));
+    if (a.detail) pieces.push(inlineMd(a.detail));
     const refName = briefRefLabel(a, projectNames);
-    if (refName) pieces.push(refName);
+    if (refName) pieces.push(esc(refName));
     const meta = pieces.length
-      ? '<div class="bf-act-meta">' + pieces.map(esc).join(' · ') + '</div>'
+      ? '<div class="bf-act-meta">' + pieces.join(' · ') + '</div>'
       : '';
     return '<div class="bf-act">' +
       '<div class="bf-act-top">' + briefAnnChip(a) +
-      '<span class="bf-act-title">' + esc(a.title) + '</span>' +
+      '<span class="bf-act-title">' + inlineMd(a.title) + '</span>' +
       briefDueBadge(a.due_date, todayIso) + '</div>' + meta + '</div>';
   }).join('');
   return '<div class="bf-section">' +
@@ -243,7 +243,7 @@ function briefProposalBlock(list: BriefAction[], projectNames: Record<string, st
     if (p.project) pieces.push(projectNames[p.project] ?? p.project);
     const refName = briefRefLabel(p, projectNames);
     if (refName) pieces.push(refName);
-    return '<div class="bf-minor-row"><span class="bf-minor-main">' + esc(p.title) + '</span>' +
+    return '<div class="bf-minor-row"><span class="bf-minor-main">' + inlineMd(p.title) + '</span>' +
       (pieces.length
         ? '<span class="bf-minor-text">' + pieces.map(esc).join(' · ') + '</span>'
         : '') + '</div>';
@@ -253,7 +253,7 @@ function briefProposalBlock(list: BriefAction[], projectNames: Record<string, st
 
 function briefCompletionBlock(list: BriefCompletion[]): string {
   const rows = list.map((c) =>
-    '<div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ ' + esc(c.text) + '</span></div>'
+    '<div class="bf-minor-row"><span class="bf-minor-main ok-text">✓ ' + inlineMd(c.text) + '</span></div>'
   ).join('');
   return briefFoldBlock('最近完成', list.length, rows);
 }
