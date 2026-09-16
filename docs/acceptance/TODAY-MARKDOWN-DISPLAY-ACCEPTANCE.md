@@ -23,8 +23,7 @@
 - cd web && npm run build：通过；候选前端身份为
   v2026.09.16-6abd287-5236bd8a，静态产物提交为 77ee5cc。
 - uv run ruff check .：通过。
-- 已跟踪 Python 文件通过 ruff format 检查；全仓命令仍会提示已有未跟踪的
-  `docs/superpowers/plans/2026-09-16-reliability-luna.md`，本次未修改该用户文件。
+- 已跟踪 Python 文件通过 ruff format 检查；本次验收资料未纳入代码或版本控制。
 - uv run mypy：通过，372 source files。
 - uv run pytest：1301 passed，1 skipped，5 warnings。唯一跳过项为未设置
   WB_PACKAGED_APP 的打包 smoke test。
