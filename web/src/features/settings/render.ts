@@ -20,7 +20,9 @@ export interface ProfileSummary {
 interface ProfileList { profiles: ProfileSummary[]; current_device_id?: string | null }
 interface AutomationJob {
   enabled: boolean; hour: number; minute: number; weekdays: number[];
-  last_run_at?: string | null; last_status: string; last_detail?: string | null;
+  last_run_at?: string | null; last_success_at?: string | null;
+  retry_at?: string | null; next_run_at?: string | null;
+  last_error_code?: string | null; last_status: string; last_detail?: string | null;
 }
 interface AutomationSettings { jobs: Record<string, AutomationJob> }
 
@@ -59,10 +61,14 @@ function automationHtml(job: string, schedule: AutomationJob): string {
     never: '尚未运行', success: '运行成功', degraded: '降级完成', failed: '运行失败',
     'not-primary': '本机不是主设备', skipped: '本次跳过',
   };
+  const attempt = schedule.last_run_at ? ' · ' + esc(formatBusinessTime(schedule.last_run_at)) : '';
+  const success = schedule.last_success_at ? esc(formatBusinessTime(schedule.last_success_at)) : '—';
+  const next = schedule.retry_at ?? schedule.next_run_at;
+  const nextLine = next ? esc(formatBusinessTime(next)) : '—';
   return '<form class="card automation-form" data-job="' + esc(job) + '"><div class="automation-row"><div><strong>' +
     esc(AUTOMATION_LABELS[job] ?? job) + '</strong><div class="meta" title="内部状态码：' + esc(schedule.last_status) + '">最近：' +
     esc(status[schedule.last_status] ?? '未知状态') +
-    (schedule.last_run_at ? ' · ' + esc(formatBusinessTime(schedule.last_run_at)) : '') + '</div>' +
+    attempt + '</div><div class="meta">上次成功：' + success + ' · 下次尝试：' + nextLine + '</div>' +
     (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') +
     '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + '>启用</label></div>' +
     '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label><span class="meta">星期</span>' +

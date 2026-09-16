@@ -40,6 +40,10 @@ class AutomationSchedule(BaseModel):
         default_factory=lambda: list(range(7))
     )
     last_run_at: datetime | None = None
+    last_success_at: datetime | None = None
+    retry_count: int = Field(default=0, ge=0)
+    retry_at: datetime | None = None
+    last_error_code: str | None = None
     last_status: AutomationRunStatus = AutomationRunStatus.NEVER
     last_detail: str | None = None
     next_run_at: datetime | None = None

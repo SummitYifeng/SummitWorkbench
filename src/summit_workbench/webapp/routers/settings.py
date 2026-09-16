@@ -1127,6 +1127,7 @@ def register_settings_routes(
     @app.put("/api/settings/automation", response_model=None)
     def update_settings_automation(payload: AutomationSettingsPayload) -> dict[str, object]:
         from summit_workbench.repositories.automation_settings import (
+            automation_job_lock,
             load_automation_settings,
             save_automation_settings,
         )
@@ -1138,18 +1139,19 @@ def register_settings_routes(
             )
         job = AutomationJob(payload.job)
         try:
-            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
-            current = settings.for_job(job)
-            settings.jobs[job] = current.model_copy(
-                update={
-                    "enabled": payload.enabled,
-                    "hour": payload.hour,
-                    "minute": payload.minute,
-                    "weekdays": sorted(set(payload.weekdays)),
-                    "next_run_at": None,
-                }
-            )
-            save_automation_settings(settings, home=_settings_home())
+            with automation_job_lock(ctx.workspace_id, job, home=_settings_home(), timeout=2.0):
+                settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
+                current = settings.for_job(job)
+                settings.jobs[job] = current.model_copy(
+                    update={
+                        "enabled": payload.enabled,
+                        "hour": payload.hour,
+                        "minute": payload.minute,
+                        "weekdays": sorted(set(payload.weekdays)),
+                        "next_run_at": None,
+                    }
+                )
+                save_automation_settings(settings, home=_settings_home())
         except ValueError as exc:
             raise HTTPException(
                 status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}

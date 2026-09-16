@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from summit_workbench.config.git_credentials import profile_identity
+from summit_workbench.config.locking import LockBusy
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.domain.automation import (
     AutomationJob,
@@ -19,8 +21,10 @@ from summit_workbench.domain.automation import (
 )
 from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.heartbeat import record_run_safely
+from summit_workbench.providers.llm import LLMError
 from summit_workbench.repositories.automation_primary import load_automation_primary
 from summit_workbench.repositories.automation_settings import (
+    automation_job_lock,
     load_automation_settings,
     save_automation_settings,
 )
@@ -38,6 +42,7 @@ class WorkerResult:
     status: AutomationRunStatus
     detail: str = ""
     published: str | None = None
+    error_code: str | None = None
 
     def as_dict(self) -> dict[str, str | None]:
         return {
@@ -45,7 +50,61 @@ class WorkerResult:
             "status": self.status.value,
             "detail": self.detail or None,
             "published": self.published,
+            "error_code": self.error_code,
         }
+
+
+_RETRY_INTERVALS_MINUTES = (5, 15, 30)
+_MAX_RETRIES = len(_RETRY_INTERVALS_MINUTES)
+_RETRYABLE_ERROR_CODES = frozenset({"network_error", "request_timeout"})
+
+
+def _classify_error(error: BaseException) -> str:
+    """把 worker 异常压成不含内部细节的稳定分类。"""
+    name = type(error).__name__.casefold()
+    detail = str(error).casefold()
+    if isinstance(error, LLMError):
+        # 模型请求可能已被服务端接受；只能人工确认，不能自动重复计费。
+        return "generation_outcome_unknown"
+    if isinstance(error, TimeoutError) or "timeout" in name or "timed out" in detail:
+        return "request_timeout"
+    if isinstance(error, ConnectionError) or any(
+        marker in name or marker in detail
+        for marker in ("network", "connection", "unreachable", "temporarily")
+    ):
+        return "network_error"
+    if "credential" in name or "auth" in name or "permission" in detail:
+        return "credential_error"
+    return "worker_error"
+
+
+def _publish_generated(
+    context: ActiveWorkspaceContext,
+    paths: list[Path],
+    *,
+    message: str,
+) -> tuple[str | None, str]:
+    """只负责发布已生成产物；发布失败不回滚也不重新生成。"""
+    if not paths:
+        return None, ""
+    assert context.paths is not None and context.profile is not None
+    try:
+        result = publish_brief(
+            context.paths.vault_dir,
+            paths,
+            message=message,
+            push=True,
+            backend_kind="dulwich",
+            workspace_id=context.workspace_id,
+            username=context.profile.git_username,
+            author=profile_identity(context.profile),
+        )
+        published = result.status.value
+        if published in {"push-failed", "busy(locked)"} or published.startswith("committed("):
+            return published, f"本机已生成，待同步：{result.detail or published}"
+        return published, result.detail
+    except Exception as exc:  # 生成成功后，发布异常只影响同步状态
+        return "push-failed", f"本机已生成，待同步：{type(exc).__name__}"
 
 
 def _record_settings(
@@ -57,18 +116,45 @@ def _record_settings(
     now: datetime,
 ) -> None:
     """只在任务已获准执行后写入最近结果；secondary 不进入此路径。"""
-    schedule = settings.for_job(job)
+    # 结果写回前重新读取，保留用户在 worker 外修改的开关、时间和星期。
+    latest = load_automation_settings(
+        context.workspace_id or settings.workspace_id, home=context.home
+    )
+    schedule = latest.for_job(job)
     local_now = now.astimezone(ZoneInfo(context.timezone))
+    last_local_date = (
+        schedule.last_run_at.astimezone(local_now.tzinfo).date()
+        if schedule.last_run_at is not None
+        else None
+    )
+    retry_count = schedule.retry_count if last_local_date == local_now.date() else 0
+    retry_at = None
+    last_success_at = schedule.last_success_at
+    error_code = result.error_code
+    if result.status in {AutomationRunStatus.SUCCESS, AutomationRunStatus.DEGRADED}:
+        if result.status is AutomationRunStatus.SUCCESS:
+            last_success_at = now.astimezone(UTC)
+        retry_count = 0
+    elif result.status is AutomationRunStatus.FAILED:
+        if error_code in _RETRYABLE_ERROR_CODES and retry_count < _MAX_RETRIES:
+            retry_count += 1
+            retry_at = local_now + timedelta(minutes=_RETRY_INTERVALS_MINUTES[retry_count - 1])
+        else:
+            retry_count = 0
     current = schedule.model_copy(
         update={
             "last_run_at": now.astimezone(UTC),
+            "last_success_at": last_success_at,
+            "retry_count": retry_count,
+            "retry_at": retry_at,
+            "last_error_code": error_code,
             "last_status": result.status,
             "last_detail": result.detail or None,
-            "next_run_at": _next_scheduled_at(schedule, local_now),
+            "next_run_at": retry_at or _next_scheduled_at(schedule, local_now),
         }
     )
-    settings.jobs[job] = current
-    save_automation_settings(settings, home=context.home)
+    latest.jobs[job] = current
+    save_automation_settings(latest, home=context.home)
 
 
 def _next_scheduled_at(schedule: AutomationSchedule, current: datetime) -> datetime | None:
@@ -92,6 +178,14 @@ def _schedule_is_due(schedule: AutomationSchedule, current: datetime) -> bool:
     """判断一次轮询是否应执行；last_run_at 防止唤醒/轮询重复写入。"""
     if current.weekday() not in schedule.weekdays:
         return False
+    if schedule.last_success_at is not None:
+        success_local = schedule.last_success_at.astimezone(current.tzinfo)
+        if success_local.date() == current.date():
+            return False
+    if schedule.retry_at is not None:
+        retry_local = schedule.retry_at.astimezone(current.tzinfo)
+        if retry_local.date() == current.date():
+            return current >= retry_local and schedule.retry_count <= _MAX_RETRIES
     if (current.hour, current.minute) < (schedule.hour, schedule.minute):
         return False
     if schedule.last_run_at is not None:
@@ -102,6 +196,30 @@ def _schedule_is_due(schedule: AutomationSchedule, current: datetime) -> bool:
 
 
 def run_automation_job(
+    context: ActiveWorkspaceContext,
+    job: AutomationJob,
+    *,
+    now: datetime | None = None,
+    force: bool = False,
+    lock_timeout: float | None = None,
+) -> WorkerResult:
+    """按 workspace/job 锁领取并执行，避免两个轮询同时生成。"""
+    if context.workspace_id is None:
+        return _run_automation_job_unlocked(context, job, now=now, force=force)
+    timeout = lock_timeout if lock_timeout is not None else (2.0 if force else 60.0)
+    try:
+        with automation_job_lock(context.workspace_id, job, home=context.home, timeout=timeout):
+            return _run_automation_job_unlocked(context, job, now=now, force=force)
+    except LockBusy:
+        return WorkerResult(
+            job,
+            AutomationRunStatus.FAILED,
+            "另一个相同自动化任务正在运行，请稍后再试",
+            error_code="workspace_busy",
+        )
+
+
+def _run_automation_job_unlocked(
     context: ActiveWorkspaceContext,
     job: AutomationJob,
     *,
@@ -133,7 +251,12 @@ def run_automation_job(
     if not force and not _schedule_is_due(schedule, local_now):
         return WorkerResult(job, AutomationRunStatus.SKIPPED, "当前不在任务执行时间")
     if context.compatibility is None or not context.can_write:
-        result = WorkerResult(job, AutomationRunStatus.FAILED, "workspace 当前不可写")
+        result = WorkerResult(
+            job,
+            AutomationRunStatus.FAILED,
+            "workspace 当前不可写",
+            error_code="configuration_error",
+        )
         _record_settings(context, settings, job, result, now=current)
         return result
 
@@ -147,7 +270,12 @@ def run_automation_job(
     )
     mutation_allowed, mutation_reason = sync_coordinator.mutation_guard(snapshot)
     if not mutation_allowed:
-        result = WorkerResult(job, AutomationRunStatus.FAILED, mutation_reason)
+        result = WorkerResult(
+            job,
+            AutomationRunStatus.FAILED,
+            mutation_reason,
+            error_code="sync_protected",
+        )
         _record_settings(context, settings, job, result, now=current)
         return result
     try:
@@ -172,22 +300,20 @@ def run_automation_job(
                 day=day,
                 detail=run.feishu_unavailable,
             )
-            published = None
             commit_paths = list(run.persisted_paths)
             if heartbeat_path is not None:
                 commit_paths.append(heartbeat_path)
-            if commit_paths:
-                published = publish_brief(
-                    context.paths.vault_dir,
-                    commit_paths,
-                    message=f"chore(brief): 晨间简报 {day}",
-                    push=True,
-                    backend_kind="dulwich",
-                    workspace_id=context.workspace_id,
-                    username=context.profile.git_username,
-                    author=profile_identity(context.profile),
-                ).status.value
-            outcome = WorkerResult(job, status, run.feishu_unavailable or "", published)
+            published, publish_detail = _publish_generated(
+                context,
+                commit_paths,
+                message=f"chore(brief): 晨间简报 {day}",
+            )
+            outcome = WorkerResult(
+                job,
+                status,
+                publish_detail or run.feishu_unavailable or "",
+                published,
+            )
         elif job is AutomationJob.WEEKLY:
             weekly_result = generate_weekly(
                 context.paths.work_root,
@@ -202,25 +328,21 @@ def run_automation_job(
             weekly_paths = [weekly_result.note_path] if weekly_result.note_path else []
             if heartbeat_path is not None:
                 weekly_paths.append(heartbeat_path)
-            published = (
-                publish_brief(
-                    context.paths.vault_dir,
-                    weekly_paths,
-                    message=f"chore(weekly): 周复盘 {weekly_result.review.week}",
-                    push=True,
-                    backend_kind="dulwich",
-                    workspace_id=context.workspace_id,
-                    username=context.profile.git_username,
-                    author=profile_identity(context.profile),
-                ).status.value
-                if weekly_result.note_path
-                else None
+            published, publish_detail = _publish_generated(
+                context,
+                weekly_paths,
+                message=f"chore(weekly): 周复盘 {weekly_result.review.week}",
             )
-            outcome = WorkerResult(job, AutomationRunStatus.SUCCESS, "", published)
+            outcome = WorkerResult(job, AutomationRunStatus.SUCCESS, publish_detail, published)
         else:
             outcome = WorkerResult(job, AutomationRunStatus.SKIPPED, "会议同步 worker 尚未配置")
     except Exception as exc:  # worker 必须把失败写入可见状态后退出
-        outcome = WorkerResult(job, AutomationRunStatus.FAILED, f"{type(exc).__name__}: {exc}")
+        outcome = WorkerResult(
+            job,
+            AutomationRunStatus.FAILED,
+            f"{type(exc).__name__}: {exc}",
+            error_code=_classify_error(exc),
+        )
         record_run_safely(
             context.paths.vault_dir,
             job=job.value,

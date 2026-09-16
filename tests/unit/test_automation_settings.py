@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -58,3 +59,32 @@ def test_mismatched_workspace_is_rejected(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="workspace_id 不匹配"):
         load_automation_settings("workspace-123", home=tmp_path)
+
+
+def test_old_success_record_migrates_last_success_but_degraded_does_not(tmp_path: Path) -> None:
+    path = automation_settings_file("workspace-123", home=tmp_path)
+    path.parent.mkdir(parents=True)
+    success_at = datetime(2026, 9, 16, 0, 0, tzinfo=UTC)
+    payload = AutomationSettings.defaults("workspace-123").model_dump(mode="json")
+    payload["jobs"]["brief"] = {
+        "enabled": True,
+        "hour": 8,
+        "minute": 0,
+        "weekdays": [0, 1, 2, 3, 4, 5, 6],
+        "last_run_at": success_at.isoformat(),
+        "last_status": "success",
+    }
+    payload["jobs"]["weekly"] = {
+        "enabled": True,
+        "hour": 7,
+        "minute": 30,
+        "weekdays": [0],
+        "last_run_at": success_at.isoformat(),
+        "last_status": "degraded",
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = load_automation_settings("workspace-123", home=tmp_path)
+
+    assert loaded.for_job(AutomationJob.BRIEF).last_success_at == success_at
+    assert loaded.for_job(AutomationJob.WEEKLY).last_success_at is None
