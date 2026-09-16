@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.domain.automation import (
@@ -270,9 +271,7 @@ def test_schedule_retries_use_five_fifteen_thirty_minutes_and_reset_next_day() -
     )
 
 
-def context_timezone(context) -> object:
-    from zoneinfo import ZoneInfo
-
+def context_timezone(context) -> ZoneInfo:
     return ZoneInfo(context.timezone)
 
 

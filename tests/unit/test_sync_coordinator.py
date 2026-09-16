@@ -14,6 +14,7 @@ from pathlib import Path
 
 from summit_workbench.domain.sync import (
     AutomationOutcome,
+    RemoteCheckStatus,
     SyncState,
     classify_repo_error,
     combine_repo_states,
@@ -123,7 +124,7 @@ def test_sync_state_persists_and_roundtrips(tmp_path) -> None:
         state=SyncState.OFFLINE_LOCAL_AHEAD,
         pending_commits=3,
         remote_checked_at="2026-09-16T00:00:00+00:00",
-        remote_check_status="success",
+        remote_check_status=RemoteCheckStatus.SUCCESS,
     )
     save_sync_state(snapshot, home=home)
     assert sync_state_path("workspace-sync", home=home).is_file()
@@ -139,7 +140,9 @@ def test_current_snapshot_does_not_fabricate_remote_check_or_fetch(tmp_path, mon
     _remote, (a_root, _a), _ = _two_device_fixture(tmp_path)
     home = tmp_path / "home"
     sync_workspace(a_root, home=home)
-    saved = load_sync_state(load_workspace_manifest(a_root).workspace_id, home=home)
+    manifest = load_workspace_manifest(a_root)
+    assert manifest is not None
+    saved = load_sync_state(manifest.workspace_id, home=home)
     assert saved is not None and saved.remote_checked_at is not None
     before = saved.remote_checked_at
 
