@@ -4,18 +4,112 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from summit_workbench.config.locking import workspace_lock
+from summit_workbench.config.app_support import app_support_dir
+from summit_workbench.config.locking import LockBusy, workspace_lock
 from summit_workbench.domain.external_action import (
     ExternalAction,
     ExternalActionKind,
     ExternalActionState,
 )
-from summit_workbench.repositories.external_action_outbox import append_action
+from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.repositories.external_action_outbox import (
+    append_action,
+    latest_action,
+    latest_actions,
+)
+
+EXTERNAL_ACTION_INTERRUPTED = "external_action_interrupted"
+EXTERNAL_ACTION_ACCOUNTING_FAILED = "external_action_accounting_failed"
+OPERATION_OUTCOME_UNKNOWN = "operation_outcome_unknown"
+
+
+def _execution_root(action: ExternalAction) -> Path:
+    """Return the per-operation local state root outside the synced vault."""
+    return app_support_dir() / "runtime" / "external-actions" / action.workspace_id
+
+
+def _execution_record_path(action: ExternalAction) -> Path:
+    return _execution_root(action) / f"{action.operation_id}.json"
+
+
+def _execution_lock_root(action: ExternalAction) -> Path:
+    return (
+        app_support_dir() / "locks" / "external-actions" / action.workspace_id / action.operation_id
+    )
+
+
+def _write_execution_record(action: ExternalAction, executor_id: str) -> None:
+    record = {
+        "operation_id": action.operation_id,
+        "workspace_id": action.workspace_id,
+        "executor_id": executor_id,
+        "kind": action.kind.value,
+        "pid": os.getpid(),
+        "started_at": _timestamp(),
+    }
+    atomic_write_text(
+        _execution_record_path(action),
+        json.dumps(record, ensure_ascii=False, sort_keys=True),
+        ensure_parents=True,
+        new_mode=0o600,
+    )
+
+
+def _clear_execution_record(action: ExternalAction, executor_id: str | None = None) -> None:
+    path = _execution_record_path(action)
+    try:
+        if executor_id is not None:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            if record.get("executor_id") != executor_id:
+                return
+        path.unlink()
+    except (FileNotFoundError, OSError, ValueError):
+        # The synced outbox is the source of truth.  A stale local marker is
+        # diagnostic state and must not make a successful transition fail.
+        return
+
+
+def _local_executor_matches(action: ExternalAction) -> bool:
+    if not action.executor_id:
+        return False
+    path = _execution_record_path(action)
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return bool(
+        record.get("operation_id") == action.operation_id
+        and record.get("workspace_id") == action.workspace_id
+        and record.get("executor_id") == action.executor_id
+    )
+
+
+@contextmanager
+def external_action_execution(
+    vault_dir: Path, action: ExternalAction, *, executor_id: str
+) -> Iterator[None]:
+    """Hold a local non-blocking operation lock during one external send.
+
+    The lock is deliberately outside the vault and is only local-machine
+    coordination.  If the process disappears, flock releases while the
+    marker remains for recovery to identify the interrupted local executor.
+    """
+    try:
+        with workspace_lock(_execution_lock_root(action), timeout=0):
+            _write_execution_record(action, executor_id)
+            yield
+    except LockBusy:
+        raise ValueError("外部动作正在由另一个本机执行者处理，请稍后核对") from None
+    finally:
+        _clear_execution_record(action, executor_id)
 
 
 def workspace_id_for_vault(vault_dir: Path) -> str:
@@ -104,6 +198,7 @@ def _transition(
     remote_id: str | None = None,
     error: str | None = None,
     retry_allowed: bool = False,
+    executor_id: str | None = None,
 ) -> ExternalAction:
     next_action = ExternalAction(
         operation_id=action.operation_id,
@@ -118,16 +213,30 @@ def _transition(
         remote_id=remote_id if remote_id is not None else action.remote_id,
         error=error,
         retry_allowed=retry_allowed,
+        executor_id=executor_id if executor_id is not None else action.executor_id,
     )
-    return _append(vault_dir, next_action)
+    result = _append(vault_dir, next_action)
+    if state is not ExternalActionState.SENDING:
+        _clear_execution_record(action, action.executor_id)
+    return result
 
 
-def mark_sending(vault_dir: Path, action: ExternalAction) -> ExternalAction:
+def mark_sending(
+    vault_dir: Path, action: ExternalAction, *, executor_id: str | None = None
+) -> ExternalAction:
     if action.state is not ExternalActionState.PREPARED:
         raise ValueError(f"只有 prepared 动作可以发送：{action.state.value}")
-    return _transition(
-        vault_dir, action, state=ExternalActionState.SENDING, attempt=action.attempt + 1
+    next_executor_id = executor_id or action.executor_id
+    result = _transition(
+        vault_dir,
+        action,
+        state=ExternalActionState.SENDING,
+        attempt=action.attempt + 1,
+        executor_id=next_executor_id,
     )
+    if next_executor_id:
+        _write_execution_record(result, next_executor_id)
+    return result
 
 
 def _redact_error(error: str) -> str:
@@ -166,7 +275,13 @@ def mark_failed(vault_dir: Path, action: ExternalAction, error: str) -> External
     )
 
 
-def mark_unknown(vault_dir: Path, action: ExternalAction, error: str) -> ExternalAction:
+def mark_unknown(
+    vault_dir: Path,
+    action: ExternalAction,
+    error: str,
+    *,
+    remote_id: str | None = None,
+) -> ExternalAction:
     if action.state is not ExternalActionState.SENDING:
         raise ValueError(f"只有 sending 动作可以进入未知：{action.state.value}")
     return _transition(
@@ -174,7 +289,42 @@ def mark_unknown(vault_dir: Path, action: ExternalAction, error: str) -> Externa
         action,
         state=ExternalActionState.UNKNOWN,
         error=_redact_error(error),
+        remote_id=remote_id,
     )
+
+
+def recover_interrupted_actions(vault_dir: Path, *, executor_id: str) -> list[ExternalAction]:
+    """Convert only locally-owned, no-longer-running sends to ``unknown``.
+
+    Callers must invoke this only after proving the old process stopped.  The
+    per-operation flock is the final race gate; no PID is treated as a
+    cross-device ownership proof, and rows without an executor identity are
+    left untouched for manual reconciliation.
+    """
+    recovered: list[ExternalAction] = []
+    workspace_id = workspace_id_for_vault(vault_dir)
+    for action in latest_actions(vault_dir, workspace_id=workspace_id):
+        if (
+            action.state is not ExternalActionState.SENDING
+            or not action.executor_id
+            or action.executor_id == executor_id
+            or not _local_executor_matches(action)
+        ):
+            continue
+        try:
+            with workspace_lock(_execution_lock_root(action), timeout=0):
+                current = latest_action(vault_dir, action.operation_id)
+                if (
+                    current is None
+                    or current.state is not ExternalActionState.SENDING
+                    or current.executor_id != action.executor_id
+                ):
+                    continue
+                recovered.append(mark_unknown(vault_dir, current, EXTERNAL_ACTION_INTERRUPTED))
+        except (LockBusy, ValueError):
+            # An active executor or a concurrent recovery won the race.
+            continue
+    return recovered
 
 
 def reconcile_succeeded(vault_dir: Path, action: ExternalAction, remote_id: str) -> ExternalAction:

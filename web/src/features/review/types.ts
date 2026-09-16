@@ -49,4 +49,5 @@ export interface ExternalAction {
   remote_id: string | null;
   error: string | null;
   retry_allowed: boolean;
+  executor_id?: string | null;
 }

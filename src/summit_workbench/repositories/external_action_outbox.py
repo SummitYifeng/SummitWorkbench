@@ -35,6 +35,7 @@ class ExternalActionRow(BaseModel):
     remote_id: str | None = None
     error: str | None = None
     retry_allowed: bool = False
+    executor_id: str | None = None
 
 
 def outbox_path(vault_dir: Path) -> Path:
@@ -55,6 +56,7 @@ def _to_domain(row: ExternalActionRow) -> ExternalAction:
         remote_id=row.remote_id,
         error=row.error,
         retry_allowed=row.retry_allowed,
+        executor_id=row.executor_id,
     )
 
 

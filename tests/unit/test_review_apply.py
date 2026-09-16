@@ -403,6 +403,40 @@ def test_succeeded_outbox_reuses_remote_id_without_creator_call(tmp_path):
     assert calls == 0
 
 
+def test_remote_success_with_local_accounting_failure_is_not_retried(tmp_path, monkeypatch):
+    """远端已返回 ID 后，本地记账异常不能把动作标成可重发的 failed。"""
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+    )
+    refresh_review_page(vault, [entry])
+    calls = 0
+
+    def creator(title: str, due: str | None, candidate_id: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "created-before-accounting-error"
+
+    import summit_workbench.workflows.review_apply as review_apply_module
+
+    def accounting_failure(*args, **kwargs):
+        raise OSError("账本暂时不可写")
+
+    monkeypatch.setattr(review_apply_module, "mark_succeeded", accounting_failure)
+    first = apply_meeting_review(vault, work, apply=True, task_creator=creator)
+    second = apply_meeting_review(vault, work, apply=True, task_creator=creator)
+
+    action = latest_for_candidate(vault, entry.candidate.candidate_id)
+    assert first.failed == 1
+    assert second.failed == 1
+    assert calls == 1
+    assert action is not None
+    assert action.state in {ExternalActionState.SENDING, ExternalActionState.UNKNOWN}
+
+
 # ---- T3：审批后状态收口与事实资格 ----
 
 

@@ -39,3 +39,6 @@ class ExternalAction:
     remote_id: str | None = None
     error: str | None = None
     retry_allowed: bool = False
+    # Optional so old JSONL rows remain readable.  This is a local executor
+    # identity, never a cross-device ownership claim.
+    executor_id: str | None = None

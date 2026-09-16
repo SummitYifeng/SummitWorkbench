@@ -157,6 +157,11 @@ function renderExternalActions(actions: ExternalAction[]): string {
     prepared: '已准备', sending: '发送中', succeeded: '已创建', failed: '创建失败',
     unknown: '结果未知', 'reconciled-succeeded': '已核对创建', 'reconciled-not-found': '已核对未找到',
   };
+  const errorLabels: Record<string, string> = {
+    external_action_interrupted: '上次执行中断，结果待核对',
+    external_action_accounting_failed: '远端可能已创建，本地记账失败，结果待核对',
+    operation_outcome_unknown: '操作结果未知，请先核对，禁止自动重试',
+  };
   const rows = actions.map((a) => {
     const label = labels[a.state] ?? a.state;
     let controls = '';
@@ -168,7 +173,7 @@ function renderExternalActions(actions: ExternalAction[]): string {
       controls = '<button class="ghost" data-action="external-retry" data-operation="' + esc(a.operation_id) + '">确认后重试</button>';
     }
     // 出错时保留错误原文（可执行信息）；成功/未决时不把飞书 remote_id 铺在行里——进 hover。
-    const detail = a.error ? ' · ' + esc(a.error) : '';
+    const detail = a.error ? ' · ' + esc(errorLabels[a.error] ?? a.error) : '';
     const hint = a.remote_id ? '远端记录：' + a.remote_id + '｜内部标识：' + a.candidate_id : '内部标识：' + a.candidate_id;
     return '<div class="external-action-row" title="' + esc(hint) + '"><span><strong>' + esc(label) + '</strong> · ' +
       esc(externalCandidateLabel(a)) + detail + '</span><span class="row">' + controls + '</span></div>';

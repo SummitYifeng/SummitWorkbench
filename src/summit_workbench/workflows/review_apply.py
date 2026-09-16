@@ -7,6 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
@@ -51,6 +52,9 @@ from summit_workbench.repositories.writeback import (
     parse_sink_target,
 )
 from summit_workbench.workflows.external_actions import (
+    EXTERNAL_ACTION_ACCOUNTING_FAILED,
+    OPERATION_OUTCOME_UNKNOWN,
+    external_action_execution,
     mark_failed,
     mark_sending,
     mark_succeeded,
@@ -345,19 +349,39 @@ def _run_external(
             request=_external_request(entry),
             target_account_ref="feishu:user",
         )
-    sending = mark_sending(vault_dir, action)
-    try:
-        remote_id = _creator_call(creator, args, sending.operation_id)
-        succeeded = mark_succeeded(vault_dir, sending, remote_id)
-    except FeishuError as exc:
-        if getattr(exc, "result_unknown", False):
-            mark_unknown(vault_dir, sending, str(exc))
-            raise ValueError(f"飞书创建结果未知，请先重新核对：{exc}") from exc
-        mark_failed(vault_dir, sending, str(exc))
-        raise ValueError(str(exc)) from exc
-    except (ValueError, OSError) as exc:
-        mark_failed(vault_dir, sending, str(exc))
-        raise
+    executor_id = str(uuid4())
+    with external_action_execution(vault_dir, action, executor_id=executor_id):
+        sending = mark_sending(vault_dir, action, executor_id=executor_id)
+        try:
+            remote_id = _creator_call(creator, args, sending.operation_id)
+        except FeishuError as exc:
+            if getattr(exc, "result_unknown", False):
+                mark_unknown(vault_dir, sending, str(exc))
+                raise ValueError(f"飞书创建结果未知，请先重新核对：{exc}") from exc
+            mark_failed(vault_dir, sending, str(exc))
+            raise ValueError(str(exc)) from exc
+        except (ValueError, OSError) as exc:
+            mark_failed(vault_dir, sending, str(exc))
+            raise
+
+        # The provider has already performed the remote side effect.  Any
+        # exception below is local accounting failure and must never become a
+        # retryable ``failed`` state.
+        try:
+            succeeded = mark_succeeded(vault_dir, sending, remote_id)
+        except Exception as exc:  # noqa: BLE001 - local persistence boundary
+            try:
+                mark_unknown(
+                    vault_dir,
+                    sending,
+                    EXTERNAL_ACTION_ACCOUNTING_FAILED,
+                    remote_id=remote_id.strip() or None,
+                )
+            except Exception as accounting_exc:  # noqa: BLE001 - preserve sending
+                raise ValueError(OPERATION_OUTCOME_UNKNOWN) from accounting_exc
+            raise ValueError(
+                f"{EXTERNAL_ACTION_ACCOUNTING_FAILED}: 远端可能已创建，结果待核对"
+            ) from exc
     return destination, remote_id, succeeded.operation_id
 
 

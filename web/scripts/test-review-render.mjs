@@ -65,6 +65,11 @@ export const cases = {
     groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [baseEntry] }],
     errors: [],
   }, 1, '2026-09-01', [{ name: 'Alpha', title: '项目甲' }], [external]),
+  interrupted: reviewHtml({ groups: [], errors: [] }, 0, '2026-09-01', [], [{
+    ...external,
+    state: 'unknown',
+    error: 'external_action_interrupted',
+  }]),
   scopedBatch: reviewHtml({
     groups: [{
       meeting_date: '2026-08-27',
@@ -133,6 +138,7 @@ try {
   assert.match(mod.cases.pending, /确认未创建/);
   assert.match(mod.cases.pending, /会议笔记/);
   assert.match(mod.cases.pending, /逐字稿/);
+  assert.match(mod.cases.interrupted, /上次执行中断，结果待核对/);
   assert.match(mod.cases.pending, /data-action="source-open"/);
   assert.match(mod.cases.pending, /data-source-id="meetings\/notes\/2026-08-27-排版会\.md"/);
   assert.match(mod.cases.pending, /全批\(1\)/);

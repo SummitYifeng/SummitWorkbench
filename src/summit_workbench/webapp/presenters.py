@@ -67,6 +67,7 @@ def external_action_payload(action: ExternalAction) -> dict[str, object]:
         "remote_id": action.remote_id,
         "error": action.error,
         "retry_allowed": action.retry_allowed,
+        "executor_id": action.executor_id,
     }
 
 
