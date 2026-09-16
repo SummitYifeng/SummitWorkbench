@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "product_id": "com.summitworkbench.panel",
-  "frontend_build": "v2026.09.16-8d39426-293ba9cb",
-  "git_revision": "8d39426",
+  "frontend_build": "v2026.09.16-886961d-293ba9cb",
+  "git_revision": "886961d",
   "source_hash": "293ba9cbc6ad207fcba5c63b47c888844903c1390fbf9875a109aa9b3b2b275b",
-  "built_at": "2026-09-16T10:15:25.800Z",
-  "index_sha256": "d6540ddbaa6e37f1f9784cb87ef235b62e32cac5488e4767e7a38ffbeb2d49df",
+  "built_at": "2026-09-16T13:12:35.166Z",
+  "index_sha256": "1f8f1954f0c64b0fe5ef9042aecd7e6475587fe047f5cdfe2efe6a057ea23b18",
   "assets": {
-    "assets/index-BUgfc7gL.js": "08280d700cfa93c1a0d87d7cb8fb3e1c86b106af21fbc4c8a3d0224db88a78a5",
-    "assets/index-Cst_0H7l.css": "c4ed5a59851fbeb559df0369053f0b6753ddc4b4561041ceea97e1f3713a385b"
+    "assets/index-Cst_0H7l.css": "c4ed5a59851fbeb559df0369053f0b6753ddc4b4561041ceea97e1f3713a385b",
+    "assets/index-DkxK-pCa.js": "0b69a00f6fbc5c9a2705ea27c43c7dd33157c807d9aae7d5325c5d6e6229a1ed"
   }
 }
