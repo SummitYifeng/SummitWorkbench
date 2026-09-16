@@ -140,6 +140,16 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 一并扫描（`check_vault` 先跑 `validate_note`、再跑 `validate_retrieval_readiness`），
 因此「重复 H2 / superseded 缺替代链接」不会等到 SK 侧引用退化才暴露。
 
+**写入方必须落 `area` 与 `title`**（2026-09-15/16 两次真实提问实测的字段缺口）：
+
+- **`area: work`** —— SK 侧「综合/总览」类问题按 `area` 过滤笔记总览。缺 `area` 的页面
+  仍然**能**被向量/关键词检索召回，但会从**总览清单里静默消失**（实测：62 篇的库，
+  总览只报 60 篇）。
+- **`title`** —— 缺 `title` 时 SK 回退成文件名，总览里出现 `《2026-09-14》` 这类纯日期条目，
+  语义全丢。标题取正文 H1，不得另造。
+- 这两项由**写入端**产出（`daily/`、`logs/`、`artifacts/` 三条写入路径），不靠人工后补——
+  手补会在下次生成时丢失。
+
 ---
 
 ## 9. 写入路径与校验点
@@ -148,8 +158,9 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 |---|---|
 | 会议逐字稿（`meeting-transcript`） | 原件不可变；不套用规范化器 |
 | 结构化会议笔记（`meeting-note`） | `validate_note` + `validate_retrieval_readiness`；生成态 `pending-review` |
-| 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级 |
-| AI 产物（`thread-doc`） | 确定性结构规范化 + 双重校验；无 `summary` 为 `draft`，有 `summary` 为 `generated` |
+| 当日简报（`daily`） | 程序生成；落 `area: work` + `title: 晨间简报 <日期>`（否则总览不可见 / 只剩日期） |
+| 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级；落 `area: work` + 与 H1 一致的 `title` |
+| AI 产物（`thread-doc`） | 确定性结构规范化 + 双重校验；无 `summary` 为 `draft`，有 `summary` 为 `generated`；无论调用方是否给标题都落最终 heading 作为 `title` |
 | 审批写回（主档案 / inbox / 知识沉淀） | 目标页与区块必须存在且**唯一**；锚点无法解析即拒批；**知识沉淀写回必须带可解析的 `<会议笔记 source_id>#<区块>` 出处**（附证据锚点），不得只留裸时间戳 |
 | 原件（`source`） | 逐字保存，不由模型改写 |
 | 存量库文件 | `wb vault check`（`wb doctor` 复用）批量扫描两层校验 |
