@@ -84,7 +84,7 @@ def test_api_version_returns_actual_static_build(tmp_path: Path) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["product_id"] == "com.summitworkbench.panel"
-    assert data["api_protocol"] == 2
+    assert data["api_protocol"] == 3
     assert data["frontend_build"] == expected
     assert data["server_instance"]
     assert data["server_version"]
@@ -601,78 +601,35 @@ def test_api_import_rejects_bad_extension(tmp_path: Path) -> None:
 
 
 def test_api_import_full_auto_pipeline(tmp_path: Path, monkeypatch) -> None:
-    """模型调用以替身替换：验证 扫描 → 预估 → 全自动归档+结构化 → 候选 的编排与响应。"""
+    """上传接口只返回可恢复任务，不等待模型链路。"""
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    from summit_workbench.webapp.meeting_import import MeetingImportManager
+
+    monkeypatch.setattr(MeetingImportManager, "_process", lambda self, _job_id: None)
     client, vault = _client(tmp_path, seed_review=False)
-
-    class FakePricing:
-        currency = "CNY"
-
-        def estimate(self, _in: int, _out: int) -> float:
-            return 0.001
-
-    class FakeCfg:
-        api_key_ref = "fake-key-ref"
-        max_output_tokens = 1024
-        pricing = FakePricing()
-
-    from summit_workbench.workflows.meetings.backfill import BackfillRunReport
-
-    fake_report = BackfillRunReport(results=[], processed=1, skipped=0, failed=0, candidates=3)
-    monkeypatch.setattr("summit_workbench.providers.llm.load_model_config", lambda _name: FakeCfg())
-    monkeypatch.setattr(
-        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
-    )
-    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
-    monkeypatch.setattr(
-        "summit_workbench.workflows.meetings.backfill.run_backfill",
-        lambda *_a, **_k: fake_report,
-    )
 
     transcript = "# 产品周会\n\n张三 00:01:02 大家好\n李四 00:02:00 讨论预算\n"
     resp = client.post(
         "/api/meetings/import",
         files={"file": ("2026-09-01-产品周会.txt", transcript.encode("utf-8"), "text/plain")},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
     assert data["ok"] is True
-    assert "导入完成" in data["message"]
-    assert "生成候选 3" in data["message"]
-    assert data["estimate"]["pending"] == 1
-    assert data["estimate"]["currency"] == "CNY"
+    assert data["status"] in {"queued", "running", "succeeded"}
+    assert data["stage"] in {"archived", "structuring", "completed"}
+    assert list((vault / "meetings" / "transcripts").glob("*.md"))
 
 
 def test_api_import_partial_pipeline_is_not_reported_as_success(
     tmp_path: Path, monkeypatch
 ) -> None:
+    """后台任务的中间状态不会被上传请求伪装成同步成功。"""
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    from summit_workbench.webapp.meeting_import import MeetingImportManager
+
+    monkeypatch.setattr(MeetingImportManager, "_process", lambda self, _job_id: None)
     client, _ = _client(tmp_path, seed_review=False)
-
-    class FakePricing:
-        currency = "CNY"
-
-        def estimate(self, _in: int, _out: int) -> float:
-            return 0.001
-
-    class FakeCfg:
-        api_key_ref = "fake-key-ref"
-        max_output_tokens = 1024
-        pricing = FakePricing()
-
-    from summit_workbench.workflows.meetings.backfill import BackfillRunReport
-
-    monkeypatch.setattr("summit_workbench.providers.llm.load_model_config", lambda _name: FakeCfg())
-    monkeypatch.setattr(
-        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
-    )
-    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
-    monkeypatch.setattr(
-        "summit_workbench.workflows.meetings.backfill.run_backfill",
-        lambda *_a, **_k: BackfillRunReport(
-            results=[], processed=1, skipped=1, failed=1, candidates=0
-        ),
-    )
 
     resp = client.post(
         "/api/meetings/import",
@@ -684,11 +641,11 @@ def test_api_import_partial_pipeline_is_not_reported_as_success(
             )
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
-    assert data["ok"] is False
-    assert data["status"] == "partial"
-    assert "导入部分完成" in data["message"]
+    assert data["ok"] is True
+    assert data["status"] in {"queued", "running", "succeeded"}
+    assert data["stage"] in {"archived", "structuring", "completed"}
 
 
 def test_api_import_done_item_is_idempotent_without_model_config(
@@ -714,12 +671,12 @@ def test_api_import_done_item_is_idempotent_without_model_config(
         "/api/meetings/import",
         files={"file": ("2026-09-03-已处理会议.txt", "重复导入".encode(), "text/plain")},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 202
     data = resp.json()
     assert data["ok"] is True
-    assert data["status"] == "success"
-    assert "跳过 1" in data["message"]
-    assert "幂等" in data["message"]
+    assert data["status"] == "succeeded"
+    assert data["stage"] == "completed"
+    assert "幂等" in data["result"]["message"]
 
 
 def test_api_import_empty_file(tmp_path: Path, monkeypatch) -> None:
@@ -732,6 +689,28 @@ def test_api_import_empty_file(tmp_path: Path, monkeypatch) -> None:
     data = resp.json()
     assert data["ok"] is False
     assert "文件内容为空" in data["message"]
+
+
+def test_api_import_archives_and_returns_resumable_job(tmp_path: Path, monkeypatch) -> None:
+    """上传请求只负责归档，模型链路不阻塞 HTTP 响应。"""
+    from summit_workbench.webapp.meeting_import import MeetingImportManager
+
+    monkeypatch.setattr(MeetingImportManager, "_process", lambda self, _job_id: None)
+    client, vault = _client(tmp_path, seed_review=False)
+    response = client.post(
+        "/api/meetings/import",
+        files={"file": ("2026-09-10-异步会.txt", "张三 00:01:02 先归档".encode(), "text/plain")},
+    )
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["job_id"]
+    assert payload["status"] == "queued"
+    assert payload["stage"] == "archived"
+    assert list((vault / "meetings" / "transcripts").glob("*.md"))
+    listed = client.get("/api/meetings/imports").json()
+    assert listed["jobs"][0]["job_id"] == payload["job_id"]
+    assert client.get("/api/meetings/imports/" + payload["job_id"]).json()["ok"] is True
 
 
 # ---------- SPA 服务 ----------

@@ -39,6 +39,7 @@ class CompletionResult:
     usage: Usage
     model_id: str
     attempts: int
+    finish_reason: str | None = None
 
 
 class ModelClient:
@@ -136,4 +137,13 @@ def _parse_completion(resp: httpx.Response, model_id: str, attempt: int) -> Comp
         input_tokens=int(usage_raw.get("prompt_tokens", 0)),
         output_tokens=int(usage_raw.get("completion_tokens", 0)),
     )
-    return CompletionResult(text=str(text), usage=usage, model_id=model_id, attempts=attempt)
+    choices = data.get("choices") or [{}]
+    first_choice = choices[0] if isinstance(choices[0], dict) else {}
+    finish_reason = first_choice.get("finish_reason")
+    return CompletionResult(
+        text=str(text),
+        usage=usage,
+        model_id=model_id,
+        attempts=attempt,
+        finish_reason=str(finish_reason) if finish_reason is not None else None,
+    )

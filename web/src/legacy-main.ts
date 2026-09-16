@@ -110,6 +110,7 @@ import {
   plusMinutesInput,
   resetTodayForWorkspace,
   runBrief,
+  retryImport,
   todayUi,
   tsToDatetimeLocal,
   type TodayActions,
@@ -577,6 +578,10 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'open-artifact') {
     openArtifactModal(btn.dataset.project ?? '');
+    return;
+  }
+  if (action === 'import-retry') {
+    void retryImport(btn.dataset.jobId ?? '');
     return;
   }
   if (action === 'open-view') {

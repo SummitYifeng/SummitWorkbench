@@ -22,6 +22,12 @@ output: json
 - `open_questions`（对象数组）：尚未有结论的未决问题；每项含 `text` 与 `evidence`。
 - `ai_suggestions`（字符串数组）：你基于上下文推断的下一步建议。
 
+数量与篇幅约束：
+
+- `facts` 全局最多 30 条，优先保留会影响项目状态、风险、数字和承诺的事实。
+- `ai_suggestions` 最多 8 条。
+- 摘要、描述和 evidence 使用短句；evidence 只保留说话人及时间戳或段落锚点，不复制长段原文。
+
 硬约束：
 
 1. 会议**明确承诺执行**的行动项只放 `action_items`；你自己**推断**的下一步只放 `ai_suggestions`，两者不得混写。

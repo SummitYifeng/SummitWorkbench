@@ -90,6 +90,40 @@
       "file"
     ],
     "request_model": "UploadFile",
+    "response_status": 202,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/meetings/imports",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/meetings/imports/{job_id}",
+    "request_fields": [
+      "job_id"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/meetings/imports/{job_id}/retry",
+    "request_fields": [
+      "job_id"
+    ],
+    "request_model": null,
     "response_status": 200,
     "error_codes": []
   },

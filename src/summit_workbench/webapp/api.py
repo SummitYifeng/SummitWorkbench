@@ -253,7 +253,7 @@ class OnboardingModelVerifyPayload(OnboardingConnectionPayload):
 
 
 class OnboardingModelSavePayload(OnboardingModelVerifyPayload):
-    model_id: str = Field(default="deepseek-v4-flash", min_length=1, max_length=200)
+    model_id: str = Field(default="deepseek-flash", min_length=1, max_length=200)
     base_url: str = Field(default="https://api.deepseek.com/v1", min_length=1, max_length=2_048)
 
 

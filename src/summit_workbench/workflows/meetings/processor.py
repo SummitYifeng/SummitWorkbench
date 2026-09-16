@@ -30,6 +30,10 @@ class ProcessingFailure(LLMError):
         self.stage = stage
 
 
+class OutputTruncated(ProcessingFailure):
+    """模型明确因达到输出上限结束；调用方必须缩小输入后再处理。"""
+
+
 @dataclass(frozen=True)
 class ProcessedMeeting:
     extraction: MeetingExtraction
@@ -65,6 +69,16 @@ def estimate_tokens(text: str) -> int:
 
 
 def _input_budget(cfg: ModelConfig, prompt: Prompt) -> int:
+    safe_total = math.floor(cfg.context_window_tokens * cfg.context_safety_ratio)
+    budget = safe_total - cfg.max_output_tokens - estimate_tokens(prompt.body)
+    if budget <= 0:
+        raise ProcessingFailure(
+            "模型上下文配置不足以容纳 prompt 与预留输出", attempts=0, stage="planning"
+        )
+    return min(budget, 2 * cfg.max_output_tokens)
+
+
+def _context_input_budget(cfg: ModelConfig, prompt: Prompt) -> int:
     safe_total = math.floor(cfg.context_window_tokens * cfg.context_safety_ratio)
     budget = safe_total - cfg.max_output_tokens - estimate_tokens(prompt.body)
     if budget <= 0:
@@ -126,6 +140,14 @@ def _schema_error(exc: ValidationError, result_tokens: int, cfg: ModelConfig) ->
     return LLMSchemaError(f"模型输出不符合会议 schema：{detail}{hint}")
 
 
+def _schema_correction(error: ValidationError) -> str:
+    first = error.errors()[0] if error.errors() else None
+    if first is None:
+        return "上一份 JSON 未通过本地 schema 校验，请修正后只输出完整 JSON。"
+    loc = ".".join(str(part) for part in first["loc"]) or "<root>"
+    return f"上一份 JSON 的本地校验失败（{loc}: {first['msg']}），请修正后只输出完整 JSON。"
+
+
 def _call_validated(
     model: ModelClient,
     cfg: ModelConfig,
@@ -139,29 +161,44 @@ def _call_validated(
 ) -> tuple[MeetingExtraction, list[UsageRecord]]:
     usages: list[UsageRecord] = []
     last_error: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 2):
+    network_attempt = 0
+    schema_attempt = 0
+    current_text = user_text
+    while network_attempt < MAX_RETRIES + 1:
+        network_attempt += 1
         try:
-            raw = model.complete(prompt.body, user_text, json_mode=True, max_retries=0)
+            raw = model.complete(prompt.body, current_text, json_mode=True, max_retries=0)
         except LLMError as exc:
             last_error = exc
             if not is_retryable(exc):
-                raise ProcessingFailure(str(exc), attempts=attempt, stage=stage) from exc
+                raise ProcessingFailure(str(exc), attempts=network_attempt, stage=stage) from exc
         else:
-            raw = replace(raw, attempts=attempt)
+            raw = replace(raw, attempts=network_attempt)
             usage = record_from_result(cfg, raw, task_key=task_key)
             usages.append(usage)
             if usage_sink is not None:
                 usage_sink(usage)
+            if raw.finish_reason == "length":
+                raise OutputTruncated(
+                    f"模型输出达到 max_output_tokens={cfg.max_output_tokens}",
+                    attempts=network_attempt,
+                    stage=stage,
+                )
             try:
                 return MeetingExtraction.model_validate_json(raw.text), usages
             except ValidationError as exc:
                 last_error = _schema_error(exc, raw.usage.output_tokens, cfg)
-        if attempt <= MAX_RETRIES:
-            sleep(_BACKOFF_BASE * (2 ** (attempt - 1)))
+                schema_attempt += 1
+                if schema_attempt >= 2:
+                    break
+                current_text = user_text + "\n\n" + _schema_correction(exc)
+                continue
+        if network_attempt <= MAX_RETRIES:
+            sleep(_BACKOFF_BASE * (2 ** (network_attempt - 1)))
 
     detail = str(last_error) if last_error is not None else "未知模型错误"
-    message = f"初调+{MAX_RETRIES} 次重试（共 {MAX_RETRIES + 1} 次调用）后仍失败：{detail}"
-    raise ProcessingFailure(message, attempts=MAX_RETRIES + 1, stage=stage) from last_error
+    message = f"模型调用失败（共 {network_attempt} 次调用）：{detail}"
+    raise ProcessingFailure(message, attempts=network_attempt, stage=stage) from last_error
 
 
 def _merge_payload(items: Sequence[MeetingExtraction]) -> str:
@@ -181,7 +218,7 @@ def _merge_extractions(
     usage_sink: UsageSink | None,
 ) -> tuple[MeetingExtraction, list[UsageRecord]]:
     usages: list[UsageRecord] = []
-    budget = _input_budget(cfg, merger_prompt)
+    budget = _context_input_budget(cfg, merger_prompt)
     current = items
     level = 1
     while len(current) > 1:
@@ -244,19 +281,38 @@ def process_transcript(
     chunks = split_transcript(transcript, budget)
     usages: list[UsageRecord] = []
     extracted: list[MeetingExtraction] = []
-    for index, chunk in enumerate(chunks, start=1):
-        item, chunk_usages = _call_validated(
-            model,
-            cfg,
-            prompt,
-            chunk,
-            task_key=f"{task_key}:chunk:{index}" if len(chunks) > 1 else task_key,
-            stage=f"chunk-{index}",
-            sleep=sleeper,
-            usage_sink=usage_sink,
-        )
+
+    def process_chunk(chunk: str, index: str) -> None:
+        try:
+            item, chunk_usages = _call_validated(
+                model,
+                cfg,
+                prompt,
+                chunk,
+                task_key=(
+                    f"{task_key}:chunk:{index}" if len(chunks) > 1 or "." in index else task_key
+                ),
+                stage=f"chunk-{index}",
+                sleep=sleeper,
+                usage_sink=usage_sink,
+            )
+        except OutputTruncated as exc:
+            smaller_budget = max(1, min(2_000, estimate_tokens(chunk) // 2))
+            smaller = split_transcript(chunk, smaller_budget)
+            if len(smaller) < 2 or max(map(len, smaller)) >= len(chunk):
+                raise ProcessingFailure(
+                    "模型输出被截断，已无法继续缩小该分段",
+                    attempts=exc.attempts,
+                    stage=exc.stage,
+                ) from exc
+            for sub_index, subchunk in enumerate(smaller, start=1):
+                process_chunk(subchunk, f"{index}.{sub_index}")
+            return
         usages.extend(chunk_usages)
         extracted.append(item)
+
+    for index, chunk in enumerate(chunks, start=1):
+        process_chunk(chunk, str(index))
 
     final = extracted[0]
     if len(extracted) > 1:
@@ -281,5 +337,5 @@ def process_transcript(
         extraction=final,
         usage_records=tuple(usages),
         prompt_version=prompt.version_label,
-        chunk_count=len(chunks),
+        chunk_count=len(extracted),
     )

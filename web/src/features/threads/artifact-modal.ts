@@ -25,8 +25,7 @@ export function openArtifactModal(defaultProject: string): void {
       // 中文显示名优先；项目 ID 收进 option 的 title（hover 可见）。
       const label = projectDisplayName(p);
       const hint = label === p.name ? p.name : label + '（' + p.name + '）';
-      return '<option value="' + esc(p.name) + '"' + (p.name === defaultProject ? ' selected' : '') +
-        ' title="' + esc(hint) + '">' + esc(label) + '</option>';
+      return '<option value="' + esc(p.name) + '" label="' + esc(label + '（' + hint + '）') + '"></option>';
     })
     .join('');
   openModal(
@@ -34,8 +33,9 @@ export function openArtifactModal(defaultProject: string): void {
     '<p class="hint">粘贴和 AI 长对话产出的阶段总结 / 背景包 / PRD / 时间线全文，<strong>或直接选择本地 .md/.txt 文件</strong>；' +
     '系统自动命名、生成摘要索引并归入所选线程档案。<strong>也可以直接把文件从访达拖进本窗口</strong>。</p>' +
     '<form id="artifact-form">' +
-    '<div class="form-row"><label>归入线程/项目</label>' +
-    '<select id="artifact-project">' + (options || '<option value="">（无已建档项目）</option>') + '</select></div>' +
+    '<div class="form-row"><label for="artifact-project">归入线程/项目</label>' +
+    '<input id="artifact-project" list="artifact-project-options" placeholder="搜索项目名或 ID…" autocomplete="off">' +
+    '<datalist id="artifact-project-options">' + options + '</datalist></div>' +
     '<input id="artifact-title" placeholder="标题（可选；留空则 AI 自动起）">' +
     '<div class="form-row artifact-file-row"><label class="ghost artifact-pick" for="artifact-file">📄 选择本地文件' +
     '<input id="artifact-file" type="file" accept=".md,.txt" class="visually-hidden"></label>' +
@@ -52,7 +52,7 @@ export function openArtifactModal(defaultProject: string): void {
     void submitArtifact();
   });
   const savedProject = saved?.project || defaultProject;
-  const projectInput = document.getElementById('artifact-project') as HTMLSelectElement | null;
+  const projectInput = document.getElementById('artifact-project') as HTMLInputElement | null;
   const titleInput = document.getElementById('artifact-title') as HTMLInputElement | null;
   const textArea = document.getElementById('artifact-text') as HTMLTextAreaElement | null;
   const stateInput = document.getElementById('artifact-to-state') as HTMLInputElement | null;
@@ -67,7 +67,7 @@ export function openArtifactModal(defaultProject: string): void {
   }
   const persistArtifactDraft = (): void => {
     getThreadsDeps()?.persistEntityDraft('artifact:' + defaultProject, {
-      project: (document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '',
+      project: (document.getElementById('artifact-project') as HTMLInputElement | null)?.value ?? '',
       title: (document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '',
       text: (document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '',
       syncState: !!(document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked,
@@ -120,7 +120,7 @@ let artifactSubmitting = false;
 export async function submitArtifact(): Promise<void> {
   if (artifactSubmitting) return;
   const text = ((document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '').trim();
-  const project = ((document.getElementById('artifact-project') as HTMLSelectElement | null)?.value ?? '').trim();
+  const project = ((document.getElementById('artifact-project') as HTMLInputElement | null)?.value ?? '').trim();
   const title = ((document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '').trim();
   const syncState = !!((document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked);
   if (!text) {

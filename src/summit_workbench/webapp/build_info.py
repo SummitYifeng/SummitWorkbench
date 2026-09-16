@@ -15,7 +15,7 @@ from uuid import uuid4
 from summit_workbench import __version__
 
 PRODUCT_ID = "com.summitworkbench.panel"
-API_PROTOCOL = 2
+API_PROTOCOL = 3
 BuildMode = Literal["production", "development-managed", "development-external"]
 _SHA256_LENGTH = 64
 

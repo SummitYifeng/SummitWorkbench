@@ -16,6 +16,7 @@ export interface TodayState {
 }
 
 export interface ImportReceipt {
+  jobId?: string;
   fileName: string;
   bytes: number;
   status: 'processing' | 'success' | 'partial' | 'error';

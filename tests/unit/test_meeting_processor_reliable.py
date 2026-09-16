@@ -59,7 +59,7 @@ def test_schema_failure_retries_same_model_then_succeeds():
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls["count"] += 1
-        if calls["count"] < 3:
+        if calls["count"] < 2:
             return _response("not-json")
         return _response(_valid())
 
@@ -73,9 +73,9 @@ def test_schema_failure_retries_same_model_then_succeeds():
         client=httpx.Client(transport=httpx.MockTransport(handler)),
         sleep=lambda _: None,
     )
-    assert calls["count"] == 3
-    assert len(result.usage_records) == 3
-    assert result.usage.attempts == 3
+    assert calls["count"] == 2
+    assert len(result.usage_records) == 2
+    assert result.usage.attempts == 2
 
 
 def test_long_transcript_is_chunked_and_merged():
@@ -110,3 +110,46 @@ def test_long_transcript_is_chunked_and_merged():
     assert systems.count("extract") == result.chunk_count
     assert "merge" in systems
     assert len(result.usage_records) > result.chunk_count
+
+
+def test_length_finish_reason_splits_the_input_instead_of_repeating_it():
+    inputs: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        user = payload["messages"][1]["content"]
+        stage = payload["messages"][0]["content"]
+        inputs.append((stage, user))
+        if stage == "extract" and len(user) > 80:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "{}"}, "finish_reason": "length"}],
+                    "usage": {"prompt_tokens": 20, "completion_tokens": 30},
+                },
+            )
+        return _response(_valid())
+
+    cfg = ModelConfig(
+        "meeting",
+        "m",
+        "https://example.test",
+        "shared",
+        max_output_tokens=200,
+        context_window_tokens=500,
+    )
+    result = process_transcript(
+        cfg,
+        SecretStr("secret"),
+        "\n\n".join(f"张三 00:0{i} " + "进展" * 12 for i in range(1, 4)),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        task_key="length",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+    assert result.extraction.one_minute_summary == "ok"
+    extract_inputs = [user for stage, user in inputs if stage == "extract"]
+    assert len(extract_inputs) > 1
+    assert extract_inputs[1] != extract_inputs[0]
+    assert max(len(item) for item in extract_inputs[1:]) < len(extract_inputs[0])

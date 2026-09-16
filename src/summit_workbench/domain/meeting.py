@@ -69,10 +69,14 @@ class MeetingExtraction(BaseModel):
     """一次会议逐字稿的结构化提取结果。"""
 
     one_minute_summary: str = Field(description="一分钟摘要：结论、重要变化、最需注意事项")
-    facts: list[SourcedStatement] = Field(default_factory=list, description="事实与进展")
+    facts: list[SourcedStatement] = Field(
+        default_factory=list, max_length=30, description="事实与进展（最多 30 条）"
+    )
     decisions: list[Decision] = Field(default_factory=list, description="已形成决策")
     action_items: list[ActionItem] = Field(default_factory=list, description="明确行动项")
     open_questions: list[SourcedStatement] = Field(default_factory=list, description="未决问题")
-    ai_suggestions: list[str] = Field(default_factory=list, description="AI 建议（模型推断）")
+    ai_suggestions: list[str] = Field(
+        default_factory=list, max_length=8, description="AI 建议（模型推断，最多 8 条）"
+    )
 
     model_config = {"extra": "ignore"}

@@ -16,3 +16,4 @@ output: json
 2. 相同事项只保留一条，但合并后的证据必须仍能指向原始逐字稿。
 3. `target_project` 无法可靠判断时填 null，不得臆造项目名。
 4. 只输出 JSON 对象，不要输出解释、Markdown 或代码围栏。
+5. `facts` 全局最多 30 条，`ai_suggestions` 最多 8 条；摘要、描述和 evidence 使用短句，不复制长段原文。

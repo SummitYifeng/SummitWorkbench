@@ -42,6 +42,21 @@ def test_capability_overrides_shared(tmp_path):
     assert cfg.base_url == "https://api.example.com/v1"  # 回退 shared
 
 
+def test_meeting_has_explicit_reliability_overrides(tmp_path):
+    f = tmp_path / "config.toml"
+    f.write_text(
+        SHARED
+        + '\n[models.meeting]\nmodel_id = "deepseek-flash"\ntimeout_seconds = 300\n'
+        + "max_output_tokens = 8192\ncontext_window_tokens = 1000000\n",
+        encoding="utf-8",
+    )
+    cfg = load_model_config("meeting", f)
+    assert cfg.model_id == "deepseek-flash"
+    assert cfg.timeout_seconds == 300
+    assert cfg.max_output_tokens == 8192
+    assert cfg.context_window_tokens == 1_000_000
+
+
 def test_explicit_shared_credential_scope_is_workspace_safe(tmp_path):
     f = tmp_path / "config.toml"
     f.write_text(

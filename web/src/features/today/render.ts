@@ -16,6 +16,7 @@ function importDrawer(open: boolean, importing: boolean, results: ImportReceipt[
       '<span class="hint">' + (result.bytes / 1024 / 1024).toFixed(2) + ' MiB · ' + esc(result.message) + '</span>' +
       (result.details?.length ? '<ul>' + result.details.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '') +
       (result.estimate?.crosses_soft_budget ? '<span class="hint">本次估算接近软预算，仅提示，不阻断导入。</span>' : '') +
+      (result.status === 'error' && result.jobId ? '<button class="ghost import-retry" data-action="import-retry" data-job-id="' + esc(result.jobId) + '">继续处理</button>' : '') +
       '</div>'
     ).join('') + '</div>' : '';
   return '<div class="import-drawer' + (open ? ' open' : '') + '" id="import-drawer"' +

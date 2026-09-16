@@ -66,8 +66,10 @@ export function renderProjects(view: HTMLElement, state: ProjectsSnapshot | null
   const fresh = projects.filter((p) => !p.registered).length;
   const archived = projects.filter((p) => p.status === 'archived').length;
   view.innerHTML =
-    '<div class="section-head"><h3 class="section-title">全部项目</h3>' +
+    '<div class="section-head"><div><h3 class="section-title">全部项目</h3>' +
     '<span class="hint">共 ' + total + ' · 在工作台 ' + onHome + ' · 新 ' + fresh + ' · 已归档 ' + archived + '</span></div>' +
+    '<div class="row project-global-actions"><button class="ok" data-action="open-log" data-project="">✎ 追加日志</button>' +
+    '<button class="ghost" data-action="open-artifact" data-project="">存产物</button></div></div>' +
     '<div class="project-toolbar">' +
     '<input id="project-search" type="search" placeholder="搜索项目名…" value="' + esc(query) + '">' +
     '<label class="project-filter"><span class="hint">显示</span><select id="project-status-filter">' +

@@ -75,7 +75,7 @@ def test_process_invalid_json_raises_schema_error():
             client=_client("not json at all"),
             sleep=lambda _: None,
         )
-    assert error.value.attempts == 4
+    assert error.value.attempts == 2
 
 
 def test_process_missing_required_field_raises():
@@ -89,4 +89,4 @@ def test_process_missing_required_field_raises():
             client=_client('{"facts": []}'),  # 缺 one_minute_summary
             sleep=lambda _: None,
         )
-    assert error.value.attempts == 4
+    assert error.value.attempts == 2

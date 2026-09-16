@@ -18,6 +18,7 @@ from summit_workbench.config.settings import default_config_file
 from summit_workbench.config.tls_trust import configure_default_tls_trust, tls_runtime_diagnostic
 from summit_workbench.webapp.app import WebContext, create_app
 from summit_workbench.webapp.build_info import (
+    API_PROTOCOL,
     WebBuildInfo,
     mode_from_environment,
     new_server_instance,
@@ -176,7 +177,7 @@ def main(argv: list[str] | None = None) -> None:
     write_runtime_record(
         RuntimeRecord(
             product_id="com.summitworkbench.panel",
-            api_protocol=2,
+            api_protocol=API_PROTOCOL,
             frontend_build=frontend_build,
             server_instance=server_instance,
             workspace_id=active_workspace.workspace_id,
