@@ -240,3 +240,29 @@ def test_backfill_reports_local_transaction_ids_and_keeps_model_call_outside_loc
     assert report.processed == 1
     assert len(report.operation_ids) == 2
     assert len(set(report.operation_ids)) == 2
+
+
+def test_backfill_accepts_mutation_runtime_runner(tmp_path):
+    """Web 注入的 MutationRuntime.run 使用二参数契约，也必须跑完整导入链路。"""
+    vault = tmp_path / "vault"
+    src = _src(tmp_path)
+    items = scan_local_transcripts(vault, src, since="2026-08-01", until="2026-08-31")
+
+    def runtime_run(action, mutation):
+        return run_local_mutation(vault, action, mutation)
+
+    report = run_backfill(
+        vault,
+        items,
+        CFG,
+        SecretStr("k"),
+        prompt=PROCESSOR,
+        merger_prompt=MERGER,
+        client=_ok_client(),
+        sleep=lambda _: None,
+        local_mutation=runtime_run,
+    )
+
+    assert report.processed == 1
+    assert report.failed == 0
+    assert len(report.operation_ids) == 2

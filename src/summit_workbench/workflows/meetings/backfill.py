@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -97,6 +98,31 @@ def _run_local[T](
         return mutation("").business_return, None
     typed = cast(LocalMutationResult[T], runner(vault_dir, action, mutation))
     return typed.business_return, typed.operation_id
+
+
+def _adapt_local_mutation(
+    vault_dir: Path, runner: Callable[..., object] | None
+) -> Callable[..., object] | None:
+    """把 Web 运行时的二参数事务函数适配到补导的旧三参数契约。"""
+    if runner is None:
+        return None
+    try:
+        signature = inspect.signature(runner)
+        accepts_two = True
+        accepts_three = True
+        try:
+            signature.bind("meetings/probe", lambda _operation_id: None)
+        except TypeError:
+            accepts_two = False
+        try:
+            signature.bind(vault_dir, "meetings/probe", lambda _operation_id: None)
+        except TypeError:
+            accepts_three = False
+    except (TypeError, ValueError):
+        return runner
+    if accepts_two and not accepts_three:
+        return lambda _vault_dir, action, mutation: runner(action, mutation)
+    return runner
 
 
 def _derive_date(meta: dict[str, object], path: Path) -> str | None:
@@ -261,6 +287,7 @@ def run_backfill(
     results: list[BackfillItemResult] = []
     operation_ids: list[str] = []
     processed = skipped = failed = candidates_total = 0
+    local_mutation = _adapt_local_mutation(vault_dir, local_mutation)
     for item in items:
         if item.done:
             skipped += 1
