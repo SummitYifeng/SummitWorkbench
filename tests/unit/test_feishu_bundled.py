@@ -70,7 +70,8 @@ def test_bundled_without_app_id_is_treated_as_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _use_bundled(monkeypatch, _write_bundled(tmp_path, app_id=""))
-    assert load_bundled_defaults() is None
+    with pytest.raises(FeishuConfigError, match="app_id"):
+        load_bundled_defaults()
 
 
 def test_bundled_without_secret_keeps_app_id(

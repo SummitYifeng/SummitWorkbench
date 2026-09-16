@@ -18,6 +18,8 @@ BUILD_NUMBER="${BUILD_NUMBER:-0}"
 RELEASE_BUILD="${RELEASE_BUILD:-false}"
 UPDATE_FEED_URL="${UPDATE_FEED_URL:-}"
 UPDATE_PUBLIC_KEY="${UPDATE_PUBLIC_KEY:-}"
+REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-true}"
+ALLOW_INCOMPLETE_FEISHU_DEV="${ALLOW_INCOMPLETE_FEISHU_DEV:-false}"
 
 case "$ARCH" in
   arm64) ;;
@@ -29,6 +31,15 @@ esac
 }
 if [[ "$RELEASE_BUILD" == true && "$BUILD_NUMBER" == 0 ]]; then
   echo "✗ 正式/候选构建必须显式提供 BUILD_NUMBER（CI run 或发布参数）" >&2
+  exit 1
+fi
+if [[ "$RELEASE_BUILD" == true ]]; then
+  REQUIRE_BUNDLED_FEISHU=true
+elif [[ "$ALLOW_INCOMPLETE_FEISHU_DEV" == true ]]; then
+  REQUIRE_BUNDLED_FEISHU=false
+fi
+if [[ "$REQUIRE_BUNDLED_FEISHU" != true && "$ALLOW_INCOMPLETE_FEISHU_DEV" != true && "$RELEASE_BUILD" != true ]]; then
+  echo "✗ 开发构建缺少飞书默认凭据；如确需不完整开发包，请显式设置 ALLOW_INCOMPLETE_FEISHU_DEV=true" >&2
   exit 1
 fi
 
@@ -99,6 +110,7 @@ cp -R "$REPO_ROOT/templates/." "$APP/Contents/Resources/templates/"
 # 后端，因此这里把 app_id / app_secret 写进包内资源；必须写在**签名之前**（见下方 sign）。
 # 密钥只从环境变量取，绝不进仓库（repo 内不存在该文件，见 .gitignore 的 build/ 与 dist/）。
 FEISHU_DEFAULTS="$APP/Contents/Resources/feishu-defaults.json"
+FEISHU_BUNDLED=false
 if [[ -n "${WB_FEISHU_APP_ID:-}" || -n "${WB_FEISHU_APP_SECRET:-}" ]]; then
   [[ -n "${WB_FEISHU_APP_ID:-}" && -n "${WB_FEISHU_APP_SECRET:-}" ]] || {
     echo "✗ WB_FEISHU_APP_ID 与 WB_FEISHU_APP_SECRET 必须同时提供（只给其一无法授权）" >&2
@@ -117,8 +129,9 @@ sys.stdout.write(json.dumps({
 ' > "$FEISHU_DEFAULTS"
   )
   chmod 600 "$FEISHU_DEFAULTS"
+  FEISHU_BUNDLED=true
   echo "✓ 已内置飞书默认凭据：app_id=${WB_FEISHU_APP_ID} redirect_uri=${WB_FEISHU_REDIRECT_URI:-http://localhost:8765/callback}"
-elif [[ "${REQUIRE_BUNDLED_FEISHU:-false}" == "true" ]]; then
+elif [[ "$REQUIRE_BUNDLED_FEISHU" == "true" ]]; then
   echo "✗ REQUIRE_BUNDLED_FEISHU=true 但缺少 WB_FEISHU_APP_ID / WB_FEISHU_APP_SECRET：" >&2
   echo "  发布包必须内置飞书默认凭据，否则同事无法完成授权。" >&2
   exit 1
@@ -195,6 +208,11 @@ cat > "$APP/Contents/Resources/build-manifest.json" <<MANIFEST
   "build": "$BUILD_NUMBER",
   "architecture": "$ARCH",
   "distribution": "$RELEASE_LABEL",
+  "feishu_credentials": {
+    "bundled": $FEISHU_BUNDLED,
+    "keychain_fallback": true,
+    "complete": $FEISHU_BUNDLED
+  },
   "frontend_build": "$FRONTEND_BUILD",
   "api_protocol": 2,
   "update_feed_url": "$UPDATE_FEED_URL",

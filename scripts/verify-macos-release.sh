@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP="${1:-}"
 DMG="${2:-}"
+REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-true}"
 [[ -d "$APP" ]] || { echo "✗ 用法：verify-macos-release.sh APP [DMG]" >&2; exit 1; }
 SERVER="$APP/Contents/Resources/server/SummitWorkbenchServer"
 STATIC="$APP/Contents/Resources/web/static"
@@ -57,7 +58,7 @@ fi
 
 # 内置飞书凭据：发布构建必须带上，否则同事拿到 DMG 也无法完成授权。
 FEISHU_DEFAULTS="$APP/Contents/Resources/feishu-defaults.json"
-if [[ "${REQUIRE_BUNDLED_FEISHU:-false}" == "true" && ! -f "$FEISHU_DEFAULTS" ]]; then
+if [[ "$REQUIRE_BUNDLED_FEISHU" == "true" && ! -f "$FEISHU_DEFAULTS" ]]; then
   echo "✗ REQUIRE_BUNDLED_FEISHU=true 但包内缺少 feishu-defaults.json" >&2
   exit 1
 fi
@@ -81,6 +82,19 @@ PY
   fi
   echo "✓ 内置飞书凭据结构正确（值不打印）"
 fi
+
+python3 - "$MANIFEST" "$REQUIRE_BUNDLED_FEISHU" <<'PY'
+import json
+import sys
+
+manifest = json.loads(open(sys.argv[1], encoding="utf-8").read())
+required = sys.argv[2] == "true"
+credentials = manifest.get("feishu_credentials")
+if not isinstance(credentials, dict):
+    sys.exit("missing feishu_credentials manifest metadata")
+if required and credentials.get("complete") is not True:
+    sys.exit("manifest does not confirm complete bundled Feishu credentials")
+PY
 
 TOKEN="offline-release-smoke-token"
 HOME="$SMOKE_HOME" WB_PANEL_MODE=production WB_SESSION_TOKEN="$TOKEN" \

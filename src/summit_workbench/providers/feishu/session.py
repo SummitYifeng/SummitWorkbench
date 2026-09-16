@@ -56,12 +56,17 @@ class FeishuSession:
                 self.cfg.legacy_app_secret_ref,
             )
         except CredentialError as exc:
+            if exc.reason != "missing":
+                raise
             bundled = load_bundled_defaults()
+            if bundled is not None and bundled.app_id != self.cfg.app_id:
+                raise FeishuConfigError(
+                    "内置飞书默认凭据的 app_id 与当前工作区配置不一致，已阻止回退"
+                ) from exc
             if bundled is not None and bundled.app_secret is not None:
                 return bundled.app_secret
             raise FeishuConfigError(
-                f"未在 Keychain 找到 app_secret（{self.cfg.app_secret_ref}）；"
-                "请先用 security add-generic-password 存入"
+                "未找到可用于飞书授权的 app_secret；请检查安装包授权组件或工作区凭据设置"
             ) from exc
 
     def _resolve_credential(
@@ -83,10 +88,14 @@ class FeishuSession:
         except CredentialError as scoped_error:
             if ref == legacy_ref:
                 raise scoped_error
+            if scoped_error.reason != "missing":
+                raise
             try:
                 value = resolve_legacy_credential_for_migration(legacy_ref)
                 store_credential(ref, value)
-            except CredentialError:
+            except CredentialError as legacy_error:
+                if legacy_error.reason != "missing":
+                    raise
                 raise scoped_error from None
             return value
 

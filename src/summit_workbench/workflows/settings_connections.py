@@ -7,6 +7,7 @@ app cannot drift into separate provider/Keychain implementations.
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -14,6 +15,7 @@ from pydantic import SecretStr
 from summit_workbench.config.secrets import resolve_credential
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.providers.feishu.config import FeishuConfig, load_feishu_config
+from summit_workbench.providers.feishu.errors import FeishuConfigError
 from summit_workbench.providers.feishu.session import FeishuSession
 from summit_workbench.providers.llm import load_model_config
 from summit_workbench.providers.llm.client import ModelClient
@@ -46,11 +48,23 @@ def verify_model(
 def feishu_config(*, config_file: Path, workspace_id: str) -> FeishuConfig:
     try:
         return load_feishu_config(config_file, workspace_id=workspace_id)
-    except Exception:
+    except FeishuConfigError:
+        if config_file.is_file():
+            try:
+                data = tomllib.loads(config_file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+                raise
+            if isinstance(data.get("feishu"), dict):
+                raise
         # Initial onboarding may not have copied non-secret app settings into the
         # profile yet.  The application config remains the only fallback source;
         # tokens are still always written to the workspace-scoped Keychain.
         return load_feishu_config(default_config_file(), workspace_id=workspace_id)
+
+
+def ensure_feishu_credentials(*, config: FeishuConfig, lock_root: Path | None = None) -> None:
+    """授权跳转前验证 app_secret；不返回或记录秘密。"""
+    FeishuSession(config, lock_root=lock_root)._app_secret()
 
 
 def model_config(*, capability: str, config_file: Path, workspace_id: str) -> ModelConfig:
@@ -90,4 +104,10 @@ def complete_feishu_authorization(
         )
 
 
-__all__ = ["complete_feishu_authorization", "feishu_config", "model_config", "verify_model"]
+__all__ = [
+    "complete_feishu_authorization",
+    "ensure_feishu_credentials",
+    "feishu_config",
+    "model_config",
+    "verify_model",
+]

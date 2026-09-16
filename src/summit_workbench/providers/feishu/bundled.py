@@ -92,8 +92,7 @@ def load_bundled_defaults() -> BundledFeishuDefaults | None:
 
     app_id = payload.get("app_id")
     if not isinstance(app_id, str) or not app_id.strip():
-        # 没有 app_id 就无法授权，等同于未内置。
-        return None
+        raise FeishuConfigError(f"内置飞书默认凭据缺少 app_id：{path}")
     redirect_uri = payload.get("redirect_uri")
     secret = payload.get("app_secret")
     return BundledFeishuDefaults(

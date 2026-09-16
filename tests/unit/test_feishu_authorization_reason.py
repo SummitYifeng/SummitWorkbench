@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
+from summit_workbench.config.secrets import CredentialError, CredentialRef, resolve_credential
 from summit_workbench.providers.feishu import auth
 from summit_workbench.providers.feishu.config import FeishuConfig
 from summit_workbench.providers.feishu.errors import FeishuAuthError
@@ -78,6 +79,91 @@ def test_refresh_failure_still_marks_needs_reauthorize() -> None:
     with pytest.raises(FeishuAuthError) as excinfo:
         auth.refresh_token(CFG, SecretStr("s"), SecretStr("rt"), client=_client({"code": 20003}))
     assert excinfo.value.needs_reauthorize is True
+
+
+def test_keychain_failure_has_stable_reason_without_leaking_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    monkeypatch.setattr(
+        "summit_workbench.config.secrets.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args, 44, "", "security: User interaction is not allowed\n"
+        ),
+    )
+
+    with pytest.raises(CredentialError) as excinfo:
+        resolve_credential(type("Ref", (), {"service": "svc", "account": "acct"})())
+    assert excinfo.value.reason == "denied"
+    assert "User interaction" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        ("missing", "missing"),
+        ("timeout", "timeout"),
+        ("unavailable", "unavailable"),
+    ],
+)
+def test_keychain_failure_reasons_are_stable(
+    monkeypatch: pytest.MonkeyPatch, failure: str, reason: str
+) -> None:
+    import subprocess
+
+    if failure == "timeout":
+
+        def run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], 30)
+    elif failure == "unavailable":
+
+        def run(*args, **kwargs):
+            raise FileNotFoundError("security")
+    else:
+
+        def run(*args, **kwargs):
+            return subprocess.CompletedProcess(args, 44, "", "security: item not found")
+
+    monkeypatch.setattr("summit_workbench.config.secrets.subprocess.run", run)
+    with pytest.raises(CredentialError) as excinfo:
+        resolve_credential(CredentialRef(service="svc", account="acct"))
+    assert excinfo.value.reason == reason
+
+
+def test_authorize_url_blocks_before_redirect_when_credentials_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from summit_workbench.workflows import settings_connections
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    config = tmp_path / "config.toml"
+    config.write_text(
+        '[feishu]\napp_id = "cli_test"\nredirect_uri = "http://localhost:8765/callback"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WB_CONFIG_FILE", str(config))
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", "")
+    monkeypatch.setattr(
+        settings_connections.FeishuSession,
+        "_app_secret",
+        lambda self: (_ for _ in ()).throw(CredentialError("blocked", reason="denied")),
+    )
+
+    client = TestClient(create_app(None, static_dir=tmp_path / "missing-static"))
+    workspace_id = client.post(
+        "/api/onboarding/create", json={"work_root": str(tmp_path / "Work")}
+    ).json()["workspace_id"]
+
+    response = client.post(
+        "/api/onboarding/feishu/authorize-url", json={"workspace_id": workspace_id}
+    )
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "feishu_credentials_unavailable"
+    assert "钥匙串" in body["message"]
+    assert "blocked" not in response.text
 
 
 def test_denied_reason_covers_user_cancel_and_short_circuit() -> None:

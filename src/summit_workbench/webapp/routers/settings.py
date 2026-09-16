@@ -26,6 +26,7 @@ from summit_workbench.config.app_support import (
 )
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.profiles import ActiveWorkspaceContext
+from summit_workbench.config.secrets import CredentialError
 from summit_workbench.domain.automation import AutomationJob
 from summit_workbench.domain.workspace import LocalProfile
 from summit_workbench.providers.feishu.errors import FeishuAuthError, FeishuConfigError
@@ -73,6 +74,7 @@ from summit_workbench.workflows.remote_normalization import (
 )
 from summit_workbench.workflows.settings_connections import (
     complete_feishu_authorization,
+    ensure_feishu_credentials,
     feishu_config,
     verify_model,
 )
@@ -298,9 +300,18 @@ def _plain_provider_error(error: Exception) -> str:
         return str(error)
     if isinstance(error, (FeishuAuthError, FeishuConfigError)):
         return str(error)
-    if type(error).__name__ == "CredentialError":
-        return "还没有找到对应的 workspace 凭据"
+    if isinstance(error, CredentialError):
+        return _credential_error_message(error)
     return "请检查配置后重试"
+
+
+def _credential_error_message(error: CredentialError) -> str:
+    return {
+        "missing": "此安装包缺少飞书授权组件或工作区凭据",
+        "denied": "钥匙串访问被拒绝，请在系统设置中允许访问后重试",
+        "timeout": "钥匙串访问超时，请稍后重试",
+        "unavailable": "钥匙串当前不可用，请检查系统状态后重试",
+    }[error.reason]
 
 
 def _workspace_connection_inputs(
@@ -361,6 +372,7 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
             cfg = feishu_config(
                 config_file=context.provider_config_file(), workspace_id=context.workspace_id
             )
+            ensure_feishu_credentials(config=cfg, lock_root=context.lock_root)
             state = states.issue(context.workspace_id)
             from summit_workbench.providers.feishu.auth import build_authorize_url
 
@@ -370,6 +382,14 @@ def _register_full_routes(dependencies: RouteDependencies, states: _Authorizatio
                 "state": state,
                 "expires_in": int(_STATE_TTL),
             }
+        except CredentialError as exc:
+            return _failure(
+                dependencies,
+                request,
+                status_code=409,
+                code="feishu_credentials_unavailable",
+                message=f"飞书授权暂时不可用：{_credential_error_message(exc)}",
+            )
         except Exception as exc:
             return _failure(
                 dependencies,
@@ -590,6 +610,7 @@ def register_restricted_connection_routes(
         config_file, _lock_root = inputs
         try:
             cfg = feishu_config(config_file=config_file, workspace_id=payload.workspace_id)
+            ensure_feishu_credentials(config=cfg, lock_root=_lock_root)
             state = states.issue(payload.workspace_id)
             from summit_workbench.providers.feishu.auth import build_authorize_url
 
@@ -599,6 +620,15 @@ def register_restricted_connection_routes(
                 "state": state,
                 "expires_in": int(_STATE_TTL),
             }
+        except CredentialError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="feishu_credentials_unavailable",
+                    message=f"飞书授权暂时不可用：{_credential_error_message(exc)}",
+                    operation_id=operation_id(request),
+                ),
+            )
         except Exception as exc:
             return JSONResponse(
                 status_code=409,

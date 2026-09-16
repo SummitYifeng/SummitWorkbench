@@ -130,9 +130,7 @@ def test_app_secret_falls_back_to_bundled_when_keychain_empty(tmp_path, monkeypa
     """同事干净机器：Keychain 没有 app_secret，用包内内置默认值完成换取。"""
     monkeypatch.setenv("WORK_ROOT", str(tmp_path))
     bundled = tmp_path / "feishu-defaults.json"
-    bundled.write_text(
-        '{"app_id": "cli_bundled", "app_secret": "bundled-secret"}', encoding="utf-8"
-    )
+    bundled.write_text('{"app_id": "app1", "app_secret": "bundled-secret"}', encoding="utf-8")
     monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(bundled))
     monkeypatch.setattr(session_mod, "resolve_credential", _raise_missing)
     monkeypatch.setattr(session_mod, "resolve_legacy_credential_for_migration", _raise_missing)
@@ -162,4 +160,39 @@ def test_app_secret_missing_everywhere_raises_config_error(tmp_path, monkeypatch
 
     with pytest.raises(FeishuConfigError) as excinfo:
         FeishuSession(CFG)._app_secret()
-    assert "security add-generic-password" in str(excinfo.value)
+    assert "授权组件" in str(excinfo.value)
+
+
+def test_app_secret_does_not_use_bundled_identity_for_another_app(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    bundled = tmp_path / "feishu-defaults.json"
+    bundled.write_text(
+        '{"app_id": "different-app", "app_secret": "bundled-secret"}', encoding="utf-8"
+    )
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(bundled))
+    monkeypatch.setattr(
+        session_mod,
+        "resolve_credential",
+        lambda ref: (_ for _ in ()).throw(CredentialError("missing", reason="missing")),
+    )
+    monkeypatch.setattr(
+        session_mod,
+        "resolve_legacy_credential_for_migration",
+        lambda ref: (_ for _ in ()).throw(CredentialError("missing", reason="missing")),
+    )
+
+    with pytest.raises(FeishuConfigError, match="app_id"):
+        FeishuSession(CFG)._app_secret()
+
+
+def test_app_secret_does_not_fallback_after_keychain_denied(tmp_path, monkeypatch):
+    monkeypatch.setenv("WORK_ROOT", str(tmp_path))
+    bundled = tmp_path / "feishu-defaults.json"
+    bundled.write_text('{"app_id": "app1", "app_secret": "bundled-secret"}', encoding="utf-8")
+    monkeypatch.setenv("WB_FEISHU_DEFAULTS", str(bundled))
+    error = CredentialError("access denied", reason="denied")
+    monkeypatch.setattr(session_mod, "resolve_credential", lambda ref: (_ for _ in ()).throw(error))
+
+    with pytest.raises(CredentialError) as excinfo:
+        FeishuSession(CFG)._app_secret()
+    assert excinfo.value.reason == "denied"

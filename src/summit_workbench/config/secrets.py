@@ -9,12 +9,19 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import SecretStr
 
+CredentialReason = Literal["missing", "denied", "timeout", "unavailable"]
+
 
 class CredentialError(RuntimeError):
-    """凭据无法解析时抛出（缺失、Keychain 不可用等）。异常信息不含秘密值。"""
+    """凭据无法解析时抛出，带稳定原因码且不含秘密值。"""
+
+    def __init__(self, message: str, *, reason: CredentialReason = "missing") -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 @dataclass(frozen=True)
@@ -36,15 +43,28 @@ def _run_security(
 ) -> subprocess.CompletedProcess[str]:
     """运行 ``security`` 子命令，失败时抛出不含秘密值的 :class:`CredentialError`。"""
     try:
-        completed = subprocess.run(["security", *args], capture_output=True, text=True, check=False)
+        completed = subprocess.run(
+            ["security", *args], capture_output=True, text=True, check=False, timeout=30
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise CredentialError(f"{action}凭据超时 {ref}", reason="timeout") from exc
     except FileNotFoundError as exc:  # 非 macOS 或缺少 security CLI
-        raise CredentialError(f"无法调用 security CLI {action} {ref}") from exc
+        raise CredentialError(
+            f"无法调用 security CLI {action} {ref}", reason="unavailable"
+        ) from exc
 
     if completed.returncode != 0:
-        # 只回传 stderr 的首行摘要，Keychain 不会把密码写进 stderr。
-        detail = (completed.stderr or "").strip().splitlines()
-        hint = detail[0] if detail else f"returncode={completed.returncode}"
-        raise CredentialError(f"未能{action} {ref}: {hint}")
+        detail = (completed.stderr or "").lower()
+        if any(marker in detail for marker in ("not found", "could not be found", "no such")):
+            reason: CredentialReason = "missing"
+        elif any(
+            marker in detail
+            for marker in ("not allowed", "denied", "permission", "interaction is not allowed")
+        ):
+            reason = "denied"
+        else:
+            reason = "unavailable"
+        raise CredentialError(f"未能{action}凭据 {ref}", reason=reason)
     return completed
 
 
@@ -58,7 +78,10 @@ def resolve_credential(ref: CredentialRef) -> SecretStr:
         action="解析",
         ref=ref,
     )
-    return SecretStr(completed.stdout.rstrip("\n"))
+    value = completed.stdout.rstrip("\n")
+    if not value:
+        raise CredentialError(f"解析到空凭据 {ref}", reason="missing")
+    return SecretStr(value)
 
 
 def store_credential(ref: CredentialRef, value: SecretStr) -> None:

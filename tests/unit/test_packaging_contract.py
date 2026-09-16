@@ -104,6 +104,16 @@ def test_p013_release_contract_is_versioned_arm64_internal_safe() -> None:
     assert "com.apple.security.cs.disable-library-validation" not in entitlements
 
 
+def test_release_requires_bundled_feishu_and_manifest_records_credential_mode() -> None:
+    build = (_ROOT / "scripts/build-macos-app.sh").read_text(encoding="utf-8")
+    release = (_ROOT / "scripts/release-macos.sh").read_text(encoding="utf-8")
+    verify = (_ROOT / "scripts/verify-macos-release.sh").read_text(encoding="utf-8")
+    assert 'REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-true}"' in release
+    assert "ALLOW_INCOMPLETE_FEISHU_DEV" in build
+    assert '"feishu_credentials"' in build
+    assert 'REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-true}"' in verify
+
+
 def test_p101_packages_a_self_contained_worker_and_native_helper() -> None:
     build = (_ROOT / "scripts" / "build-macos-app.sh").read_text(encoding="utf-8")
     spec = (_ROOT / "packaging" / "SummitWorkbenchWorker.spec").read_text(encoding="utf-8")
