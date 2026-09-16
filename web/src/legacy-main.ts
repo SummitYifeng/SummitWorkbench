@@ -32,23 +32,11 @@ import type { ExternalAction, ReviewPayload } from './features/review';
 import {
   applyTabChrome,
   mountShell,
+  registerModalCloseHook,
   requestModalClose,
   toast,
   viewElement,
 } from './features/shell';
-import {
-  askNewThread,
-  askOpenThread,
-  beginAskRename,
-  deleteAskThread,
-  getAskDraft,
-  mountAsk,
-  openSource,
-  reloadAskStore,
-  renderAsk,
-  resetAskForWorkspace,
-  setAskDraft,
-} from './features/ask';
 import {
   applySyncConflictRecovery,
   exportSyncConflictPackage,
@@ -61,7 +49,7 @@ import {
   showSyncConflictDetails,
 } from './features/sync';
 import { mountUndo, openUndoModal } from './features/undo';
-import { mountGuide } from './features/guide';
+import { invalidateSourceReads, openSource } from './features/source-reader';
 import {
   mountThreads,
   openArtifactModal,
@@ -126,7 +114,7 @@ import {
   type TodayActions,
 } from './features/today';
 
-type Tab = 'today' | 'review' | 'ask' | 'projects' | 'guide' | 'settings';
+type Tab = 'today' | 'review' | 'projects' | 'settings';
 
 interface StatusUsage {
   estimated_cost: number;
@@ -200,7 +188,7 @@ let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
 let restoredDraft: DraftSnapshot | null = null;
 // null = 尚未按任何 workspace 载入过；服务端省略 workspace_id 时回退为 'unknown'，也必须载入一次。
-let loadedAskWorkspace: string | null = null;
+let loadedWorkspaceId: string | null = null;
 
 function persistEntityDraft<T>(entity: string, value: T): void {
   if (saveEntityDraft(entity, value, remoteVersion?.workspace_id)) return;
@@ -242,8 +230,6 @@ function saveCurrentDraftSnapshot(): void {
   if (editForms.length > 0) reviewDrafts = reviewForms;
   const persistedReviewForms = editForms.length > 0 ? reviewForms : reviewDrafts;
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
-  const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (ask) setAskDraft(ask.value);
   const saved = persistDraftSnapshot({
     schema: 1,
     saved_at: new Date().toISOString(),
@@ -251,7 +237,6 @@ function saveCurrentDraftSnapshot(): void {
     tab,
     scroll_y: window.scrollY,
     capture_text: capture?.value ?? '',
-    ask_draft: getAskDraft(),
     review_forms: persistedReviewForms,
   }, remoteVersion?.workspace_id);
   if (!saved && !draftStorageWarningShown) {
@@ -265,10 +250,7 @@ function applyRestoredDraft(): void {
   if (!draft) return;
   const capture = document.getElementById('capture-input') as HTMLInputElement | null;
   if (capture) capture.value = draft.capture_text;
-  setAskDraft(draft.ask_draft);
   reviewDrafts = draft.review_forms;
-  const ask = document.getElementById('ask-input') as HTMLTextAreaElement | null;
-  if (ask) ask.value = draft.ask_draft;
   document.querySelectorAll<HTMLFormElement>('.edit-form').forEach((form) => {
     const candidateId = String(new FormData(form).get('candidate_id') ?? '');
     const fields = draft.review_forms[candidateId];
@@ -349,21 +331,19 @@ async function doCheckVersion(_reason: string): Promise<void> {
   remoteVersion = remote;
   const workspaceId = remote.workspace_id ?? 'unknown';
   workspaceStore.setWorkspace(workspaceId);
-  if (loadedAskWorkspace !== workspaceId) {
+  if (loadedWorkspaceId !== workspaceId) {
     state = null;
     review = null;
     stateLoadError = null;
     reviewLoadError = null;
     lastStateReadAt = null;
     lastReviewReadAt = null;
-    resetAskForWorkspace();
     resetReviewForWorkspace();
     reviewDrafts = {};
     restoredDraft = null;
     resetTodayForWorkspace();
     resetProjectsForWorkspace();
-    loadedAskWorkspace = workspaceId;
-    reloadAskStore();
+    loadedWorkspaceId = workspaceId;
   }
   if (remote.frontend_build === CLIENT_BUILD) {
     setVersionStatus('synced', remoteVersion);
@@ -403,12 +383,8 @@ function render(): void {
     renderReviewView();
   } else if (tab === 'projects') {
     renderProjects(viewElement('projects') as HTMLElement, state);
-  } else if (tab === 'guide') {
-    mountGuide(viewElement('guide') as HTMLElement);
-  } else if (tab === 'settings') {
-    void renderSettingsView(viewElement('settings') as HTMLElement);
   } else {
-    renderAsk(viewElement('ask') as HTMLElement);
+    void renderSettingsView(viewElement('settings') as HTMLElement);
   }
   applyRestoredDraft();
 }
@@ -690,22 +666,6 @@ document.addEventListener('click', (ev) => {
     rejectExpired();
     return;
   }
-  if (action === 'ask-new') {
-    askNewThread();
-    return;
-  }
-  if (action === 'ask-open') {
-    askOpenThread(btn.dataset.thread ?? null);
-    return;
-  }
-  if (action === 'ask-del') {
-    deleteAskThread(btn.dataset.thread ?? '');
-    return;
-  }
-  if (action === 'ask-rename') {
-    beginAskRename(btn.dataset.thread ?? '');
-    return;
-  }
   if (action === 'toggle-edit') {
     const box = btn.closest<HTMLElement>('.entry')?.querySelector<HTMLElement>('.edit-box');
     if (box) box.hidden = !box.hidden;
@@ -947,11 +907,8 @@ export function mountLegacyWorkbench(): void {
     workspaceId: () => remoteVersion?.workspace_id,
     persistEntityDraft,
   });
-  mountAsk({
-    projects: () => state?.projects ?? [],
-    workspaceId: () => remoteVersion?.workspace_id,
-    persistEntityDraft,
-  });
+  // 来源弹层的在途读取必须在关闭时作废（§4.4）；原由 mountAsk 注册，问答下线后在此注册。
+  registerModalCloseHook(invalidateSourceReads);
   // 连接恢复后重查一次版本（原 apiClient 的 onSuccess 回调，§4.5）。
   onConnectionRestored(() => { void checkVersion('connection-restored'); });
   setMutationIdleHandler(async (targetBuild) => {

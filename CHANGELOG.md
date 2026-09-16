@@ -126,6 +126,19 @@
   PRD §3.1.2/§3.1.3/§3.1.4/§3.1.6/§3.2.6 与 README、PROJECTDESC 的过时「不切片 / ripgrep」
   描述改为当前真实实现，并登记 T2 已满足、高级语义检索归属 SummitKnowledge。
 
+### 界面收敛（2026-09-16）
+
+- **工作台下线「第二大脑」与「指南」两个页签**，页签由六个收敛为四个（今日 / 审批 / 项目 / 设置）：
+  - 前端：删 `features/ask/`（6 文件）与 `features/guide/`（2 文件）、`guide.md` 及其构建同步脚本，
+    见 `shell.ts` / `tabs.ts` 的页签表与 `legacy-main.ts` 的组合根；
+  - 后端：删 `webapp/routers/ask.py` 与 `webapp/ask_view.py`，SSR 看板去掉「问第二大脑」表单
+    （状态 tile「已入第二大脑」改为「已入知识库」），路由契约同步重生成（移除 `/api/ask`、`/ask`）；
+  - **保留**：`wb ask` CLI（计划里就是「轻量兜底」）、`answer_question` 编排、`/api/sources/read`
+    与只读来源面板（**审批页的证据核查仍在用**，从已删的 ask feature 里独立成 `features/source-reader.ts`）；
+  - 体积：前端模块 69→62、JS 162.3→122.7 kB、CSS 37.3→31.6 kB（另删 139 行问答/指南专属样式，
+    全局响应式规则逐条保留）。
+  - 理由：一个入口一个职责——看板归 SWB、语义问答归 SK；界面越窄，日常使用频率越高。
+
 ### 验证与产物
 
 - `0.4.9` build **42**（`git_commit=70f6753`、前端 `v2026.09.14-70f6753-4d072dbb`）已构建并安装到

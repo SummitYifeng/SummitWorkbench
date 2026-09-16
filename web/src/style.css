@@ -400,88 +400,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   border-radius: var(--radius); padding: 18px; text-align: center; color: var(--muted);
 }
 
-/* ---- 问答 ---- */
-.ask textarea {
-  width: 100%; font: inherit; font-size: 14px;
-  padding: 10px 12px; border-radius: var(--radius);
-  border: 1px solid var(--border); background: var(--card); color: var(--fg);
-  resize: vertical;
-}
-.form-row { display: flex; gap: 8px; margin-top: 8px; }
-.answer {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 12px 16px; margin-top: 10px; font-size: 14px;
-}
-.answer ul { margin: 4px 0; padding-left: 20px; }
-.wikilink { color: var(--accent); }
-.not-actionable { color: var(--warn); font-size: 12px; margin: 4px 0; }
-.err-text { color: var(--bad); }
-code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
-.loading { color: var(--muted); text-align: center; padding: 24px 0; }
-.external-actions {
-  background: var(--warn-soft); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 12px; margin: 10px 0;
-}
-.external-actions h4 { margin: 0 0 6px; }
-.external-action-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px 10px;
-  flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); font-size: 12.5px;
-}
-.external-action-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.external-action-row .row { margin-top: 0; }
-
-/* ---- 第二大脑（对话页） ---- */
-.ask-layout { display: flex; gap: 16px; align-items: flex-start; }
-.ask-side {
-  width: 232px; flex-shrink: 0; position: sticky; top: 118px;
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px; max-height: calc(100vh - 140px); overflow-y: auto;
-}
-.ask-side-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.ask-side-head .ask-new-btn { flex: 1; }
-.ask-side-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.ask-mobile-select { display: none; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
-.ask-mobile-select select { flex: 1; min-width: 0; margin: 0; }
-.ask-side-list { display: flex; flex-direction: column; gap: 2px; }
-.ask-item { display: flex; align-items: center; gap: 2px; border-radius: 8px; padding: 2px; }
-.ask-item.active { background: var(--accent-soft); }
-.ask-item-main {
-  flex: 1; min-width: 0; text-align: left; border: none; background: none;
-  font-weight: 600; padding: 6px 8px; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
-}
-.ask-item-main:hover { box-shadow: none; text-decoration: underline; }
-.ask-item-op { border: none; background: none; color: var(--muted); padding: 2px 5px; font-size: 12px; }
-.ask-item-op.danger:hover { color: var(--bad); }
-.ask-rename-input { width: 100%; font: inherit; padding: 4px 6px; border-radius: 6px; }
-.ask-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
-.ask-welcome {
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 26px; max-width: 560px;
-}
-.ask-welcome h3 { margin: 0 0 8px; }
-.ask-chat { display: flex; flex-direction: column; gap: 10px; padding: 2px 2px 4px; }
-.chat-msg { display: flex; }
-.chat-msg.user { justify-content: flex-end; }
-.bubble {
-  max-width: 80%; padding: 10px 14px; border-radius: 14px;
-  border: 1px solid var(--border); background: var(--card); font-size: 14px; line-height: 1.6;
-}
-.chat-msg.user .bubble { background: var(--accent-soft); border-color: transparent; }
-.bubble h4 { font-size: 13px; color: var(--accent); margin: 8px 0 2px; }
-.bubble p { margin: 4px 0; }
-.bubble ul { margin: 4px 0; padding-left: 20px; }
-.bubble li { margin: 2px 0; }
-.bubble .wikilink { color: var(--accent); }
-.bubble .not-actionable { color: var(--warn); font-size: 12px; margin: 4px 0; }
-.bubble .err-text { color: var(--bad); }
-.bubble.typing { color: var(--muted); }
-.ask-inputbar {
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 12px;
-}
-.ask-keyhint { margin: 6px 0 0; }
-
 /* ---- 审批页 ---- */
 .review-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -739,72 +657,15 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--fg);
 }
 
-/* ---- 第二大脑检索范围 ---- */
-.ask-scope-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.ask-scope-row select {
-  font: inherit; font-size: 12.5px; padding: 4px 8px; border-radius: 7px;
-  border: 1px solid var(--border); background: var(--card); color: var(--fg);
-  max-width: 100%;
-}
-
-/* ---- 指南页签（第 5 页签；内容内置自 WEB_USAGE_GUIDE.md） ---- */
-.guide { max-width: 780px; }
-.guide h2 { font-size: 21px; margin: 8px 0 6px; }
-.guide h3 {
-  font-size: 16.5px; margin: 26px 0 10px; padding-bottom: 6px;
-  border-bottom: 1px solid var(--border); color: var(--accent);
-}
-.guide h4 { font-size: 14.5px; margin: 18px 0 6px; }
-.guide p { margin: 8px 0; font-size: 14px; line-height: 1.75; }
-.guide ul { margin: 8px 0; padding-left: 22px; }
-.guide li { margin: 5px 0; font-size: 14px; line-height: 1.7; }
-.guide blockquote {
-  border-left: 3px solid var(--accent); margin: 12px 0; padding: 8px 14px;
-  background: var(--accent-soft); border-radius: 0 10px 10px 0;
-}
-.guide blockquote p { margin: 4px 0; font-size: 13px; color: var(--muted); }
-.guide code {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
-  padding: 1px 5px; font-size: 0.88em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.guide details.faq-item {
-  border: 1px solid var(--border); border-radius: 10px; margin: 8px 0;
-  background: var(--card); overflow: hidden;
-}
-.guide details.faq-item summary {
-  cursor: pointer; padding: 10px 14px; font-weight: 600; font-size: 13.5px;
-  list-style-position: inside;
-}
-.guide details.faq-item summary::-webkit-details-marker { color: var(--accent); }
-.guide details.faq-item[open] summary { border-bottom: 1px solid var(--border); }
-.guide .faq-answer { padding: 6px 14px 12px; font-size: 13.5px; }
-.guide .faq-answer p { margin: 6px 0; }
-.guide-tools { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; }
-.guide-tools label { font-size: 12px; color: var(--muted); white-space: nowrap; }
-.guide-tools input { flex: 1; min-width: 0; }
-.guide-index { display: grid; gap: 6px; padding: 10px 12px; margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-.guide-index-links { display: flex; gap: 6px 14px; flex-wrap: wrap; }
-.guide-index-link { color: var(--accent); font-size: 12.5px; }
-.guide-index-link.level-h3 { padding-left: 10px; }
-.guide-section + .guide-section { margin-top: 24px; }
-.guide-no-results { padding: 12px; border: 1px dashed var(--border); border-radius: 8px; }
-
 @media (max-width: 640px) {
   main { padding: 14px 12px 80px; }
   .tabs { padding: 8px 12px 0; }
   .tagline { display: none; }
   .grid2 { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
-  .guide-tools { align-items: stretch; flex-wrap: wrap; }
-  .guide-tools label { width: 100%; }
 }
 
 @media (max-width: 900px) {
-  .ask-side { position: static; width: 100%; max-height: none; }
-  .ask-layout { display: block; }
-  .ask-side-list { display: none; }
-  .ask-mobile-select { display: flex; }
-  .ask-main { margin-top: 12px; }
   .header-right .version-status { display: none; }
 }
 

@@ -182,7 +182,7 @@ function briefOrphanActions(b: BriefData): BriefAction[] {
  * 出处文件的显示名：先去掉 `#区块` 锚点与目录，再去掉日期前缀，只留可读标题。
  *
  * 2026-09-14：界面上不再直接显示 `huoman-logistics · 2026-09-14-木子沟通.md` 这种
- * 「英文 ID + 文件名」；完整路径仍可在「第二大脑」的来源按钮里看到。
+ * 「英文 ID + 文件名」。
  * ⚠️ 锚点必须先剥掉：`projects/hii-affairs.md#下一步` 若只按 `.md$` 去尾，
  * 会留下 `it-development.md#下一步` 这种把项目 ID 带出来的残渣（真实数据验证发现）。
  */

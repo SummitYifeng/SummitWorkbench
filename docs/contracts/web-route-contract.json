@@ -15,20 +15,6 @@
     "method": [
       "POST"
     ],
-    "path": "/api/ask",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "AskPayload",
-    "response_status": 200,
-    "error_codes": [
-      "ask_unavailable"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
     "path": "/api/capture",
     "request_fields": [
       "payload"
@@ -883,18 +869,6 @@
     "error_codes": [
       "workspace_not_configured"
     ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/ask",
-    "request_fields": [
-      "question"
-    ],
-    "request_model": "str",
-    "response_status": 200,
-    "error_codes": []
   },
   {
     "method": [

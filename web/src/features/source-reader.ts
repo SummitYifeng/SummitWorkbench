@@ -1,13 +1,25 @@
-import { api } from '../../api/request';
-import { esc } from '../../md';
-import { modalBackdrop, openModal } from '../shell';
-import type { SourceReadPayload } from './types';
+import { api } from '../api/request';
+import { esc } from '../md';
+import { modalBackdrop, openModal } from './shell';
 
-/** 只读来源弹层；在途序号与守卫必须同模块（§4.2 不变量）。 */
+/**
+ * 只读来源弹层（审批页的证据「查看原件」用它；原属问答 feature，问答页签下线后独立成域）。
+ *
+ * 在途序号与守卫必须同模块（§4.2 不变量）；弹层关闭时经 shell 的关闭钩子作废在途读取（§4.4）。
+ */
+
+export interface SourceReadPayload {
+  ok: boolean;
+  message?: string;
+  source_id?: string;
+  title?: string;
+  date?: string | null;
+  body?: string;
+  truncated?: boolean;
+}
 
 let sourceReadSequence = 0;
 
-/** 弹层关闭时作废在途来源读取。经 shell 的关闭钩子注册，避免 shell ← ask 反向依赖（§4.4）。 */
 export function invalidateSourceReads(): void {
   sourceReadSequence += 1;
 }
@@ -23,7 +35,7 @@ export async function openSource(sourceId: string): Promise<void> {
     if (requestId !== sourceReadSequence || backdrop?.hidden) return;
     if (!result.ok || result.body === undefined) {
       openModal('<h3>来源暂时不可读</h3><p class="msg err">' + esc(result.message ?? '来源不存在或已失效') +
-        '</p><p class="hint">请刷新审批/问答后重试；系统不会用猜测内容替代来源。</p>');
+        '</p><p class="hint">请刷新审批后重试；系统不会用猜测内容替代来源。</p>');
       return;
     }
     openModal(

@@ -3,7 +3,7 @@
 从 ``legacy_app`` 抽出。``install_app_shell`` 返回两个回调，供后续 ``register_*`` 注入：
 
 - ``build_info``：``GET /api/version``、``GET /api/state`` 与 settings 域读取构建元信息；
-- ``dashboard``：SSR ``/ask`` 回退页渲染（``register_ask_page_routes``）。
+- ``dashboard``：看板首页（状态速览 + 今日简报）；问答页签已下线。
 
 ``install_app_shell`` 的调用点必须与拆分前注册 ``/`` 的位置**完全相同**（§6-R7）：在
 settings / state / review 等 ``register_*`` 之前，且在 ``install_security_boundary`` →
@@ -41,22 +41,11 @@ def install_app_shell(app: FastAPI, ctx: WebContext, spa_dir: Path) -> AppShell:
     def _build_info() -> WebBuildInfo:
         return WebBuildInfo.from_static_dir(spa_dir)
 
-    def _dashboard(
-        msg: str | None = None, ask_q: str = "", ask_html: str | None = None
-    ) -> HTMLResponse:
+    def _dashboard(msg: str | None = None) -> HTMLResponse:
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
         brief_md = read_brief_block(ctx.vault_dir, day)
-        return HTMLResponse(
-            render_dashboard(
-                status,
-                day,
-                brief_md,
-                ask_question=ask_q,
-                ask_answer_html=ask_html,
-                message=msg,
-            )
-        )
+        return HTMLResponse(render_dashboard(status, day, brief_md, message=msg))
 
     # ---- 首页：SPA（已构建）或 SSR 回退 ----
     spa_index = spa_dir / "index.html"

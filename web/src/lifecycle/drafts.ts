@@ -30,7 +30,6 @@ export interface DraftSnapshot {
   tab: string;
   scroll_y: number;
   capture_text: string;
-  ask_draft: string;
   review_forms: Record<string, ReviewDraftFields>;
 }
 
@@ -108,7 +107,6 @@ export function loadDraftSnapshot(nowMs = Date.now(), workspaceId?: string): Dra
       typeof value.tab !== 'string' ||
       typeof value.scroll_y !== 'number' ||
       typeof value.capture_text !== 'string' ||
-      typeof value.ask_draft !== 'string' ||
       !value.review_forms ||
       typeof value.review_forms !== 'object'
     ) {

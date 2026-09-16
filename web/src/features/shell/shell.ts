@@ -24,7 +24,7 @@ export function mountShell(actions: ShellActions): void {
     '<a class="skip-link" href="#main-content">跳到主内容</a>' +
     '<div class="nav-shell"><header class="topbar">' +
     '<div class="brand"><span class="logo">SW</span><div><h1>SummitWorkbench</h1>' +
-    '<p class="tagline">外置执行管理层 · 第二大脑</p></div></div>' +
+    '<p class="tagline">外置执行管理层</p></div></div>' +
     '<div class="header-right">' +
     '<span class="version-status checking" id="version-status">正在检查版本</span>' +
     '<span class="day-pill" id="day-pill">—</span>' +
@@ -43,17 +43,13 @@ export function mountShell(actions: ShellActions): void {
     '<nav class="tabs" role="tablist" aria-label="工作台页面">' +
     '<button class="tab" id="tab-today" data-tab="today" aria-controls="view-today" role="tab">今日</button>' +
     '<button class="tab" id="tab-review" data-tab="review" aria-controls="view-review" role="tab">审批 <span class="tab-badge" id="tab-badge-review"></span></button>' +
-    '<button class="tab" id="tab-ask" data-tab="ask" aria-controls="view-ask" role="tab">第二大脑</button>' +
     '<button class="tab" id="tab-projects" data-tab="projects" aria-controls="view-projects" role="tab">项目</button>' +
-    '<button class="tab" id="tab-guide" data-tab="guide" aria-controls="view-guide" role="tab">指南</button>' +
     '<button class="tab" id="tab-settings" data-tab="settings" aria-controls="view-settings" role="tab">设置</button>' +
     '</nav></div>' +
     '<main id="main-content" tabindex="-1">' +
     '<section id="view-today" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-review" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-ask" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-projects" class="view" role="tabpanel" tabindex="0"></section>' +
-    '<section id="view-guide" class="view" role="tabpanel" tabindex="0"></section>' +
     '<section id="view-settings" class="view" role="tabpanel" tabindex="0"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';

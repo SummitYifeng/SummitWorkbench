@@ -12,7 +12,7 @@ from summit_workbench.prompts import Prompt, load_prompt
 from summit_workbench.providers.llm.client import CompletionResult, Usage
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMSchemaError
-from summit_workbench.workflows.ask.ask import AskResult, AskTurn, answer_question
+from summit_workbench.workflows.ask.ask import AskTurn, answer_question
 from summit_workbench.workflows.ask.router import routed_limit
 
 CFG = ModelConfig(capability="qa", model_id="m", base_url="http://x", credential_account="shared")
@@ -334,30 +334,3 @@ def test_answer_question_explicit_limit_still_overrides_routing(tmp_path):
         limit=3,
     )
     assert len(result.sources) == 3
-
-
-def test_ask_html_passes_routed_limit_to_answer_question(tmp_path, monkeypatch):
-    """Web 面板不得写死候选条数：必须传当前路由计划的 limit。"""
-    from summit_workbench.config import secrets as secrets_mod
-    from summit_workbench.domain.qa import QaAnswer
-    from summit_workbench.providers import llm as llm_mod
-    from summit_workbench.webapp import ask_view
-    from summit_workbench.workflows.ask import ask as ask_mod
-
-    question = "有关 alpha 的结论是什么"
-    monkeypatch.setattr(llm_mod, "load_model_config", lambda *_a, **_k: CFG)
-    monkeypatch.setattr(secrets_mod, "resolve_credential", lambda _ref: SecretStr("k"))
-    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: PROMPT)
-    monkeypatch.setattr(
-        "summit_workbench.repositories.kb_index.default_index_path",
-        lambda: tmp_path / "kb.sqlite",
-    )
-    captured: dict[str, object] = {}
-
-    def fake_answer(vault_dir, query, cfg, api_key, **kwargs):
-        captured.update(kwargs)
-        return AskResult(question=query, answer=QaAnswer(summary="s"), sources=(), usage=None)
-
-    monkeypatch.setattr(ask_mod, "answer_question", fake_answer)
-    ask_view._ask_html(tmp_path / "vault", question)
-    assert captured["limit"] == routed_limit(question) == 16

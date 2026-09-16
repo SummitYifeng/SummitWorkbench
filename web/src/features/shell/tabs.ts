@@ -1,11 +1,12 @@
 import { viewElement } from './dom';
 
-/** 外壳的六个 tab：顺序即 DOM 顺序，也是 render() 的派发顺序。
+/** 外壳的四个 tab：顺序即 DOM 顺序，也是 render() 的派发顺序。
  *
- * 2026-09-14：「决策」不再是独立页签——决策在各项目页的「决策记录」里看，
- * 跨项目找决策用「第二大脑」提问（决策台账页是 vault 内容的第三份副本、只增不减）。
+ * 2026-09-16：「第二大脑」与「指南」两个页签已下线——语义问答归 SummitKnowledge，
+ * 使用说明在 docs/ 里；工作台只留看板与源数据处理（今日 / 审批 / 项目 / 设置）。
+ * 2026-09-14：「决策」不再是独立页签——决策在各项目页的「决策记录」里看。
  */
-export const TAB_IDS = ['today', 'review', 'ask', 'projects', 'guide', 'settings'] as const;
+export const TAB_IDS = ['today', 'review', 'projects', 'settings'] as const;
 
 export type ShellTab = (typeof TAB_IDS)[number];
 
@@ -14,7 +15,7 @@ export function normalizeTab(value: string | undefined): ShellTab {
   return (TAB_IDS as readonly string[]).includes(value ?? '') ? (value as ShellTab) : 'today';
 }
 
-/** tab 按钮的 aria/active 状态与六视图显隐（原 render() 的前半段，逐条保留）。 */
+/** tab 按钮的 aria/active 状态与四视图显隐（原 render() 的前半段，逐条保留）。 */
 export function applyTabChrome(tab: ShellTab): void {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     const active = b.dataset.tab === tab;
@@ -25,9 +26,7 @@ export function applyTabChrome(tab: ShellTab): void {
   const views: Record<ShellTab, HTMLElement> = {
     today: viewElement('today') as HTMLElement,
     review: viewElement('review') as HTMLElement,
-    ask: viewElement('ask') as HTMLElement,
     projects: viewElement('projects') as HTMLElement,
-    guide: viewElement('guide') as HTMLElement,
     settings: viewElement('settings') as HTMLElement,
   };
   for (const name of TAB_IDS) {

@@ -11,7 +11,7 @@
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
 | 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
-| 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/第二大脑/项目/指南/设置）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
+| 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/项目/设置；问答与指南页签已于 2026-09-16 下线，语义问答归 SummitKnowledge）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
 | 权威规格 | `docs/product/PRD.md` v1.3 |
 | 检索契约 | `docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`（与 SummitKnowledge 共享的引用/状态/权威顺序契约） |
 

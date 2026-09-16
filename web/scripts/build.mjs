@@ -46,8 +46,6 @@ function sourceEntries() {
     const path = join(WEB_ROOT, name);
     if (existsSync(path)) paths.push(path);
   }
-  const guide = join(REPO_ROOT, 'docs', 'product', 'WEB_USAGE_GUIDE.md');
-  if (existsSync(guide)) paths.push(guide);
   return paths.map((path) => ({
     path: relative(REPO_ROOT, path).replaceAll('\\', '/'),
     content: readFileSync(path),
@@ -87,7 +85,6 @@ function writeBuildMeta(identity) {
 }
 
 export function build() {
-  run('npm', ['run', 'sync-guide']);
   const builtAt = new Date().toISOString();
   const sourceHash = computeSourceHash(sourceEntries());
   const identity = makeBuildIdentity({

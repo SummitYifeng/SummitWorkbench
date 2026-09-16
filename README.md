@@ -123,11 +123,11 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 - `wb meeting backfill <目录|文件> --since --until [--include-actions] [--yes]`：按显式日期范围补导本地逐字稿，开始前预估会议数/token/费用、预计跨软预算再确认，逐场幂等续跑；默认只沉淀知识，`--include-actions` 才生成带 historical 标记的候选。
 - `wb project new | list`：在第二大脑侧为新项目建档（不碰 GitHub 仓库）并查看已建项目及别名。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID，未匹配项目的候选零摩擦落入全局 inbox。
-- `wb web [--host --port] [--open]`：启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）。CLI 默认使用 `127.0.0.1:8787`；桌面 App 使用自包含 bundle 管理动态 loopback 端口。工作台包含 **今日**、**审批**、**第二大脑**、**项目**、**指南**、**设置** 六个页签；交互走 `/api/*` JSON 端点，旧 SSR 路由继续兼容。
+- `wb web [--host --port] [--open]`：启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）。CLI 默认使用 `127.0.0.1:8787`；桌面 App 使用自包含 bundle 管理动态 loopback 端口。工作台包含 **今日**、**审批**、**项目**、**设置** 四个页签；交互走 `/api/*` JSON 端点。（2026-09-16 起下线「第二大脑」与「指南」两个页签：语义问答归 SummitKnowledge，使用说明在 `docs/` 里——App 只留看板与源数据处理，越简洁用得越勤。）
 - `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。网页端一键生成会显式提交本次生成的简报、快照、用量和授权状态文件，不会使用 `add -A` 带入用户其他改动。
 - `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
 - `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
-- `wb ask "问题" [--save --project P --limit N]`：本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合 + 双链扩展）召回相关区块，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。候选条数默认由**路由计划**决定（`--limit` 可显式覆盖），CLI / 验收脚本 / App 面板同口径。`wb ask` 是轻量兜底，不是语义 RAG——语义检索请用 SummitKnowledge。
+- `wb ask "问题" [--save --project P --limit N]`：本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合 + 双链扩展）召回相关区块，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。候选条数默认由**路由计划**决定（`--limit` 可显式覆盖），CLI 与验收脚本同口径。工作台面板不再内置问答入口（见上）。`wb ask` 是轻量兜底，不是语义 RAG——语义检索请用 SummitKnowledge。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 

@@ -76,7 +76,7 @@ nav a { margin-right:14px; text-decoration:none; font-size:14px; }
 .brief blockquote { border-left:3px solid var(--warn); margin:8px 0; padding:2px 12px; color:var(--muted); }
 .wikilink { color:var(--accent); } code { background:var(--bg); padding:1px 5px; border-radius:4px; font-size:.9em; }
 .actions { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
-.ask textarea { min-height:44px; } .answer { background:var(--card); border:1px solid var(--border);
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
   border-radius:10px; padding:12px 16px; margin-top:12px; } .section-title { font-size:14px; color:var(--muted);
   margin:24px 0 6px; border-bottom:1px solid var(--border); padding-bottom:6px; }
 """
@@ -437,7 +437,7 @@ def _status_tiles(status: StatusReport) -> str:
         ("健康度", health, hcls),
         ("待确认候选", str(status.backlog.count), "warn" if status.backlog.count else ""),
         (f"本月费用（{status.month}）", cost, "bad" if over else ""),
-        ("已入第二大脑", str(status.succeeded), ""),
+        ("已入知识库", str(status.succeeded), ""),
         (
             "失败/不可用",
             f"{status.count(ProcessingState.FAILED)}/{status.count(ProcessingState.UNAVAILABLE)}",
@@ -457,11 +457,9 @@ def render_dashboard(
     day: str,
     brief_md: str | None,
     *,
-    ask_question: str = "",
-    ask_answer_html: str | None = None,
     message: str | None = None,
 ) -> str:
-    """看板首页：状态速览 + 今日简报 + 一键触发 + 问答。"""
+    """看板首页：状态速览 + 今日简报 + 一键触发（问答页签已下线，语义问答归 SummitKnowledge）。"""
     msg = f'<div class="msg">{escape(message)}</div>' if message else ""
     if brief_md:
         brief_html = f'<div class="brief">{md_to_html(brief_md)}</div>'
@@ -469,7 +467,6 @@ def render_dashboard(
         brief_html = (
             '<div class="msg">今日简报尚未生成。点下方「生成今日简报」或等 08:00 自动生成。</div>'
         )
-    answer = f'<div class="answer">{ask_answer_html}</div>' if ask_answer_html else ""
     return f"""<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>看板 · SummitWorkbench</title><style>{_STYLE}</style></head><body>
@@ -484,12 +481,6 @@ def render_dashboard(
 </div>
 <div class="section-title">今日简报</div>
 {brief_html}
-<div class="section-title">问第二大脑</div>
-<form class="ask" method="post" action="/ask">
-  <textarea name="question" placeholder="例如：网课项目最近的决策是什么？">{escape(ask_question)}</textarea>
-  <div class="actions"><button class="primary" type="submit">提问</button></div>
-</form>
-{answer}
 </main></body></html>"""
 
 

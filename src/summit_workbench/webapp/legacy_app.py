@@ -5,7 +5,7 @@
 函数——顺序即 ``app.routes`` 顺序，也就是 HTTP 行为（§6-R6 / §6-R7）。
 
 历史导入路径与兼容再导出集中保留在下方，**不得删除**（§7-7）：``WebContext``、
-``_ask_html``、``_run_web_import``、``_commit_suffix``、``KNOWLEDGE_SOURCE_ROOTS``、
+``_run_web_import``、``_commit_suffix``、``KNOWLEDGE_SOURCE_ROOTS``、
 ``SOURCE_BODY_DISPLAY_CHARS``。
 """
 # ruff: noqa: E501
@@ -21,7 +21,6 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 
 from summit_workbench.webapp.app_shell import install_app_shell
-from summit_workbench.webapp.ask_view import _ask_html as _ask_html
 from summit_workbench.webapp.build_info import (
     mode_from_environment,
     new_server_instance,
@@ -59,10 +58,6 @@ from summit_workbench.webapp.restricted_app import (
 )
 from summit_workbench.webapp.restricted_app import (
     create_restricted_app,
-)
-from summit_workbench.webapp.routers.ask import (
-    register_ask_page_routes,
-    register_ask_routes,
 )
 from summit_workbench.webapp.routers.brief import (
     register_brief_page_routes,
@@ -211,7 +206,6 @@ def create_app(
     register_thread_document_routes(dependencies, runtime=runtime)
     register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_brief_routes(dependencies, runtime=runtime)
-    register_ask_routes(dependencies)
     register_meetings_routes(dependencies, runtime=runtime)
     register_undo_routes(dependencies, runtime=runtime)
     register_shutdown_route(dependencies)
@@ -219,7 +213,6 @@ def create_app(
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
 
     register_brief_page_routes(dependencies, runtime=runtime)
-    register_ask_page_routes(dependencies, dashboard=shell.dashboard)
     register_review_page_routes(dependencies, runtime=runtime)
     register_review_apply_page_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_onboarding_routes(dependencies)

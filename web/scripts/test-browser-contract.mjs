@@ -109,19 +109,9 @@ assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is ex
 assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
 assert.match(reviewSource, /data-action="source-open"/, 'review evidence links open the shared source panel');
-assert.match(source, /function openSource/, 'ask and review evidence share a source reader');
+assert.match(source, /function openSource/, 'review evidence opens the shared read-only source panel');
 assert.match(source, /\/api\/sources\/read\?source_id=/, 'source reader uses the vault-scoped API');
 assert.match(source, /result\.truncated/, 'source reader surfaces the truncation notice for oversized-but-capped bodies');
-assert.match(source, /renderAskAnswer/, 'structured ask answers have a dedicated renderer');
-assert.match(source, /仅召回、未在回答中引用的材料/, 'ask distinguishes recalled-only materials');
-assert.match(source, /cited_source_ids/, 'ask response preserves actual citations separately');
-assert.match(source, /answer\.conflicts/, 'ask answer renders structured conflicts');
-assert.match(source, /ask-thread-select/, 'narrow ask view has a keyboard-friendly session selector');
-assert.match(source, /guide-search/, 'guide has local search');
-assert.match(source, /guide-index-links/, 'guide has a local directory');
-assert.match(source, /node\.tagName === 'H2' \|\| node\.tagName === 'H3'/, 'guide search groups rendered major headings');
-assert.match(source, /data-guide-section/, 'guide directory records section ownership');
-assert.match(source, /link\.hidden = Boolean\(sectionId && document\.getElementById\(sectionId\)\?\.hidden\)/, 'guide directory follows filtered sections');
 assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
 assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
 assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');
@@ -275,11 +265,11 @@ doesNotMatchNearby(
   /[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/,
   'sync banner read failure does not silently hide the protection banner',
 );
-// 服务端省略 workspace_id 时，问答历史仍必须加载。
+// 服务端省略 workspace_id 时，workspace 切换检测仍必须成立（否则跨工作区状态不会重置）。
 assert.match(
   source,
-  /let loadedAskWorkspace: string \| null = null/,
-  'ask history loads even when the server omits workspace_id',
+  /let loadedWorkspaceId: string \| null = null/,
+  'workspace switch guard still works when the server omits workspace_id',
 );
 assert.match(source, /function activateConflictModal/, 'sync conflict uses the shared modal activation path');
 assert.match(source, /activateConflictModal\(/, 'sync conflict modal content gets initial focus and return-focus handling');
@@ -293,8 +283,6 @@ assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsa
 // the *ordering*: the state write-back must sit behind the final confirmation.
 assert.match(source, /const confirmed = window\.confirm\(/, 'artifact state sync asks for a final confirmation');
 assertNearby(/const confirmed = window\.confirm\(/, /[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
-assert.match(source, /askErrors/, 'failed ask requests remain visible without entering history');
-assert.match(source, /restoreFailedQuestion/, 'failed ask requests restore the question without duplicating history');
 // 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
 assert.match(source, /latestExternalActionsRequest/, 'external action reads carry a request sequence');
 assert.match(source, /requestId !== latestExternalActionsRequest/, 'stale external action reads are discarded');

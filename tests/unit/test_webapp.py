@@ -75,7 +75,7 @@ def test_home_renders_dashboard(tmp_path: Path, monkeypatch) -> None:
     assert "SummitWorkbench" in resp.text
     assert "今日简报" in resp.text
     assert "测试行动项" in resp.text  # markdown 渲染
-    assert "问第二大脑" in resp.text  # ask 表单
+    assert "问第二大脑" not in resp.text  # 问答页签已下线
     assert "待确认候选" in resp.text  # 状态 tile
 
 
@@ -139,15 +139,6 @@ def test_run_weekly_creates_note(tmp_path: Path, monkeypatch) -> None:
     assert resp.status_code == 303
     weekly_dir = vault / "reviews" / "weekly"
     assert weekly_dir.is_dir() and any(weekly_dir.glob("*.md"))
-
-
-def test_ask_without_model_shows_unavailable(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
-    client, _ = _client(tmp_path)
-    resp = client.post("/ask", data={"question": "最近有什么决策"}, follow_redirects=False)
-    assert resp.status_code == 200
-    assert "问答不可用" in resp.text
-    assert "最近有什么决策" in resp.text  # 问题回填
 
 
 def test_md_to_html_renders_subset() -> None:

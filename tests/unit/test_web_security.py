@@ -155,19 +155,6 @@ def test_oversized_fields_and_batches_use_422_envelope(tmp_path: Path) -> None:
     assert batch.json()["code"] == "validation_error"
 
 
-def test_ask_failure_is_not_ok_true(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        "summit_workbench.webapp.app._ask_html",
-        lambda *args, **kwargs: ('<p class="not-actionable">问答不可用：boom</p>', []),
-    )
-    response = _client(tmp_path).post("/api/ask", json={"question": "发生了什么"})
-    assert response.status_code == 503
-    body = response.json()
-    assert body["ok"] is False
-    assert body["code"] == "ask_unavailable"
-    assert body["operation_id"]
-
-
 def test_upload_reads_in_chunks_and_rejects_after_10_mib(monkeypatch, tmp_path: Path) -> None:
     seen: dict[str, str] = {}
 
