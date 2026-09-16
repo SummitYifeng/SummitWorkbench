@@ -2,7 +2,7 @@
 
 状态：✅ 已合并到 `main`，源码自动化验收通过（2026-09-16）
 
-本记录对应 `main` 当前提交 `61260b0`，基线提交为 `25d6094`。实现先在
+本记录对应 `main` 上的本轮修复提交 `74cb57b`，基线提交为 `25d6094`。实现先在
 `codex/reliability-luna` 上完成，再以 fast-forward 方式合并并推送；没有修改 API
 返回字段、飞书数据或 vault 原文。
 
@@ -14,6 +14,7 @@
 4. 6abd287 — refactor: simplify today into five clear sections
 5. 77ee5cc — build: refresh frontend bundle
 6. 8fe8341 — docs: record today-page and markdown acceptance
+7. 74cb57b — fix: adapt meeting import mutation runtime
 
 ## 自动化验收
 
@@ -22,13 +23,17 @@
 - cd web && npm run build：通过；候选前端身份为
   v2026.09.16-6abd287-5236bd8a，静态产物提交为 77ee5cc。
 - uv run ruff check .：通过。
-- uv run ruff format --check .：通过，已跟踪 Python 文件均已格式化。
+- 已跟踪 Python 文件通过 ruff format 检查；全仓命令仍会提示已有未跟踪的
+  `docs/superpowers/plans/2026-09-16-reliability-luna.md`，本次未修改该用户文件。
 - uv run mypy：通过，372 source files。
-- uv run pytest：1300 passed，1 skipped，5 warnings。唯一跳过项为未设置
+- uv run pytest：1301 passed，1 skipped，5 warnings。唯一跳过项为未设置
   WB_PACKAGED_APP 的打包 smoke test。
+- 导入会议纪要回归测试：通过；确认新版 `MutationRuntime.run(action, mutation)` 已适配到
+  补导工作流的事务边界，归档、模型处理和审批收尾均可完成。此前的 500 发生在模型请求前，
+  原因是应用回调参数契约不匹配，不是 DeepSeek 凭据未生效的证据。
 - `WB_PACKAGED_APP=/Applications/SummitWorkbench.app .venv/bin/python -m pytest
   tests/integration/test_packaged_app.py -q`：通过，1 passed；验证包版本为 `0.4.9`、
-  build `2026091603`，前端身份为 `v2026.09.16-479f967-5236bd8a`。
+  build `2026091604`，前端身份为 `v2026.09.16-74cb57b-5236bd8a`。
 
 ## 功能验收
 
@@ -42,6 +47,8 @@
   不解码，原始 HTML 不解析。
 - 今日、项目、审批、来源阅读器中的用户正文分别通过 inlineMd() 或 mdToHtml()
   展示；textarea、input、aria/data 属性和诊断/代码/日志仍保留 esc() 原值路径。
+- 飞书子任务本轮不改变筛选规则：仍只同步负责人是当前用户的任务；用户确认将子任务负责人改为
+  自己后同步即可见，因此不把该现象判定为本次缺陷。
 
 ## 人工只读检查
 

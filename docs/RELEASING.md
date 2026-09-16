@@ -2,8 +2,8 @@
 
 ## 当前 main 本机交付状态（2026-09-16）
 
-`main` 当前提交为 `61260b0`。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091603`，前端身份为 `v2026.09.16-479f967-5236bd8a`；
+`main` 本轮修复提交为 `74cb57b`。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091604`，前端身份为 `v2026.09.16-74cb57b-5236bd8a`；
 `tests/integration/test_packaged_app.py` 已使用该安装包通过（1 passed）。以下历史
 发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
 

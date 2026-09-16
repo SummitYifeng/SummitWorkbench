@@ -2,13 +2,13 @@
 
 ## 2026-09-16 main 交付状态
 
-本轮可靠性优化以及“今日”页精简与全局 Markdown 展示修复已合并到 `main`，当前主线提交为 `61260b0`。最新静态前端 bundle 的源码身份为 `v2026.09.16-479f967-5236bd8a`，由 `main` 上的代码构建；本机 App 已同步替换为 `0.4.9 / build 2026091603`。
+本轮可靠性优化、“今日”页精简与全局 Markdown 展示修复，以及会议导入事务回调修复已合并到 `main`，本轮修复提交为 `74cb57b`。最新静态前端 bundle 的源码身份为 `v2026.09.16-74cb57b-5236bd8a`，由 `main` 上的代码构建；本机 App 已同步替换为 `0.4.9 / build 2026091604`。
 
-源码质量门已通过：1300 passed / 1 skipped，ruff、ruff format、mypy strict、前端完整契约测试和生产构建均通过；已安装包 smoke test 通过（1 passed）。当前证据和剩余事项见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+源码质量门已通过：1301 passed / 1 skipped，ruff、mypy strict、前端完整契约测试和生产构建均通过；已安装包 smoke test 通过（1 passed）。当前证据和剩余事项见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> **当前源码与交付主线为 `v0.4.9`，本轮已合并到 `main`。** “今日”页现在只保留五个内容模块，并在所有用户正文展示入口统一处理安全 Markdown；本机 App 已由 `main` 构建并替换。仓库不含凭据：内置凭据只在构建期生成，发布流程与安全取舍见 [docs/RELEASING.md](docs/RELEASING.md)。
+> **当前源码与交付主线为 `v0.4.9`，本轮已合并到 `main`。** “今日”页现在只保留五个内容模块，并在所有用户正文展示入口统一处理安全 Markdown；会议导入已修复事务回调错误，本机 App 已由 `main` 构建并替换。仓库不含凭据：内置凭据只在构建期生成，发布流程与安全取舍见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 
