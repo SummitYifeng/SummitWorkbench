@@ -34,6 +34,9 @@ config.local.toml
 htmlcov/
 coverage.xml
 
+# 本地隔离工作区
+.worktrees/
+
 # 前端（Vite 构建产物已提交以支持开箱即用的 wb web；node_modules 不提交）
 web/node_modules/
 # 构建时从 docs/product/WEB_USAGE_GUIDE.md 生成的指南副本（勿提交，防漂移）
