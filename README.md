@@ -1,8 +1,14 @@
 # SummitWorkbench
 
+## 2026-09-16 可靠性候选基线
+
+本轮已按可靠性执行方案完成 8 项失败收尾与状态可见性优化：飞书凭据与北京时间、外部动作恢复、有界退出、请求与 helper 期限、自动化有限重试、会议同步能力标注、同步远端新鲜度。当前静态前端 bundle 的源码身份为 84db2d3，bundle 提交为 dfe6655；尚未替换 /Applications 中的旧安装包。
+
+源码质量门已通过：1297 passed / 1 skipped，ruff、ruff format、mypy strict、前端完整契约测试、生产构建和三个 native 测试脚本均通过。唯一跳过项是未设置 WB_PACKAGED_APP 的打包 smoke test；候选安装包、公证和真机矩阵仍待发布前验证，详见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
-> **当前状态：`v0.4.7` 内部使用版（分发给同事的版本；build 由 CI `run_number` 决定）。** 分发版：把飞书 app_id / app_secret 作为**默认值**在构建时内置进安装包，同事装完只需「粘贴 DeepSeek API Key → 点一下『授权飞书』」，无需任何本机预置（不再需要编辑 `config.toml` 或用命令行写 Keychain）。产品行为与数据格式未改动。此前 `v0.4.6`（指南版本标记抗漂移）、`v0.4.5`（交付前清理 + 指南重写）、`v0.4.4`（UI/UX 与交付稳定性）的成果全部保留。**仓库不含凭据**：内置凭据文件只在构建期由环境变量生成，且 `build/`、`dist/` 均被 git 忽略；仓库也不含真实会议内容。发布流程与安全取舍见 [docs/RELEASING.md](docs/RELEASING.md)；远端 CI 质量门全绿。
+> **当前交付包仍为 `v0.4.7`；本轮是 `v0.4.9` 可靠性优化候选（源码分支 `codex/reliability-luna`）。** 候选已完成 8 项失败收尾与状态可见性优化，尚未替换 `/Applications` 中的旧安装包。仓库不含凭据：内置凭据只在构建期生成，发布流程与安全取舍见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 

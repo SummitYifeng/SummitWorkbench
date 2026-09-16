@@ -1,5 +1,9 @@
 # 未验证清单（单一真源）
 
+## 2026-09-16 当前源码候选说明
+
+本轮可靠性候选位于分支 codex/reliability-luna，静态 bundle 的源码身份为 84db2d3，bundle 提交为 dfe6655。源码质量门已取得 1297 passed / 1 skipped、mypy 372 文件、前端完整契约测试、生产构建和三个 native 脚本的证据；唯一跳过项是未设置 WB_PACKAGED_APP 的打包 smoke test。当前 /Applications 中仍是历史安装包，因此以下真机/候选包项目不能由本轮源码测试代替。
+
 > **这是唯一权威的「还没验证什么」清单。** 其他文档（README、验收记录、交接档案、ADR）只描述
 > 各自范围内的结论并链接到这里，不再各自维护一份可能漂移的副本。
 >
@@ -12,11 +16,12 @@
 > [`UI-VERIFICATION-BATCHES.md`](UI-VERIFICATION-BATCHES.md)（批 0→7 **已全部跑完**），
 > 尚未跑完的收尾项见 [`UI-VERIFICATION-FINAL-PROMPT.md`](UI-VERIFICATION-FINAL-PROMPT.md)。
 
-- 最近更新：2026-09-14
-- 当前基线：`0.4.9` build **41**（`frontend_build = v2026.09.14-288f13d-4d072dbb`；
-  本机 `/Applications/SummitWorkbench.app` 实测 `build=41`、`git_revision=288f13d`）。
+- 最近更新：2026-09-16
+- 当前源码候选基线：`0.4.9`，分支 `codex/reliability-luna`；静态 bundle
+  `frontend_build = v2026.09.16-84db2d3-d7ba2132`，bundle 提交 `dfe6655`。
+  `/Applications/SummitWorkbench.app` 仍是历史安装包，不因本轮源码测试自动更新。
   下面各轮条目里出现的 `v0.4.7` / build 21 之类是**各自当时**的事实，不回改。
-- **当前开放项总账（2026-09-14）**——本文件各处「当前开放项」的措辞只对**各自那一轮**成立，
+- **当前开放项总账（2026-09-16）**——本文件各处「当前开放项」的措辞只对**各自那一轮**成立，
   容易被读成实时总数（此前就出现过「1 项（F1）」与 §J 里 D/E 两个 `⬜` 并存的矛盾）。
   实时清单以此条为准：
   1. **F1** Developer ID / 公证 / Intel / Windows —— 非缺陷，**明确不做**（见 §F、§H）。
@@ -28,6 +33,8 @@
      （§U.5 第一条「`/api/sources/read` 空值返回 500 而非 400」**已于 2026-09-14 修复**，见 §U.5。）
   6. **A6 / A7 的现场结论做在 build 28 上**，按「历史 build 验过 ≠ 当前代码验过」的口径属待复跑；
      A6 已量过差异（冲突恢复后端语义未变、11 条 `/api/sync/*` 契约逐字节相同），可缩减为抽查。
+  7. **本轮可靠性候选尚未完成打包版/真机矩阵**：待用受控凭据构建候选 App，运行打包 smoke test，
+     并实测断网/慢网、退出收尾、自动化失败恢复、会议同步不可用说明和双机远端新鲜度；本地源码质量门不能替代这些验证。
   本轮为**分发给同事**而做：把飞书 app_id / app_secret 作为默认值在构建时内置进包
   （`Contents/Resources/feishu-defaults.json`），并让配置与凭据按「显式配置/Keychain > 内置默认」
   回退，使同事装完点一下「授权飞书」即可，无需任何本机预置。**产品行为与数据格式未改动**；
