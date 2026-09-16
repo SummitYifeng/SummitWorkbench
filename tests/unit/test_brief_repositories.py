@@ -237,6 +237,8 @@ def test_write_brief_creates_note_with_frontmatter(tmp_path: Path) -> None:
     # `area: work` 是工作库约定；缺它会让当日简报进不了 SK 的「笔记总览」清单
     # （综合类问题按 area 过滤）。变异验证：删掉 _frontmatter 里的 area，本断言变红。
     assert "area: work" in text
+    # `title` 同理：缺它时 SK 回退成文件名（`2026-09-01`），总览里只剩日期。
+    assert "title: 晨间简报 2026-09-01" in text
     assert BRIEF_START in text and BRIEF_END in text
     assert "内容 A" in text
 

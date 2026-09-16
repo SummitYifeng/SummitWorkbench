@@ -127,11 +127,15 @@ def append_work_log(
     occurred_at = now or datetime.now(UTC)
     day = _day(occurred_at)
     projects_list = list(dict.fromkeys(projects))
+    heading = f"推进日志 {day}（{projects_list[0]} 等）"
     meta: dict[str, object] = {
         "date": day,
         # `area: work` 是工作库的既有约定（16 个模板全都带它）。SK 侧的综合类问题按 `area`
         # 过滤「笔记总览」，缺这一行会让日志从总览清单里静默消失——写入方必须补上。
         "area": "work",
+        # `title` 同样要写：库规范 §5 要求中文标题进 frontmatter，而 SK 在缺 title 时
+        # 会回退成文件名（`2026-09-14-001`），总览里就只剩日期、语义全丢。
+        "title": heading,
         "type": "work-log",
         # 推进日志是**用户自己的原始记录**，始终落 `generated`：按共享检索契约的权威顺序，
         # 工作日志属于「低权威 generated 内容」一层——可参与回答，但不能单独支撑高置信事实。
@@ -153,7 +157,6 @@ def append_work_log(
     if decision:
         meta["decision"] = decision
 
-    heading = f"推进日志 {day}（{projects_list[0]} 等）"
     # 保留 ``## 原文`` 区块名与「原文 + AI 摘要」两段结构：project_view 的兜底片段
     # 按 ``## 原文`` 读取日志首段，并发落盘测试也以该区块为契约。规范化器只在
     # 「输入没有 H2」时才生成 ``## 工作记录`` 默认区块，这里走「已有 H2 → 保留结构」。
@@ -220,8 +223,6 @@ def save_thread_artifact(
         "project": project,
         "kind": kind.value,
     }
-    if title:
-        meta["title"] = title
     if summary:
         meta["summary"] = summary
 
@@ -234,6 +235,9 @@ def save_thread_artifact(
             seq += 1
             path = artifacts_dir / f"{project}-{seq:03d}.md"
         heading = title or f"{project} 产物 {seq}"
+        # 标题始终落 frontmatter：库规范 §5 要求中文标题进 `title`，而 SK 缺 title 时
+        # 回退成文件名（`<project>-001`），总览里会丢掉语义。
+        meta["title"] = heading
         # 规范化在写盘前完成：失败即抛错，目标文件不会出现（不落半成品）。
         normalized = normalize_generated_body(
             note_type="thread-doc",

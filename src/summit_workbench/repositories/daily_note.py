@@ -24,9 +24,11 @@ def _frontmatter(day: str) -> str:
     # `area: work` 是工作库的既有约定（16 个模板全都带它）。SK 侧的综合类问题按 `area`
     # 过滤「笔记总览」，缺这一行会让当日简报从总览清单里静默消失（2026-09-15 实测：
     # 全库 62 篇里只有当日简报与推进日志两篇没有 area，因而看不见）。
+    # `title` 同理：库规范 §5 要求中文标题进 frontmatter；缺它时 SK 回退成文件名
+    # （`2026-09-14`），总览里只剩日期。这里与简报渲染的 H1「# 晨间简报 <日期>」一致。
     return (
-        f"---\ndate: {day}\narea: work\ntype: daily\nstatus: active\n"
-        f"project: global\nupdated: {day}\n---\n"
+        f"---\ndate: {day}\narea: work\ntitle: 晨间简报 {day}\n"
+        f"type: daily\nstatus: active\nproject: global\nupdated: {day}\n---\n"
     )
 
 

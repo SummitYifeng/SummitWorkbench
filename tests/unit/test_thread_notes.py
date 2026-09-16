@@ -56,6 +56,8 @@ def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
     # `area: work` 是工作库约定；缺它会让日志进不了 SK 的「笔记总览」清单
     # （综合类问题按 area 过滤，2026-09-15 实测漏掉了全库唯一那篇日志）。
     assert note.meta["area"] == "work"
+    # title 同步落 frontmatter：库规范 §5 要求中文标题进 title，缺它 SK 会回退成文件名。
+    assert note.meta["title"] == "推进日志 2026-09-03（FinanceOps 等）"
     assert "和木子对齐 Coach 结算" in note.body  # 原文必存
     # 改进 1：日志正文带 [[projects/<id>]] 实体回链（Obsidian 图谱边）
     assert "## 关联项目" in note.body
@@ -100,6 +102,7 @@ def test_save_thread_artifact_single_project_schema(tmp_path: Path) -> None:
     assert note.meta["kind"] == "summary"
     # 同 append_work_log：产物也必须带 area，否则进不了 SK 的笔记总览清单。
     assert note.meta["area"] == "work"
+    assert note.meta["title"] == "Finance Ops 阶段总结 V2"
     # 改进 1：产物正文带 [[projects/<id>]] 实体回链
     assert "## 关联项目" in note.body
     assert "- [[projects/FinanceOps]]" in note.body
