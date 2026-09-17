@@ -175,7 +175,7 @@ def _sync_single_repo(
             return SyncState.UNCONFIGURED, "no-remote"
         # Development/CLI conformance fixtures may use local-path remotes. The
         # packaged active-workspace path passes Dulwich explicitly and is the
-        # production boundary where HTTPS is mandatory.
+        # production boundary where supported remote schemes are enforced.
         if backend_kind == "dulwich":
             require_https_remote(remote_url)
         repo.fetch()

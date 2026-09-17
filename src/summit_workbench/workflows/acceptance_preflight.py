@@ -117,7 +117,7 @@ def acceptance_preflight(
             _check(
                 "remote-scheme",
                 "fail",
-                "remote_scheme_unsupported; production requires HTTPS",
+                "remote_scheme_unsupported; production requires HTTPS or SSH",
             )
         )
 

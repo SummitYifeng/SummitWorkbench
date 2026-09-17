@@ -106,7 +106,7 @@ def render_review_page(entries: list[ReviewEntry], *, today: date | None = None)
 > `- [ ]` 待确认，`- [x]` 批准，`~~整条候选~~`（可选追加 `#ignore`）拒绝。
 > 可修改正文、target_project、route、due_date 和 sink_target；仅保存不会写回。
 > `sink_target` 只在落点选「知识沉淀」时使用，格式 `<页面路径>#<区块标题>`
-> （例：`hii/clusters/ip-trademark#关键结论`；缺区块时默认落到 `## 关键结论`）。
+> （例：`hii-ip-license/ip-trademark#关键结论`；缺区块时默认落到 `## 关键结论`）。
 > `wb review apply` 默认只预演，必须显式添加 `--apply` 才执行。
 """
     groups: dict[tuple[str, str, str], list[ReviewEntry]] = {}

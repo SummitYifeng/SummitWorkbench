@@ -140,7 +140,7 @@ _REPO_REASON_LABELS: dict[str, str] = {
     "proxy-unreachable": "本机代理无法连接远端",
     "tls-failed": "远端 TLS/证书校验失败",
     "remote-unavailable": "远端不可达或仓库不存在",
-    "remote-scheme-unsupported": "远端地址不是受支持的 HTTPS",
+    "remote-scheme-unsupported": "远端地址不是受支持的 HTTPS 或 SSH",
     "non-fast-forward": "远端已有新提交，需要处理分叉",
     "conflict": "合并冲突",
     "offline": "当前处于离线",
@@ -234,7 +234,9 @@ def next_step_for(state: SyncState, *, online: bool) -> str:
         SyncState.DIVERGED_PROTECTED: "已分叉：不自动覆盖任一侧，请人工核对后处理",
         SyncState.DIRTY_PROTECTED: "工作树有未提交改动：先本地提交或确认后再同步",
         SyncState.AUTH_REQUIRED: "需要重新配置 Git 凭据（workspace 作用域 Keychain）",
-        SyncState.REMOTE_SCHEME_UNSUPPORTED: "生产同步只支持 HTTPS；请在设置中心转换 SSH remote",
+        SyncState.REMOTE_SCHEME_UNSUPPORTED: (
+            "生产同步支持 HTTPS 或 SSH；请在设置中心配置受支持的 remote"
+        ),
         SyncState.ERROR: "同步失败，请查看错误详情",
     }
     if not online and state in {

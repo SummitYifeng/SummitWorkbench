@@ -220,11 +220,11 @@ def _require_ready(repo: GitRepo) -> None:
     try:
         remote_url = repo.remote_url("origin")
         if not remote_url:
-            raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote")
+            raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS 或 SSH remote")
         require_https_remote(remote_url)
     except GitRemoteSchemeUnsupported as exc:
         raise WorkspaceMigrationError(
-            "当前 Git remote 不是 HTTPS，请先在设置中心完成 remote 规范化",
+            "当前 Git remote 不是受支持的 HTTPS 或 SSH，请先在设置中心完成 remote 规范化",
             code="remote_scheme_unsupported",
         ) from exc
     if repo.is_dirty():

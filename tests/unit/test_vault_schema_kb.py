@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from summit_workbench.domain.vault import NOTE_TYPES, validate_note
 
 WORKSTREAM_BODY = "\n".join(
@@ -66,6 +68,41 @@ def test_index_page_passes():
 
 def test_long_form_thought_passes():
     assert validate_note(_base("long-form-thought"), THOUGHT_BODY) == []
+
+
+@pytest.mark.parametrize("workstream", [None, "hr"])
+def test_work_vault_requires_a_valid_workstream(workstream: str | None) -> None:
+    extra = {"area": "work"}
+    if workstream is not None:
+        extra["workstream"] = workstream
+    issues = validate_note(
+        _base("note", **extra),
+        "# 商标共识规范\n",
+        work_vault=True,
+    )
+    assert any(issue.field == "workstream" for issue in issues), issues
+
+
+def test_work_vault_accepts_an_allowed_workstream() -> None:
+    assert (
+        validate_note(
+            _base("note", area="work", workstream="cross"),
+            "# 工作笔记\n",
+            work_vault=True,
+        )
+        == []
+    )
+
+
+def test_generic_validation_does_not_apply_work_vault_workstream_rule() -> None:
+    assert (
+        validate_note(
+            _base("note", area="personal", workstream="hr"),
+            "# 私人笔记\n",
+            work_vault=True,
+        )
+        == []
+    )
 
 
 # ---- 3. 固定区块缺失必须报出来（每型可判定的失败模式） ----

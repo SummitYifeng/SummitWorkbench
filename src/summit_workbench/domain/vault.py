@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from pathlib import PurePath
 
 # 所有笔记必须包含的 frontmatter 字段（PRD 3.1.5）。
 REQUIRED_FRONTMATTER = ("date", "type", "status")
@@ -27,6 +28,8 @@ STATUS_VOCAB = frozenset(
         "ignored",
     }
 )
+
+WORKSTREAM_VOCAB = frozenset({"hii", "it", "community", "logistics", "docs", "company", "cross"})
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -239,10 +242,19 @@ class ValidationIssue:
         return f"[{self.field}] {self.message}" if self.field else self.message
 
 
-def validate_note(meta: Mapping[str, object], body: str) -> list[ValidationIssue]:
+def validate_note(
+    meta: Mapping[str, object],
+    body: str,
+    *,
+    work_vault: bool = False,
+    relative_path: PurePath | None = None,
+) -> list[ValidationIssue]:
     """校验一篇笔记的 frontmatter（``meta``）与正文（``body``）。
 
     返回问题列表；空列表表示通过。校验只依据已确认规则，不猜测意图。
+    ``work_vault=True`` 时，``area: work`` 笔记还会校验工作库的 workstream 词表。
+    ``relative_path`` 用于识别机器写入页；这些页面只豁免缺失的 workstream，已有但非法
+    的值仍会被拒绝。
     """
     issues: list[ValidationIssue] = []
 
@@ -275,10 +287,48 @@ def validate_note(meta: Mapping[str, object], body: str) -> list[ValidationIssue
         return issues
 
     spec = NOTE_TYPES[note_type]
+    if work_vault and meta.get("area") == "work":
+        issues.extend(_check_workstream(meta, relative_path=relative_path))
     issues.extend(_check_project_scope(spec, meta))
     issues.extend(_check_project_placeholders(meta))
     issues.extend(_check_required_blocks(spec, body))
     return issues
+
+
+def _is_machine_page(relative_path: PurePath | None) -> bool:
+    if relative_path is None:
+        return False
+
+    parts = relative_path.parts
+    if not parts:
+        return False
+    if parts[0] in {"daily", "logs", "artifacts", "reviews"}:
+        return True
+    if relative_path in {
+        PurePath("inbox.md"),
+        PurePath("review/meetings.md"),
+        PurePath("README.md"),
+    }:
+        return True
+    return len(parts) == 2 and parts[0] == "index" and relative_path.suffix == ".md"
+
+
+def _check_workstream(
+    meta: Mapping[str, object], *, relative_path: PurePath | None = None
+) -> list[ValidationIssue]:
+    value = meta.get("workstream")
+    if not isinstance(value, str) or not value.strip():
+        if _is_machine_page(relative_path):
+            return []
+        return [ValidationIssue("工作库笔记必须有 workstream", field="workstream")]
+    if value not in WORKSTREAM_VOCAB:
+        return [
+            ValidationIssue(
+                f"workstream {value!r} 不在词表 {sorted(WORKSTREAM_VOCAB)}",
+                field="workstream",
+            )
+        ]
+    return []
 
 
 def _check_project_placeholders(meta: Mapping[str, object]) -> list[ValidationIssue]:

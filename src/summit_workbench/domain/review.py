@@ -80,7 +80,7 @@ class ApprovalCandidate:
     route: RouteTarget | None = None
     evidence: EvidenceRef | None = None
     due_date: str | None = None  # YYYY-MM-DD；无期限留空
-    # 知识沉淀目标：`<vault 相对页面路径>#<区块标题>`（如 `hii/clusters/ip-trademark#关键结论`）。
+    # 知识沉淀目标：`<vault 相对页面路径>#<区块标题>`（如 `hii-ip-license/ip-trademark#关键结论`）。
     # 只有 route=knowledge-note 时使用；缺 `#区块` 时写入器默认落到 `## 关键结论`。
     sink_target: str | None = None
     start_at: str | None = None  # 新建日历会议的开始时间（本地 naive YYYY-MM-DDTHH:MM）

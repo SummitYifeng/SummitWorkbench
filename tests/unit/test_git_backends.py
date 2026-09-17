@@ -23,10 +23,46 @@ from summit_workbench.repositories.git_backend import (
     CommitIdentity,
     GitConflictError,
     GitNonFastForward,
+    GitRemoteSchemeUnsupported,
+    require_https_remote,
 )
 
 KINDS = ["system", "dulwich"]
 ID = CommitIdentity("Conformance 作者", "conformance@example.com")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "git@github.com:yifeng93/WorkKnowledge.git",
+        "ssh://git@github.com/yifeng93/WorkKnowledge.git",
+        "https://github.com/yifeng93/WorkKnowledge.git",
+    ],
+)
+def test_production_remote_contract_accepts_https_and_ssh(url: str) -> None:
+    require_https_remote(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://github.com/yifeng93/WorkKnowledge.git",
+        "file:///tmp/work-knowledge",
+        "ssh://git@/yifeng93/WorkKnowledge.git",
+        "https://alice:secret@example.com/repo.git",
+        "not a url",
+    ],
+)
+def test_production_remote_contract_rejects_unsupported_or_invalid_urls(url: str) -> None:
+    with pytest.raises(GitRemoteSchemeUnsupported) as exc_info:
+        require_https_remote(url)
+    assert url not in str(exc_info.value)
+
+
+def test_production_remote_contract_does_not_echo_url_credentials() -> None:
+    with pytest.raises(GitRemoteSchemeUnsupported) as exc_info:
+        require_https_remote("http://alice:secret@example.com/repo.git")
+    assert "secret" not in str(exc_info.value)
 
 
 def _backend(kind: str, path: Path):

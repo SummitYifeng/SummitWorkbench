@@ -107,9 +107,9 @@ def test_preflight_is_green_for_https_clean_workspace(
 def test_preflight_explicitly_reports_unsupported_remote_and_dirty_mismatch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    home, vault, workspace_id = _setup(tmp_path, remote="git@github.com:owner/repo.git")
-    production = FakeRepo(vault, "git@github.com:owner/repo.git", dirty=False)
-    system = FakeRepo(vault, "git@github.com:owner/repo.git", dirty=True)
+    home, vault, workspace_id = _setup(tmp_path, remote="http://github.com/owner/repo.git")
+    production = FakeRepo(vault, "http://github.com/owner/repo.git", dirty=False)
+    system = FakeRepo(vault, "http://github.com/owner/repo.git", dirty=True)
     monkeypatch.setattr(
         module,
         "GitRepo",

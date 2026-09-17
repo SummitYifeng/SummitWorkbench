@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import pytest
+
 from summit_workbench.repositories.vault import (
     check_vault,
     iter_markdown_files,
@@ -74,6 +76,67 @@ def test_check_vault_flags_bad_and_skips_signals(tmp_path):
 
     files = list(iter_markdown_files(tmp_path))
     assert good in files and bad in files and sig not in files
+
+
+def test_check_vault_enforces_workstream_only_for_work_vault_notes(tmp_path):
+    bad = tmp_path / "work" / "bad.md"
+    bad.parent.mkdir()
+    bad.write_text(
+        "---\ndate: 2026-09-13\ntype: note\nstatus: active\n"
+        "area: work\nworkstream: hr\n---\n\n# bad\n",
+        encoding="utf-8",
+    )
+    personal = tmp_path / "personal.md"
+    personal.write_text(
+        "---\ndate: 2026-09-13\ntype: note\nstatus: active\n"
+        "area: personal\nworkstream: hr\n---\n\n# personal\n",
+        encoding="utf-8",
+    )
+
+    results = check_vault(tmp_path, work_vault=True)
+
+    assert bad in results
+    assert any(issue.field == "workstream" for issue in results[bad])
+    assert personal not in results
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        "daily/2026-09-14.md",
+        "logs/2026-09-14-001.md",
+        "artifacts/summary.md",
+        "inbox.md",
+        "review/meetings.md",
+        "reviews/weekly.md",
+        "index/projects.md",
+        "README.md",
+    ),
+)
+def test_check_vault_exempts_machine_pages_from_required_workstream(tmp_path, relative_path):
+    path = tmp_path / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\ndate: 2026-09-14\ntype: note\nstatus: active\narea: work\n---\n\n# machine page\n",
+        encoding="utf-8",
+    )
+
+    assert path not in check_vault(tmp_path, work_vault=True)
+
+
+def test_check_vault_does_not_exempt_invalid_workstream_value(tmp_path):
+    path = tmp_path / "logs" / "invalid.md"
+    path.parent.mkdir()
+    path.write_text(
+        "---\ndate: 2026-09-14\ntype: note\nstatus: active\n"
+        "area: work\nworkstream: hr\n---\n\n# machine page\n",
+        encoding="utf-8",
+    )
+
+    results = check_vault(tmp_path, work_vault=True)
+
+    assert path in results
+    assert any(issue.field == "workstream" for issue in results[path])
 
 
 def test_templates_dir_is_skipped_by_check_and_iter(tmp_path):

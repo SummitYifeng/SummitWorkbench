@@ -36,7 +36,7 @@ def check(
         raise typer.Exit(code=2)
 
     total = sum(1 for _ in iter_markdown_files(vault_dir))
-    results = check_vault(vault_dir)
+    results = check_vault(vault_dir, work_vault=True)
 
     if not results:
         typer.echo(f"✓ {vault_dir}：{total} 篇 Markdown 全部通过 schema 与检索就绪校验")

@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -41,7 +42,7 @@ class GitRemoteUnavailable(GitError):
 
 
 class GitRemoteSchemeUnsupported(GitError):
-    """生产同步拒绝非 HTTPS remote（SSH/scp-style 等）。"""
+    """生产同步拒绝不受支持的 remote scheme。"""
 
 
 class GitAuthError(GitError):
@@ -208,11 +209,27 @@ def production_backend_kind() -> str:
     return "dulwich"
 
 
+_SCP_REMOTE_RE = re.compile(r"^(?P<user>[^@\s/:]+)@(?P<host>[^:\s/]+):(?P<path>\S+)$")
+
+
 def require_https_remote(url: str) -> None:
-    """Enforce the production remote contract without echoing URL credentials."""
+    """Require an HTTPS or SSH remote without echoing URL credentials."""
+    raw = url.strip()
+    match = _SCP_REMOTE_RE.fullmatch(raw)
+    normalized = (
+        f"ssh://{match.group('user')}@{match.group('host')}/{match.group('path')}" if match else raw
+    )
     try:
-        parsed = urlsplit(url.strip())
+        parsed = urlsplit(normalized)
     except ValueError as exc:
-        raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote") from exc
-    if parsed.scheme.lower() != "https" or not parsed.hostname:
-        raise GitRemoteSchemeUnsupported("生产同步只支持 HTTPS remote（remote_scheme_unsupported）")
+        raise GitRemoteSchemeUnsupported(
+            "生产同步只支持 HTTPS 或 SSH remote（remote_scheme_unsupported）"
+        ) from exc
+    if (
+        parsed.scheme.lower() not in {"https", "ssh"}
+        or not parsed.hostname
+        or parsed.password is not None
+    ):
+        raise GitRemoteSchemeUnsupported(
+            "生产同步只支持 HTTPS 或 SSH remote（remote_scheme_unsupported）"
+        )

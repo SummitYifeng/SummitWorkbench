@@ -93,7 +93,7 @@ def _base_checks(settings: Settings) -> list[Check]:
 def _vault_schema_check(vault_dir: Path) -> Check:
     if not vault_dir.is_dir():
         return Check("vault schema", CheckStatus.WARN, "vault 目录尚不存在，跳过")
-    issues = check_vault(vault_dir)
+    issues = check_vault(vault_dir, work_vault=True)
     if not issues:
         return Check("vault schema", CheckStatus.OK, "全部 Markdown 通过 schema 校验")
     return Check(

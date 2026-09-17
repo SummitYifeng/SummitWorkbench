@@ -96,8 +96,11 @@ def load_note(path: Path) -> ParsedNote:
     return ParsedNote(path=path, meta=meta, body=body, parse_error=error)
 
 
-def check_vault(root: Path) -> dict[Path, list[ValidationIssue]]:
+def check_vault(root: Path, *, work_vault: bool = False) -> dict[Path, list[ValidationIssue]]:
     """校验 ``root`` 下全部 Markdown，返回 {文件: 问题列表}（仅含有问题的文件）。
+
+    ``work_vault=True`` 启用工作库专属的 ``area: work`` / ``workstream`` 规则；默认关闭，
+    以免通用 vault 校验影响个人库。
 
     两层校验：vault schema（``validate_note``）+ 工作库检索就绪契约
     （``validate_retrieval_readiness``，见 ``docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md``）。
@@ -109,7 +112,14 @@ def check_vault(root: Path) -> dict[Path, list[ValidationIssue]]:
         if note.parse_error is not None:
             results[path] = [ValidationIssue(note.parse_error)]
             continue
-        issues = list(validate_note(note.meta, note.body))
+        issues = list(
+            validate_note(
+                note.meta,
+                note.body,
+                work_vault=work_vault,
+                relative_path=path.relative_to(root),
+            )
+        )
         issues += [
             ValidationIssue(f"检索就绪：{issue.message}", field=issue.field)
             for issue in validate_retrieval_readiness(note.meta, note.body)
