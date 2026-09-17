@@ -39,7 +39,7 @@ class RouteTarget(StrEnum):
     GLOBAL_INBOX = "global-inbox"  # 目标项目不明
     # 知识沉淀：把一条**知识结论**（而不是待办）写入指定页面的指定区块。
     # 与其它落点不同，它**不自动路由**：目标由使用者在审批页显式指定（sink_target），
-    # 因为「这条结论该进哪个主题簇页的哪一节」是业务判断，不该由模型猜。
+    # 因为「这条结论该进哪个小项目页的哪一节」是业务判断，不该由模型猜。
     KNOWLEDGE_NOTE = "knowledge-note"
 
 

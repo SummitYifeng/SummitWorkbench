@@ -33,7 +33,7 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 
 - 知识库根：个人库 = MyKnowledge 根；工作库 = `_vault` 根。**同一个 `source_id` 在不同库里指不同文件**，因此引用必须带库上下文（profile）。
 - `source_file` 内部可以保留 `.md`；对外生成 `source_id` 时统一去掉后缀。
-- 例：`_vault/hii/clusters/ip-trademark.md` 的 `## 关键结论` → `hii/clusters/ip-trademark#关键结论`。
+- 例：`_vault/hii-ip-license/ip-trademark.md` 的 `## 关键结论` → `hii-ip-license/ip-trademark#关键结论`。
 - 文件级引用（整篇）用 `source_id` 本身，此时 `heading=""`。
 
 ---

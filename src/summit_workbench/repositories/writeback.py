@@ -192,7 +192,7 @@ def append_project_inbox(
         return path, written
 
 
-# 知识沉淀的默认落点区块：主题簇页与项目主页都用它承载「一句话级结论」。
+# 知识沉淀的默认落点区块：小项目页与项目主页都用它承载「一句话级结论」。
 _DEFAULT_KNOWLEDGE_HEADING = "## 关键结论"
 
 

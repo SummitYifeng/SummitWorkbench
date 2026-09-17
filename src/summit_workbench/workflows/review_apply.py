@@ -147,7 +147,7 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
         elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
             reason = "新建会议需要开始时间（在「修改」里填开始时间）"
         elif item.route is RouteTarget.KNOWLEDGE_NOTE and not Path(destination).is_file():
-            # 知识沉淀必须有已建好的目标页（主题簇页 / 项目主页），否则无处可落。
+            # 知识沉淀必须有已建好的目标页（小项目页 / 项目主页），否则无处可落。
             reason = f"写回目标不存在：{destination}（知识沉淀需要先建好目标页）"
         elif (
             item.route in (RouteTarget.PROJECT_MAIN, RouteTarget.PROJECT_FOLLOWUP)
@@ -424,7 +424,7 @@ _KIND_SECTION: dict[CandidateKind, str] = {
 def _knowledge_source_ref(vault_dir: Path, entry: ReviewEntry) -> str | None:
     """知识沉淀的「出处」：可解析的 ``<会议笔记 source_id>#<区块>``（附证据锚点）。
 
-    为什么必须是 ``路径#区块``：写进主题簇页的结论要能被 SummitKnowledge 顺着引用核对回
+    为什么必须是 ``路径#区块``：写进小项目页的结论要能被 SummitKnowledge 顺着引用核对回
     原话（契约 §2 的 ``anchor`` 定义）。此前这里直接塞了逐字稿时间戳（如 ``木子 00:03``），
     从检索侧看是个**无法解析**的悬空指针。
 
