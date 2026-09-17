@@ -36,9 +36,8 @@
 - 保存完整逐字稿与结构化会议笔记两个 Markdown 文件。
 - 通过可配置云端模型提取事实、决策、明确行动项、未决问题与 AI 建议。
 - 通过 Obsidian 集中待确认页批准、拒绝或修改执行性提取结果。
-- 使用 `wb ask` 基于本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合）生成带 `路径#区块` 来源的回答。
 - 生成每日晨间简报和每周跨项目复盘。
-- 对项目档案、会议笔记、工作记录和 inbox 做本地检索，并通过 `wb ask` 生成带来源回答；候选条数由路由计划统一决定。
+- 为 SummitKnowledge 稳定写入项目档案、会议笔记、工作记录和 inbox；检索与问答由 SummitKnowledge 提供。
 - 通过 `wb task` 与 `wb note` 低摩擦录入承诺和想法。
 
 ## 关键产品规则
@@ -62,7 +61,7 @@
 - `domain`：会议、证据、审批项、项目、信号、模型用量等稳定类型与规则。
 - `providers`：飞书 OpenAPI 和云端模型 API 适配。
 - `repositories`：vault Markdown、幂等状态、错误队列、用量账本。
-- `workflows`：会议、审批、问答、简报、周复盘、同步的编排；M3 交互式会话不在当前交付范围。
+- `workflows`：会议、审批、简报、周复盘、同步的编排；M3 交互式会话不在当前交付范围。
 - `observability`：`wb status`、运行心跳与定时任务健康度、macOS 通知、预算和积压告警。
 - `webapp`：可选本地 Web 工作台（FastAPI 提供 `/api/*` JSON 端点 + 静态托管；前端为 Vite + 原生 TS 构建的 SPA「今日工作台」，构建产物随包分发；未构建时回退服务端渲染，SSR 视图保留）。
 
@@ -74,7 +73,7 @@
 
 - 云端服务端、常驻守护进程或多用户部署。（后加入的 `wb web` 本地面板与原生 macOS 桌面 App 是**纯本地、按需启动**的可选便利层，复用同一套领域逻辑，不引入服务端、不改变数据边界——`.app` 双击启动 bundle 内 server + WKWebView 面板。）
 - 本地模型、敏感会议分流或多模型自动切换。
-- 在 SWB 内建向量数据库、Embedding、精排或语义 RAG。高级语义检索（多库切换 + 云端精排 + 多步生成问答）唯一归属 `SummitKnowledge`，工作库对 SK **只读**；SWB 只做块级本地检索与强制引用，并保证自动沉淀的 Markdown 满足共享检索契约。
+- 在 SWB 内建向量数据库、Embedding、精排或本地检索。高级语义检索（多库切换 + 云端精排 + 多步生成问答）唯一归属 `SummitKnowledge`，工作库对 SK **只读**；SWB 只保证自动沉淀的 Markdown 满足共享检索契约。
 - 下载飞书会议录像。
 - 编排 WorkBuddy、读取飞书消息、通用云文档或多维表格。
 - MVP 阶段在 Mac Air 部署自动任务。
@@ -112,7 +111,7 @@
 - **v0.4 · 业务线程 = vault 一等公民（ADR 0026，P0–P3）**：知识线程（FinanceOps / CoachFinance / EnrollmentProduct / ERPExplore 试点）无需 Work 文件夹与 git——`_vault/projects/*.md` 建档即入工作台，registry 全集（文件夹项目 + 线程）统一进首页/项目页/审批下拉；内部目录（下划线前缀）不进项目视野。审批路由扩展：**「跟进事项」落点**（他人行动项 → 主档案 `## 跟进事项` `- [ ] ` 责任记录，人工闭环）+ 线程 inbox（`_vault/inboxes/`）。**✎ 推进日志**（多线程 work-log + AI 摘要，模型不可用只存原文）与**存产物**（thread-doc：阶段总结/PRD/背景包/timeline，本地文件导入 + 拖放，可一键转「当前状态」草案）入库自动刷新档案 `updated`。**线视图** = 档案区块 + 时间线聚合（logs/artifacts/meetings），视图内直接日志/产物/刷新。线程信号（下一步/阻塞/未闭环跟进）进晨间简报；**>14 天无更新且有未决/未闭环跟进 → 周复盘「停滞项目」点名**（`weekly/collect.py::_collect_thread_stalls`，`THREAD_STALL_DAYS=14` 与卡片同口径）。项目显示名 = 档案 frontmatter `title`（`POST /api/projects/rename`）。第二大脑按线程检索（`answer_question(project=...)`）。顺带修复：未加引号 `updated`（YAML date 对象）读取归一（`vault.meta_date_iso`）。质量门 **491 项全绿**；P0/P1/P2 与 P3 第一批真机验收并装机，P3 停滞检测随本版装机后生效。
 - **v0.3 · 工作台 → 飞书双向写回（ADR 0025）**：待办任务行尾 **✓ 一键完成**（`PATCH completed_at` 完成形态，真机核实 `update_fields` 白名单不含 `completed`）/ **✎ 行内编辑**（标题/截止，`PATCH summary/due`）；会议行尾 **✎ 行内编辑**（标题/起止时间，日历写 scope `calendar:calendar` 升级并重新授权）；审批候选落点新增 **「新建会议」**（`RouteTarget.FEISHU_MEETING` + 起止时间字段，批准 + 应用即在主日历新建定时日程事件，`MeetingCreator` 注入 + 候选 ID 审计幂等）。飞书 = 任务与日程唯一真源；本地只把当日渲染快照镜像一致（`signal_snapshot.mark_task_completed/mark_task_edited/mark_meeting_edited`），vault 简报 Markdown 一字不动。质量门 458 项全绿；日历/任务写回 2026-09-03 真机核实（建日程/改会议时间/改任务标题截止/一键完成闭环）。
 - **M0** 地基：工作目录与 vault、项目档案、飞书身份与最小权限、`wb sync` 非破坏性同步、云端模型与用量账本冒烟。
-- **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb ask` 带来源问答、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
+- **M1** 会议进入第二大脑：会议发现与双文件归档、云端结构化、集中审批与写回（项目别名解析 + 未匹配零摩擦捕获）、`wb status` 状态/费用/积压、`wb meeting import`/`backfill` 手动与历史补导。PRD L44 严格验收 6/6 真机通过。
 - **M2** 晨间简报：`wb brief` 全链路（飞书日历/任务 + 项目扫描 → 模型排序/确定性回退 → 幂等写当日笔记）与 `wb weekly` 周复盘，均由 launchd 定时触发。
 - **加固**：工作区跨进程锁、JSONL 容错读、飞书退避重试（ADR 0016–0018）；schema 版本号、运行心跳健康度、`wb doctor` 预检、飞书授权可见性（ADR 0019–0022）；GitHub Actions 质量门（macOS，360 项全绿）。
 - **v0.2 · Web 工作台（SPA）**：`wb web` 升级为「今日工作台」——快速捕捉（AI 承诺/想法分类 + `#项目` 本地解析 + 失败兜底）、拖拽导入逐字稿全自动链路、待确认审批卡片、项目推进精选与「项目」页（ADR 0023）、简报与问答、内置「指南」页签；审批页即时批准/拒绝/修改 + 批量操作 + 预演/应用；`wb review sweep` 清理命令；`wb status --notify` 真正投递 macOS 通知。

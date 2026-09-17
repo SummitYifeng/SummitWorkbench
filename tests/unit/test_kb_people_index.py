@@ -185,3 +185,22 @@ def test_refuses_a_directory_that_is_not_a_work_vault(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert not (tmp_path / "index" / "people.md").exists()
+
+
+def test_accepts_work_root_or_vault_path(tmp_path: Path) -> None:
+    vault = _vault(tmp_path)
+    _note(vault, "n/a.md", people="[甲]")
+    for supplied in (tmp_path, vault):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "kb_index_people.py"),
+                "--vault",
+                str(supplied),
+                "--check",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 1

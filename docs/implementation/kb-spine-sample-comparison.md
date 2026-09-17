@@ -249,3 +249,4 @@ $V/wb vault check /tmp/kb-spine-sample/beta                 # 期望 exit 0
 $V/python /tmp/kb-spine-sample/verify.py                    # 期望 ✓ 0 死链 / 0 失效锚点
 $V/python /tmp/kb-spine-sample/compare.py --cli             # 只检索不调模型；含 CLI 路径验证
 ```
+# 历史状态：本文记录旧本地索引与 `wb ask` 方案对比，不是当前执行指南；相关实现已退役，语义检索统一由 SummitKnowledge 提供。

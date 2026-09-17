@@ -291,25 +291,6 @@ class AutomationRunPayload(BaseModel):
     job: Literal["brief", "weekly", "meeting-sync"]
 
 
-class AskHistoryTurn(BaseModel):
-    """对话中的一轮历史问答（追问上下文）：只带问题原文 + 当时引用过的来源 id。
-
-    刻意**不带** AI 当时的答案全文——AI 回答不是 vault 事实，不进入下一轮来源集合。
-    """
-
-    question: str = Field(min_length=1, max_length=2_000)
-    sources: list[Annotated[str, Field(max_length=2048)]] = Field(
-        default_factory=list, max_length=100
-    )
-
-
-class AskPayload(BaseModel):
-    question: str = Field(min_length=1, max_length=2_000)
-    history: list[AskHistoryTurn] = Field(default_factory=list, max_length=100)
-    # 可选的检索范围：限定到某个项目/线程（其档案+日志+产物+关联会议）。
-    project: str | None = Field(default=None, max_length=200)
-
-
 # ---- onboarding 服务 API（P0-08，无 UI；服务在 workflows/onboarding.py） ----
 
 

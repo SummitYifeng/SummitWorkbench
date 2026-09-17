@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
 from typer.testing import CliRunner
 
 from summit_workbench import __version__
@@ -141,10 +142,21 @@ def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
     assert (tmp_path / "work" / "_vault" / "reviews" / "weekly" / "2026-W35.md").is_file()
 
 
-def test_ask_registered() -> None:
-    text = _help_text("ask")
-    assert "--save" in text
-    assert "--project" in text
+def test_help_omits_retired_local_search_commands() -> None:
+    text = _help_text()
+    assert re.search(r"(?m)^│\s+ask\s", text) is None
+    assert re.search(r"(?m)^│\s+kb\s", text) is None
+
+
+@pytest.mark.parametrize("command", ["ask", "kb"])
+def test_retired_local_search_commands_are_unknown(command: str) -> None:
+    result = runner.invoke(app, [command])
+    assert result.exit_code == 2
+    assert f"No such command '{command}'" in result.output
+
+
+def test_model_smoke_help_omits_retired_qa_capability() -> None:
+    assert "qa" not in _help_text("model", "smoke")
 
 
 def test_project_new_and_list(monkeypatch, tmp_path) -> None:

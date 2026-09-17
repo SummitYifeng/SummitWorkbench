@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""双链与块级锚点自检（只读，可对任意 vault 路径运行）。
+"""双链、块级锚点与有明确来源上下文的裸锚点自检（只读）。
 
 校验两件事：
 
@@ -29,6 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from summit_workbench.domain.markdown_blocks import chunk_markdown  # noqa: E402
+
 # 机器目录与模板不参与双链（与 conventions.md §0 一致）。
 SKIP_DIRS = frozenset(
     {".git", ".obsidian", "_signals", ".summit-workbench", "templates", "node_modules"}
@@ -36,10 +38,12 @@ SKIP_DIRS = frozenset(
 
 WIKILINK = re.compile(r"\[\[([^\]|#]+?)(?:#([^\]|]+?))?(?:\|[^\]]*)?\]\]")
 PATH_REF = re.compile(r"`([^`\n]+?)#([^`\n]+?)`")
-HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 FENCED_BLOCK = re.compile(r"^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[ \t]*$", re.S | re.M)
 # 行内代码里的 `[[…]]` 是**文档在举例**，不是真链接（Obsidian 也不会把它渲染成链接）。
 INLINE_CODE = re.compile(r"`[^`\n]*`")
+BARE_REF = re.compile(r"`#([^`\n]+?)`")
+SOURCE_PATH = re.compile(r"(?<![\w./-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.md)")
+SOURCE_MARKER = re.compile(r"来源|出处|真源|原件|副本|source|copy", re.I)
 
 
 def markdown_files(vault: Path) -> list[Path]:
@@ -50,20 +54,31 @@ def markdown_files(vault: Path) -> list[Path]:
     )
 
 
-def headings(text: str) -> set[str]:
-    found: set[str] = set()
-    in_fence = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        match = HEADING.match(stripped)
-        if match:
-            found.add(match.group(2).strip())
-    return found
+def headings(source_id: str, text: str) -> set[str]:
+    """Return only the addressable H1/H2 headings, using shared chunk rules."""
+    return {chunk.heading for chunk in chunk_markdown(source_id, text) if chunk.heading}
+
+
+def source_context(
+    body: str, by_rel: dict[str, Path], basenames: set[str]
+) -> tuple[Path | None, bool]:
+    """Return (unique source, ambiguous) from the first content block only."""
+    content = body
+    if body.startswith("---"):
+        end = body.find("\n---", 3)
+        if end != -1:
+            content = body[end + len("\n---") :].lstrip("\n")
+    chunks = chunk_markdown("", content)
+    if not chunks:
+        return None, False
+    candidates: list[str] = []
+    for line in chunks[0].text.splitlines():
+        if SOURCE_MARKER.search(line):
+            candidates.extend(SOURCE_PATH.findall(line))
+    unique = list(dict.fromkeys(candidates))
+    if len(unique) != 1:
+        return None, len(unique) > 1
+    return resolve(unique[0], by_rel, basenames), False
 
 
 def build_maps(files: list[Path], vault: Path) -> tuple[dict[str, Path], set[str], dict[Path, str]]:
@@ -116,11 +131,15 @@ def main(argv: list[str] | None = None) -> int:
 
     files = markdown_files(vault)
     by_rel, basenames, bodies = build_maps(files, vault)
-    heading_cache = {path: headings(body) for path, body in bodies.items()}
+    heading_cache = {
+        path: headings(path.relative_to(vault).with_suffix("").as_posix(), body)
+        for path, body in bodies.items()
+    }
 
     problems: list[str] = []
     link_count = 0
     ref_count = 0
+    bare_count = 0
 
     for path in files:
         rel = path.relative_to(vault).as_posix()
@@ -153,10 +172,27 @@ def main(argv: list[str] | None = None) -> int:
             if block not in heading_cache[resolved]:
                 problems.append(f"{rel}: `路径#区块` 锚点失效 `{ref_path}#{block}`")
 
+        bare_refs = [
+            match
+            for match in BARE_REF.finditer(prose)
+            if not match.group(1).lstrip().startswith("#")
+        ]
+        if bare_refs:
+            source, ambiguous = source_context(body, by_rel, basenames)
+            if ambiguous:
+                problems.append(f"{rel}: 裸锚点来源上下文有歧义，无法安全解析")
+            elif source is not None:
+                bare_count += len(bare_refs)
+                for match in bare_refs:
+                    block = match.group(1).strip()
+                    if block not in heading_cache[source]:
+                        problems.append(f"{rel}: 裸锚点失效 `#{block}`（来源无此标题）")
+
     if not args.quiet:
         print(f"vault：{vault}")
         print(
-            f"扫描：{len(files)} 篇 Markdown｜双链 {link_count} 条｜`路径#区块` 引用 {ref_count} 条"
+            f"扫描：{len(files)} 篇 Markdown｜双链 {link_count} 条｜"
+            f"`路径#区块` 引用 {ref_count} 条｜裸锚点 {bare_count} 条"
         )
     if problems:
         print(f"✗ 发现 {len(problems)} 个问题：")

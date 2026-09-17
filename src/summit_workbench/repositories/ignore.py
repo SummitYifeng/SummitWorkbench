@@ -1,13 +1,12 @@
 """统一的目录忽略规则：**点开头（隐藏 / 机器目录）+ 已知机器目录名 + 下划线内部前缀**。
 
-某目录「算不算内容」的判断原先散在三处，各自维护名单：
+某目录「算不算内容」的判断原先散在多处，各自维护名单：
 
 - :mod:`summit_workbench.repositories.project_scan`（Work 根目录扫描 → App【项目】列表）
 - :mod:`summit_workbench.repositories.vault`（``wb vault check`` 的遍历）
-- :mod:`summit_workbench.repositories.kb_index`（知识索引的遍历）
 
 2026-09-14：`~/Documents/Work/.obsidian` 漏进了 App 的【项目】——`project_scan` 当时只挡
-下划线前缀，不挡点开头。修一处仍会从另一处漏，故本模块是**唯一真源**；三处遍历都从这里取
+下划线前缀，不挡点开头。修一处仍会从另一处漏，故本模块是**唯一真源**；内容遍历都从这里取
 判据，**不要**再各写一份名单。
 """
 

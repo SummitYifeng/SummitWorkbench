@@ -1,20 +1,15 @@
-"""自助入库路线端到端：模板 → 合法页面 → 过 schema → 建索引 → **问一句能召回**。
+"""自助入库路线端到端：模板 → 合法页面 → 通过 vault schema。
 
 承诺来源：`docs/product/INTAKE-GUIDE.html` 与 `_vault/index/sop.md` 的「入口指南」告诉使用者
-「复制模板 → 改 3 处 → 保存，**下一次提问就能检索到**」。在使用者选择「自己在
-Workbench / Obsidian 里操作」之后，这条链就是他的主路径。
+「复制模板 → 改 3 处 → 保存」。在使用者选择「自己在 Workbench / Obsidian 里操作」
+之后，SWB 保证仓库自带模板能生成合法 vault 页面。
 
-在它之前，这条路只有「模板插入即合法」一环有守卫（`scripts/kb_check_templates.py`），
-**整条链仍属于"我验证过一次"**。本用例把两件事变成可重复验证（零 token、不调模型）：
-
-1. 用仓库自带的种子模板渲染出的页面，必须**通过 `check_vault`**（否则使用者建完就红）；
-2. 写进 vault 的新页面必须能被**建索引并检索到**——对应「``index.build()`` 在问答路径里
-   做增量同步、所以写完不必手动重建」。
+本用例把「模板插入即合法」变成可重复验证：用仓库自带的种子模板渲染出的页面，必须
+**通过 `check_vault`**（否则使用者建完就红）。
 
 变异验证：
 - 把 `templates/vault/*.template.md` 里任一 `{{…}}` 的引号去掉 → 第 1 组断言变红；
-- 把 `templates` 从 `repositories/ignore.py` 的 `MACHINE_DIRNAMES` 移除，或让索引跳过新文件
-  → 第 2 组断言变红。
+- 把 `templates` 从 `repositories/ignore.py` 的 `MACHINE_DIRNAMES` 移除 → 校验会读到未渲染模板。
 """
 
 from __future__ import annotations
@@ -22,15 +17,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from summit_workbench.repositories.kb_index import KnowledgeIndex
 from summit_workbench.repositories.vault import check_vault, parse_frontmatter
-from summit_workbench.workflows.ask.retrieval import build_index
 from summit_workbench.workflows.onboarding import default_vault_templates_dir
 
 DAY = "2026-09-14"
-# 一个在任何模板里都不存在的短语，用来证明「新页面能被检索到」而不是命中别的内容。
-TOKEN = "独角兽紫水晶入库验证标记"
-
 # 种子模板 → 它在真实工作台里的落点。集合必须与 `templates/vault/` 完全一致：
 # 新增种子模板却没在这里登记时，本用例会直接失败（避免"加了模板没人验"）。
 _SEED_TARGETS: dict[str, str] = {
@@ -146,55 +136,3 @@ def test_rendered_templates_pass_vault_check(tmp_path: Path) -> None:
         path: [str(i) for i in issues] for path, issues in results.items() if path in written
     }
     assert offenders == {}, f"以下页面由种子模板渲染而来却过不了校验：{offenders}"
-
-
-def test_new_note_is_retrievable_after_index_build(tmp_path: Path) -> None:
-    """第 2 组：写进 vault 的新页面必须能被检索到（＝「下一次提问就能检索到」）。"""
-    vault = tmp_path / "vault"
-    _make_project(vault)
-    templates_dir = default_vault_templates_dir()
-
-    text = _render((templates_dir / "note.template.md").read_text(encoding="utf-8"))
-    # `draft` 不进索引——要验证"能被检索到"，这里必须是 active（模板默认值另有断言）。
-    text = text.replace("status: draft", "status: active")
-    rel = "hr/notes/20260914-sample.md"
-    _write(vault, rel, text + f"\n## 入库验证\n\n{TOKEN}。\n")
-
-    index_path = tmp_path / "kb.sqlite"
-    build_index(vault, index_path)
-
-    with KnowledgeIndex(vault, index_path) as index:
-        hits = index.search(TOKEN)
-
-    assert hits, "新写入的页面没有被索引检索到——「写完即可检索」的承诺不成立"
-    assert any(hit.source_id == "hr/notes/20260914-sample" for hit in hits), [
-        hit.source_id for hit in hits
-    ]
-
-
-def test_draft_pages_stay_out_of_the_index(tmp_path: Path) -> None:
-    """反向断言：`draft` 页面**不该**被检索到（这正是指南要求「想被引用就用 active」的原因）。"""
-    vault = tmp_path / "vault"
-    _make_project(vault)
-    _write(
-        vault,
-        "hr/notes/20260914-draft.md",
-        f"""---
-date: {DAY}
-type: note
-status: draft
----
-
-# 草稿
-
-## 结论一｜{TOKEN}
-""",
-    )
-
-    index_path = tmp_path / "kb.sqlite"
-    build_index(vault, index_path)
-
-    with KnowledgeIndex(vault, index_path) as index:
-        hits = index.search(TOKEN)
-
-    assert not hits, "draft 页面不应进入检索索引"

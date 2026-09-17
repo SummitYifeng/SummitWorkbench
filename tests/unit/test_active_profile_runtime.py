@@ -139,12 +139,12 @@ credential_account = "shared"
     )
 
     feishu = load_feishu_config(config_file, workspace_id=profile.workspace_id)
-    model = load_model_config("qa", config_file, workspace_id=profile.workspace_id)
+    model = load_model_config("review", config_file, workspace_id=profile.workspace_id)
 
     assert feishu.app_secret_ref.service.endswith(profile.workspace_id)
     assert feishu.app_secret_ref.account == "feishu:app-a:app_secret"
     assert model.api_key_ref.service.endswith(profile.workspace_id)
-    assert model.api_key_ref.account == "llm:qa:shared"
+    assert model.api_key_ref.account == "llm:review:shared"
 
 
 def test_incompatible_active_profile_is_exposed_for_backend_gate(tmp_path: Path) -> None:

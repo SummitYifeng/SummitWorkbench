@@ -3,15 +3,15 @@
 承诺来源：2026-09-14 使用者反馈「App【项目】里出现 `.obsidian`」（真实位置
 `~/Documents/Work/.obsidian`，与 `_vault` 并列）。根因是 `project_scan.is_internal_dirname`
 只挡下划线前缀；而「哪些目录不算内容」当时散在三处各自维护名单
-（``project_scan`` / ``vault`` / ``kb_index``）。
+（``project_scan`` / ``vault``）。
 
-本用例覆盖**三处遍历**——App 项目列表、``wb vault check``、知识索引——
+本用例覆盖**两处遍历**——App 项目列表与 ``wb vault check``——
 保证它们共用 `repositories/ignore.py` 的同一条判据。
 
 变异验证（改坏了必须立刻红）：
-- 让 `is_internal_dirname` 退回「只判下划线前缀」→ 第 1、2、3、4 组断言全红；
+- 让 `is_internal_dirname` 退回「只判下划线前缀」→ 前三组断言全红；
 - 把 `templates` 从 `MACHINE_DIRNAMES` 移除 → 第 1、3 组断言变红；
-- 把 `parts[:-1]` 改回 `parts`（按文件名判定）→ 第 5 组断言变红。
+- 把 `parts[:-1]` 改回 `parts`（按文件名判定）→ 最后一组断言变红。
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from summit_workbench.repositories.ignore import (
     is_internal_dirname,
     is_machine_dirname,
 )
-from summit_workbench.repositories.kb_index import KnowledgeIndex
 from summit_workbench.repositories.project_scan import (
     scan_all_projects,
     scan_projects,
@@ -102,27 +101,6 @@ def test_vault_check_and_iter_skip_hidden_dirs(tmp_path: Path) -> None:
     assert results == {}
     files = list(iter_markdown_files(tmp_path))
     assert files == [real]
-
-
-def test_kb_index_skips_hidden_dirs(tmp_path: Path) -> None:
-    """知识索引：`.obsidian/` 里的 Markdown 不进索引（否则问答会召回机器文件）。"""
-    vault = tmp_path / "vault"
-    (vault / ".obsidian").mkdir(parents=True)
-    (vault / ".obsidian" / "machine.md").write_text(
-        "---\ndate: 2026-09-13\ntype: note\nstatus: active\n---\n\n# 机器文件\n\n独有标记词。\n",
-        encoding="utf-8",
-    )
-    (vault / "hii").mkdir()
-    (vault / "hii" / "real.md").write_text(
-        "---\ndate: 2026-09-13\ntype: note\nstatus: active\nworkstream: hii\n---\n\n"
-        "# 真笔记\n\n正文。\n",
-        encoding="utf-8",
-    )
-
-    with KnowledgeIndex(vault_dir=vault, db_path=tmp_path / "kb.sqlite") as index:
-        stats = index.build(full=True)
-        assert stats.added == 1
-        assert set(index.notes()) == {"hii/real"}
 
 
 def test_iter_markdown_files_only_judges_directories(tmp_path: Path) -> None:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate ``<vault>/_vault/index/decisions.md`` from ``decisions/*.md`` frontmatter.
+"""Regenerate ``<vault>/index/decisions.md`` from ``decisions/*.md`` frontmatter.
 
 为什么有这个脚本：``index/decisions.md`` 在自己的维护规则里写了「新增决策时同步更新本页」，
 但那是句空话——手抄台账迟早漂移。决策是**唯一**能支撑「决策支持」类提问的资产，
@@ -22,6 +22,7 @@
 用法::
 
     scripts/kb_index_decisions.py                 # 重生成 index/decisions.md
+    scripts/kb_index_decisions.py --vault <Work 或 _vault>  # 指定库路径
     scripts/kb_index_decisions.py --check         # 与磁盘不一致则退出码 1
     scripts/kb_index_decisions.py --today 2026-09-14   # 固定「今天」以便可重复校验
 """
@@ -148,7 +149,12 @@ def render(existing_body: str, groups: dict[str, list[str]]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="从 decisions/*.md 重生成 index/decisions.md")
+    parser = argparse.ArgumentParser(
+        description=(
+            "从 decisions/*.md 重生成 index/decisions.md"
+            + "（--vault 接受 Work 父目录或 _vault 本身）"
+        )
+    )
     default_vault = os.environ.get("WORK_ROOT", str(Path.home() / "Documents" / "Work"))
     parser.add_argument("--vault", type=Path, default=Path(default_vault))
     parser.add_argument(
@@ -157,7 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check", action="store_true", help="只校验，不写；过期则退出码 1")
     args = parser.parse_args(argv)
 
-    vault = args.vault.expanduser() / "_vault"
+    vault_root = args.vault.expanduser()
+    vault = vault_root if vault_root.name == "_vault" else vault_root / "_vault"
     target = vault / "index" / "decisions.md"
     if not target.is_file():
         print(f"✗ 找不到 {target}", file=sys.stderr)

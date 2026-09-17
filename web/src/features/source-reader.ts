@@ -3,7 +3,7 @@ import { esc, inlineMd, mdToHtml } from '../md';
 import { modalBackdrop, openModal } from './shell';
 
 /**
- * 只读来源弹层（审批页的证据「查看原件」用它；原属问答 feature，问答页签下线后独立成域）。
+ * 只读来源弹层（审批页的证据「查看原件」用它）。
  *
  * 在途序号与守卫必须同模块（§4.2 不变量）；弹层关闭时经 shell 的关闭钩子作废在途读取（§4.4）。
  */

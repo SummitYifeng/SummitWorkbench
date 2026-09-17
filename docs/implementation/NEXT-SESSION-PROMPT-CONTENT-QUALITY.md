@@ -1,5 +1,7 @@
 # 内容质量与「工作 vs 建库」边界 · 下一窗口作业单
 
+> **历史边界校正（2026-09-17）**：本作业单保留旧阶段内容；`kb_measure.py`、`wb ask`、`wb kb` 与本地检索索引已退役。当前只执行结构/引用门禁，语义检索由 SummitKnowledge 负责。
+
 > **用法**：新窗口把本文件交给 Agent，说「读 `docs/implementation/NEXT-SESSION-PROMPT-CONTENT-QUALITY.md` 并按它开工」。
 > **配套读**：`NEXT-SESSION-PROMPT.md`（通用开工规范 · 门禁 · 铁律）、`_vault/conventions.md`（库规范）。
 > **本文件自包含**：使用者原话、已对齐的 6 个决策、已取证的事实、要交付什么、验收标准。
@@ -121,7 +123,7 @@ cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
 .venv/bin/python scripts/kb_verify_quotes.py --vault ~/Documents/Work/_vault \
   --materials-root "/Users/yifengstudio/Desktop/3份素材"     # 另一个素材根是 ~/Desktop/当前材料，两个都要跑
 .venv/bin/python scripts/kb_index_people.py --vault ~/Documents/Work/_vault --check
-.venv/bin/python scripts/kb_measure.py --no-rebuild # 动了检索相关才必须；本项目多半不用
+# 本地检索度量已退役；语义检索验收由 SummitKnowledge 负责。
 ```
 
 - 提交信息用 **`-F <文件>`** 传（含反引号），统一带 `[skip ci]`，中文，讲清「为什么」与「验证了什么」。

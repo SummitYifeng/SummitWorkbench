@@ -4,6 +4,8 @@
 > 适用范围：`~/Documents/Work/_vault/`（下称**工作库**）的全部 Markdown。
 > 双方：**SummitWorkbench（SWB）是写入方**，**SummitKnowledge（SK）是检索方**。
 > 本文件只写契约（字段、语义、边界），**不含任何一方的实现细节、API 配置或算法参数**。
+>
+> **2026-09-17 边界校正**：SWB 已退役 `wb ask`、`wb kb`、本地 SQLite/FTS/BM25 索引与问答生成；本契约只描述写入格式和 SK 的读取语义。`qa-insight` 仅作为历史兼容类型保留，不再由 SWB 生成。
 
 ---
 
@@ -14,8 +16,7 @@
 | **SummitWorkbench** | 看板、采集、审批、源数据处理；决定「什么内容、以什么状态、落到哪一页」 | 不做 embedding、不建向量库、不做语义精排 |
 | **SummitKnowledge** | 跨个人库/工作库的语义检索与长期记忆体验；切块、召回、精排、生成 | 不写工作库（工作库对 SK 只读） |
 
-`wb ask` 是 **轻量兜底**：本地结构化检索 + 可配置云端模型 + 强制来源引用。
-它**不是** RAG 服务，也不扩展成语义 RAG；高级语义检索唯一归属 SummitKnowledge。
+高级语义检索、切块、召回、精排和问答均由 SummitKnowledge 负责；SWB 不提供本地检索命令或索引。
 
 **写入方承诺**：SWB 自动沉淀进工作库的每一篇 Markdown 都必须满足本契约（§8 有可执行校验）。
 **检索方承诺**：SK 按本契约解释区块边界、状态与权威顺序；不得自行改写工作库文件。
@@ -179,4 +180,4 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 
 - 产品边界：[`docs/product/PRD.md`](../product/PRD.md) §3.1.2 / §3.1.3 / §3.1.6 / §3.2.6
 - 工作库规范：`_vault/conventions.md`（真实库内，检索契约章节）
-- 验收脚本：`scripts/kb_acceptance.py`、`scripts/kb_measure.py`
+- 当前校验入口：`wb vault check`、`scripts/kb_verify_links.py`；语义检索验收由 SummitKnowledge 负责。

@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
+from summit_workbench.domain.markdown_blocks import chunk_markdown
 from summit_workbench.domain.review import CandidateDecision, RouteTarget
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
@@ -82,7 +83,7 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
 
     @app.get("/api/sources/read", response_model=None)
     def api_sources_read(source_id: str = "") -> dict[str, object] | JSONResponse:
-        """只读返回允许的知识 Markdown，供问答与审批共用证据面板。"""
+        """只读返回允许的知识 Markdown，供审批页证据面板查看。"""
         raw_id = source_id.strip()
         # 引用可以是「路径#区块」：解析文件时只看路径部分，返回时按区块切片，
         # 让「每条结论带 路径#区块 出处」在来源面板里能直接跳到对应段落。
@@ -122,8 +123,6 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
             )
         heading = ""
         if block:
-            from summit_workbench.workflows.ask.chunking import chunk_markdown
-
             wanted = block.strip()
             match = next(
                 (

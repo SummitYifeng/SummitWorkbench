@@ -6,6 +6,8 @@
 > 执行经过见 `PLAN-WORK-KNOWLEDGE-BASE.md` §12「种子基线与三线升级轮」。
 > **本文件保留作历史作业单**，不再作为开工指令；素材准备请读 `SEED-MATERIAL-SPEC.md`。
 >
+> **2026-09-17 边界校正**：`wb ask`、`wb kb`、`kb_measure.py`、`kb_acceptance*.py` 与本地检索索引均已退役；本文件中的旧检索命令只作历史记录，不可执行。当前只运行 `wb vault check`、`kb_verify_links.py` 与模板/引用门禁，语义检索由 SummitKnowledge 负责。
+>
 > **用法**：新窗口把本文件交给 Agent，说「读 `docs/implementation/NEXT-SESSION-PROMPT-SEED-INGESTION.md` 并按它开工」。
 > **本文件自包含**：背景、已对齐的决策、素材规范草案、要交付什么、环境事实与门禁。
 > 配套读：`docs/implementation/NEXT-SESSION-PROMPT.md`（通用开工规范）、`_vault/conventions.md`（库规范）。
@@ -108,7 +110,7 @@
 4. **首批入库**：用 C-lite 把使用者给的**第一批**种子材料入库（不要一次全铺开，先 3–5 份跑通）。
 5. **验收**（全部真跑）：
    `wb vault check`、`scripts/kb_verify_links.py`、`scripts/kb_verify_quotes.py --vault ~/Documents/Work/_vault --materials-root <素材目录>`；
-   并给新线各出一个**真实问题**，用 `scripts/kb_measure.py`（零 token）先量，必要时再进 `scripts/kb_acceptance.py`。
+   并给新线各出一个**真实问题**，交由 SummitKnowledge 做语义检索验收；SWB 只跑结构与引用门禁。
 
 ---
 
@@ -124,15 +126,15 @@
 - 三条新线的**现状**：`community/community-overview.md`、`hr/hr-people.md` 都只是骨架（正文写着「本轮仅骨架」）；
   `insights/` 为空；工作日志 / 思考只有模板。
 - 素材目录：`/Users/yifengstudio/Desktop/当前材料`（目前只有 HII 4 份 + IT 4 份，**这三条线一份都没有**）。
-- 可用工具：`scripts/kb_intake.py`（幂等入库）、`kb_verify_links.py`、`kb_verify_quotes.py`、`kb_measure.py`（零 token 度量）、
-  `kb_acceptance.py`（真调模型）、`kb_index_people.py`（人索引再生成，**注意它会重写 `index/people.md`，历史上抹过 frontmatter**）。
+- 可用工具：`scripts/kb_intake.py`（幂等入库）、`kb_verify_links.py`、`kb_verify_quotes.py`、
+  `kb_index_people.py`（人索引再生成，**注意它会重写 `index/people.md`，历史上抹过 frontmatter**）。
 
 ---
 
 ## 7. 铁律（详版见 `NEXT-SESSION-PROMPT.md`，这里只列最容易翻车的）
 
 - **不许为了让测试变绿放松判据**；判据写错要说清原因并保留等价强度。
-- **涉及检索权重/词表的改动先用真实问题量**（`scripts/kb_measure.py`，零 token）。
+- **涉及语义检索质量的验收交由 SummitKnowledge**；SWB 不再维护本地权重/词表度量工具。
 - 提交信息用 `-F <文件>` 传（含反引号），统一带 `[skip ci]`；中文，讲清「为什么」与「验证了什么」。
 - **要动 App 代码时：先提交代码 → 再构建 → 最后单独提交文档**（否则产物 stamp 指向不含该修复的提交）。
 - 改 `_vault` 后必跑：`wb vault check` + `kb_verify_links.py` + `kb_verify_quotes.py --materials-root`（**必须给该参数**）。

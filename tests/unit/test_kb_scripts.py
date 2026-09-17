@@ -431,3 +431,11 @@ def test_decisions_ledger_groups_by_status_and_check_flags_stale(tmp_path: Path)
 
     # 重生成后再查一次：必须绿（否则「可再生成」是空话）
     assert decisions_index.main(["--vault", str(tmp_path), "--check", "--today", "2026-09-14"]) == 0
+
+
+def test_decisions_ledger_accepts_work_root_or_vault_path(tmp_path: Path) -> None:
+    """`--vault` accepts either Work or the `_vault` directory itself."""
+    vault = _decision_vault(tmp_path)
+    _decision(vault, "20260324-sample-decision")
+    assert decisions_index.main(["--vault", str(tmp_path), "--today", "2026-09-14"]) == 0
+    assert decisions_index.main(["--vault", str(vault), "--check", "--today", "2026-09-14"]) == 0

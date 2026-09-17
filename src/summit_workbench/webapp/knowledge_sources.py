@@ -3,7 +3,7 @@
 这三个符号被两个不同入口共用，**必须只有一份白名单**，否则会出现一条更宽的旁路：
 
 - 审批页的来源只读入口（`/api/review/source`）；
-- 问答页的来源面板（`/api/sources/read`）。
+- 来源查看器（`/api/sources/read`）。
 
 它们既不属于某一个 router（两边都要用），也不该继续留在 `legacy_app.py` 里随
 那个 3457 行的兼容文件一起漂移，因此作为第一个 seam 抽出。
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# 允许作为「知识来源」只读打开的 vault 顶层目录；审批来源只读入口与问答来源面板
+# 允许作为「知识来源」只读打开的 vault 顶层目录；审批来源入口与来源查看器
 # 共用同一份白名单，避免出现一个更宽的旁路。
 KNOWLEDGE_SOURCE_ROOTS = frozenset(
     {

@@ -1,6 +1,6 @@
 """云端模型能力配置（供应商无关）。
 
-五类能力 meeting / qa / review / ranking / capture 分别配置模型 ID、base_url、鉴权引用、超时、
+四类能力 meeting / review / ranking / capture 分别配置模型 ID、base_url、鉴权引用、超时、
 最大输出与单价；首版允许都指向同一模型。业务代码与 schema 禁止写死供应商或模型名称——
 这里是唯一知道「具体模型 ID / base_url」的地方，其余层只按能力名取用。
 """
@@ -20,7 +20,7 @@ from summit_workbench.config.secrets import (
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.providers.llm.errors import LLMConfigError
 
-CAPABILITIES = ("meeting", "qa", "review", "ranking", "capture")
+CAPABILITIES = ("meeting", "review", "ranking", "capture")
 
 # api key 的 Keychain service 前缀（account 用能力名或 shared）。
 API_KEY_SERVICE = "summit-workbench-model-api-key"

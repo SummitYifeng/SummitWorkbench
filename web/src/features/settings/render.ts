@@ -172,7 +172,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       ? '<div class="settings-path">' + esc(active.display_name) + '<span class="meta">' + esc(active.path) + '</span></div>'
       : '<div class="settings-path">（尚无工作区）</div>';
     const model = '<div class="card settings-card" id="model-card"><div class="card-head"><strong>AI 模型（DeepSeek）</strong>' + badge('model', modelStatus) + '</div>' +
-      '<p class="settings-card-desc">简报、任务分类和智能问答都靠它。第一次使用只需粘贴 API Key，点「连接并验证」。</p>' +
+      '<p class="settings-card-desc">会议结构化、简报和任务分类都靠它。第一次使用只需粘贴 API Key，点「连接并验证」。</p>' +
       '<form id="model-settings-form" autocomplete="off"><label>DeepSeek API Key<input id="model-secret" type="password" autocomplete="new-password" placeholder="sk-…"></label>' +
       '<div class="row"><button class="primary" type="submit">连接并验证</button><button class="ghost" id="model-show-advanced" type="button">自定义模型（一般不用）</button></div>' +
       '<div class="settings-advanced" id="model-advanced" hidden><div class="grid2"><label>模型 ID<input id="model-id" value="deepseek-flash"></label>' +

@@ -36,9 +36,9 @@ def test_load_from_shared(tmp_path):
 
 def test_capability_overrides_shared(tmp_path):
     f = tmp_path / "config.toml"
-    f.write_text(SHARED + '\n[models.qa]\nmodel_id = "qa-model"\n', encoding="utf-8")
-    cfg = load_model_config("qa", f)
-    assert cfg.model_id == "qa-model"  # 能力表覆盖
+    f.write_text(SHARED + '\n[models.review]\nmodel_id = "review-model"\n', encoding="utf-8")
+    cfg = load_model_config("review", f)
+    assert cfg.model_id == "review-model"  # 能力表覆盖
     assert cfg.base_url == "https://api.example.com/v1"  # 回退 shared
 
 
@@ -92,6 +92,16 @@ def test_unknown_capability_raises(tmp_path):
     f.write_text(SHARED, encoding="utf-8")
     with pytest.raises(LLMConfigError):
         load_model_config("nope", f)
+
+
+def test_retired_qa_capability_config_is_ignored(tmp_path):
+    f = tmp_path / "config.toml"
+    f.write_text(SHARED + '\n[models.qa]\nmodel_id = "legacy-qa-model"\n', encoding="utf-8")
+
+    with pytest.raises(LLMConfigError):
+        load_model_config("qa", f)
+
+    assert load_model_config("meeting", f).model_id == "some-model"
 
 
 def test_no_models_table_raises(tmp_path):

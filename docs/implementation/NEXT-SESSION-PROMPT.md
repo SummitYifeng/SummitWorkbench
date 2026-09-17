@@ -1,5 +1,7 @@
 # 下一轮会话启动提示词（SummitWorkbench）
 
+> **历史边界校正（2026-09-17）**：本文件保留旧阶段交接内容；`wb ask`、`wb kb`、本地 SQLite/FTS/BM25 检索、问答模型和 `qa-answer` 已退役。当前 SWB 只写入工作库，语义检索统一由 SummitKnowledge 提供；`qa-insight` 仅作为历史兼容类型保留。
+
 > **用法**：新开窗口时把本文件交给 Agent——直接说「读 `docs/implementation/NEXT-SESSION-PROMPT.md` 并按它开工」即可。
 > **本文件是活文件**：每轮收口时按实测发现校正一次，别让它又变成一份过期文档。
 > **最近校正**：2026-09-14（**UI 优化轮**）：删掉【决策】页签（决策只在各项目页「决策记录」里看，
@@ -37,8 +39,7 @@
 - vault：`~/Documents/Work/_vault`（纯 Markdown + git；**70 个内容页** + **16 个模板**；**16 篇决策** + 9 个主题簇页；
   `index/{projects,decisions,people,timeline,sop}.md`；**五条管线**
   `projects/{hii-affairs,it-development,huoman-community,huoman-logistics,hr}.md`）。
-  索引 DB 在 vault **之外**：`~/Library/Application Support/SummitWorkbench/kb-index.sqlite`
-  （篇数跟 vault 一致；块数随重建变化，`wb kb status` 为准）。
+  旧索引 DB 曾放在 vault **之外**；当前不再由 SWB 创建或维护本地检索索引。
 - 远端（唯一真源，私有）：`https://github.com/yifeng93/WorkKnowledge.git`，分支 `main`。
   （注意：**仓库自己的** origin 是 `git@github.com:SummitYifeng/SummitWorkbench.git`，两者不是一回事。）
 - workspace_id `fb9494a4-a080-40dd-a5c3-fcc12d7dc2dd`；
@@ -56,9 +57,8 @@
 
 - 每次改完必须过门禁（见第四节）；不许为了「变绿」放松判据。发现判据本身写错了，要**说清楚为什么**
   并保留等价强度（例：Q1 的关键证据改成「等价入口 any-of」，同时保证两个入口都没召回时仍然红）。
-- **涉及检索权重/词表的改动，必须先用真实问题量一遍再决定**（历史上有两次凭直觉的改动实测有害，
-  44%→31% 被回退）。工具是 **`scripts/kb_measure.py`**：真库 4 问 × 16 期望块，**零 token**，
-  并且 `--set key=value` 能直接扫权重（`--set topic_step=1.2`）、**不用改代码**。
+- **历史检索调参记录仅供追溯**：旧阶段曾要求先用真实问题量权重（两次凭直觉改动实测有害，
+  44%→31% 被回退）；工具 `scripts/kb_measure.py` 已随本地检索退役，当前不在 SWB 执行。
   二值指标看不见变化，所以要连**分档**（命中 / 同篇但块不同 / 未召回）和**命中排名**一起读——
   实测 `--set conclusion_boost=1.0` 时档位一项不变、只有排名从 #13 掉到 #16。
   **不要**把 16 项二值当单一调参目标。
@@ -75,33 +75,28 @@
 
 ```bash
 cd /Users/yifengstudio/Documents/GitHub/SummitWorkbench
+V=/Users/yifengstudio/Documents/Work/_vault
 .venv/bin/python -m pytest --cov -q          # 期望 1200 passed, 1 skipped, 覆盖率 ≥80%（当前 83.85%）
 .venv/bin/ruff check . && .venv/bin/ruff format --check .   # 全过（文件数随未跟踪产物浮动，别写死）
 .venv/bin/mypy                                # 期望 360 文件无问题
 .venv/bin/python scripts/secret_scan.py
 npm --prefix web run test:frontend            # 16 组 node 纯渲染/契约测试（73 源文件，含 UI 口径守卫）
-# 真实库验收（9 题 = 4 题真调模型 Q1–Q4 + 5 题零 token R1/R2/D1/V1/S1）
-.venv/bin/python scripts/kb_acceptance.py
-# 已装 App 验收（4 题模型口径；只重查一题用 --only 省 token）
-.venv/bin/python scripts/kb_acceptance_installed.py --only "Q1"
+# 旧阶段检索验收（不可执行）：`kb_acceptance*.py` / `kb_measure.py` 已删除。
+# 历史实际证据保留在 docs/acceptance/evidence/kb-acceptance-2026-09-14.txt；其中记录 Q1–Q4 + R1/R2/D1/S1，
+# 共 8 题，未记录 V1。当前语义检索验收由 SummitKnowledge 负责，SWB 只跑下面的写入与引用门禁。
 # 库内模板「插入即合法」守卫（**零 token**；动了 _vault/templates/ 必跑）
 # keep 判据＝只做 Obsidian 的 {{date}}/{{time}}/{{title}} 替换，其余占位符原样留着也必须过 schema。
 .venv/bin/python scripts/kb_check_templates.py
 # 仓库种子模板（参考骨架）用 substitute 判据：先把占位符换成合法值再校验。
 .venv/bin/python scripts/kb_check_templates.py --templates templates/vault --placeholders substitute
-# vault 自检（**全部零 token**；动了 vault 内容、归档判据或检索时必须跑）
-.venv/bin/wb vault check
-.venv/bin/python scripts/kb_verify_links.py
+# vault 自检（**全部零 token**；动了 vault 内容、归档判据或引用时必须跑）
+PYTHONPATH=src .venv/bin/python -m summit_workbench.cli.main vault check "$V"
+PYTHONPATH=src .venv/bin/python scripts/kb_verify_links.py "$V"
 # ⚠️ 逐字保留校验：**必须给 --materials-root**，否则只做引用的一半、不做「原件逐字在库」那一半。
 #    2026-09-14 修好之前，它在这一半上是 100% 误报（全库 6 个 source 页），所以没人跑它。
 .venv/bin/python scripts/kb_verify_quotes.py --vault ~/Documents/Work/_vault \
   --materials-root "/Users/yifengstudio/Desktop/当前材料"
-# 检索度量（**零 token**；动了权重 / 词表 / 分块 / 主题通道就必须先跑它，别凭直觉）
-.venv/bin/python scripts/kb_measure.py --no-rebuild
-# 扫权重实验不用改代码（未知字段会报错，不会静默忽略）：
-.venv/bin/python scripts/kb_measure.py --no-rebuild --set topic_step=1.2
-# 要量「模型有没有真的引用关键块」时加 --with-model（这一层才花 token）
-.venv/bin/python scripts/kb_measure.py --no-rebuild --with-model --only "Q3"
+# SWB 不再维护本地检索度量；语义检索问题、召回和答案质量转由 SummitKnowledge 验收。
 ```
 
 > **教训（2026-09-14，已经踩过一次）**：归档类判据**不能只用简化 fixture 测**。
@@ -271,7 +266,7 @@ scripts/install-macos-app.sh dist/releases/0.4.9/arm64/SummitWorkbench.app --rep
    **下一窗口起手式**：读新放入的素材 → 判「原件 / 加工件」（二手提炼件不要建 source）→
    按 §3 粒度落点建对象页 / 事件页 → 跑 `wb vault check` + `kb_verify_links` +
    `kb_verify_quotes --materials-root`（**两个素材根都要给**：`当前材料` 与 `3份素材`）→
-   内容再厚一些后，给三线各出一个真实问题用 `kb_measure.py` 量一遍。
+   内容再厚一些后，语义检索问题交由 SummitKnowledge 验收；SWB 只跑结构与引用门禁。
 
 ---
 

@@ -186,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         "--vault",
         type=Path,
         default=Path(default_vault),
-        help="vault 根目录（默认 $WORK_ROOT 或 ~/Documents/Work）",
+        help="Work 父目录或 _vault 本身（默认 $WORK_ROOT 或 ~/Documents/Work）",
     )
     parser.add_argument(
         "--output", type=Path, default=None, help="输出文件（默认 <vault>/_vault/index/people.md）"

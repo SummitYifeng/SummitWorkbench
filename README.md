@@ -17,7 +17,7 @@ SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位�
 SummitWorkbench 将这套工作方式收敛为两层能力：
 
 - **外置执行管理层**：每天从可验证信号中挑出最多 5 个行动，提醒停滞、承诺和阻塞，但不把模型推断冒充事实。
-- **第二大脑**：自动保存会议逐字稿与结构化笔记，积累项目状态、决策和工作记录，并通过带 `路径#区块` 来源的轻量 `wb ask` 回答工作问题。
+- **第二大脑**：自动保存会议逐字稿与结构化笔记，积累项目状态、决策和工作记录，供 SummitKnowledge 只读检索。
 
 > **与 SummitKnowledge 的边界**：SWB 是工作库的**唯一写入方**（看板、采集、审批、源数据处理），
 > 保证自动沉淀的 Markdown 可被稳定索引、引用与判权威；**高级语义检索（向量召回、云端精排、
@@ -29,7 +29,7 @@ SummitWorkbench 将这套工作方式收敛为两层能力：
 Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文和结构化笔记自动归档，可能改变项目或任务状态的内容进入集中待确认页。用户只需勾选、忽略或原地修改候选项，再批量应用。
 
 > **用户日常入口 = 桌面 App 内的 Web 面板，不用 CLI。** 真人用户只打开桌面 App 完成全部日常工作；
-> 直接运行 `wb web` 时才使用默认的 `http://127.0.0.1:8787`（捕捉/审批/导入/项目/问答，见
+> 直接运行 `wb web` 时才使用默认的 `http://127.0.0.1:8787`（捕捉/审批/导入/项目，见
 > [WEB_USAGE_GUIDE](docs/product/WEB_USAGE_GUIDE.md)）；CLI 保留给自动化（launchd、脚本、
 > `wb review sweep` 等）与深度操作。因此**开发任何用户可见功能都以 Web 面板为默认交付面**，
 > 改动后必须重建前端产物并重启面板服务才生效（见
@@ -67,7 +67,7 @@ SummitWorkbench/
 │   ├── domain/           # 领域模型、稳定 schema、状态机、纯规则
 │   ├── providers/        # 飞书与云端模型适配（含公共退避重试）
 │   ├── repositories/     # vault / 状态账本 / 用量账本 / 原子写 / JSONL 容错读
-│   ├── workflows/        # meetings·review·ask·brief·weekly·sync 编排
+│   ├── workflows/        # meetings·review·brief·weekly·sync 编排
 │   ├── observability/    # status·运行心跳健康度·通知·预算/积压告警
 │   └── webapp/           # 本地 Web 工作台（FastAPI：/api/* JSON + 静态托管 + SSR 回退）
 ├── prompts/              # 版本化 prompt，禁止内联到业务实现
@@ -83,7 +83,7 @@ SummitWorkbench/
 项目采用严格串行里程碑：
 
 1. **M0 地基** ✅：工作目录与 vault、项目档案、飞书权限、同步与模型/API 冒烟。
-2. **M1 会议进入第二大脑** ✅：会议拉取、双文件归档、云端结构化、集中审批、状态与费用、`wb ask`。
+2. **M1 会议进入第二大脑** ✅：会议拉取、双文件归档、云端结构化、集中审批、状态与费用。
 3. **M2 晨间简报** ✅：事实采集、行动排序、每日简报（`wb brief`）与每周复盘（`wb weekly`）。
 4. **M3 带上下文启动与收尾**（本期不实施）：不新增交互式工作会话编排。
 5. **M4 分流录入**（规划中）：`wb task`、`wb note` 与 inbox 路由。
@@ -96,7 +96,7 @@ M1 的真实会议、问答、审批、故障恢复、费用和积压测试（PR
 - 产品进程本地运行，模型推理全部使用可配置的云端模型 API；不引入本地模型。
 - 所有会议内容可进入已配置的云端模型；录像不下载、不发送。
 - 未经用户确认的会议提取项不得写入项目状态或创建飞书任务。
-- **不建云端服务端、常驻守护进程、向量库或语义 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。高级语义检索（embedding / 向量库 / 精排）归 SummitKnowledge，SWB 只做块级本地检索与强制引用。
+- **不建云端服务端、常驻守护进程、向量库或语义 RAG。** 后加入的本地 Web 面板（`wb web`）与原生 macOS 桌面 App 均为**纯本地、按需启动**的可选便利层：它们只复用既有领域逻辑、不引入服务端、不改变数据边界（`.app` 双击启动 bundle 内 server + WKWebView 面板，服务仍是 `127.0.0.1` 上的同一套本地面板）。检索与问答归 SummitKnowledge，SWB 只负责工作库写入、结构与审批边界。
 - 凭据只进入 macOS Keychain 或运行时环境，禁止进入 Git、vault、日志、fixture 和模型上下文。
 - **本机机器日志与工作台内容分开**：同步/推送失败只写稳定原因码、计数与异常类名到
   `~/Library/Logs/summitworkbench-server.log`（JSONL、0600、5 MiB 轮转，见
@@ -133,7 +133,6 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 - `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。网页端一键生成会显式提交本次生成的简报、快照、用量和授权状态文件，不会使用 `add -A` 带入用户其他改动。
 - `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
 - `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
-- `wb ask "问题" [--save --project P --limit N]`：本地**块级**检索（SQLite FTS5/trigram + Python BM25 降级 + 多信号融合 + 双链扩展）召回相关区块，云端模型只引用进入上下文的来源作答（事实/建议分区、证据冲突并列）；默认不保存，`--save` 才落 qa-insight。候选条数默认由**路由计划**决定（`--limit` 可显式覆盖），CLI 与验收脚本同口径。工作台面板不再内置问答入口（见上）。`wb ask` 是轻量兜底，不是语义 RAG——语义检索请用 SummitKnowledge。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。
 

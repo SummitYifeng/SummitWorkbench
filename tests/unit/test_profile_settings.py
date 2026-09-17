@@ -262,11 +262,11 @@ def test_provider_secret_is_scoped_and_never_written_to_profile(
         home=tmp_path,
         workspace_id=profile.workspace_id,
         provider="model",
-        settings={"capability": "qa", "model_id": "local-model", "base_url": "http://model"},
+        settings={"capability": "review", "model_id": "local-model", "base_url": "http://model"},
         secret="do-not-persist",
     )
     assert result["secret_saved"] is True
-    assert calls == [(profile.workspace_id, "llm:qa:shared", "do-not-persist")]
+    assert calls == [(profile.workspace_id, "llm:review:shared", "do-not-persist")]
     raw = (
         tmp_path
         / "Library/Application Support/SummitWorkbench/profiles"

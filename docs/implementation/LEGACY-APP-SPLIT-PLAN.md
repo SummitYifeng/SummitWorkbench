@@ -684,3 +684,4 @@ WB_GATE_FAST=1 scripts/pre-push-gate.sh   # 跳过前端
 | Step 6–10（sync/settings/state/review/apply） | ≈ 1300 | 36 |
 | Step 11–14（threads/capture/brief/ask/meetings/undo） | ≈ 800 | 26 |
 | Step 15–16（onboarding/system/shell + 收尾） | **≤ 250（facade）** | 79（累计） |
+# 历史状态：本文旧阶段拆分计划中的本地问答/索引引用已退役，当前语义检索统一由 SummitKnowledge 提供。
