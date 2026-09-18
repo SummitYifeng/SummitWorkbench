@@ -72,11 +72,24 @@
 ./.venv/bin/python -m pytest -q                 # 期望 1248 passed, 1 skipped
 ./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.07%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
-./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 80 篇全过
+./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 82 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
 ./.venv/bin/python scripts/kb_check_templates.py --templates ~/Documents/Work/_vault/templates
+./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
+
+## 内容层面的硬规则（2026-09-18 使用者定规）
+
+- **决策页只记业务结论**：`decisions/*.md` 正文**禁止**出现知识库自身机制的描述
+  （「本库 / 归属判定 / 素材落点 / 双链 / 不设两份 / 闭掉未决条目 / 检索侧 / 入库管线」等）。
+  决策回答"业务上定了什么"，不是"材料该放哪一页"——后者归 `conventions.md` §1.1。
+  机器守卫：`scripts/kb_check_decision_hygiene.py`（维护 vault 时运行，命中即 exit 1）。
+- **会议笔记不再生成 `## AI 建议`**（`meeting-note` 由九区块减为八区块）：模型推断的下一步不入库；
+  确需成为结论时人工提炼为决策。历史笔记里的该区块仍合法（区块标题只增不减）。
+  改这条契约要同时动：`domain/vault.py` 的 `NOTE_TYPES`（`optional_blocks`）、
+  `repositories/meeting_note.py` 的渲染器、`prompts/meeting-processor.md`、两份模板，
+  以及 `tests/unit/test_meeting_note.py` 的两条守卫。
 
 ## 提交纪律
 
