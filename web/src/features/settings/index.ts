@@ -1,6 +1,6 @@
 /** 设置 feature 边界（Step 8c：渲染在 render.ts，写动作在 actions.ts）。 */
 export type { ProfileSummary, SettingsActions } from './render';
-export { renderSettings } from './render';
+export { automationFormPayload, renderSettings, runAutomationFromForm } from './render';
 export { mountSettings } from './mount';
 export {
   applyGitRemoteNormalization,

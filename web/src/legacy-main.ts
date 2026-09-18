@@ -96,7 +96,6 @@ import {
   reopenOnboarding,
   rollbackGitRemoteNormalization,
   runAcceptancePreflight,
-  runAutomationJob,
   runSettingsDoctor,
   runSettingsDoctorOnline,
   switchProfile,
@@ -537,11 +536,6 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'profile-remove') {
     removeProfile(btn.dataset.workspace ?? '');
-    return;
-  }
-  if (action === 'automation-run') {
-    const job = btn.dataset.job ?? '';
-    if (job) void runAutomationJob(job);
     return;
   }
   if (action === 'automation-copy') {

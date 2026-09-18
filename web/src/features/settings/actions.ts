@@ -303,6 +303,9 @@ export async function renderSettingsView(view: HTMLElement): Promise<void> {
     mutation,
     toast,
     refresh: () => { void renderSettingsView(view); },
+    // 「立即运行」由设置页自己做「先保存、再运行」：勾了「启用定时」却没点保存就运行时，
+    // 后端会按未启用跳过（`skipped：任务未启用`，2026-09-18 使用者反馈）。
+    runJob: runAutomationJob,
   });
   await reportFeishuCallbackResult(view);
 }

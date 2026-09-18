@@ -22,6 +22,7 @@ import {
   claimAutomationPrimary,
   downgradeAutomationPrimary,
   publishWorkspaceToRemote,
+  runAutomationFromForm,
 } from './features/settings';
 
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
@@ -85,6 +86,12 @@ globalThis.window = {
   confirm: () => true,
   location: { search: '', pathname: '/', hash: '', href: '' },
   history: { replaceState: () => {} },
+};
+
+// 接住设置页发给原生壳的消息（「启用定时」保存后要通知 SMAppService 启停 helper）。
+const nativeMessages = [];
+globalThis.window.webkit = {
+  messageHandlers: { wbLifecycle: { postMessage: (message) => nativeMessages.push(message) } },
 };
 
 // 设置页写动作仍必须逐字保留 POST + JSON 头（搬迁不得改变请求契约）。
@@ -300,6 +307,42 @@ export const removeProbe = {
   })),
   toasts: toasts.map((entry) => entry.message),
 };
+
+// 回归：「立即运行」必须先保存表单再运行（勾了启用却没保存时，后端会按未启用跳过）。
+const automationRequests = [];
+const runJobs = [];
+nativeMessages.length = 0;
+const automationActions = {
+  api: (url, init) => {
+    automationRequests.push({ url, init });
+    return Promise.resolve({ ok: true, status: 'degraded' });
+  },
+  mutation: (work) => work(),
+  toast: () => {},
+  refresh: () => {},
+  runJob: (job) => { runJobs.push(job); return Promise.resolve(); },
+};
+const weekdayInputs = [0, 1, 2, 3, 4, 5, 6].map((value) => ({ value: String(value) }));
+const automationForm = {
+  dataset: { job: 'brief' },
+  elements: {
+    namedItem: (name) => (name === 'enabled' ? { checked: true } : { value: '08:00' }),
+  },
+  querySelectorAll: () => weekdayInputs,
+};
+const automationRunButton = {
+  dataset: { job: 'brief' },
+  closest: (selector) => (selector === 'form' ? automationForm : null),
+};
+await runAutomationFromForm(automationRunButton, automationActions);
+export const automationRunProbe = {
+  order: automationRequests.map((call) => call.init?.method ?? 'GET'),
+  putBody: automationRequests[0] ? JSON.parse(String(automationRequests[0].init.body)) : null,
+  putContentType: automationRequests[0]?.init?.headers?.['Content-Type'],
+  runRequests: automationRequests.filter((call) => call.init?.method === 'POST').length,
+  ranJob: runJobs[0] ?? null,
+  nativeMessages: nativeMessages.slice(),
+};
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -414,6 +457,21 @@ try {
   assert.equal(mod.publishProbe.calls[0].contentType, 'application/json');
   assert.equal(mod.publishPatValueAfter, '', 'the PAT input must be cleared after a successful publish');
   assert.match(mod.publishProbe.resultHtml, /origin 与 upstream 已绑定/, 'the publish result explains what changed');
+
+  // 「立即运行」必须先保存当前表单：勾了「启用定时」却没点保存就运行时，后端按未启用跳过
+  // （`skipped：任务未启用`，2026-09-18 使用者反馈）。这里断言保存先落盘、随后才触发运行
+  // （运行请求本身由 actions.runJob 发出，本用例注入的是记录用的替身）。
+  assert.deepEqual(mod.automationRunProbe.order, ['PUT'], 'run must persist the form before running the job');
+  assert.deepEqual(mod.automationRunProbe.putBody, {
+    job: 'brief', enabled: true, hour: 8, minute: 0, weekdays: [0, 1, 2, 3, 4, 5, 6],
+  });
+  assert.equal(mod.automationRunProbe.putContentType, 'application/json');
+  assert.equal(mod.automationRunProbe.ranJob, 'brief');
+  assert.deepEqual(
+    mod.automationRunProbe.nativeMessages,
+    [{ type: 'automationSettingsChanged', enabled: true }],
+    'turning the schedule on must tell the native shell to register the helper',
+  );
 
   console.log('Settings render race tests passed');
 } finally {

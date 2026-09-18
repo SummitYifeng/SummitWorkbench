@@ -40,6 +40,8 @@ export interface SettingsActions {
   mutation: <T>(request: () => Promise<T>) => Promise<T>;
   toast: (message: unknown, kind?: 'ok' | 'err' | 'info') => void;
   refresh: () => void;
+  /** 「立即运行」的注入入口（不传时退回全局动作，避免循环依赖）。 */
+  runJob?: (job: string) => Promise<void>;
 }
 
 const AUTOMATION_LABELS: Record<string, string> = {
@@ -76,7 +78,7 @@ function automationHtml(job: string, schedule: AutomationJob): string {
     esc(status[schedule.last_status] ?? '未知状态') +
     attempt + '</div><div class="meta">上次成功：' + success + ' · 下次尝试：' + nextLine + '</div>' +
     (schedule.last_detail ? '<div class="meta automation-detail">' + esc(schedule.last_detail) + '</div>' : '') + unavailable +
-    '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + disabled + '>' + (supported ? '启用' : '暂不可用') + '</label></div>' +
+    '</div><label class="automation-enabled"><input name="enabled" type="checkbox"' + (schedule.enabled ? ' checked' : '') + disabled + '>' + (supported ? '启用定时' : '暂不可用') + '</label></div>' +
     '<div class="automation-controls"><label>时间 <input name="time" type="time" value="' + time + '"></label><span class="meta">星期</span>' +
     WEEKDAY_LABELS.map((label, index) => '<label class="weekday"><input name="weekday" type="checkbox" value="' + index + '"' +
       (schedule.weekdays.includes(index) ? ' checked' : '') + '>' + label + '</label>').join('') + '</div>' +
@@ -234,6 +236,10 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       event.preventDefault();
       void saveAutomation(form, actions);
     }));
+    view.querySelectorAll<HTMLButtonElement>('[data-action="automation-run"]').forEach((btn) => btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      void runAutomationFromForm(btn, actions);
+    }));
     view.querySelector<HTMLButtonElement>('#model-show-advanced')?.addEventListener('click', (event) => {
       const box = view.querySelector<HTMLElement>('#model-advanced');
       if (!box) return;
@@ -274,14 +280,51 @@ async function saveModel(view: HTMLElement, actions: SettingsActions): Promise<v
   }
 }
 
-async function saveAutomation(form: HTMLFormElement, actions: SettingsActions): Promise<void> {
-  const [hour, minute] = ((form.elements.namedItem('time') as HTMLInputElement).value || '08:00').split(':').map(Number);
+export function automationFormPayload(form: HTMLFormElement): {
+  job: string | undefined;
+  enabled: boolean;
+  hour: number;
+  minute: number;
+  weekdays: number[];
+} {  const [hour, minute] = ((form.elements.namedItem('time') as HTMLInputElement).value || '08:00').split(':').map(Number);
   const weekdays = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="weekday"]:checked')).map((input) => Number(input.value));
+  return {
+    job: form.dataset.job,
+    enabled: (form.elements.namedItem('enabled') as HTMLInputElement).checked,
+    hour,
+    minute,
+    weekdays,
+  };
+}
+
+export async function saveAutomation(form: HTMLFormElement, actions: SettingsActions): Promise<boolean> {
+  const payload = automationFormPayload(form);
   try {
-    await actions.api('/api/settings/automation', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-      job: form.dataset.job, enabled: (form.elements.namedItem('enabled') as HTMLInputElement).checked, hour, minute, weekdays,
-    }) });
-    sendNativeMessage({ type: 'automationSettingsChanged', enabled: Boolean(document.querySelector('.automation-form input[name="enabled"]:checked')) });
+    await actions.api('/api/settings/automation', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    sendNativeMessage({ type: 'automationSettingsChanged', enabled: payload.enabled });
     actions.toast('自动化设置已保存', 'ok');
-  } catch (error) { actions.toast(error, 'err'); }
+    return true;
+  } catch (error) { actions.toast(error, 'err'); return false; }
+}
+
+/**
+ * 「立即运行」：**先保存当前表单，再运行**。
+ *
+ * 2026-09-18 使用者反馈：在卡片里勾上「启用」后直接点「立即运行」，右下角一直显示
+ * `skipped：任务未启用`。原因是复选框只是表单字段，没点「保存」就从未落盘，而后端
+ * 按**已保存**的开关判定是否运行 ⇒ 手动运行读到的仍是 disabled，且界面上完全看不出
+ * 「勾了但没保存」。这里把两者绑定：先落盘（只有保存成功才继续），再触发运行。
+ */
+export async function runAutomationFromForm(btn: HTMLElement, actions: SettingsActions): Promise<void> {
+  const job = btn.dataset.job ?? '';
+  if (!job) return;
+  const form = btn.closest('form');
+  // 用方法存在性判断而不是 ``instanceof HTMLFormElement``：后者在跨 realm / 测试桩下不可靠，
+  // 而「有没有表单」这里只影响是否先保存。
+  if (form && typeof (form as HTMLFormElement).elements?.namedItem === 'function') {
+    const saved = await saveAutomation(form as HTMLFormElement, actions);
+    if (!saved) return; // 保存失败已由 saveAutomation 提示；此处不运行，避免再次给出误导性的「未启用」
+  }
+  if (actions.runJob) await actions.runJob(job);
+  actions.refresh();
 }
