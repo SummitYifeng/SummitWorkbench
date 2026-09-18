@@ -80,6 +80,18 @@
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
 
+**跨端回归闸门**（跨 SWB × `_vault` × SK，**会写 vault 并花一次极小模型费用**）：
+
+```bash
+./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完自动清理验证件
+./.venv/bin/python scripts/kb_three_end_gate.py --keep     # 保留验证件供人工查看
+```
+
+一句话验完四类曾经"测试全绿却发生"的不变量：① 真实写入后**工作树干净**（S-1(a)）；
+② `_signals/` **未被回跟踪**（S-1(b)）；③ 逐字稿与 `inbox.md` **不进语料**（P1-4）；
+④ 精排**真的生效**且结果里无 `meeting-transcript`（P0-4）。改了 vault 写路径、git 后端、
+检索策略或 SK 端点配置之后**跑它**。
+
 ## 内容层面的硬规则（2026-09-18 使用者定规）
 
 - **决策页只记业务结论**：`decisions/*.md` 正文**禁止**出现知识库自身机制的描述
