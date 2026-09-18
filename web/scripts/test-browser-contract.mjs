@@ -168,6 +168,28 @@ assert.match(
   /id="primary-takeover-ack"/,
   'takeover requires an explicit acknowledgement in the rendered card',
 );
+// 设置页主区只留三张常用卡（工作区 / AI 模型 / 飞书），每张独占一行；
+// 「自动化与更新」「模型参数（只读）」收进「高级与维护」——2026-09-18 使用者要求。
+assert.match(
+  settingsSource,
+  /settings-grid settings-grid-single/,
+  'the settings main area renders one card per row',
+);
+assert.match(
+  settingsSource,
+  /高级与维护（自动化 · 模型参数 · 多工作台 · Git 同步 · 诊断）/,
+  'the advanced block advertises that automation and model parameters live inside it',
+);
+assert.match(
+  settingsSource,
+  /section-title">自动化与更新<\/h3>[\s\S]{0,400}automationCard/,
+  'the automation card is mounted inside the advanced block',
+);
+assert.match(
+  settingsSource,
+  /section-title">模型参数（只读）<\/h3>[\s\S]{0,200}modelParameters/,
+  'the read-only model-parameter card is mounted inside the advanced block',
+);
 // The dispatch branch must exist too: a rendered button without a handler is a dead entry point.
 assert.match(source, /action === 'primary-claim'/, 'primary claim dispatch is wired');
 assert.match(source, /action === 'primary-downgrade'/, 'primary downgrade dispatch is wired');

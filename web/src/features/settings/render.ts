@@ -264,7 +264,11 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
         '<div class="row"><button class="primary" type="button" data-action="git-remote-publish">绑定并首次发布</button></div></form>' +
         '<div id="publish-result"></div></section>'
       : '';
-    const advanced = '<details class="settings-advanced-block"><summary><span class="bf-chev">›</span>高级与维护（多工作台 · Git 同步 · 诊断）</summary>' +
+    const advanced = '<details class="settings-advanced-block"><summary><span class="bf-chev">›</span>高级与维护（自动化 · 模型参数 · 多工作台 · Git 同步 · 诊断）</summary>' +
+      // 「自动化与更新」与「模型参数（只读）」原在主区，2026-09-18 按使用者要求移入这里：
+      // 主区只留 工作区 / AI 模型 / 飞书 三张卡，每张一行。
+      '<section class="block"><h3 class="section-title">自动化与更新</h3><p class="hint">像闹钟一样自动生成简报、复盘和同步会议；开着才会自动跑。勾选「启用定时」后必须点「保存」。</p>' + automationCard + '</section>' +
+      (modelParameters === '' ? '' : '<section class="block"><h3 class="section-title">模型参数（只读）</h3>' + modelParameters + '</section>') +
       '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + removeHint + '</section>' +
       '<section class="block"><h3 class="section-title">Git 同步</h3><p class="hint">需要多台设备同步时再使用。系统会先验证，不会把访问令牌写进 vault。</p>' +
       '<form id="remote-normalization-form"><div class="grid2"><label>HTTPS 仓库地址<input id="remote-candidate-url" value="' + esc(httpsCandidate(active?.remote_url)) + '"></label>' +
@@ -274,8 +278,9 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       publishSection +
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
-    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid">' +
-      '<div class="card settings-card"><div class="card-head"><strong>工作区</strong><span class="conn-badge ok">✓ 已就绪</span></div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + '</div>' + model + modelParameters + feishu + automationCard + '</section><section class="block">' + advanced + '</section>';
+    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid settings-grid-single">' +
+      // 主区三张卡，每张一行（使用者要求：工作区 / AI 模型 / 飞书）。
+      '<div class="card settings-card"><div class="card-head"><strong>工作区</strong><span class="conn-badge ok">✓ 已就绪</span></div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + '</div>' + model + feishu + '</section><section class="block">' + advanced + '</section>';
 
     view.querySelector<HTMLFormElement>('#model-settings-form')?.addEventListener('submit', (event) => {
       event.preventDefault();
