@@ -131,6 +131,20 @@
    （已有跨后端参数化测试，保持它）。
 3. **网络是波动的**：本机 `github.com` 时而直连可用、时而只通代理（实测同一晚两种状态都出现过）。
    文档里不要写死"必须走代理"或"直连即可"；正确表述是**直连优先、超时则回退代理**。
+4. **审批页不会自动发现新导入的候选**（2026-09-18 使用者实测，P1）。
+   现象：导入一场会议后，App 的【审批】页**看不到**新候选（使用者原话"我现在看不到这 11 个审批项"），
+   但同一时刻 `/api/review` **有** 11 条、SSR `/review` 页也**渲染出了**该会议。
+   根因（`web/src/legacy-main.ts`）：`refreshAll()`（内部 `Promise.all([refreshState(), refreshReview()])`）
+   **只在窗口挂载时**由 `startApp()` 跑一次；`onSelectTab` 只做 `tab = next; render()`（**不重新拉取**）；
+   两个 60 秒定时器只调 `checkVersion('interval')` 与 `autoSyncIfIdle()`；
+   `visibilitychange` 也只 `checkVersion` + `autoSyncIfIdle` ⇒ **review 数据在窗口生命周期内只读一次**。
+   影响：长期开着的窗口永远看不到外部（CLI / 另一台 Mac / 后台导入）产生的新候选 ——
+   而"导入 → 审批 → 写回"是产品主流程之一。
+   **临时绕法**：在 App 窗口按 `⌘R` 重新载入，再进【审批】页签。
+   **修法（择一，推荐①）**：① 切到 `review` 页签时触发一次 `refreshReview()`；
+   ② 把 `refreshReview()` 纳入 60 秒可见页定时器与 `visibilitychange`；
+   ③ 审批页显示"最近读取时间 + 手动刷新"按钮（`retry-review` 已存在，但只在解析错误时可见）。
+   **验收**：导入一场会议后，**不重载窗口**、切到审批页即可看到候选。
 
 ## 提交纪律
 
