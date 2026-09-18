@@ -275,3 +275,34 @@ def test_provider_secret_is_scoped_and_never_written_to_profile(
     ).read_text(encoding="utf-8")
     assert "do-not-persist" not in raw
     assert "local-model" in raw
+
+
+def test_model_parameters_endpoint_reports_effective_values_without_secrets(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """只读参数接口：摊开每个任务真正生效的参数，且绝不回显任何凭据。
+
+    动机（2026-09-18）：长逐字稿结构化失败的真因在 max_output_tokens / thinking，
+    而设置页只看得到 model / base_url —— 用户没有任何地方能看到生效值。
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profile = _profile(tmp_path, "a")
+    set_active_profile(profile.workspace_id, home=tmp_path)
+    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
+    client = TestClient(create_app(WebContext.from_active_workspace(context)))
+
+    response = client.get("/api/settings/model-parameters")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert "max_output_tokens" in body["note"]
+    capabilities = [item["capability"] for item in body["items"]]
+    assert capabilities == ["meeting", "review", "ranking", "capture", "digest"]
+    by_cap = {item["capability"]: item for item in body["items"]}
+    # 每个任务都带用途说明，界面才能解释「这行是干嘛的」。
+    assert by_cap["digest"]["purpose"]
+    # 绝不出现凭据字段（本接口是 workspace 级只读视图，不得泄漏 Keychain 内容）。
+    serialized = response.text
+    for forbidden in ("sk-", "api_key", "password", "secret", "credential_account"):
+        assert forbidden not in serialized

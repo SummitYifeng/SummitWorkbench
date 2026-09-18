@@ -27,6 +27,23 @@ interface AutomationJob {
 }
 interface AutomationSettings { jobs: Record<string, AutomationJob> }
 
+/** `/api/settings/model-parameters` 的只读参数项（不含任何凭据）。 */
+interface ModelParameter {
+  capability: string;
+  purpose: string;
+  configured: boolean;
+  model_id?: string;
+  thinking?: string;
+  max_output_tokens?: number;
+  context_window_tokens?: number;
+  timeout_seconds?: number;
+  pricing_configured?: boolean;
+}
+interface ModelParameterPayload {
+  note: string;
+  items: ModelParameter[];
+}
+
 /** `/api/sync/status` 里与 automation-primary 归属有关的字段（G1）。 */
 export interface SyncPrimaryStatus {
   remote_checked_at?: string | null;
@@ -84,6 +101,34 @@ function automationHtml(job: string, schedule: AutomationJob): string {
       (schedule.weekdays.includes(index) ? ' checked' : '') + '>' + label + '</label>').join('') + '</div>' +
     '<div class="row"><button class="primary" type="submit">保存</button><button class="ghost" type="button" data-action="automation-run" data-job="' +
     esc(job) + '"' + disabled + '>立即运行</button></div></form>';
+}
+
+/**
+ * 只读参数卡：把「每个任务实际生效的模型参数」摊开。
+ *
+ * 动机（2026-09-18）：长逐字稿结构化失败的真因在 `max_output_tokens` 与 `thinking`，
+ * 而设置页过去只让填 model / base_url —— 用户没有任何地方能看到生效值，只能翻代码。
+ */
+function modelParameterCard(payload: ModelParameterPayload | null): string {
+  if (!payload || !payload.items?.length) return '';
+  const rows = payload.items.map((item) => {
+    if (!item.configured) {
+      return '<tr><td>' + esc(item.capability) + '</td><td colspan="5" class="meta">读取失败（请检查配置）</td></tr>';
+    }
+    const thinking = item.thinking === 'disabled' ? '关闭（更快更省）' : (item.thinking ?? 'default');
+    return '<tr><td>' + esc(item.capability) + '<div class="meta">' + esc(item.purpose) + '</div></td>' +
+      '<td>' + esc(item.model_id ?? '—') + '</td>' +
+      '<td>' + esc(thinking) + '</td>' +
+      '<td>' + esc(String(item.max_output_tokens ?? '—')) + '</td>' +
+      '<td>' + esc(String(item.context_window_tokens ?? '—')) + '</td>' +
+      '<td>' + esc(String(item.timeout_seconds ?? '—')) + 's</td></tr>';
+  }).join('');
+  return '<div class="card settings-card"><div class="card-head"><strong>模型参数（只读）</strong>' +
+    '<span class="conn-badge off">生效值</span></div>' +
+    '<p class="settings-card-desc">每个任务实际用的参数。改这些需要编辑工作台配置文件（应用内不提供改写入）。</p>' +
+    '<table class="model-params"><thead><tr><th>任务</th><th>模型</th><th>思考模式</th>' +
+    '<th>输出上限</th><th>上下文窗口</th><th>超时</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<p class="hint">' + esc(payload.note) + '</p></div>';
 }
 
 function httpsCandidate(url: string | null | undefined): string {
@@ -159,11 +204,14 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
   const requestId = ++settingsRenderSequence;
   view.innerHTML = '<div class="loading">正在读取设置…</div>';
   try {
-    const [response, automation, state, sync] = await Promise.all([
+    const [response, automation, state, sync, modelParams] = await Promise.all([
       actions.api<ProfileList>('/api/settings/profiles'),
       actions.api<AutomationSettings>('/api/settings/automation'),
       actions.api<{ status: { feishu_auth?: { needs_reauthorize?: boolean } } }>('/api/state'),
       actions.api<SyncPrimaryStatus>('/api/sync/status'),
+      // 只读参数卡：读不到就降级为不显示，绝不让整页失败（设置页曾经因为一个
+      // 接口 409 整页变成错误页）。
+      actions.api<ModelParameterPayload>('/api/settings/model-parameters').catch(() => null),
     ]);
     if (requestId !== settingsRenderSequence) return;
     const active = response.profiles.find((p) => p.active) ?? response.profiles[0];
@@ -179,6 +227,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<div class="row"><button class="primary" type="submit">连接并验证</button><button class="ghost" id="model-show-advanced" type="button">自定义模型（一般不用）</button></div>' +
       '<div class="settings-advanced" id="model-advanced" hidden><div class="grid2"><label>模型 ID<input id="model-id" value="deepseek-flash"></label>' +
       '<label>服务地址<input id="model-base-url" value="https://api.deepseek.com/v1"></label></div><p class="hint">默认使用 DeepSeek 官方地址；只有特殊网关才需要改。</p></div></form><div id="model-result"></div></div>';
+    const modelParameters = modelParameterCard(modelParams);
     const feishu = '<div class="card settings-card"><div class="card-head"><strong>飞书</strong>' + badge('feishu', feishuStatus, feishuReauth) + '</div>' +
       '<p class="settings-card-desc">授权后，工作台才能读日历和任务，也能把完成动作写回飞书。</p><div class="row"><button class="primary" data-action="feishu-reauth">' +
       (feishuReauth || feishuStatus !== 'configured' ? '授权飞书' : '重新授权飞书') + '</button><button class="ghost" data-action="settings-doctor-online">检查飞书连接</button></div><div id="feishu-result"></div></div>';
@@ -226,7 +275,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
     view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid">' +
-      '<div class="card settings-card"><div class="card-head"><strong>工作区</strong><span class="conn-badge ok">✓ 已就绪</span></div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + '</div>' + model + feishu + automationCard + '</section><section class="block">' + advanced + '</section>';
+      '<div class="card settings-card"><div class="card-head"><strong>工作区</strong><span class="conn-badge ok">✓ 已就绪</span></div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + '</div>' + model + modelParameters + feishu + automationCard + '</section><section class="block">' + advanced + '</section>';
 
     view.querySelector<HTMLFormElement>('#model-settings-form')?.addEventListener('submit', (event) => {
       event.preventDefault();

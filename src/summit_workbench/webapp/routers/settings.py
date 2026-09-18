@@ -1129,6 +1129,69 @@ def register_settings_routes(
             "jobs": jobs,
         }
 
+    # 只读：把「每个任务实际用的模型参数」摊开给用户看。
+    # 动机（2026-09-18）：长逐字稿结构化失败的真因藏在 max_output_tokens / thinking 里，
+    # 而设置页只让填 model/base_url —— 用户没有任何地方能看到生效值，只能翻代码。
+    _CAPABILITY_PURPOSE: dict[str, str] = {
+        "meeting": "上传逐字稿 → 结构化笔记",
+        "ranking": "晨间简报 / 每周复盘的行动排序",
+        "capture": "「记点什么」一句话分类",
+        "digest": "线程推进日志摘要 / AI 产物索引",
+        "review": "预留（当前无模型调用）",
+    }
+
+    @app.get("/api/settings/model-parameters", response_model=None)
+    def settings_model_parameters() -> dict[str, object]:
+        from summit_workbench.providers.llm.config import CAPABILITIES
+        from summit_workbench.workflows.settings_connections import model_config
+
+        if ctx.workspace_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
+            )
+        items: list[dict[str, object]] = []
+        for capability in CAPABILITIES:
+            try:
+                cfg = model_config(
+                    capability=capability,
+                    config_file=ctx.provider_config_file(),
+                    workspace_id=ctx.workspace_id,
+                )
+            except Exception:  # noqa: BLE001 - 读不到就标注，不让设置页整页失败
+                items.append(
+                    {
+                        "capability": capability,
+                        "purpose": _CAPABILITY_PURPOSE.get(capability, ""),
+                        "configured": False,
+                    }
+                )
+                continue
+            items.append(
+                {
+                    "capability": capability,
+                    "purpose": _CAPABILITY_PURPOSE.get(capability, ""),
+                    "configured": True,
+                    "model_id": cfg.model_id,
+                    "thinking": cfg.thinking,
+                    "max_output_tokens": cfg.max_output_tokens,
+                    "context_window_tokens": cfg.context_window_tokens,
+                    "timeout_seconds": cfg.timeout_seconds,
+                    "pricing_configured": bool(
+                        cfg.pricing.input_per_mtok or cfg.pricing.output_per_mtok
+                    ),
+                }
+            )
+        return {
+            "ok": True,
+            "workspace_id": ctx.workspace_id,
+            # 「同一个输出预算被思考和答案共用」这条口径必须显示给用户，否则改大
+            # max_output_tokens 的动机看不出来。
+            "note": "思考模式的推理 token 与最终答案共用 max_output_tokens；"
+            "抽取/摘要/分类类任务建议 thinking=disabled。",
+            "items": items,
+        }
+
     @app.get("/api/settings/automation", response_model=None)
     def settings_automation() -> dict[str, object]:
         return _automation_settings_payload()
