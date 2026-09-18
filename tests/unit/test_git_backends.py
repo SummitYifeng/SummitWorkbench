@@ -104,6 +104,7 @@ def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
     tmp_path: Path, monkeypatch
 ) -> None:
     from dulwich import porcelain
+
     from summit_workbench.repositories import dulwich_git
     from summit_workbench.repositories.git_backend import GitAuthError
 
