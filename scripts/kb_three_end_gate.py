@@ -103,7 +103,8 @@ def http_json(
 ) -> dict[str, Any]:
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
-    req.add_header(header, token)
+    # SK 用 `Authorization: Bearer <token>`，SWB 用 `X-WB-Session-Token: <token>`
+    req.add_header(header, f"Bearer {token}" if header == "Authorization" else token)
     if data:
         req.add_header("Content-Type", "application/json")
     if origin:
@@ -253,7 +254,7 @@ def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None
     req = urllib.request.Request(
         f"{sk_url}/api/chat/stream", data=json.dumps(payload).encode(), method="POST"
     )
-    req.add_header("Authorization", sk_tok)
+    req.add_header("Authorization", f"Bearer {sk_tok}")
     req.add_header("Content-Type", "application/json")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     sources: list[dict[str, Any]] = []
