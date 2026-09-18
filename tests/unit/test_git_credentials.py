@@ -13,6 +13,7 @@ from summit_workbench.config import secrets as secrets_mod
 from summit_workbench.config.git_credentials import (
     GitCredentials,
     git_account,
+    normalize_git_username,
     profile_identity,
     resolve_git_credentials,
     store_git_credentials,
@@ -69,6 +70,12 @@ def test_account_naming_and_scoped_service() -> None:
     cred = GitCredentials("workspace-1", "github.com", "yifeng", SecretStr("pw"))
     assert cred.service == "com.summitworkbench.credentials.workspace-1"
     assert cred.account == "git:github.com:yifeng"
+
+
+def test_normalize_git_username_is_trimmed_and_casefolded() -> None:
+    assert normalize_git_username("  Alice-Example  ") == "alice-example"
+    with pytest.raises(ValueError):
+        normalize_git_username("   ")
 
 
 def test_credentials_repr_and_dulwich_hide_secret() -> None:

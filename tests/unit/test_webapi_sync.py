@@ -157,6 +157,7 @@ def test_state_payload_includes_sync_summary(tmp_path, monkeypatch, client) -> N
     state = client.get("/api/state")
     assert state.status_code == 200
     assert "sync_state" in state.json()
+    assert "automation_not_primary" in state.json()["status"]
     assert state.json()["sync_state"] in {
         "unconfigured",
         "ready",

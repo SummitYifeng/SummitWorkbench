@@ -30,6 +30,7 @@ from pydantic import SecretStr
 
 from summit_workbench.config.git_credentials import (
     delete_git_credentials,
+    normalize_git_username,
     resolve_git_credentials,
     store_git_credentials,
 )
@@ -133,8 +134,10 @@ def validate_publish_target(
     backend_kind: str = "dulwich",
 ) -> RemotePublishValidation:
     """在临时克隆里验证凭据与目标远端；不修改真实 vault。"""
-    if not username.strip() or len(username) > 200:
-        raise RemotePublishError("git_username_invalid", "Git 用户名不能为空或过长")
+    try:
+        username = normalize_git_username(username)
+    except ValueError as exc:
+        raise RemotePublishError("git_username_invalid", str(exc)) from exc
     if not pat.get_secret_value():
         raise RemotePublishError("git_credential_missing", "GitHub PAT 不能为空")
     _, safe_url, branch = _checked_publish_target(
@@ -223,6 +226,10 @@ def publish_workspace_to_remote(
     backend_kind: str = "dulwich",
 ) -> RemotePublishResult:
     """校验后把本地工作台绑定到新远端并首次推送（失败回到「没有远端」）。"""
+    try:
+        username = normalize_git_username(username)
+    except ValueError as exc:
+        raise RemotePublishError("git_username_invalid", str(exc)) from exc
     repo, safe_url, branch = _checked_publish_target(
         vault_dir, workspace_id, candidate_url, backend_kind
     )

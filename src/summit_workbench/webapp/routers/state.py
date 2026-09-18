@@ -12,7 +12,12 @@ from typing import Literal
 
 from fastapi import FastAPI
 
+from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
+from summit_workbench.repositories.automation_primary import (
+    AutomationPrimaryError,
+    load_automation_primary,
+)
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.repositories.project_scan import count_inbox_pending, scan_all_projects
 from summit_workbench.repositories.signal_snapshot import read_snapshot
@@ -40,6 +45,19 @@ def register_state_routes(
         """看板数据：日期、状态速览、今日简报、inbox 积压。"""
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
+        status_payload = status.as_dict()
+        try:
+            claim = load_automation_primary(ctx.vault_dir)
+        except AutomationPrimaryError:
+            claim = None
+        status_payload["automation_not_primary"] = bool(
+            ctx.active_workspace
+            and ctx.active_workspace.profile is not None
+            and ctx.active_workspace.profile.device_role is DeviceRole.SECONDARY
+            and claim is not None
+            and claim.workspace_id == ctx.workspace_id
+            and claim.device_id != ctx.active_workspace.device_id
+        )
         sync_state = runtime.snapshot().state.value
         brief_md = read_brief_block(ctx.vault_dir, day)
         inbox_path = ctx.vault_dir / "inbox.md"
@@ -69,7 +87,7 @@ def register_state_routes(
         ]
         payload: dict[str, object] = {
             "day": day,
-            "status": status.as_dict(),
+            "status": status_payload,
             "brief_md": brief_md,
             "brief_generated": brief_md is not None,
             "brief": brief_payload(read_snapshot(ctx.vault_dir, day)),

@@ -24,6 +24,7 @@ from summit_workbench.config.app_support import profile_dir
 from summit_workbench.config.git_credentials import (
     GitCredentials,
     delete_git_credentials,
+    normalize_git_username,
     resolve_git_credentials,
     store_git_credentials,
     strip_credentials,
@@ -162,8 +163,10 @@ def _validate_candidate(
         if code == "remote_url_unsupported":
             code = "remote_scheme_unsupported"
         raise RemoteNormalizationError(code, str(exc)) from exc
-    if not username.strip() or len(username) > 200:
-        raise RemoteNormalizationError("git_username_invalid", "Git 用户名不能为空或过长")
+    try:
+        username = normalize_git_username(username)
+    except ValueError as exc:
+        raise RemoteNormalizationError("git_username_invalid", str(exc)) from exc
     if not pat.get_secret_value():
         raise RemoteNormalizationError("git_credential_missing", "GitHub PAT 不能为空")
 
@@ -279,6 +282,10 @@ def apply_remote_normalization(
     backend_kind: str = "dulwich",
 ) -> RemoteNormalizationTransaction:
     """Revalidate, then atomically update origin/profile/keychain with rollback."""
+    try:
+        username = normalize_git_username(username)
+    except ValueError as exc:
+        raise RemoteNormalizationError("git_username_invalid", str(exc)) from exc
     repo = GitRepo(vault_dir, backend_kind=backend_kind, workspace_id=plan.workspace_id)
     profile = load_profile(plan.workspace_id, home=home)
     if profile is None:

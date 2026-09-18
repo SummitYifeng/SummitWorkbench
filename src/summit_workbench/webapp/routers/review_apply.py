@@ -11,13 +11,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from summit_workbench.repositories.external_action_outbox import latest_action, latest_actions
-from summit_workbench.repositories.review_page import review_path
 from summit_workbench.webapp.api import (
     ExternalActionReconcilePayload,
     external_action_payload,
@@ -125,14 +122,8 @@ def register_review_apply_routes(
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
-        # 自动留痕：写回目标文件 + 审批页 + 审计归档（P0' 埋点；库外文件自动跳过）
-        touched: list[Path | str] = [review_path(ctx.vault_dir)]
-        if report.archive_path is not None:
-            touched.append(report.archive_path)
-        touched.extend(
-            a.destination for a in report.actions if not a.destination.startswith("feishu-")
-        )
-        git_note = runtime.commit_suffix(touched, "审批应用写回")
+        # 自动留痕：工作流返回真实 touched paths；库外路径由 commit 层过滤。
+        git_note = runtime.commit_suffix(report.touched_paths or [], "审批应用写回")
         external_actions = latest_actions(
             ctx.vault_dir, workspace_id=workspace_id_for_vault(ctx.vault_dir)
         )
@@ -174,7 +165,8 @@ def register_review_apply_page_routes(
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             detail = f"应用失败：{type(exc).__name__}: {exc}"
             return HTMLResponse(render_plan(detail, executed=True))
-        return HTMLResponse(render_plan(_plan_text(report), executed=True))
+        git_note = runtime.commit_suffix(report.touched_paths or [], "审批应用写回")
+        return HTMLResponse(render_plan(_plan_text(report) + git_note, executed=True))
 
 
 __all__ = ["register_review_apply_page_routes", "register_review_apply_routes"]

@@ -233,18 +233,30 @@ def register_restricted_onboarding_routes(
     ) -> dict[str, object] | JSONResponse:
         from uuid import uuid4
 
+        from summit_workbench.config.git_credentials import normalize_git_username
         from summit_workbench.workflows.remote_onboarding import (
             RemoteCloneError,
             stage_remote_clone,
         )
 
         pat = _pat_secret(payload.pat)
+        try:
+            git_username = normalize_git_username(payload.git_username)
+        except ValueError as exc:
+            return JSONResponse(
+                status_code=409,
+                content=error_payload(
+                    code="git_username_invalid",
+                    message=str(exc),
+                    operation_id=request.headers.get("x-wb-operation-id", "unknown"),
+                ),
+            )
         credential_resolver = None
         if pat is not None:
             from summit_workbench.config.git_credentials import GitCredentials
 
             def resolve(_ws: str, host: str, _username: str) -> GitCredentials:
-                return GitCredentials(_ws, host, payload.git_username, pat)
+                return GitCredentials(_ws, host, git_username, pat)
 
             credential_resolver = resolve
 
@@ -253,7 +265,7 @@ def register_restricted_onboarding_routes(
                 payload.remote_url,
                 resolve_user_path(payload.target_vault),
                 workspace_id=payload.expected_workspace_id,
-                username=payload.git_username,
+                username=git_username,
                 home=active_workspace.home,
                 credential_resolver=credential_resolver,
             )

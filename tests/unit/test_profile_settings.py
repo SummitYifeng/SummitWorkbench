@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from summit_workbench.config.profiles import resolve_active_workspace
+from summit_workbench.config.secrets import CredentialError
 from summit_workbench.domain.automation import AutomationRunStatus
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile, WorkspaceManifest
 from summit_workbench.repositories.profile_registry import (
@@ -24,6 +25,7 @@ from summit_workbench.workflows.profile_settings import (
     commit_profile_switch,
     list_profile_summaries,
     prepare_profile_switch,
+    provider_status_for_profile,
     remove_local_profile,
     update_provider_settings,
 )
@@ -66,6 +68,25 @@ def test_profiles_are_summarized_with_only_active_absolute_path(tmp_path: Path) 
     assert summaries[first.workspace_id].path == str(first.vault_dir)
     assert summaries[second.workspace_id].path == second.vault_dir.name
     assert summaries[first.workspace_id].workspace_short_code == first.workspace_id.split("-")[0]
+
+
+def test_provider_status_detects_shared_model_keychain_credential(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = _profile(tmp_path, "keychain")
+
+    def resolve(workspace_id: str, account: str):
+        assert workspace_id == profile.workspace_id
+        if account == "llm:shared:shared":
+            from pydantic import SecretStr
+
+            return SecretStr("present")
+        raise CredentialError("missing")
+
+    monkeypatch.setattr(
+        "summit_workbench.workflows.profile_settings.resolve_workspace_credential", resolve
+    )
+    assert provider_status_for_profile(profile)["model"] == "configured-keychain"
 
 
 def test_switch_prepare_commit_changes_only_active_profile(tmp_path: Path) -> None:

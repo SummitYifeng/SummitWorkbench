@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -21,7 +21,7 @@ from summit_workbench.domain.review import (
 )
 from summit_workbench.providers.feishu.errors import FeishuError
 from summit_workbench.repositories._atomic import atomic_write_text
-from summit_workbench.repositories.external_action_outbox import latest_for_candidate
+from summit_workbench.repositories.external_action_outbox import latest_for_candidate, outbox_path
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.note_projects import merge_note_project
 from summit_workbench.repositories.note_status import update_note_status
@@ -86,6 +86,7 @@ class ApplyReport:
     rejected: int
     failed: int
     archive_path: Path | None = None
+    touched_paths: list[Path] = field(default_factory=list)
 
 
 def _project_has_folder(work_root: Path, project: str) -> bool:
@@ -470,7 +471,8 @@ def _update_meeting_states(
     remaining: list[ReviewEntry],
     *,
     now: datetime | None,
-) -> None:
+) -> list[Path]:
+    touched_paths: list[Path] = []
     remaining_keys = {_task_key(entry.candidate.candidate_id) for entry in remaining}
     grouped: dict[str, list[ReviewEntry]] = {}
     for entry in handled:
@@ -487,10 +489,12 @@ def _update_meeting_states(
             if CandidateDecision.APPROVED in historical
             else ProcessingState.IGNORED
         )
-        record_task(vault_dir, task.advanced_to(final_state), now=now)
+        touched_paths.append(record_task(vault_dir, task.advanced_to(final_state), now=now))
         note_path = _note_path(vault_dir, entries[0].note_link)
         if note_path is not None:
             update_note_status(vault_dir, note_path, final_state.value)
+            touched_paths.append(note_path)
+    return touched_paths
 
 
 def apply_meeting_review(
@@ -525,6 +529,7 @@ def apply_meeting_review(
         )
 
     by_id = {entry.candidate.candidate_id: entry for entry in entries}
+    touched_paths: list[Path] = [page]
     handled: list[ReviewEntry] = []
     records: list[ExecutionRecord] = []
     failure_reasons: dict[str, str] = {}
@@ -553,6 +558,7 @@ def apply_meeting_review(
                 external_id: str | None
                 operation_id: str | None = None
                 if entry.candidate.route is RouteTarget.FEISHU_TASK:
+                    touched_paths.append(outbox_path(vault_dir))
                     destination, external_id, operation_id = _run_external(
                         entry,
                         vault_dir,
@@ -560,6 +566,7 @@ def apply_meeting_review(
                         meeting_creator=meeting_creator,
                     )
                 elif entry.candidate.route is RouteTarget.FEISHU_MEETING:
+                    touched_paths.append(outbox_path(vault_dir))
                     destination, external_id, operation_id = _run_external(
                         entry,
                         vault_dir,
@@ -568,6 +575,7 @@ def apply_meeting_review(
                     )
                 else:
                     destination, external_id = _write_local(entry, vault_dir, work_root)
+                    touched_paths.append(Path(destination))
                 record = make_execution_record(
                     entry,
                     destination=destination,
@@ -582,7 +590,7 @@ def apply_meeting_review(
                 continue
             applied_count += 1
             _queue_note_project(vault_dir, note_project_adds, entry)
-        append_execution(vault_dir, record)
+        touched_paths.append(append_execution(vault_dir, record))
         records.append(record)
         handled.append(entry)
 
@@ -594,6 +602,8 @@ def apply_meeting_review(
             continue
         remaining.append(replace(entry, apply_error=failure_reasons.get(stable_id)))
     archive_path = archive_executions(vault_dir, records, now=now) if records else None
+    if archive_path is not None:
+        touched_paths.append(archive_path)
 
     # P0-5 收尾「乐观合并」。整段收尾（重读最新页 + 合并 + 整页写 + 会议状态收口）
     # 是纯文件操作，放在工作区锁内；分钟级外部写回阶段不持锁（锁不跨 LLM/网络调用）。
@@ -619,12 +629,13 @@ def apply_meeting_review(
                     entry = replace(entry, apply_error=failure_reasons[cid])
                 merged.append(entry)
             atomic_write_text(page, render_review_page(merged))
-        _update_meeting_states(vault_dir, handled, remaining, now=now)
+        touched_paths.extend(_update_meeting_states(vault_dir, handled, remaining, now=now))
         # 改进 2：已批准且目标已解析的写回 → 把来源会议笔记的 unresolved 解析为项目
         # （幂等合并，进该项目时间线与 Obsidian 图谱）。merge 内部同锁重入，安全。
         for note_path, projects in note_project_adds.items():
             for project in projects:
                 merge_note_project(vault_dir, note_path, project)
+                touched_paths.append(note_path)
     return ApplyReport(
         False,
         actions,
@@ -632,4 +643,5 @@ def apply_meeting_review(
         rejected=rejected_count,
         failed=failures,
         archive_path=archive_path,
+        touched_paths=list(dict.fromkeys(touched_paths)),
     )

@@ -486,7 +486,10 @@ class DulwichGitBackend:
             return
         repo = self._open()
         index = repo.open_index()
+        ignore_manager = IgnoreFilterManager.from_repo(repo)
         for rel in paths:
+            if ignore_manager.is_ignored(rel):
+                continue
             target = self._path / rel
             if not target.is_file():
                 raise GitError(f"git add 失败：路径不存在 {rel}")

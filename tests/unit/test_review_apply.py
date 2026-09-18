@@ -125,6 +125,11 @@ def test_apply_local_and_reject_archives_audit_and_advances_state(tmp_path):
     assert report.failed == 0
     assert "final-m:n#decision-0" in project.read_text(encoding="utf-8")
     assert report.archive_path is not None
+    assert (vault / "review" / "meetings.md") in report.touched_paths
+    assert (vault / "_signals" / "review-actions" / "log.jsonl") in report.touched_paths
+    assert (vault / "_signals" / "meeting-state" / "log.jsonl") in report.touched_paths
+    assert report.archive_path in report.touched_paths
+    assert project in report.touched_paths
     audit = report.archive_path.read_text(encoding="utf-8")
     assert "original-m:n#decision-0" in audit
     assert "final-m:n#decision-0" in audit

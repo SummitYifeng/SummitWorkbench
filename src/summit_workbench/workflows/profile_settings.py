@@ -10,7 +10,7 @@ from pydantic import SecretStr
 
 from summit_workbench import __version__
 from summit_workbench.config.app_support import app_support_dir, runtime_dir
-from summit_workbench.config.git_credentials import strip_credentials
+from summit_workbench.config.git_credentials import normalize_git_username, strip_credentials
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import (
@@ -236,6 +236,14 @@ def _apply_provider_settings(
         raise ProfileSettingsError("invalid_provider_settings", "provider 设置包含不支持或秘密字段")
 
     extras = dict(profile.model_extra or {})
+    if provider == "git" and "git_username" in settings:
+        try:
+            settings = {
+                **settings,
+                "git_username": normalize_git_username(str(settings["git_username"])),
+            }
+        except ValueError as exc:
+            raise ProfileSettingsError("invalid_provider_settings", str(exc)) from exc
     section_name = "models" if provider == "model" else provider
     section = (
         dict(extras.get(section_name, {})) if isinstance(extras.get(section_name), dict) else {}
@@ -323,12 +331,59 @@ def _compatibility(profile: LocalProfile) -> Compatibility:
 
 
 def _provider_status(profile: LocalProfile) -> dict[str, str]:
+    return provider_status_for_profile(profile)
+
+
+def provider_status_for_profile(profile: LocalProfile) -> dict[str, str]:
+    """Report local provider configuration without network calls or secret values."""
     extras = profile.model_extra or {}
-    return {
+    status = {
         "model": "configured" if isinstance(extras.get("models"), dict) else "not-configured",
         "feishu": "configured" if isinstance(extras.get("feishu"), dict) else "not-configured",
         "git": "configured" if profile.git_username else "not-configured",
     }
+    if status["model"] == "not-configured" and _keychain_has(
+        profile.workspace_id,
+        workspace_account("llm", "shared", "shared"),
+    ):
+        status["model"] = "configured-keychain"
+    if status["git"] == "not-configured":
+        remote = _remote_url(profile)
+        if remote and _git_remote_has_keychain(profile, remote):
+            status["git"] = "configured-keychain"
+    return status
+
+
+def _keychain_has(workspace_id: str, account: str) -> bool:
+    try:
+        resolve_workspace_credential(workspace_id, account)
+    except CredentialError:
+        return False
+    return True
+
+
+def _git_remote_has_keychain(profile: LocalProfile, remote: str) -> bool:
+    parsed = _parse_git_remote(remote)
+    if parsed is None:
+        return False
+    host, username = parsed
+    return _keychain_has(profile.workspace_id, workspace_account("git", host, username))
+
+
+def _parse_git_remote(remote: str) -> tuple[str, str] | None:
+    import re
+    from urllib.parse import urlsplit
+
+    match = re.match(r"^[^@/:]+@([^:]+):([^/]+)/.+$", remote.strip())
+    if match:
+        return match.group(1).casefold(), match.group(2).casefold()
+    parsed = urlsplit(remote)
+    if not parsed.hostname:
+        return None
+    parts = parsed.path.strip("/").split("/")
+    if not parts or not parts[0]:
+        return None
+    return parsed.hostname.casefold(), parts[0].casefold()
 
 
 def _sync_summary(workspace_id: str, *, home: Path) -> dict[str, object]:

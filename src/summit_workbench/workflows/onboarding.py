@@ -302,6 +302,27 @@ def preflight(
 # ---- 完成结果与 marker 构建 ----
 
 
+def _provider_status(profile: LocalProfile) -> dict[str, str]:
+    from summit_workbench.workflows.profile_settings import provider_status_for_profile
+
+    return provider_status_for_profile(profile)
+
+
+def _automation_not_primary(vault_dir: Path, workspace_id: str, device_id: str) -> bool:
+    from summit_workbench.repositories.automation_primary import (
+        AutomationPrimaryError,
+        load_automation_primary,
+    )
+
+    try:
+        claim = load_automation_primary(vault_dir)
+    except AutomationPrimaryError:
+        return False
+    return bool(
+        claim is not None and claim.workspace_id == workspace_id and claim.device_id != device_id
+    )
+
+
 def _new_manifest(workspace_id: str, display_name: str, app_version: str) -> WorkspaceManifest:
     return WorkspaceManifest.model_validate(
         {
@@ -324,6 +345,9 @@ def _make_result(
     device_id: str,
     display_name: str,
     backup_dir: Path | None = None,
+    device_role: DeviceRole = DeviceRole.SECONDARY,
+    provider_status: dict[str, str] | None = None,
+    automation_not_primary: bool = False,
 ) -> OnboardingResult:
     return OnboardingResult(
         flow=flow,
@@ -334,6 +358,9 @@ def _make_result(
         display_name=display_name,
         created_at=datetime.now(UTC).isoformat(),
         backup_dir=str(backup_dir) if backup_dir is not None else None,
+        device_role=device_role,
+        automation_not_primary=automation_not_primary,
+        provider_status=provider_status or {},
     )
 
 
@@ -494,7 +521,7 @@ def create_workspace(
         staging = None
 
         device = ensure_device_identity(home, device_name=device_name)
-        _ensure_profile(workspace_id, display, work_root, vault_target, home, device_role)
+        profile = _ensure_profile(workspace_id, display, work_root, vault_target, home, device_role)
         if device_role is DeviceRole.AUTOMATION_PRIMARY:
             from summit_workbench.repositories.automation_primary import claim_automation_primary
 
@@ -508,6 +535,8 @@ def create_workspace(
             vault_dir=vault_target,
             device_id=device.device_id,
             display_name=display,
+            device_role=device_role,
+            provider_status=_provider_status(profile),
         )
     except BaseException as exc:
         if staging is not None:
@@ -569,7 +598,9 @@ def upgrade_workspace(
         manifest = _new_manifest(workspace_id, display, version)
         write_workspace_manifest(vault_dir, manifest)
         device = ensure_device_identity(home, device_name=device_name)
-        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home, device_role)
+        profile = _ensure_profile(
+            workspace_id, display, vault_dir.parent, vault_dir, home, device_role
+        )
         if device_role is DeviceRole.AUTOMATION_PRIMARY:
             from summit_workbench.repositories.automation_primary import claim_automation_primary
 
@@ -583,6 +614,8 @@ def upgrade_workspace(
             device_id=device.device_id,
             display_name=display,
             backup_dir=backup_root,
+            device_role=device_role,
+            provider_status=_provider_status(profile),
         )
     except BaseException as exc:
         # 回滚：删除本次写入的 marker（若非本次创建则不动），并清理 profile/registry
@@ -636,7 +669,9 @@ def connect_workspace(
         from summit_workbench.repositories.automation_primary import connect_device_role
 
         device_role = connect_device_role(vault_dir, workspace_id, device.device_id)
-        _ensure_profile(workspace_id, display, vault_dir.parent, vault_dir, home, device_role)
+        profile = _ensure_profile(
+            workspace_id, display, vault_dir.parent, vault_dir, home, device_role
+        )
         set_active_profile(workspace_id, home=home)
         return _make_result(
             OnboardingFlow.CONNECT_LOCAL,
@@ -645,6 +680,11 @@ def connect_workspace(
             vault_dir=vault_dir,
             device_id=device.device_id,
             display_name=display,
+            device_role=device_role,
+            provider_status=_provider_status(profile),
+            automation_not_primary=_automation_not_primary(
+                vault_dir, workspace_id, device.device_id
+            ),
         )
     except BaseException as exc:
         drop_profile(workspace_id, home=home)

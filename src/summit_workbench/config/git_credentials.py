@@ -29,6 +29,14 @@ from summit_workbench.repositories.git_backend import CommitIdentity
 _PLACEHOLDER_EMAIL = "wb@local"
 
 
+def normalize_git_username(username: str) -> str:
+    """Normalize a public Git hosting username before profile/Keychain use."""
+    normalized = username.strip().casefold()
+    if not normalized or len(normalized) > 200:
+        raise ValueError("Git 用户名不能为空或过长")
+    return normalized
+
+
 def strip_credentials(url: str) -> str:
     """把 URL 中的 userinfo（user:password@）剥掉，返回可安全展示的 URL。"""
     parts = urlsplit(url)

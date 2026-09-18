@@ -13,6 +13,7 @@ from summit_workbench.config.locking import workspace_lock
 from summit_workbench.repositories.autocommit import CommitStatus
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
+    MutationInvariantError,
     run_local_mutation,
 )
 
@@ -153,3 +154,18 @@ def test_business_return_and_changed_paths_are_preserved(tmp_path: Path) -> None
     assert result.business_return == {"operation_id": result.operation_id, "ok": True}
     assert result.changed_paths == (path,)
     assert result.commit_result.status is CommitStatus.NOTHING_TO_COMMIT
+
+
+def test_unreported_non_ignored_write_fails_the_mutation_invariant(tmp_path: Path) -> None:
+    """漏报的 vault 写入不能被包装成成功的本地 mutation。"""
+    vault = _git_repo(tmp_path)
+    declared = vault / "declared.md"
+    omitted = vault / "omitted.md"
+
+    def mutate(_operation_id: str) -> LocalMutationOutcome[str]:
+        declared.write_text("declared", encoding="utf-8")
+        omitted.write_text("omitted", encoding="utf-8")
+        return LocalMutationOutcome("ok", (declared,))
+
+    with pytest.raises(MutationInvariantError, match="工作树仍有未提交改动"):
+        run_local_mutation(vault, "test", mutate)

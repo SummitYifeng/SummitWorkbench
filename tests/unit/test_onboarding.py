@@ -362,6 +362,7 @@ def test_connect_local_marker_pointing_at_this_device_becomes_primary(tmp_path) 
     profile = load_profile(result.workspace_id, home=maker_home)
     assert profile is not None
     assert profile.device_role is DeviceRole.AUTOMATION_PRIMARY
+    assert result.automation_not_primary is False
     claim = load_automation_primary(vault)
     assert claim is not None and claim.device_id == result.device_id
     assert (
@@ -392,6 +393,7 @@ def test_connect_local_marker_pointing_at_other_device_stays_secondary(tmp_path)
     profile = load_profile(result.workspace_id, home=air_home)
     assert profile is not None
     assert profile.device_role is DeviceRole.SECONDARY
+    assert result.automation_not_primary is True
     assert result.device_id != before.device_id
 
     after = load_automation_primary(vault)
@@ -423,6 +425,7 @@ def test_connect_local_without_primary_marker_keeps_secondary_default(tmp_path) 
     profile = load_profile(result.workspace_id, home=air_home)
     assert profile is not None
     assert profile.device_role is DeviceRole.SECONDARY
+    assert result.automation_not_primary is False
     assert load_automation_primary(vault) is None
 
 

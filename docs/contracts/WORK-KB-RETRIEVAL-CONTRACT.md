@@ -78,13 +78,16 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 
 ### 5.1 会被检索的类型
 
-`project-main`、`work-log`、`thread-doc`、`meeting-note`、`meeting-transcript`、`daily`、
+`project-main`、`work-log`、`thread-doc`、`meeting-note`、`daily`、
 `weekly-review`、`workstream`、`note`、`decision`、`source`、`long-form-thought`。
+
+`meeting-transcript` 虽是合法的原始记录类型，但不属于检索语料，也不进入精排候选。
 
 ### 5.2 只写不检索的类型
 
 `index`（MOC 导航）、`conventions`（规范）、`inbox` / `project-inbox`（收件箱）、
-`approval-page`（审批页）、`prompt`、`workflow`、`standard`、`template`、`qa-insight`。
+`approval-page`（审批页）、`prompt`、`workflow`、`standard`、`template`、`qa-insight`、
+`meeting-transcript`（原始逐字稿，仅供证据回链）。
 
 这些类型正文结构自由，**不要求**有 `##`，也不做检索就绪校验。
 
@@ -104,7 +107,9 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 1. 当前项目主页、主题结论、有效决策。
 2. 已应用内容、结构化会议笔记、周期复盘。
 3. 工作日志、thread-doc、daily 和其他 `generated` 内容。
-4. `source`、`meeting-transcript`——默认作为**证据层**（问「原话 / 原文 / 逐字怎么说的」时允许提升）。
+4. `source`——默认作为**证据层**（问「原话 / 原文」时允许提升）。
+
+`meeting-transcript` 是原始噪音材料，**不进入工作库检索语料，也不参与精排**；需要检索会议内容时，使用结构化的 `meeting-note` 及其证据索引。
 
 **硬规则**：权威度**只能**在语义相关候选中调整，不得让无关的「高权威页面」强行上榜。
 
@@ -112,7 +117,8 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 
 ## 7. 证据层不可变
 
-- `source` 与 `meeting-transcript` 是**原件层**，保存后正文不可被自动规范化器改写。
+- `source` 是**原件层**，保存后正文不可被自动规范化器改写。
+- `meeting-transcript` 同样是不可变的原始记录，但不属于工作库检索语料，也不进入精排候选。
 - 会议逐字稿按现有哈希与幂等规则归档：同内容重复归档空转，不覆盖既有证据文件。
 - 派生内容（会议笔记、日志、产物）必须保留回链到原件的引用与证据文本。
 
@@ -157,7 +163,7 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 
 | 写入物 | 校验 |
 |---|---|
-| 会议逐字稿（`meeting-transcript`） | 原件不可变；不套用规范化器 |
+| 会议逐字稿（`meeting-transcript`） | 原件不可变；不套用规范化器；不进入检索与精排 |
 | 结构化会议笔记（`meeting-note`） | `validate_note` + `validate_retrieval_readiness`；生成态 `pending-review` |
 | 当日简报（`daily`） | 程序生成；落 `area: work` + `title: 晨间简报 <日期>`（否则总览不可见 / 只剩日期） |
 | 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级；落 `area: work` + 与 H1 一致的 `title` |

@@ -145,6 +145,7 @@ interface StatusState {
   budget: StatusBudget;
   backlog: StatusBacklog;
   feishu_auth: StatusFeishu;
+  automation_not_primary?: boolean;
 }
 interface StatePayload {
   day: string;
@@ -204,6 +205,9 @@ function healthTone(): { tone: string; label: string } {
   const s = state.status;
   if (s.failed > 0 || s.feishu_auth.needs_reauthorize) {
     return { tone: 'bad', label: '有异常待处理' };
+  }
+  if (s.automation_not_primary) {
+    return { tone: 'warn', label: '定时自动化未在本机运行 · 去设置接管' };
   }
   if (s.backlog.active || s.budget.over_soft_limit) {
     return { tone: 'warn', label: '有积压/接近预算' };

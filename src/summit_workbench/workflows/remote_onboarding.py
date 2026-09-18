@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from summit_workbench import __version__
-from summit_workbench.config.git_credentials import GitCredentials
+from summit_workbench.config.git_credentials import GitCredentials, normalize_git_username
 from summit_workbench.domain.onboarding import OnboardingFlow, OnboardingResult
 from summit_workbench.domain.workspace import (
     Compatibility,
@@ -126,8 +126,10 @@ def stage_remote_clone(
 ) -> RemoteCloneStage:
     """clone 到目标同文件系统 staging，并完成 marker/兼容性检查。"""
     safe_url = validate_remote_url(url)
-    if not username.strip() or len(username) > 200:
-        raise RemoteCloneError("git_username_invalid", "Git 用户名不能为空或过长")
+    try:
+        username = normalize_git_username(username)
+    except ValueError as exc:
+        raise RemoteCloneError("git_username_invalid", str(exc)) from exc
     if backend_factory is None and credential_resolver is None and not workspace_id:
         # 只有需要**从 Keychain 读取 workspace 作用域凭据**时才要求预期 id。空安装向导手里
         # 没有这个 id（它由远端 marker 决定），而它总是显式带上本次要用的 PAT
@@ -267,6 +269,17 @@ def confirm_remote_clone(
         save_profile(profile, home=home)
         profile_saved = True
         set_active_profile(staged.workspace_id, home=home)
+        from summit_workbench.repositories.automation_primary import (
+            AutomationPrimaryError,
+            load_automation_primary,
+        )
+        from summit_workbench.workflows.profile_settings import provider_status_for_profile
+
+        try:
+            claim = load_automation_primary(staged.target_vault)
+        except AutomationPrimaryError:
+            claim = None
+
         return OnboardingResult(
             flow=OnboardingFlow.CONNECT_LOCAL,
             workspace_id=staged.workspace_id,
@@ -275,6 +288,14 @@ def confirm_remote_clone(
             device_id=device.device_id,
             display_name=profile.display_name,
             created_at=marker.created_at.isoformat(),
+            device_role=device_role,
+            automation_not_primary=bool(
+                device_role.value == "secondary"
+                and claim is not None
+                and claim.workspace_id == staged.workspace_id
+                and claim.device_id != device.device_id
+            ),
+            provider_status=provider_status_for_profile(profile),
         )
     except RemoteCloneError:
         raise

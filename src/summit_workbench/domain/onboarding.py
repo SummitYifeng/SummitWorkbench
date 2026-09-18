@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
-from summit_workbench.domain.workspace import Compatibility
+from summit_workbench.domain.workspace import Compatibility, DeviceRole
 
 
 class OnboardingFlow(StrEnum):
@@ -59,3 +59,6 @@ class OnboardingResult(BaseModel):
     display_name: str
     created_at: str
     backup_dir: str | None = None  # upgrade-existing：timestamped 备份目录
+    device_role: DeviceRole = DeviceRole.SECONDARY
+    automation_not_primary: bool = False
+    provider_status: dict[str, str] = Field(default_factory=dict)

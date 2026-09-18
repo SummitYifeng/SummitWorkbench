@@ -16,6 +16,7 @@ from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.sync import SyncSnapshot, SyncState
 from summit_workbench.domain.workspace import Compatibility
 from summit_workbench.repositories.autocommit import CommitResult, commit_paths
+from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import CommitIdentity
 
 
@@ -41,6 +42,10 @@ class LocalMutationResult[T]:
 
 class MutationBlocked(RuntimeError):
     """共享 vault 写入被统一的 compatibility/sync 保护门拒绝。"""
+
+
+class MutationInvariantError(RuntimeError):
+    """本地 mutation 声称成功，但仍留下未提交的非忽略 vault 改动。"""
 
 
 def run_local_mutation[T](
@@ -102,6 +107,12 @@ def run_local_mutation[T](
             backend_kind=backend_kind,
             author=author,
         )
+        if commit_result.status.value in {"committed", "nothing-to-commit"}:
+            repo = GitRepo(vault_dir, backend_kind=backend_kind)
+            if repo.is_git_repo() and repo.is_dirty():
+                raise MutationInvariantError(
+                    f"本地 mutation 未提交全部写入：{action}；工作树仍有未提交改动"
+                )
     result = LocalMutationResult(
         operation_id=operation_id,
         business_return=outcome.business_return,

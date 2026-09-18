@@ -495,6 +495,28 @@ def test_dulwich_clean_status_honors_blob_ids_and_ignored_files(tmp_path: Path) 
     assert repo.is_dirty()
 
 
+def test_dulwich_add_skips_ignored_paths(tmp_path: Path) -> None:
+    """显式 add 也必须遵守 vault 的 ignore 规则，不能把机器状态重新入库。"""
+    from dulwich.repo import Repo
+
+    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
+
+    repo = DulwichGitBackend(tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / ".gitignore").write_text("_signals/\n", encoding="utf-8")
+    repo.add([".gitignore"])
+    repo.commit("wb: ignore signals", author=ID)
+
+    signal = tmp_path / "repo" / "_signals" / "meeting-state" / "log.jsonl"
+    signal.parent.mkdir(parents=True)
+    signal.write_text("machine state\n", encoding="utf-8")
+
+    repo.add(["_signals/meeting-state/log.jsonl"])
+
+    assert not repo.has_staged_changes()
+    assert b"_signals/meeting-state/log.jsonl" not in Repo(str(tmp_path / "repo")).open_index()
+
+
 def test_dulwich_clean_status_ignores_workspace_lock_file(tmp_path: Path) -> None:
     """工作台内部锁不是用户改动，不应把共享 vault 误判为 dirty-protected。"""
     from summit_workbench.repositories.dulwich_git import DulwichGitBackend
