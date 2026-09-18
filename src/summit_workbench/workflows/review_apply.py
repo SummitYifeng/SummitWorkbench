@@ -279,7 +279,7 @@ def _external_kind(entry: ReviewEntry) -> ExternalActionKind:
 def _external_request(entry: ReviewEntry) -> dict[str, object]:
     item = entry.candidate
     if item.route is RouteTarget.FEISHU_TASK:
-        request = {
+        request: dict[str, object] = {
             "description": item.description,
             "target_project": item.target_project,
             "due_date": item.due_date,
