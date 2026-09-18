@@ -6,6 +6,7 @@ from pathlib import Path
 
 import typer
 
+from summit_workbench.config.profiles import resolve_workspace
 from summit_workbench.config.settings import load_settings
 from summit_workbench.workflows.sync import SyncStatus, discover_repos, sync_work_root
 
@@ -38,7 +39,13 @@ def run(
         typer.echo(f"{root} 下没有 git 仓库")
         raise typer.Exit(code=0)
 
-    results = sync_work_root(root)
+    resolution = resolve_workspace(allow_env_fallback=True)
+    profile = resolution.profile
+    results = sync_work_root(
+        root,
+        workspace_id=profile.workspace_id if profile is not None else None,
+        username=profile.git_username if profile is not None else None,
+    )
     problems = 0
     for r in results:
         mark = "⚠️" if r.status.is_problem else "✓"

@@ -45,7 +45,7 @@ def _new_backend(
         )
     from summit_workbench.repositories.system_git import SystemGitBackend
 
-    return SystemGitBackend(path)
+    return SystemGitBackend(path, username=username)
 
 
 class GitRepo:

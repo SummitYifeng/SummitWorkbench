@@ -14,6 +14,8 @@ from __future__ import annotations
 import datetime
 import hashlib
 import os
+import re
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -56,11 +58,35 @@ def _identity_bytes(identity: CommitIdentity | None) -> bytes:
 
 
 def _silenced() -> Any:
-    # porcelain 的进度/错误输出可能写 bytes → 用二进制 sink
-    return open(os.devnull, "wb")
+    # porcelain 的进度/错误输出可能写 bytes；留在内存里以便失败时附进 typed error。
+    return tempfile.SpooledTemporaryFile(max_size=64 * 1024, mode="w+b")
 
 
-def _classify_remote(exc: BaseException, message: str) -> GitError:
+def _sanitize_diagnostic(text: str) -> str:
+    text = re.sub(r"(https?://)[^/\s:@]+:[^@\s]+@", r"\1<redacted>@", text)
+    text = re.sub(
+        r"(?i)(authorization\s*:\s*(?:bearer|basic)\s+)[^\s]+",
+        r"\1<redacted>",
+        text,
+    )
+    text = re.sub(r"(?i)((?:token|password|secret)\s*[=:]\s*)[^\s]+", r"\1<redacted>", text)
+    return text.replace("\x00", " ").strip()[:2000]
+
+
+def _sink_text(sink: Any) -> str:
+    sink.seek(0)
+    raw = sink.read(8 * 1024)
+    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw)
+    return _sanitize_diagnostic(text)
+
+
+def _diagnostic_text(value: Any) -> str:
+    if not value:
+        return ""
+    return _sanitize_diagnostic(value) if isinstance(value, str) else _sink_text(value)
+
+
+def _classify_remote(exc: BaseException, message: str, *, stderr: Any = "") -> GitError:
     """把 dulwich/网络异常映射成 typed error（文本不含 URL 或凭据）。
 
     顺序重要：证书 → TLS 握手 → 认证 → 代理 → 网络，避免宽泛标记互相吞并。
@@ -74,7 +100,9 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
     「未分类的同步失败」，正好把 D3 想要的"缺凭据"说没了。
     """
     if isinstance(exc, GitError):
-        return exc
+        error = exc
+        error.stderr = _diagnostic_text(stderr)
+        return error
     text = f"{type(exc).__name__}: {exc}".casefold()
     if any(
         marker in text
@@ -86,7 +114,9 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
             "cannot connect to proxy",
         )
     ):
-        return GitProxyError(message)
+        error = GitProxyError(message)
+        error.stderr = _diagnostic_text(stderr)
+        return error
     if any(
         marker in text
         for marker in (
@@ -98,14 +128,20 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
             "certificate_verify",
         )
     ):
-        return GitCertificateError(message)
+        error = GitCertificateError(message)
+        error.stderr = _diagnostic_text(stderr)
+        return error
     if any(marker in text for marker in ("ssl", "tls", "handshake")):
-        return GitTlsError(message)
+        error = GitTlsError(message)
+        error.stderr = _diagnostic_text(stderr)
+        return error
     if any(
         marker in text
         for marker in ("auth", "401", "403", "permission", "unauthorized", "forbidden")
     ):
-        return GitAuthError(message)
+        error = GitAuthError(message)
+        error.stderr = _diagnostic_text(stderr)
+        return error
     if any(
         marker in text
         for marker in (
@@ -123,8 +159,12 @@ def _classify_remote(exc: BaseException, message: str) -> GitError:
             "could not read",
         )
     ):
-        return GitRemoteUnavailable(message)
-    return GitBackendRuntimeError(message)
+        error = GitRemoteUnavailable(message)
+        error.stderr = _diagnostic_text(stderr)
+        return error
+    error = GitBackendRuntimeError(message)
+    error.stderr = _diagnostic_text(stderr)
+    return error
 
 
 def _https_pool_manager(url: str) -> Any:
@@ -134,9 +174,8 @@ def _https_pool_manager(url: str) -> Any:
     显式把发现的 CA bundle 通过 ``http.sslCAInfo`` 传入 dulwich 的
     ``default_urllib3_manager``；``sslVerify=true`` 保持 TLS 校验开启。
 
-    另外：打包 App 经 Finder/LaunchServices 启动时没有代理环境变量，而部分网络下
-    直接连接 github.com 会被阻断（``git_remote_unavailable``）。这里在无 env 代理时
-    显式回退到 macOS 系统代理（``http.proxy``），绝不关闭 TLS 校验。
+    另外：直连优先；仅在没有 env 代理且直连路径需要回退时，显式使用 macOS 系统代理
+    （``http.proxy``），绝不关闭 TLS 校验。
     """
     from dulwich.client import default_urllib3_manager
     from dulwich.config import ConfigDict
@@ -607,7 +646,9 @@ class DulwichGitBackend:
                     **self.transport_kwargs(url, operation="fetch"),
                 )
             except Exception as exc:  # noqa: BLE001 - 跨库分类
-                raise _classify_remote(exc, f"fetch {remote} 失败") from exc
+                raise _classify_remote(
+                    exc, f"fetch {remote} 失败", stderr=_sink_text(sink)
+                ) from exc
         self._copy_local_remote_refs(repo, remote, url)
 
     def _copy_local_remote_refs(self, repo: Repo, remote: str, url: str) -> None:
@@ -768,7 +809,7 @@ class DulwichGitBackend:
                 **self.transport_kwargs(url, operation="push"),
             )
         except Exception as inner:  # noqa: BLE001 - 跨库分类
-            raise _classify_remote(inner, f"push {remote} 失败") from inner
+            raise _classify_remote(inner, f"push {remote} 失败", stderr=_sink_text(sink)) from inner
         # G3：把"图复核通过 ⇒ 单 refspec 强推成功"这件事写进本机服务日志
         # （只写稳定原因码与分支名，不写 URL/主机/路径）。日志是 best-effort，绝不让
         # 一次成功的推送因为写日志失败而变成失败。
@@ -801,7 +842,7 @@ class DulwichGitBackend:
                 # D9：先做不看时间戳的图复核，只有真快进才对该 ref 显式强推一次。
                 self._push_confirmed_fast_forward(repo, remote, url, sink, exc)
             except Exception as exc:  # noqa: BLE001
-                raise _classify_remote(exc, f"push {remote} 失败") from exc
+                raise _classify_remote(exc, f"push {remote} 失败", stderr=_sink_text(sink)) from exc
         remote_head = self._peek_remote_head(url)
         if remote_head is not None and remote_head != head:
             raise GitNonFastForward(f"push {remote} 失败（远端拒绝非快进）")

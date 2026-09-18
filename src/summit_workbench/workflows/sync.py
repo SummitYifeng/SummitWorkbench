@@ -61,9 +61,11 @@ def discover_repos(work_root: Path) -> list[Path]:
     )
 
 
-def sync_repo(path: Path) -> RepoSyncResult:
+def sync_repo(
+    path: Path, *, workspace_id: str | None = None, username: str | None = None
+) -> RepoSyncResult:
     """安全同步单个仓库。任何异常都转成可见状态，绝不抛出。"""
-    repo = GitRepo(path)
+    repo = GitRepo(path, workspace_id=workspace_id, username=username)
     name = path.name
     notes: list[str] = []
 
@@ -121,12 +123,16 @@ def _summarize(dirty: bool, pulled: bool, pushed: bool) -> SyncStatus:
     return SyncStatus.UP_TO_DATE
 
 
-def iter_sync(work_root: Path) -> Iterator[RepoSyncResult]:
+def iter_sync(
+    work_root: Path, *, workspace_id: str | None = None, username: str | None = None
+) -> Iterator[RepoSyncResult]:
     for path in discover_repos(work_root):
-        yield sync_repo(path)
+        yield sync_repo(path, workspace_id=workspace_id, username=username)
 
 
-def sync_work_root(work_root: Path) -> list[RepoSyncResult]:
+def sync_work_root(
+    work_root: Path, *, workspace_id: str | None = None, username: str | None = None
+) -> list[RepoSyncResult]:
     """在工作区锁内整批同步，与 brief/weekly 的提交-推送互斥（LHF #1）。
 
     锁被其它 wb 任务占用时不干等，返回单条 :attr:`SyncStatus.BUSY` 让调用方可见，
@@ -134,6 +140,6 @@ def sync_work_root(work_root: Path) -> list[RepoSyncResult]:
     """
     try:
         with workspace_lock(work_root):
-            return list(iter_sync(work_root))
+            return list(iter_sync(work_root, workspace_id=workspace_id, username=username))
     except LockBusy as exc:
         return [RepoSyncResult("(work-sync)", SyncStatus.BUSY, str(exc))]

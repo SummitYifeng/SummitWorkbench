@@ -22,6 +22,7 @@ from summit_workbench.repositories.git_backend import (
     AheadBehind,
     CommitIdentity,
     GitConflictError,
+    GitCredentialsUnavailable,
     GitNonFastForward,
     GitRemoteSchemeUnsupported,
     is_missing_local_remote,
@@ -88,6 +89,40 @@ def test_missing_local_remote_only_matches_bare_nonexistent_paths(
 
 def test_missing_local_remote_accepts_existing_directory(tmp_path) -> None:
     assert is_missing_local_remote(str(tmp_path)) is False
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_https_remote_without_username_is_a_credentials_error(kind: str, tmp_path: Path) -> None:
+    repo = _backend(kind, tmp_path / "repo")
+    repo.init()
+    repo.add_remote("origin", "https://github.com/example/private.git")
+    with pytest.raises(GitCredentialsUnavailable):
+        repo.fetch()
+
+
+def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from summit_workbench.repositories import dulwich_git
+    from summit_workbench.repositories.git_backend import GitAuthError
+
+    repo = _backend("dulwich", tmp_path / "repo")
+    repo.init()
+    repo.add_remote("origin", "https://github.com/example/private.git")
+    backend = dulwich_git.DulwichGitBackend(tmp_path / "repo", username="alice")
+    monkeypatch.setattr(backend, "transport_kwargs", lambda *_args, **_kwargs: {})
+
+    def fake_fetch(*_args, errstream, **_kwargs):
+        errstream.write(
+            b"fatal: Authentication failed for https://alice:secret-token@example.git\n"
+        )
+        raise RuntimeError("401 Unauthorized")
+
+    monkeypatch.setattr(dulwich_git.porcelain, "fetch", fake_fetch)
+    with pytest.raises(GitAuthError) as caught:
+        backend.fetch()
+    assert "Authentication failed" in caught.value.stderr
+    assert "secret-token" not in caught.value.stderr
 
 
 def _backend(kind: str, path: Path):

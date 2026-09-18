@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
@@ -17,6 +18,7 @@ from summit_workbench.repositories.git_backend import (
     CommitMetadata,
     GitAuthError,
     GitConflictError,
+    GitCredentialsUnavailable,
     GitError,
     GitInvalidRevision,
     GitNonFastForward,
@@ -67,8 +69,14 @@ def _classify(operation: str, message: str, stderr: str) -> GitError:
 class SystemGitBackend:
     """把 :class:`~summit_workbench.repositories.git_backend.GitBackend` 契约映射到 ``git`` CLI。"""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, username: str | None = None) -> None:
         self._path = path
+        self._username = username
+
+    def _require_https_username(self, remote: str) -> None:
+        url = self.remote_url(remote)
+        if url and urlsplit(url).scheme.lower() == "https" and not self._username:
+            raise GitCredentialsUnavailable("HTTPS remote 缺少 workspace-scoped Git 凭据配置")
 
     @property
     def path(self) -> Path:
@@ -303,6 +311,7 @@ class SystemGitBackend:
             raise _classify("commit_merge", "更新 merge commit 引用失败", update.stderr)
 
     def fetch(self, remote: str = "origin") -> None:
+        self._require_https_username(remote)
         cp = self._run("fetch", "--quiet", remote)
         if cp.returncode != 0:
             raise _classify("fetch", f"fetch {remote} 失败", cp.stderr)
@@ -324,6 +333,7 @@ class SystemGitBackend:
             raise _classify("ff_merge_upstream", "无法快进合并（存在分叉，需人工处理）", cp.stderr)
 
     def push(self, remote: str = "origin") -> None:
+        self._require_https_username(remote)
         remote_url = self.remote_url(remote)
         if is_missing_local_remote(remote_url):
             raise GitRemoteUnavailable(f"push {remote} 失败", stderr="远端仓库不存在")
