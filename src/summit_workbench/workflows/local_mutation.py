@@ -47,6 +47,19 @@ class MutationBlocked(RuntimeError):
 class MutationInvariantError(RuntimeError):
     """本地 mutation 声称成功，但仍留下未提交的非忽略 vault 改动。"""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        committed: bool = False,
+        commit_sha: str | None = None,
+        paths: Sequence[str] = (),
+    ) -> None:
+        super().__init__(message)
+        self.committed = committed
+        self.commit_sha = commit_sha
+        self.paths = tuple(paths)
+
 
 def run_local_mutation[T](
     vault_dir: Path,
@@ -91,6 +104,8 @@ def run_local_mutation[T](
             raise MutationBlocked(
                 f"workspace 处于 {locked_snapshot.state.value}，修改共享 vault 的操作已被阻止"
             )
+        repo = GitRepo(vault_dir, backend_kind=backend_kind)
+        before_dirty_paths = set(repo.dirty_paths()) if repo.is_git_repo() else set()
         outcome = mutation(operation_id)
         # The primary business result is often the newly-created legacy file.  Keep it
         # in the explicit commit set even if a caller only reports auxiliary paths
@@ -108,10 +123,19 @@ def run_local_mutation[T](
             author=author,
         )
         if commit_result.status.value in {"committed", "nothing-to-commit"}:
-            repo = GitRepo(vault_dir, backend_kind=backend_kind)
-            if repo.is_git_repo() and repo.is_dirty():
+            if repo.is_git_repo():
+                new_dirty_paths = sorted(set(repo.dirty_paths()) - before_dirty_paths)
+            else:
+                new_dirty_paths = []
+            if new_dirty_paths:
+                committed = commit_result.status.value == "committed"
+                commit_sha = repo.head_revision() if committed else None
+                detail = ", ".join(new_dirty_paths)
                 raise MutationInvariantError(
-                    f"本地 mutation 未提交全部写入：{action}；工作树仍有未提交改动"
+                    f"本地 mutation 未提交全部写入：{action}；新增未提交路径：{detail}",
+                    committed=committed,
+                    commit_sha=commit_sha,
+                    paths=new_dirty_paths,
                 )
     result = LocalMutationResult(
         operation_id=operation_id,

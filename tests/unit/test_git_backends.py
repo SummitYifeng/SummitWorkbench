@@ -495,13 +495,12 @@ def test_dulwich_clean_status_honors_blob_ids_and_ignored_files(tmp_path: Path) 
     assert repo.is_dirty()
 
 
-def test_dulwich_add_skips_ignored_paths(tmp_path: Path) -> None:
+@pytest.mark.parametrize("kind", KINDS)
+def test_add_skips_ignored_paths_for_both_backends(kind: str, tmp_path: Path) -> None:
     """显式 add 也必须遵守 vault 的 ignore 规则，不能把机器状态重新入库。"""
     from dulwich.repo import Repo
 
-    from summit_workbench.repositories.dulwich_git import DulwichGitBackend
-
-    repo = DulwichGitBackend(tmp_path / "repo")
+    repo = _backend(kind, tmp_path / "repo")
     repo.init()
     (tmp_path / "repo" / ".gitignore").write_text("_signals/\n", encoding="utf-8")
     repo.add([".gitignore"])
@@ -514,6 +513,7 @@ def test_dulwich_add_skips_ignored_paths(tmp_path: Path) -> None:
     repo.add(["_signals/meeting-state/log.jsonl"])
 
     assert not repo.has_staged_changes()
+    assert "_signals/meeting-state/log.jsonl" not in repo.staged_paths()
     assert b"_signals/meeting-state/log.jsonl" not in Repo(str(tmp_path / "repo")).open_index()
 
 

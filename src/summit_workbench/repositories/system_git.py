@@ -174,6 +174,27 @@ class SystemGitBackend:
         cp = self._run("status", "--porcelain", "--", *rel_paths)
         return bool(cp.stdout.strip())
 
+    def dirty_paths(self) -> list[str]:
+        """返回未被 ignore 的工作树/暂存区脏路径（相对仓库根）。"""
+        cp = self._run("status", "--porcelain=v1", "-z", "--untracked-files=all")
+        if cp.returncode != 0:
+            raise _classify("dirty_paths", "读取脏路径失败", cp.stderr)
+        parts = [part for part in cp.stdout.split("\0") if part]
+        paths: set[str] = set()
+        index = 0
+        while index < len(parts):
+            entry = parts[index]
+            if len(entry) >= 4:
+                status = entry[:2]
+                paths.add(entry[3:])
+                # -z status output stores the destination as a second NUL field for renames.
+                if status[0] in {"R", "C"} and index + 1 < len(parts):
+                    index += 1
+                    paths.add(parts[index])
+            index += 1
+        paths.discard(".wb.lock")
+        return sorted(paths)
+
     def staged_paths(self) -> list[str]:
         cp = self._run("status", "--porcelain=v1", "-z", "--")
         if cp.returncode != 0:
@@ -193,10 +214,39 @@ class SystemGitBackend:
 
     # ---- 写操作 ----
 
+    def _ignored_paths(self, paths: list[str]) -> set[str]:
+        """Use Git's ignore matcher without treating an ignored path as an add failure."""
+        if not paths:
+            return set()
+        cp = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self._path),
+                "check-ignore",
+                "--stdin",
+                "-z",
+                "--no-index",
+            ],
+            input="\0".join(paths) + "\0",
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if cp.returncode not in {0, 1}:
+            raise _classify("check-ignore", "读取 ignore 规则失败", cp.stderr)
+        return {path for path in cp.stdout.split("\0") if path}
+
     def add(self, paths: list[str]) -> None:
         if not paths:
             return
-        cp = self._run("add", "--", *paths)
+        # 被 ignore 的路径永不入 index；已跟踪且同时被 ignore 的文件也不会被这个 add 暂存。
+        # 这是 Git 语义，vault 侧已保证 _signals/ 不再被跟踪。
+        ignored = self._ignored_paths(paths)
+        add_paths = [path for path in paths if path not in ignored]
+        if not add_paths:
+            return
+        cp = self._run("add", "--", *add_paths)
         if cp.returncode != 0:
             raise _classify("add", "git add 失败", cp.stderr)
 

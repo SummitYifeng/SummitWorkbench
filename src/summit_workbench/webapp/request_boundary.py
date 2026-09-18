@@ -40,7 +40,7 @@ from summit_workbench.webapp.security import (
     origin_matches,
     session_token_matches,
 )
-from summit_workbench.workflows.local_mutation import MutationBlocked
+from summit_workbench.workflows.local_mutation import MutationBlocked, MutationInvariantError
 
 # 工作区 schema 升级期间仍需放行的写接口（服务写门白名单）。原在 legacy_app 模块级，
 # 本步随之搬来并在 ``legacy_app`` 再导出，保持既有 import 契约不变。
@@ -145,6 +145,28 @@ def install_exception_handlers(app: FastAPI, *, operation_id: Callable[[Request]
                 code="sync_diverged",
                 message=str(exc),
                 operation_id=operation_id(request),
+            ),
+        )
+
+    @app.exception_handler(MutationInvariantError)
+    async def _mutation_invariant_error(
+        request: Request, exc: MutationInvariantError
+    ) -> JSONResponse:
+        details = {
+            "committed": exc.committed,
+            "commit_sha": exc.commit_sha,
+            "paths": list(exc.paths),
+        }
+        message = str(exc)
+        if exc.committed:
+            message += "（写入已提交，请勿重复执行）"
+        return JSONResponse(
+            status_code=500,
+            content=error_payload(
+                code="mutation_invariant",
+                message=message,
+                operation_id=operation_id(request),
+                details=details,
             ),
         )
 

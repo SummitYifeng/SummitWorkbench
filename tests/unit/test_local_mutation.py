@@ -167,5 +167,23 @@ def test_unreported_non_ignored_write_fails_the_mutation_invariant(tmp_path: Pat
         omitted.write_text("omitted", encoding="utf-8")
         return LocalMutationOutcome("ok", (declared,))
 
-    with pytest.raises(MutationInvariantError, match="工作树仍有未提交改动"):
+    with pytest.raises(MutationInvariantError, match="omitted.md") as exc_info:
         run_local_mutation(vault, "test", mutate)
+    assert exc_info.value.committed is True
+    assert exc_info.value.commit_sha == _git(vault, "rev-parse", "HEAD").strip()
+
+
+def test_unrelated_preexisting_dirty_file_does_not_trigger_invariant(tmp_path: Path) -> None:
+    vault = _git_repo(tmp_path)
+    unrelated = vault / "unrelated.md"
+    declared = vault / "declared.md"
+    unrelated.write_text("manual edit", encoding="utf-8")
+
+    def mutate(_operation_id: str) -> LocalMutationOutcome[str]:
+        declared.write_text("declared", encoding="utf-8")
+        return LocalMutationOutcome("ok", (declared,))
+
+    result = run_local_mutation(vault, "test", mutate)
+
+    assert result.commit_result.status is CommitStatus.COMMITTED
+    assert unrelated.read_text(encoding="utf-8") == "manual edit"

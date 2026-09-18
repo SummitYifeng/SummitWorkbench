@@ -131,6 +131,10 @@ class GitRepo:
     def is_dirty_paths(self, rel_paths: list[str]) -> bool:
         return self._backend.is_dirty_paths(rel_paths)
 
+    def dirty_paths(self) -> list[str]:
+        """返回已过滤 ignore 的工作树/暂存区脏路径（相对仓库根）。"""
+        return self._backend.dirty_paths()
+
     def staged_paths(self) -> list[str]:
         return self._backend.staged_paths()
 

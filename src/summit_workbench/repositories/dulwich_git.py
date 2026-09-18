@@ -472,6 +472,12 @@ class DulwichGitBackend:
         changed, untracked = self._worktree_delta(repo)
         return bool((set(self._staged_paths(repo)) | changed | untracked) & wanted)
 
+    def dirty_paths(self) -> list[str]:
+        """返回未被 ignore 的工作树/暂存区脏路径（相对仓库根）。"""
+        repo = self._open()
+        changed, untracked = self._worktree_delta(repo)
+        return sorted(set(self._staged_paths(repo)) | changed | untracked)
+
     def staged_paths(self) -> list[str]:
         return self._staged_paths(self._open())
 
@@ -488,6 +494,8 @@ class DulwichGitBackend:
         index = repo.open_index()
         ignore_manager = IgnoreFilterManager.from_repo(repo)
         for rel in paths:
+            # 被 ignore 的路径永不入 index；已跟踪且同时被 ignore 的文件也不会被这个 add 暂存。
+            # 这是 Git 语义，vault 侧已保证 _signals/ 不再被跟踪。
             if ignore_manager.is_ignored(rel):
                 continue
             target = self._path / rel
