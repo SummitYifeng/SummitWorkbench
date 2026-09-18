@@ -27,7 +27,7 @@ dependencies = [
     # 上界 <0.23 是有意为之：1.x 移除了 Repo.do_commit 等 API，升级需要真实迁移
     # （实测 16 个运行时测试失败 + 29 个 mypy 错误）。理由与证据见
     # docs/acceptance/OPEN-VERIFICATION-ITEMS.md §I。
-    "dulwich>=0.22,<0.23",
+    "dulwich>=0.22,<1.3",
 ]
 
 [project.scripts]
