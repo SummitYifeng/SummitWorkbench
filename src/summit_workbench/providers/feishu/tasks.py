@@ -189,10 +189,14 @@ def create_task(
     candidate_id: str,
     *,
     timezone: str,
+    start_date: str | None = None,
     operation_id: str | None = None,
     assignee_open_id: str | None = None,
 ) -> CreatedTask:
     """创建任务；candidate ID 派生 client_token，让飞书侧也参与幂等防重。
+
+    ``start_date`` 与 ``due_date`` 都按本地时区的全天时间写入 Task v2；审批页沿用
+    ``start_at`` 字段承载任务开始日期，传到这里前只取日期部分。
 
     必须传 ``assignee_open_id``（当前授权用户的 open_id）：飞书只把 ``creator`` 记为
     创建者，**不会**因此把任务指派给本人；而工作台的今日简报用 ``list_tasks`` 只列
@@ -210,6 +214,8 @@ def create_task(
         )
     if assignee_open_id:
         body["members"] = [{"id": assignee_open_id, "type": "user", "role": "assignee"}]
+    if start_date is not None:
+        body["start"] = _all_day_due(start_date.split("T", 1)[0], timezone)
     if due_date is not None:
         body["due"] = _all_day_due(due_date, timezone)
     data = client.post(

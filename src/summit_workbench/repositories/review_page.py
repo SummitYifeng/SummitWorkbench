@@ -136,6 +136,26 @@ def _field(lines: list[str], name: str) -> str:
     return ""
 
 
+def validate_review_fields(
+    *,
+    route: RouteTarget | None,
+    due_date: str | None,
+    start_at: str | None,
+    end_at: str | None,
+) -> None:
+    """校验审批页日期字段，避免浏览器表单把坏值写入事实源。"""
+    if due_date:
+        date.fromisoformat(due_date)
+    if route is RouteTarget.FEISHU_TASK:
+        if start_at:
+            date.fromisoformat(start_at.split("T", 1)[0])
+    else:
+        if start_at:
+            datetime.fromisoformat(start_at)
+        if end_at:
+            datetime.fromisoformat(end_at)
+
+
 def _original(lines: list[str]) -> dict[str, object]:
     for line in lines:
         if line.startswith(_ORIGINAL_PREFIX) and line.endswith(" -->"):
@@ -163,10 +183,10 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
     target = _field(block, "target_project") or None
     route_raw = _field(block, "route")
     due = _field(block, "due_date") or None
-    if due:
-        date.fromisoformat(due)
     start_at = _field(block, "start_at") or None
     end_at = _field(block, "end_at") or None
+    route = RouteTarget(route_raw) if route_raw else None
+    validate_review_fields(route=route, due_date=due, start_at=start_at, end_at=end_at)
     evidence_raw = _field(block, "evidence")
     original = _original(block)
     heading_parts = heading.removeprefix("## ").split(" ", 1)
@@ -178,7 +198,7 @@ def _parse_entry(line: str, block: list[str], heading: str) -> ReviewEntry:
         kind=CandidateKind(kind_raw),
         description=description,
         target_project=target,
-        route=RouteTarget(route_raw) if route_raw else None,
+        route=route,
         evidence=EvidenceRef(anchor=evidence_raw) if evidence_raw else None,
         due_date=due,
         sink_target=_field(block, "sink_target") or None,

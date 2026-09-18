@@ -553,6 +553,23 @@ def test_api_edit_updates_fields(tmp_path: Path) -> None:
     assert entry.candidate.due_date == "2026-09-10"
 
 
+def test_api_edit_rejects_invalid_due_date_visibly(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path)
+    resp = client.post(
+        "/api/review/edit",
+        json={
+            "candidate_id": "m1#decision-0",
+            "due_date": "09/10/2026",
+        },
+    )
+    data = resp.json()
+    assert data["ok"] is False
+    assert "保存失败" in data["message"]
+    parsed = parse_review_page(review_path(vault).read_text(encoding="utf-8"))
+    assert parsed.errors == []
+    assert parsed.entries[0].candidate.due_date is None
+
+
 def test_api_plan_returns_dry_run(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     client.post(

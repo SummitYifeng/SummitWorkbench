@@ -22,6 +22,7 @@ from summit_workbench.repositories.review_page import (
     parse_review_page,
     render_review_page,
     review_path,
+    validate_review_fields,
 )
 
 
@@ -108,14 +109,24 @@ def update_fields(
     """
 
     def mutate(c: ApprovalCandidate) -> ApprovalCandidate:
+        next_route = route if route is not None else c.route
+        next_due = due_date if due_date is not None else c.due_date
+        next_start = start_at if start_at is not None else c.start_at
+        next_end = end_at if end_at is not None else c.end_at
+        validate_review_fields(
+            route=next_route,
+            due_date=next_due,
+            start_at=next_start,
+            end_at=next_end,
+        )
         return replace(
             c,
             description=description if description is not None else c.description,
             target_project=target_project if target_project is not None else c.target_project,
             route=route if route is not None else c.route,
-            due_date=due_date if due_date is not None else c.due_date,
-            start_at=start_at if start_at is not None else c.start_at,
-            end_at=end_at if end_at is not None else c.end_at,
+            due_date=next_due,
+            start_at=next_start,
+            end_at=next_end,
             sink_target=sink_target if sink_target is not None else c.sink_target,
         )
 

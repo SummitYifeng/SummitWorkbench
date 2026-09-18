@@ -245,14 +245,28 @@ def _task_key(candidate_id: str) -> str:
     return candidate_id.split("#", 1)[0]
 
 
-def _creator_call(creator: Callable[..., str], args: tuple[object, ...], operation_id: str) -> str:
+def _creator_call(
+    creator: Callable[..., str],
+    args: tuple[object, ...],
+    operation_id: str,
+    *,
+    start_at: str | None = None,
+) -> str:
     """给新版创建器传 operation_id，同时兼容旧的测试/集成回调签名。"""
     parameters = inspect.signature(creator).parameters
     accepts_keyword = "operation_id" in parameters or any(
         parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
     )
+    kwargs: dict[str, object] = {}
     if accepts_keyword:
-        return creator(*args, operation_id=operation_id)
+        kwargs["operation_id"] = operation_id
+    if start_at is not None and (
+        "start_at" in parameters
+        or any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+    ):
+        kwargs["start_at"] = start_at
+    if kwargs:
+        return creator(*args, **kwargs)
     return creator(*args)
 
 
@@ -265,11 +279,14 @@ def _external_kind(entry: ReviewEntry) -> ExternalActionKind:
 def _external_request(entry: ReviewEntry) -> dict[str, object]:
     item = entry.candidate
     if item.route is RouteTarget.FEISHU_TASK:
-        return {
+        request = {
             "description": item.description,
             "target_project": item.target_project,
             "due_date": item.due_date,
         }
+        if item.start_at is not None:
+            request["start_at"] = item.start_at
+        return request
     return {
         "description": item.description,
         "target_project": item.target_project,
@@ -354,7 +371,12 @@ def _run_external(
     with external_action_execution(vault_dir, action, executor_id=executor_id):
         sending = mark_sending(vault_dir, action, executor_id=executor_id)
         try:
-            remote_id = _creator_call(creator, args, sending.operation_id)
+            remote_id = _creator_call(
+                creator,
+                args,
+                sending.operation_id,
+                start_at=item.start_at if kind is ExternalActionKind.FEISHU_TASK else None,
+            )
         except FeishuError as exc:
             if getattr(exc, "result_unknown", False):
                 mark_unknown(vault_dir, sending, str(exc))

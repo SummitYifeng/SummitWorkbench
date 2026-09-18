@@ -84,12 +84,16 @@ function entryCard(
     e.route ? '落点：' + (ROUTE_LABELS[e.route] ?? e.route) : '落点：未定',
     e.due_date ? '截止：' + esc(e.due_date) + (expired ? '（已过期）' : '') : '',
     e.start_at
-      ? '会议时间：' + esc(e.start_at.replace('T', ' ')) + (e.end_at ? ' ~ ' + esc(e.end_at.replace('T', ' ')) : '')
+      ? (e.route === 'feishu-task' ? '任务开始：' : '会议时间：') + esc(e.start_at.replace('T', ' ')) +
+        (e.route === 'feishu-meeting' && e.end_at ? ' ~ ' + esc(e.end_at.replace('T', ' ')) : '')
       : '',
     e.evidence ? '依据：' + inlineMd(e.evidence) : '',
     e.historical ? '历史补导' : '',
   ].filter(Boolean).join(' · ');
   const warn = e.actionable ? '' : '<div class="not-actionable">⚠ 依据或目标项目缺失，暂不可批准写回</div>';
+  const timingWarning = e.route === 'feishu-task' && (!e.start_at || !e.due_date)
+    ? '<div class="not-actionable timing-warning">⚠ 将创建无时效的飞书任务：请填写任务开始时间和截止日期；仍可批准。</div>'
+    : '';
   const err = e.apply_error ? '<div class="not-actionable">应用出错：' + esc(e.apply_error) + '</div>' : '';
   const sources = [
     e.note_link ? sourceLink(e.note_link, '会议笔记') : '',
@@ -112,7 +116,7 @@ function entryCard(
     '<span class="kind">' + esc(kind) + '</span>' +
     '<span class="badge ' + e.decision + '">' + esc(decision) + '</span></div>' +
     '<p class="desc">' + inlineMd(e.description) + '</p>' +
-    warn + err +
+    warn + timingWarning + err +
     '<div class="meta">' + meta + '</div>' +
     '<div class="meta">来源：' + sources + '</div>' +
     '<div class="row">' +
@@ -129,9 +133,12 @@ function entryCard(
       '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="填项目 ID 或别名（如 finance-ops）；留空 = 全局 inbox" value="' + esc(e.target_project === 'unresolved' ? '' : e.target_project ?? '') + '"></div>' +
     '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
       '<div><label>沉淀目标</label><input name="sink_target" placeholder="仅「知识沉淀」用：填「页面路径#区块」" title="例如 hii/clusters/ip-trademark#关键结论（vault 相对路径 + 区块标题）" value="' + esc(e.sink_target ?? '') + '"></div>' +
-    '<div><label>截止日期</label><input name="due_date" placeholder="YYYY-MM-DD" value="' + esc(e.due_date ?? '') + '"></div>' +
-    '<div><label>开始时间（新建会议）</label><input name="start_at" type="datetime-local" value="' + esc(e.start_at ?? '') + '"></div>' +
-    '<div><label>结束时间（新建会议）</label><input name="end_at" type="datetime-local" value="' + esc(e.end_at ?? '') + '"></div>' +
+    '<div><label>截止日期</label><input name="due_date" type="date" value="' + esc(e.due_date ?? '') + '"></div>' +
+    '<div><label data-review-field-label="start">' + (e.route === 'feishu-task' ? '任务开始时间' : e.route === 'feishu-meeting' ? '会议开始时间' : '开始时间（新建会议）') +
+      '</label><input name="start_at" type="' + (e.route === 'feishu-task' ? 'date' : 'datetime-local') +
+      '" data-review-field="start" value="' + esc(e.route === 'feishu-task' ? (e.start_at?.split('T', 1)[0] ?? '') : (e.start_at ?? '')) + '"></div>' +
+    '<div><label data-review-field-label="end">' + (e.route === 'feishu-meeting' ? '会议结束时间' : '结束时间（新建会议）') +
+      '</label><input name="end_at" type="datetime-local" data-review-field="end" value="' + esc(e.end_at ?? '') + '"></div>' +
     '</div>' +
     '<div class="row">' +
     (e.decision === 'pending'

@@ -3,6 +3,24 @@ import { getReviewDeps, type ReviewAssembleInput } from './deps';
 import { reviewUi } from './state';
 import { reviewHtml } from './render';
 
+function syncTimingFields(form: HTMLFormElement, route: string): void {
+  const start = form.querySelector<HTMLInputElement>('[data-review-field="start"]');
+  const startLabel = form.querySelector<HTMLElement>('[data-review-field-label="start"]');
+  const endLabel = form.querySelector<HTMLElement>('[data-review-field-label="end"]');
+  if (!start || !startLabel || !endLabel) return;
+  if (route === 'feishu-task') {
+    start.type = 'date';
+    start.value = start.value.split('T', 1)[0];
+    startLabel.textContent = '任务开始时间';
+    endLabel.textContent = '结束时间（新建会议）';
+    return;
+  }
+  start.type = 'datetime-local';
+  if (start.value && !start.value.includes('T')) start.value += 'T00:00';
+  startLabel.textContent = route === 'feishu-meeting' ? '会议开始时间' : '开始时间（新建会议）';
+  endLabel.textContent = route === 'feishu-meeting' ? '会议结束时间' : '结束时间（新建会议）';
+}
+
 /** 审批页装配（原 legacy-main 的 renderReview，逐条搬迁）。 */
 
 export function renderReview(view: HTMLElement, input: ReviewAssembleInput): void {
@@ -38,6 +56,9 @@ export function renderReview(view: HTMLElement, input: ReviewAssembleInput): voi
   });
   view.oninput = () => getReviewDeps()?.saveDraftSnapshot();
   view.onchange = () => getReviewDeps()?.saveDraftSnapshot();
+  view.querySelectorAll<HTMLSelectElement>('.edit-form select[name="route"]').forEach((select) => {
+    select.addEventListener('change', () => syncTimingFields(select.form as HTMLFormElement, select.value));
+  });
   const filter = view.querySelector<HTMLSelectElement>('#review-status-filter');
   filter?.addEventListener('change', () => {
     const next = filter.value;

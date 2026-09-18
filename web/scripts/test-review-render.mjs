@@ -119,6 +119,12 @@ export const cases = {
     }] }],
     errors: [],
   }, 1, '2026-09-01', [], []),
+  feishuTaskMissingTiming: reviewHtml({
+    groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [
+      { ...baseEntry, route: 'feishu-task', due_date: null, start_at: null },
+    ] }],
+    errors: [],
+  }, 1, '2026-09-01', [], []),
 };
 `;
 
@@ -171,6 +177,10 @@ try {
   assert.match(mod.cases.markdown, /<p class="desc"><strong>采用 双栏排版<\/strong><\/p>/);
   assert.match(mod.cases.markdown, /依据：<strong>依据<\/strong>/);
   assert.match(mod.cases.markdown, /<span class="meeting-title"><strong>排版会<\/strong><\/span>/);
+  assert.match(mod.cases.feishuTaskMissingTiming, /将创建无时效的飞书任务/);
+  assert.match(mod.cases.feishuTaskMissingTiming, /name="due_date" type="date"/);
+  assert.match(mod.cases.feishuTaskMissingTiming, /name="start_at" type="date"/);
+  assert.match(mod.cases.feishuTaskMissingTiming, /data-review-field-label="start">任务开始时间/);
   // 「一键拒绝过期项」必须先显示自身范围，且没有过期项时不可点。
   assert.match(mod.cases.pending, /一键拒绝过期项（1）/);
   assert.match(mod.cases.empty, /data-action="reject-expired"[^>]*disabled[^>]*>一键拒绝过期项（0）</);

@@ -92,6 +92,7 @@ def test_create_task_uses_official_v2_shape_and_stable_token():
         "2026-09-04",
         "m:n#action-item-0",
         timezone="Asia/Shanghai",
+        start_date="2026-09-01",
     )
     assert first.guid == "task-guid"
     assert seen["path"] == "/open-apis/task/v2/tasks"
@@ -100,6 +101,10 @@ def test_create_task_uses_official_v2_shape_and_stable_token():
     assert body["summary"] == "提交样章"
     assert body["due"]["is_all_day"] is True
     assert isinstance(body["due"]["timestamp"], int)
+    assert body["start"]["is_all_day"] is True
+    assert isinstance(body["start"]["timestamp"], int)
+    assert body["start"]["timestamp"] == 1788192000000
+    assert body["due"]["timestamp"] == 1788451200000
     assert body["client_token"].startswith("swb-")
 
 

@@ -84,6 +84,7 @@ def apply_review(
         candidate_id: str,
         *,
         operation_id: str | None = None,
+        start_at: str | None = None,
     ) -> str:
         return create_task(
             task_client(),
@@ -91,6 +92,7 @@ def apply_review(
             due_date,
             candidate_id,
             timezone=settings.timezone,
+            start_date=start_at,
             operation_id=operation_id,
             assignee_open_id=current_open_id(),
         ).guid

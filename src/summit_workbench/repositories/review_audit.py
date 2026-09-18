@@ -30,6 +30,7 @@ class ExecutionRecord:
     result: str
     external_id: str | None = None
     operation_id: str | None = None
+    start_at: str | None = None
 
 
 class ExecutionRecordRow(BaseModel):
@@ -53,6 +54,7 @@ class ExecutionRecordRow(BaseModel):
     result: str
     external_id: str | None = None
     operation_id: str | None = None
+    start_at: str | None = None
 
 
 def _ledger(vault_dir: Path) -> Path:
@@ -97,6 +99,7 @@ def make_execution_record(
         result=result,
         external_id=external_id,
         operation_id=operation_id,
+        start_at=item.start_at,
     )
 
 
@@ -131,6 +134,7 @@ def archive_executions(
                     f"- target_project：{record.target_project or ''}",
                     f"- route：{record.route or ''}",
                     f"- due_date：{record.due_date or ''}",
+                    f"- start_at：{record.start_at or ''}",
                     f"- 目标：{record.destination}",
                     f"- 结果：{record.result}",
                     f"- external_id：{record.external_id or ''}",
