@@ -134,20 +134,28 @@ def tracked_signals(vault: Path) -> list[str]:
 def push_vault(vault: Path) -> tuple[bool, str]:
     """推送闸门自己的清理提交。
 
-    本机网络是**波动**的：`github.com` 时而直连可用、时而只通 macOS 系统代理（实测同一晚两种都出现过）。
-    所以这里**直连优先、失败回退代理**；两者都失败只算 WARN（vault 本地仍自洽，不是闸门失败）。
+    本机网络是**波动**的：`github.com` 时而直连可用、时而只通 macOS 系统代理
+    （实测同一晚两种都出现过）。所以这里**直连优先、失败回退代理**；
+    两者都失败只算 WARN（vault 本地仍自洽，不是闸门失败）。
+    用显式 refspec `origin HEAD`：不依赖 branch.<name>.merge 的上游配置是否干净。
     """
     direct = subprocess.run(
-        ["git", "-C", str(vault), "push"], capture_output=True, text=True
+        ["git", "-C", str(vault), "push", "origin", "HEAD"], capture_output=True, text=True
     )
     if direct.returncode == 0:
         return True, "直连推送成功"
     proxy = subprocess.run(
         [
-            "git", "-C", str(vault),
-            "-c", "http.proxy=http://127.0.0.1:7890",
-            "-c", "https.proxy=http://127.0.0.1:7890",
+            "git",
+            "-C",
+            str(vault),
+            "-c",
+            "http.proxy=http://127.0.0.1:7890",
+            "-c",
+            "https.proxy=http://127.0.0.1:7890",
             "push",
+            "origin",
+            "HEAD",
         ],
         capture_output=True,
         text=True,
