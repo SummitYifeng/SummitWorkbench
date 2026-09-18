@@ -826,7 +826,12 @@ async function refreshAll(): Promise<{ state: boolean; review: boolean }> {
 
 export function mountLegacyWorkbench(): void {
   mountShell({
-    onSelectTab: (next) => { tab = next; render(); },
+    onSelectTab: (next) => {
+      const changed = tab !== next;
+      tab = next;
+      render();
+      if (changed && next === 'review') void refreshReview();
+    },
     onSync: () => { void retrySync(); },
     onRefresh: () => {
       void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
