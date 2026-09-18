@@ -20,7 +20,7 @@ from summit_workbench.config.secrets import (
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.providers.llm.errors import LLMConfigError
 
-CAPABILITIES = ("meeting", "review", "ranking", "capture")
+CAPABILITIES = ("meeting", "review", "ranking", "capture", "digest")
 
 # api key 的 Keychain service 前缀（account 用能力名或 shared）。
 API_KEY_SERVICE = "summit-workbench-model-api-key"

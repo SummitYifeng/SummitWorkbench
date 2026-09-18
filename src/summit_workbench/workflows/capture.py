@@ -29,7 +29,8 @@ from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.errors import LLMError
 from summit_workbench.repositories.project_registry import ProjectRegistry
 
-# 交互场景的模型超时上限：分类是加分项，不能让用户等太久。
+# 交互场景的默认模型超时。**不再是硬上限**：只在配置未给 timeout_seconds 时兜底，
+# 显式配置优先（与 threadnotes._fast 同口径，避免"配置写了却不生效"）。
 _CAPTURE_TIMEOUT = 8.0
 
 _TAG_RE = re.compile(r"#([^\s#，,。]+)")
@@ -80,7 +81,11 @@ def classify_capture(
     ``today`` 应为**工作区时区**下的当天日期（``YYYY-MM-DD``）；省略时用本机日期。
     调用方必须传它，否则相对日期（「明天」「下周三」）无法正确解析。
     """
-    fast_cfg = replace(cfg, timeout_seconds=min(cfg.timeout_seconds, _CAPTURE_TIMEOUT))
+    fast_cfg = (
+        cfg
+        if cfg.timeout_seconds and cfg.timeout_seconds > 0
+        else replace(cfg, timeout_seconds=_CAPTURE_TIMEOUT)
+    )
     model = ModelClient(fast_cfg, api_key, client=client, sleep=sleep)
     system = _system_with_today(prompt.body, today or date.today().isoformat())
     try:

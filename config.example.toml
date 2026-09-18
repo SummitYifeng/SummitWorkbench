@@ -49,38 +49,55 @@ redirect_uri = "http://localhost:8765/callback"
 #   wb feishu smoke                 # 刷新 token 并调 user_info，验证链路
 
 # ── 云端模型（M0-6）──────────────────────────────────────────────────────────
-# 四类能力 meeting/review/ranking/capture 分别配置；未单独配置的能力回退 shared。
-# capture 用于快速捕捉的「承诺/想法」分类（Web 工作台），可指向更便宜的模型。
+# 五类能力：meeting（逐字稿结构化）/ ranking（简报排序）/ capture（一句话分类）/
+# digest（线程日志摘要与产物索引）/ review（预留，当前无模型调用）。
+# 未单独配置的能力回退 [models.shared]；**建议逐能力写全**，否则某天某个任务出问题
+# 时，从配置上分辨不出它到底用了哪套参数。
 # 只放非敏感项；api key 进 Keychain（见下）。base_url 填 API 根，代码会拼 /chat/completions。
-[models.shared]
-model_id = "deepseek-chat"              # 快速能力的模型 ID
+#
+# 两条 DeepSeek-V4 系列的关键口径（2026-09-18 真机踩过）：
+#   1) 思考模式**默认打开**且 reasoning_effort=high，推理 token 与最终答案**共用**
+#      max_output_tokens —— 预算太小会出现"输出为空、却报 schema 不符合"。
+#   2) 1M 上下文只代表**输入**容量，输出上限另算（该模型文档写 384K）。
+# 因此抽取/摘要/分类类任务一律 thinking="disabled"（更快、更省、JSON 更稳）。
+[models.shared]                          # 兜底
+model_id = "deepseek-flash"
 base_url = "https://api.deepseek.com/v1"
-credential_account = "shared"           # 对应 Keychain 里 api key 的 account
+credential_account = "shared"
 timeout_seconds = 60
-# 输出额度：思考模型的 reasoning_tokens 与最终答案**共用**这份预算。
-# 4096 在长逐字稿上会被推理吃光、content 为空（表现为"不符合 schema"），故默认 16384。
+thinking = "disabled"
 max_output_tokens = 16384
-# 思考模式：default（供应商默认，DeepSeek 为打开且 effort=high）| disabled | low | high | max
-# 会议结构化等抽取任务实测 disabled 更快更省且质量不降。
-thinking = "default"
-context_window_tokens = 65536         # 快速能力的上下文窗口
-context_safety_ratio = 0.85           # 输入+预留输出达到窗口 85% 时启用分段
+context_window_tokens = 65536         # 输入侧安全窗口（达到 85% 时启用分段）
+context_safety_ratio = 0.85
 
 [models.shared.pricing]                 # 单价用于费用估算（每百万 token），按你的实际计费填
 currency = "CNY"
 input_per_mtok = 0.0
 output_per_mtok = 0.0
 
-# 会议专用预算：长逐字稿使用官方 deepseek-flash 能力与更高上限；不会改变快速能力。
-[models.meeting]
+[models.meeting]                        # 长输入 + 严格 JSON：超时给足
 model_id = "deepseek-flash"
+base_url = "https://api.deepseek.com/v1"
+credential_account = "shared"
+thinking = "disabled"
+max_output_tokens = 16384
+context_window_tokens = 65536
 timeout_seconds = 300
-max_output_tokens = 8192
-context_window_tokens = 1000000
 
-# 需要某能力用不同模型时，加对应表覆盖 shared，例如：
-# [models.ranking]
-# model_id = "some-cheaper-model"
+[models.ranking]                        # 简报/复盘排序：短输入
+thinking = "disabled"
+max_output_tokens = 8192
+timeout_seconds = 120
+
+[models.capture]                        # 一句话分类：极小输入输出
+thinking = "disabled"
+max_output_tokens = 4096
+timeout_seconds = 20
+
+[models.digest]                         # 线程日志摘要 / 产物索引：长文档，会自行分段
+thinking = "disabled"
+max_output_tokens = 8192
+timeout_seconds = 120
 
 # api key 存 Keychain（account 要与上面 credential_account 一致）：
 #   security add-generic-password -a "shared" \

@@ -261,3 +261,85 @@ def test_work_log_without_summary_is_generated_and_fact_eligible(tmp_path: Path)
     assert is_fact_retrieval_eligible(note.meta) is True
     assert is_derived_low_authority(note.meta) is True  # 但不能单独支撑高置信事实
     assert validate_retrieval_readiness(note.meta, note.body) == []
+
+
+def test_digest_splits_long_log_instead_of_failing_whole(monkeypatch: pytest.MonkeyPatch) -> None:
+    """超长日志必须分段消化并合并，而不是整篇一次调用后回退空摘要。
+
+    2026-09-18 同源问题：digest 过去是「整篇一次调用 + 失败静默回退空摘要」，
+    且被硬编码 10 秒超时压住 —— 长文档既超时又看不出原因。
+    """
+    import json as _json
+
+    import httpx
+    from pydantic import SecretStr
+
+    from summit_workbench.prompts import Prompt
+    from summit_workbench.providers.llm.config import ModelConfig
+    from summit_workbench.workflows.threadnotes import digest_log
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _json.loads(request.content)
+        user = payload["messages"][1]["content"]
+        seen.append(user)
+        index = len(seen)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": _json.dumps(
+                                {
+                                    "summary": f"第 {index} 段推进",
+                                    "involved": [f"人{index}"],
+                                    "tags": ["进展"],
+                                    "next_step": None,
+                                    "decision": None,
+                                },
+                                ensure_ascii=False,
+                            )
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+            },
+        )
+
+    cfg = ModelConfig(
+        "digest",
+        "m",
+        "https://example.test",
+        "shared",
+        max_output_tokens=200,
+        context_window_tokens=400,
+        timeout_seconds=120,
+    )
+    long_text = "\n\n".join(f"段落{i} " + "推进内容" * 20 for i in range(1, 12))
+    digest = digest_log(
+        cfg,
+        SecretStr("secret"),
+        Prompt("log-digest", 1, "capture", "json"),
+        long_text,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+    )
+
+    assert len(seen) > 1, "超长日志必须被拆成多次调用"
+    assert digest.summary.startswith("第 1 段推进"), digest.summary
+    assert "第 2 段推进" in digest.summary, "多段摘要必须合并进同一份结果"
+    assert digest.involved == ["人1", "人2"] or len(digest.involved) > 1
+
+
+def test_digest_timeout_follows_config_not_hardcoded_cap() -> None:
+    """配置里的 timeout_seconds 必须生效；旧实现把它 min() 到 10 秒。"""
+    from summit_workbench.providers.llm.config import ModelConfig
+    from summit_workbench.workflows.threadnotes import _fast
+
+    cfg = ModelConfig("digest", "m", "https://example.test", "shared", timeout_seconds=120)
+    assert _fast(cfg).timeout_seconds == 120
+
+    no_timeout = ModelConfig("digest", "m", "https://example.test", "shared", timeout_seconds=0)
+    assert _fast(no_timeout).timeout_seconds == 10.0

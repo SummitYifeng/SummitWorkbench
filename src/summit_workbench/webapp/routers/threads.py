@@ -130,7 +130,9 @@ def register_thread_document_routes(
             from summit_workbench.providers.llm import LLMError
             from summit_workbench.workflows.threadnotes import digest_log
 
-            cfg = _load_model_config_for_context(ctx, "capture")
+            # 线程日志/产物是**长文档**摘要，与「记点什么」的短分类不是一类负载：
+            # 用独立的 digest 能力，避免两条链路共用同一套超时/输出预算（2026-09-18）。
+            cfg = _load_model_config_for_context(ctx, "digest")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("log-digest")
             digest = digest_log(cfg, api_key, prompt, text, project_hints=resolved)
@@ -204,7 +206,7 @@ def register_thread_document_routes(
             from summit_workbench.providers.llm import LLMError
             from summit_workbench.workflows.threadnotes import index_artifact
 
-            cfg = _load_model_config_for_context(ctx, "capture")
+            cfg = _load_model_config_for_context(ctx, "digest")
             api_key = resolve_credential(cfg.api_key_ref)
             prompt = load_prompt("artifact-index")
             index = index_artifact(cfg, api_key, prompt, text, title_hint=title_hint)
