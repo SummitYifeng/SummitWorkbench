@@ -52,12 +52,12 @@
 
 ## ⚠️ 交付产物基线（2026-09-18）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091813`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `2e898b0` 构建（含 system/dulwich ignore 语义对齐与 mutation 守卫加固）；前端身份 `v2026.09.18-296e6770`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091814`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `092e6f6` 构建（含飞书任务时效、同步远端诊断、审批页签刷新）；前端身份 `v2026.09.18-6550855f`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
   `WB_DOCK_ICON=0` 可退回菜单栏模式。
 - `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`（App + DMG + `SHA256SUMS` + `release-metadata.json`）；App SHA-256 为
-  `96ea66334ded0844244da7cac32cd859f4f3d9ffbc79eaad3131ef0021fe40a5`，DMG SHA-256 为
-  `caf35bb66a8b45d33709b13009ac10292266c960503b61bdae5575ca3ba54fc1`。
+  `da4c554f015995f97b8876045be38a7bbcd63718e7e7e0e8cced547a9f189ecd`，DMG SHA-256 为
+  `696884d4191d5faec1f19642294325e3c62041af0717d93b2d7c39afcf37c8f8`。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
