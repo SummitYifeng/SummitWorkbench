@@ -68,3 +68,34 @@ def test_archive_note_is_idempotent_and_does_not_overwrite(tmp_path):
     second = archive_meeting_note(tmp_path, _input())
     assert second.written is False
     assert "人工修改" in second.path.read_text(encoding="utf-8")
+
+
+def test_rendered_note_omits_ai_suggestions_block():
+    """2026-09-18 起会议笔记不再生成 `## AI 建议`（使用者要求只留会议事实）。
+
+    注意区分两件事：
+    - **不再生成**：渲染器不输出该区块；
+    - **仍兼容**：区块标题保留在 `optional_blocks` 里，历史笔记不会被判非法。
+    """
+    inp = _input()
+    text = render_meeting_note(inp)
+    assert "## AI 建议" not in text, "渲染器不应再输出 AI 建议区块"
+    assert "## 关联项目" in text and "## 证据索引" in text
+    # 八区块版本仍必须通过 schema
+    meta, body, error = parse_frontmatter(text)
+    assert error is None
+    assert validate_note(meta, body) == []
+
+
+def test_historical_note_with_ai_suggestions_still_valid():
+    """兼容面：历史笔记里的 `## AI 建议` 必须仍然合法（区块标题只增不减）。"""
+    inp = _input()
+    text = render_meeting_note(inp)
+    legacy = text.replace(
+        "## 关联项目",
+        "## AI 建议\n\n- 历史条目\n\n## 关联项目",
+        1,
+    )
+    meta, body, error = parse_frontmatter(legacy)
+    assert error is None
+    assert validate_note(meta, body) == []

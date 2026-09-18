@@ -119,10 +119,6 @@ def render_meeting_note(inp: MeetingNoteInput) -> str:
 
 {_bullets(questions)}
 
-## AI 建议
-
-{_bullets(inp.extraction.ai_suggestions)}
-
 ## 关联项目
 
 {_bullets(projects)}

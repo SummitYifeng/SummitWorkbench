@@ -75,8 +75,10 @@ class MeetingExtraction(BaseModel):
     decisions: list[Decision] = Field(default_factory=list, description="已形成决策")
     action_items: list[ActionItem] = Field(default_factory=list, description="明确行动项")
     open_questions: list[SourcedStatement] = Field(default_factory=list, description="未决问题")
+    # 2026-09-18 起**不再生成、不再渲染**（使用者要求会议笔记只留会议事实）。
+    # 字段保留以兼容历史笔记与旧快照的反序列化；prompt 不再要求输出它。
     ai_suggestions: list[str] = Field(
-        default_factory=list, max_length=8, description="AI 建议（模型推断，最多 8 条）"
+        default_factory=list, max_length=8, description="（已弃用）AI 建议，历史字段"
     )
 
     model_config = {"extra": "ignore"}

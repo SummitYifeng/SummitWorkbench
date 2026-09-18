@@ -62,6 +62,9 @@ class NoteTypeSpec:
 
     scope: str
     required_blocks: tuple[str, ...] = ()
+    # 曾经的必填区块，现降级为可选（如 `## AI 建议`，2026-09-18 起不再生成）。
+    # 保留声明是为了让"已存在的旧笔记"仍合法——区块标题只增不减是兼容面。
+    optional_blocks: tuple[str, ...] = ()
 
 
 NOTE_TYPES: dict[str, NoteTypeSpec] = {
@@ -85,10 +88,12 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
             "## 已形成决策",
             "## 明确行动项",
             "## 未决问题",
-            "## AI 建议",
             "## 关联项目",
             "## 证据索引",
         ),
+        # 2026-09-18：`## AI 建议` 不再是必填区块（使用者要求会议笔记不再生成 AI 推断）。
+        # 仍列为合法区块，避免已存在的旧笔记被判非法——区块标题是只增不减的兼容面。
+        optional_blocks=("## AI 建议",),
     ),
     "meeting-transcript": NoteTypeSpec(scope="multi"),
     "daily": NoteTypeSpec(scope="global"),
