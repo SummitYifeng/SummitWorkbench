@@ -34,13 +34,15 @@
   （`templates/vault/workstream.template.md` 存在，`tests/unit/test_vault_templates.py:22` 断言了它）。
   别把它与 frontmatter 的 `workstream:` **字段**混淆。
 - **同步 remote 接受 `https` 与 `ssh://` / SCP-like**；仍拒绝 `http://`、`file://`、URL 含明文密码。
-  本机 HTTPS 需经 macOS 系统代理（已在 `repositories/dulwich_git.py` 内置回退）；SSH 直连可用。
+  网络策略是直连优先，超时则回退系统代理；`_https_pool_manager()` 只在没有 env 代理时读取 macOS 系统代理，SSH 直连可用。
   **不要动 `_vault` 的 remote，不要 force push。**
   - SCP-like（`git@host:path`）**不含 `://`**，任何用「有没有 `://`」判断"是不是远端"的代码都会把它
     误当本地路径。`git_backend.is_missing_local_remote()` 是两后端共用的正确判据（2026-09-18 踩过：
     该 bug 让 SSH remote 的 push 在联网前就报 `remote-unavailable`）。
   - `3ed9780` 只放行了 SSH 的 **scheme 门禁**，**没有**覆盖 push 路径；新增远端形状支持时必须
     同时验证 fetch 与 push（能 fetch ≠ 能 push）。
+- **飞书任务时效**：审批页复用 `start_at` 作为任务开始日期；`feishu-task` 写回必须同时发送全天
+  `start` 与 `due`，开始/截止字段使用日期控件，缺失时只告警不阻断批准。
 
 - **模型侧：`max_output_tokens` 是「思考 + 答案」共用的预算**。DeepSeek-V4 系列**默认开启思考模式**
   且 `effort=high`；预算太小会被 `reasoning_tokens` 吃光 → `content` 为空 → 表面报"不符合 schema"
@@ -106,45 +108,9 @@
 
 ## 已知待办（下一批一起做）
 
-1. **同步失败被误报为「远端不可达」，且真因被静默吞掉**（2026-09-18 走查遗留，P1）。
-   实测：`/api/sync/status` 返回 `state=error`、`remote_check_status=failed`、
-   `detail="_vault：远端不可达或仓库不存在（remote-unavailable）"`；但同一时刻
-   - 经代理 `git fetch origin` **成功**（exit 0）；
-   - SWB 自己的 `dulwich_git._https_pool_manager(url)` 发请求拿到 **HTTP 401**（= 已连通，仅缺认证）；
-   - Keychain 里两把 `git:github.com:*` 凭据**都有效**（`GET /user` 均返回 200）。
-   ⇒ 远端**可达**、凭据**有效**，`remote-unavailable` 这个结论与事实不符。
-   两个叠因：
-   - `DulwichGitBackend.fetch()` 用 `with _silenced() as sink` 吞掉 dulwich 的 stderr，再经
-     `_classify_remote()` 折叠成 typed error ⇒ **真实异常在界面与日志里都不可见**；
-   - `transport_kwargs()` 要求 `self._username` 非空（`dulwich_git.py:576`），而 `GitRepo` 的
-     `username` 是可选参数（`repositories/git.py:67`），`workflows/sync.py:66` 甚至是
-     `GitRepo(path)`（既无 workspace_id 也无 username）。缺 username 会抛
-     `GitCredentialsUnavailable` ⇒ 被外层折叠成"远端不可达"。
-   **修法（第一步必做）**：fetch/push 不再静默——把 `sink` 内容（截断、脱敏）附进 typed error
-   的 detail/日志，或把底层异常类型写进 `error_code`。**第二步**：把 `username` 串到**所有**远端
-   操作路径（含 `workflows/sync.py` 的 `sync_repo`），或在 `transport_kwargs` 内从远端 URL /
-   profile 兜底解析用户名。
-   **验收**：制造一次真实远端失败时，`detail` 能区分「凭据 / TLS / 代理 / 网络」，而不是笼统的
-   "远端不可达"。
-2. **`.venv` CLI 与打包 App 的 git 后端不同**（提示，非缺陷）：打包 App 固定 dulwich
+1. **`.venv` CLI 与打包 App 的 git 后端不同**（提示，非缺陷）：打包 App 固定 dulwich
    （`git_backend.py:207`），CLI 默认 system。改 git 语义时必须**两个后端都验**
    （已有跨后端参数化测试，保持它）。
-3. **网络是波动的**：本机 `github.com` 时而直连可用、时而只通代理（实测同一晚两种状态都出现过）。
-   文档里不要写死"必须走代理"或"直连即可"；正确表述是**直连优先、超时则回退代理**。
-4. **审批页不会自动发现新导入的候选**（2026-09-18 使用者实测，P1）。
-   现象：导入一场会议后，App 的【审批】页**看不到**新候选（使用者原话"我现在看不到这 11 个审批项"），
-   但同一时刻 `/api/review` **有** 11 条、SSR `/review` 页也**渲染出了**该会议。
-   根因（`web/src/legacy-main.ts`）：`refreshAll()`（内部 `Promise.all([refreshState(), refreshReview()])`）
-   **只在窗口挂载时**由 `startApp()` 跑一次；`onSelectTab` 只做 `tab = next; render()`（**不重新拉取**）；
-   两个 60 秒定时器只调 `checkVersion('interval')` 与 `autoSyncIfIdle()`；
-   `visibilitychange` 也只 `checkVersion` + `autoSyncIfIdle` ⇒ **review 数据在窗口生命周期内只读一次**。
-   影响：长期开着的窗口永远看不到外部（CLI / 另一台 Mac / 后台导入）产生的新候选 ——
-   而"导入 → 审批 → 写回"是产品主流程之一。
-   **临时绕法**：在 App 窗口按 `⌘R` 重新载入，再进【审批】页签。
-   **修法（择一，推荐①）**：① 切到 `review` 页签时触发一次 `refreshReview()`；
-   ② 把 `refreshReview()` 纳入 60 秒可见页定时器与 `visibilitychange`；
-   ③ 审批页显示"最近读取时间 + 手动刷新"按钮（`retry-review` 已存在，但只在解析错误时可见）。
-   **验收**：导入一场会议后，**不重载窗口**、切到审批页即可看到候选。
 
 ## 提交纪律
 

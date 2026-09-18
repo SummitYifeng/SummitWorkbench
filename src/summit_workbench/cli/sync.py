@@ -41,11 +41,14 @@ def run(
 
     resolution = resolve_workspace(allow_env_fallback=True)
     profile = resolution.profile
-    results = sync_work_root(
-        root,
-        workspace_id=profile.workspace_id if profile is not None else None,
-        username=profile.git_username if profile is not None else None,
-    )
+    if profile is None:
+        results = sync_work_root(root)
+    else:
+        results = sync_work_root(
+            root,
+            workspace_id=profile.workspace_id,
+            username=profile.git_username,
+        )
     problems = 0
     for r in results:
         mark = "⚠️" if r.status.is_problem else "✓"
