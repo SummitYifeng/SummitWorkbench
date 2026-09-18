@@ -92,6 +92,34 @@
   `repositories/meeting_note.py` 的渲染器、`prompts/meeting-processor.md`、两份模板，
   以及 `tests/unit/test_meeting_note.py` 的两条守卫。
 
+## 已知待办（下一批一起做）
+
+1. **同步失败被误报为「远端不可达」，且真因被静默吞掉**（2026-09-18 走查遗留，P1）。
+   实测：`/api/sync/status` 返回 `state=error`、`remote_check_status=failed`、
+   `detail="_vault：远端不可达或仓库不存在（remote-unavailable）"`；但同一时刻
+   - 经代理 `git fetch origin` **成功**（exit 0）；
+   - SWB 自己的 `dulwich_git._https_pool_manager(url)` 发请求拿到 **HTTP 401**（= 已连通，仅缺认证）；
+   - Keychain 里两把 `git:github.com:*` 凭据**都有效**（`GET /user` 均返回 200）。
+   ⇒ 远端**可达**、凭据**有效**，`remote-unavailable` 这个结论与事实不符。
+   两个叠因：
+   - `DulwichGitBackend.fetch()` 用 `with _silenced() as sink` 吞掉 dulwich 的 stderr，再经
+     `_classify_remote()` 折叠成 typed error ⇒ **真实异常在界面与日志里都不可见**；
+   - `transport_kwargs()` 要求 `self._username` 非空（`dulwich_git.py:576`），而 `GitRepo` 的
+     `username` 是可选参数（`repositories/git.py:67`），`workflows/sync.py:66` 甚至是
+     `GitRepo(path)`（既无 workspace_id 也无 username）。缺 username 会抛
+     `GitCredentialsUnavailable` ⇒ 被外层折叠成"远端不可达"。
+   **修法（第一步必做）**：fetch/push 不再静默——把 `sink` 内容（截断、脱敏）附进 typed error
+   的 detail/日志，或把底层异常类型写进 `error_code`。**第二步**：把 `username` 串到**所有**远端
+   操作路径（含 `workflows/sync.py` 的 `sync_repo`），或在 `transport_kwargs` 内从远端 URL /
+   profile 兜底解析用户名。
+   **验收**：制造一次真实远端失败时，`detail` 能区分「凭据 / TLS / 代理 / 网络」，而不是笼统的
+   "远端不可达"。
+2. **`.venv` CLI 与打包 App 的 git 后端不同**（提示，非缺陷）：打包 App 固定 dulwich
+   （`git_backend.py:207`），CLI 默认 system。改 git 语义时必须**两个后端都验**
+   （已有跨后端参数化测试，保持它）。
+3. **网络是波动的**：本机 `github.com` 时而直连可用、时而只通代理（实测同一晚两种状态都出现过）。
+   文档里不要写死"必须走代理"或"直连即可"；正确表述是**直连优先、超时则回退代理**。
+
 ## 提交纪律
 
 - 用 `type: 中文描述`（如 `fix: 同步门禁支持 SSH remote`）。**不要 push 本仓库**除非任务明确要求。
