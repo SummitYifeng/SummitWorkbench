@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
 from summit_workbench.prompts import Prompt
@@ -153,3 +154,59 @@ def test_length_finish_reason_splits_the_input_instead_of_repeating_it():
     assert len(extract_inputs) > 1
     assert extract_inputs[1] != extract_inputs[0]
     assert max(len(item) for item in extract_inputs[1:]) < len(extract_inputs[0])
+
+
+def test_output_at_token_ceiling_without_finish_reason_is_treated_as_truncated():
+    """复现 2026-09-18 真机：思考把输出预算吃光、API 又不返回 finish_reason。
+
+    当时的表现是"不符合会议 schema"＋用同样输入重试 8 次——因为判定只看
+    ``finish_reason == "length"``，而该字段实测为空。修好后必须：① 判定为截断；
+    ② 缩小输入重试，而不是原样重复；③ 错误信息说清"推理吃光预算、content 为空"。
+    """
+    from summit_workbench.workflows.meetings.processor import ProcessingFailure
+
+    inputs: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        inputs.append(payload["messages"][1]["content"])
+        # 没有 finish_reason；输出恰好顶到上限；content 为空（全是推理）。
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": ""}, "finish_reason": None}],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 30,
+                    "completion_tokens_details": {"reasoning_tokens": 30},
+                },
+            },
+        )
+
+    cfg = ModelConfig(
+        "meeting",
+        "m",
+        "https://example.test",
+        "shared",
+        max_output_tokens=30,
+        context_window_tokens=500,
+    )
+    with pytest.raises(ProcessingFailure) as excinfo:
+        process_transcript(
+            cfg,
+            SecretStr("secret"),
+            "\n\n".join(f"张三 00:0{i} " + "进展" * 12 for i in range(1, 4)),
+            prompt=PROCESSOR,
+            merger_prompt=MERGER,
+            task_key="ceiling",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            sleep=lambda _: None,
+        )
+
+    message = str(excinfo.value)
+    assert "max_output_tokens=30" in message
+    assert "reasoning_tokens=30" in message
+    assert "content 为空" in message
+    # 同一个输入只发过一次：判定为截断后改为缩小输入，而不是原样重试。
+    assert len(inputs) == len(set(inputs))
+    assert all("不符合会议 schema" not in str(item) for item in [message])
