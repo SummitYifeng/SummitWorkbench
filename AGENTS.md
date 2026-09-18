@@ -2,7 +2,7 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线截至 **`30cb1ed`**（2026-09-18）。若 HEAD 已更新，先确认下面的行号与数字是否漂移。
+> 基线截至 **`8c24b7e`**（2026-09-18）。若 HEAD 已更新，先确认下面的行号与数字是否漂移。
 
 ## 所有权边界（硬约束）
 
@@ -48,11 +48,15 @@
 
 ## ⚠️ 交付产物基线（2026-09-18）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091809`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `30cb1ed` 构建；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091810`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `8dbb624` 构建；前端身份 `v2026.09.18-adfd748a`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
   `WB_DOCK_ICON=0` 可退回菜单栏模式。
-- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091809/` + `SummitWorkbench.app`）。
+- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091810/` + `SummitWorkbench.app`）。
   历史 `dist/releases/*` 曾按使用者要求整体清理（17 套 / 1.9G），需要旧产物请从对应提交重建。
+
+- **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
+  三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
+  页面下方的「高级与维护」折叠区里。机器守卫在 `web/scripts/test-browser-contract.mjs`。
 
 ## 付费与不可逆动作
 
@@ -60,7 +64,7 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（截至 `30cb1ed`）
+## 验证命令与基线（截至 `8c24b7e`）
 
 ```bash
 ./.venv/bin/python -m pytest -q                 # 期望 1248 passed, 1 skipped

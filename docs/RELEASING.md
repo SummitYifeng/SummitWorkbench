@@ -1,12 +1,12 @@
 # SummitWorkbench macOS 发布
 
-## 当前 main 本机交付状态（2026-09-18）
+## 当前 main 本机交付状态（2026-09-18，latest）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-`main` 本轮提交为 `30cb1ed`。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091809`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
-`v2026.09.18-10277608`，由 `30cb1ed` 构建；`tests/integration/test_packaged_app.py`
+`main` 本轮提交为 `8c24b7e`。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091810`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
+`v2026.09.18-adfd748a`，由 `8dbb624` 构建；`tests/integration/test_packaged_app.py`
 已使用该安装包通过（1 passed）。以下历史发布记录保留原结论；正式 DMG 的发布身份
 仍以对应 `release-metadata.json` 为准。
 
@@ -14,10 +14,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091809` |
-| 本次产物 | `dist/releases-local-0.4.9-b2026091809/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091810` |
+| 本次产物 | `dist/releases-local-0.4.9-b2026091810/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
 | 快捷入口 | `dist/SummitWorkbench.app`（与装机包同一份，逐字节一致） |
 | 本机测试基线 | `pytest -q` → **1248 passed, 1 skipped**；`--cov` → **84.07%**（门槛 80%） |
+
+本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
 
 > 历史 `dist/releases/*`（17 套，约 1.9G）已按使用者要求整体清理；需要旧产物请从
 > 对应 `git_commit` 重新执行 `BUILD_NUMBER=<n> ARCH=arm64 scripts/release-macos.sh` 重建。
@@ -63,7 +65,7 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases-local-0.4.9-b2026091809/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091809）
+`dist/releases-local-0.4.9-b2026091810/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091810）
 
 认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
 与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。

@@ -1,9 +1,9 @@
 # 桌面 App（macOS）
 
-## 当前 main 交付状态（2026-09-18）
+## 当前 main 交付状态（2026-09-18，build 2026091810）
 
-当前源码已合并到 `main` 提交 `30cb1ed`。本机已安装 `0.4.9 / build 2026091809`，
-由提交 `30cb1ed` 构建，前端身份为 `v2026.09.18-10277608`；已通过隔离打包 smoke test
+当前源码已合并到 `main` 提交 `8c24b7e`。本机已安装 `0.4.9 / build 2026091810`，
+由提交 `8dbb624` 构建，前端身份为 `v2026.09.18-adfd748a`；已通过隔离打包 smoke test
 与 `tests/integration/test_packaged_app.py`。安装后的版本、build 和前端身份以 App 内
 `/api/version` 与 `Contents/Resources/web/static/build-meta.json` 为准。
 
@@ -19,6 +19,13 @@ Dock 里看不到图标）。仍保留菜单栏模式的入口：环境变量 `W
 `.accessory`。窗口关闭只隐藏窗口，不停止服务；网页顶栏「退出」通过 native bridge
 请求监督器停止自己管理的服务。重复打开 App 会复用同一个窗口：服务和 build 一致时
 只把窗口带到前台，不重建 WebView。
+
+## 设置页布局（2026-09-18 使用者偏好）
+
+主区只放三张卡、每张独占一行：**工作区 / AI 模型 / 飞书**（`.settings-grid-single`）。
+「自动化与更新」与「模型参数（只读）」在页面下方的「高级与维护」折叠区里，与
+工作台切换 / Git 同步 / 主设备 / 健康检查 / 诊断同级。机器守卫见
+`web/scripts/test-browser-contract.mjs`（改布局会红）。
 
 ## 构建
 
