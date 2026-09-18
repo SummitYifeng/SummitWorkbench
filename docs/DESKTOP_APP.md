@@ -1,9 +1,9 @@
 # 桌面 App（macOS）
 
-## 当前 main 交付状态（2026-09-18，build 2026091810）
+## 当前 main 交付状态（2026-09-18，build 2026091811）
 
-当前源码已合并到 `main` 提交 `8c24b7e`。本机已安装 `0.4.9 / build 2026091810`，
-由提交 `8dbb624` 构建，前端身份为 `v2026.09.18-adfd748a`；已通过隔离打包 smoke test
+当前源码已合并到 `main` 提交 `3b11122`。本机已安装 `0.4.9 / build 2026091811`，
+由提交 `3b11122` 构建，前端身份为 `v2026.09.18-adfd748a`（本次无前端改动）；已通过隔离打包 smoke test
 与 `tests/integration/test_packaged_app.py`。安装后的版本、build 和前端身份以 App 内
 `/api/version` 与 `Contents/Resources/web/static/build-meta.json` 为准。
 

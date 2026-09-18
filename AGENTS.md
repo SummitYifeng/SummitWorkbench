@@ -50,10 +50,10 @@
 
 ## ⚠️ 交付产物基线（2026-09-18）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091810`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `8dbb624` 构建；前端身份 `v2026.09.18-adfd748a`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091811`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `3b11122` 构建（契约改动：会议笔记不再生成 `## AI 建议`）；前端身份 `v2026.09.18-adfd748a`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
   `WB_DOCK_ICON=0` 可退回菜单栏模式。
-- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091810/` + `SummitWorkbench.app`）。
+- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091811/` + `SummitWorkbench.app`）。
   历史 `dist/releases/*` 曾按使用者要求整体清理（17 套 / 1.9G），需要旧产物请从对应提交重建。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
