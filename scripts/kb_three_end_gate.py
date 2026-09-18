@@ -131,6 +131,32 @@ def tracked_signals(vault: Path) -> list[str]:
     return [ln for ln in git(vault, "ls-files", "_signals/").splitlines() if ln.strip()]
 
 
+def push_vault(vault: Path) -> tuple[bool, str]:
+    """推送闸门自己的清理提交。
+
+    本机网络是**波动**的：`github.com` 时而直连可用、时而只通 macOS 系统代理（实测同一晚两种都出现过）。
+    所以这里**直连优先、失败回退代理**；两者都失败只算 WARN（vault 本地仍自洽，不是闸门失败）。
+    """
+    direct = subprocess.run(
+        ["git", "-C", str(vault), "push"], capture_output=True, text=True
+    )
+    if direct.returncode == 0:
+        return True, "直连推送成功"
+    proxy = subprocess.run(
+        [
+            "git", "-C", str(vault),
+            "-c", "http.proxy=http://127.0.0.1:7890",
+            "-c", "https.proxy=http://127.0.0.1:7890",
+            "push",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if proxy.returncode == 0:
+        return True, "经系统代理推送成功"
+    return False, (direct.stderr or proxy.stderr or "未知错误").strip()[:200]
+
+
 def active_db(vector_work: Path) -> Path:
     manifest = vector_work / "active_index.json"
     if manifest.is_file():
@@ -333,6 +359,11 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool) -> Non
     )
     dirty = worktree_dirty(vault)
     rep.check(not dirty, "收尾后工作树干净", "" if not dirty else str(dirty[:5]))
+    pushed, push_detail = push_vault(vault)
+    if pushed:
+        rep.ok("清理提交已推送", push_detail)
+    else:
+        rep.warn("清理提交未推送（网络问题；vault 本地仍自洽）", push_detail)
     pending = sum(
         1 for ln in inbox.read_text(encoding="utf-8").splitlines() if ln.startswith("- [ ] ")
     )
