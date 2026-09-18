@@ -190,6 +190,34 @@ def test_current_snapshot_rechecks_stale_dirty_protection(tmp_path) -> None:
     assert snapshot.state is not SyncState.DIRTY_PROTECTED
 
 
+def test_current_snapshot_preserves_remote_scheme_conclusion(tmp_path) -> None:
+    """scheme 结论不能被读取路径洗成 local-ahead（2026-09-18 真机横幅缺陷）。
+
+    读取路径不联网、也不重新校验 remote，若在这里丢掉 ``remote-scheme-unsupported``，
+    界面就会把「远端地址不支持」显示成「本机有提交待推送」，点同步再原样失败一次。
+    """
+    from summit_workbench.domain.sync import SyncSnapshot
+
+    _remote, (a_root, _a), _ = _two_device_fixture(tmp_path)
+    manifest = load_workspace_manifest(a_root)
+    assert manifest is not None
+    home = tmp_path / "home"
+    save_sync_state(
+        SyncSnapshot(
+            workspace_id=manifest.workspace_id,
+            state=SyncState.REMOTE_SCHEME_UNSUPPORTED,
+            pending_commits=2,
+            detail="_vault：远端地址不是受支持的 HTTPS（remote-scheme-unsupported）",
+        ),
+        home=home,
+    )
+
+    snapshot = current_snapshot(a_root, home=home)
+
+    assert snapshot.state is SyncState.REMOTE_SCHEME_UNSUPPORTED
+    assert snapshot.pending_commits == 2
+
+
 def test_mutation_guard_and_role_gate() -> None:
     from summit_workbench.domain.sync import SyncSnapshot
 

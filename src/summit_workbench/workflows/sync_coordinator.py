@@ -567,10 +567,14 @@ def current_snapshot(
     if saved is not None and saved.state in {
         SyncState.DIVERGED_PROTECTED,
         SyncState.AUTH_REQUIRED,
+        SyncState.REMOTE_SCHEME_UNSUPPORTED,
         SyncState.ERROR,
     }:
-        # diverged/auth/error 需要保留明确的远端或凭据结论；dirty 则必须每次
+        # diverged/auth/scheme/error 需要保留明确的远端或凭据结论；dirty 则必须每次
         # 重新检查工作树，因为它可能只是上一次运行留下的内部临时文件状态。
+        # scheme 属于「本机对远端地址形状的判定」：读取路径不联网、也不重新校验 remote，
+        # 若在这里丢掉它，SSH 地址会被静默洗成 local-ahead（2026-09-18 真机：横幅把
+        # 「远端地址不支持」显示成「本机有提交待推送」，点同步才原样再失败一次）。
         pending = pending_wb_commits(
             vault_dir,
             backend_kind=backend_kind,
