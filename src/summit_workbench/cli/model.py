@@ -29,7 +29,7 @@ model_app = typer.Typer(
 def smoke(
     transcript_file: Path = typer.Argument(..., help="真实长逐字稿文件路径。"),
     capability: str = typer.Option(
-        "meeting", "--capability", help="能力：meeting/review/ranking/capture。"
+        "meeting", "--capability", help="能力：meeting/review/ranking/capture/digest。"
     ),
     save_usage: bool = typer.Option(
         True, "--save-usage/--no-save-usage", help="是否把用量记录写入 vault 账本。"
