@@ -4,9 +4,9 @@
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-`main` 本轮提交为 `3b11122`。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091811`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
-`v2026.09.18-adfd748a`（本次无前端改动），由 `3b11122` 构建；`tests/integration/test_packaged_app.py`
+`main` 本轮提交为 `2e898b0`。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091813`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
+`v2026.09.18-296e6770`，由 `2e898b0` 构建；`tests/integration/test_packaged_app.py`
 已使用该安装包通过（1 passed）。以下历史发布记录保留原结论；正式 DMG 的发布身份
 仍以对应 `release-metadata.json` 为准。
 
@@ -14,10 +14,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091811` |
-| 本次产物 | `dist/releases-local-0.4.9-b2026091811/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| 快捷入口 | `dist/SummitWorkbench.app`（与装机包同一份，逐字节一致） |
-| 本机测试基线 | `pytest -q` → **1248 passed, 1 skipped**；`--cov` → **84.07%**（门槛 80%） |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091813` |
+| 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
+| App SHA-256 | `96ea66334ded0844244da7cac32cd859f4f3d9ffbc79eaad3131ef0021fe40a5` |
+| DMG SHA-256 | `caf35bb66a8b45d33709b13009ac10292266c960503b61bdae5575ca3ba54fc1` |
+| 本机测试基线 | `pytest -q` → **1257 passed, 1 skipped**；`--cov` → **83.98%**（门槛 80%） |
 
 本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`。
 本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
@@ -66,7 +67,7 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases-local-0.4.9-b2026091810/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091811）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091813）
 
 认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
 与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。

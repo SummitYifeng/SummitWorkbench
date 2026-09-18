@@ -50,11 +50,12 @@
 
 ## ⚠️ 交付产物基线（2026-09-18）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091811`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `3b11122` 构建（契约改动：会议笔记不再生成 `## AI 建议`）；前端身份 `v2026.09.18-adfd748a`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091813`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `2e898b0` 构建（含 system/dulwich ignore 语义对齐与 mutation 守卫加固）；前端身份 `v2026.09.18-296e6770`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
   `WB_DOCK_ICON=0` 可退回菜单栏模式。
-- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091811/` + `SummitWorkbench.app`）。
-  历史 `dist/releases/*` 曾按使用者要求整体清理（17 套 / 1.9G），需要旧产物请从对应提交重建。
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`（App + DMG + `SHA256SUMS` + `release-metadata.json`）；App SHA-256 为
+  `96ea66334ded0844244da7cac32cd859f4f3d9ffbc79eaad3131ef0021fe40a5`，DMG SHA-256 为
+  `caf35bb66a8b45d33709b13009ac10292266c960503b61bdae5575ca3ba54fc1`。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -69,8 +70,8 @@
 ## 验证命令与基线（源码提交 `8c24b7e`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 期望 1248 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.07%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 期望 1257 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈83.98%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 82 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
