@@ -24,6 +24,7 @@ from summit_workbench.repositories.git_backend import (
     GitConflictError,
     GitNonFastForward,
     GitRemoteSchemeUnsupported,
+    is_missing_local_remote,
     require_https_remote,
 )
 
@@ -63,6 +64,30 @@ def test_production_remote_contract_does_not_echo_url_credentials() -> None:
     with pytest.raises(GitRemoteSchemeUnsupported) as exc_info:
         require_https_remote("http://alice:secret@example.com/repo.git")
     assert "secret" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        # SCP-like SSH 不含 "://"，但它是远端而不是本地路径（2026-09-18 真机回归：
+        # 旧判据把它当不存在的本地目录，SSH remote 的 push 在联网前就报 remote-unavailable）。
+        ("git@github.com:yifeng93/WorkKnowledge.git", False),
+        ("ssh://git@github.com/yifeng93/WorkKnowledge.git", False),
+        ("https://github.com/yifeng93/WorkKnowledge.git", False),
+        ("/tmp/summit-workbench-does-not-exist-9f3a", True),
+        ("../relative-remote-does-not-exist-9f3a", True),
+        (None, False),
+        ("", False),
+    ],
+)
+def test_missing_local_remote_only_matches_bare_nonexistent_paths(
+    url: str | None, expected: bool
+) -> None:
+    assert is_missing_local_remote(url) is expected
+
+
+def test_missing_local_remote_accepts_existing_directory(tmp_path) -> None:
+    assert is_missing_local_remote(str(tmp_path)) is False
 
 
 def _backend(kind: str, path: Path):

@@ -44,6 +44,7 @@ from summit_workbench.repositories.git_backend import (
     GitRemoteUnavailable,
     GitTlsError,
     default_identity,
+    is_missing_local_remote,
 )
 
 Entry = tuple[str, bytes]  # (octal mode, blob sha)
@@ -768,7 +769,7 @@ class DulwichGitBackend:
     def push(self, remote: str = "origin") -> None:
         repo = self._open()
         url = self._remote_url(repo, remote)
-        if url and "://" not in url and not Path(url).is_dir():
+        if is_missing_local_remote(url):
             raise GitRemoteUnavailable(f"push {remote} 失败")
         head = self._head_sha(repo)
         if head is None:

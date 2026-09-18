@@ -233,3 +233,19 @@ def require_https_remote(url: str) -> None:
         raise GitRemoteSchemeUnsupported(
             "生产同步只支持 HTTPS 或 SSH remote（remote_scheme_unsupported）"
         )
+
+
+def is_missing_local_remote(url: str | None) -> bool:
+    """远端地址是否是「不存在的本地路径」。
+
+    只对**既不带 scheme、也不是 SCP-like SSH** 的裸路径判定。``git@host:path`` 恰恰不含
+    ``://``，旧判据把它当成不存在的本地目录，导致 SSH remote 的 push 在**联网之前**就报
+    ``remote-unavailable``（2026-09-18 真机：SCP 形状 SSH remote 能 fetch、push 必失败）。
+    两种后端的 push 守卫共用本函数，避免形状判定再次分叉。
+    """
+    if not url:
+        return False
+    raw = url.strip()
+    if "://" in raw or _SCP_REMOTE_RE.fullmatch(raw):
+        return False
+    return not Path(raw).is_dir()
