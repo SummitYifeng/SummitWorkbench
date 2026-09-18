@@ -2,7 +2,7 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线截至 **`3ed9780`**（2026-09-17）。若 HEAD 已更新，先确认下面的行号与数字是否漂移。
+> 基线截至 **`30cb1ed`**（2026-09-18）。若 HEAD 已更新，先确认下面的行号与数字是否漂移。
 
 ## 所有权边界（硬约束）
 
@@ -34,6 +34,25 @@
 - **同步 remote 接受 `https` 与 `ssh://` / SCP-like**；仍拒绝 `http://`、`file://`、URL 含明文密码。
   本机 HTTPS 需经 macOS 系统代理（已在 `repositories/dulwich_git.py` 内置回退）；SSH 直连可用。
   **不要动 `_vault` 的 remote，不要 force push。**
+  - SCP-like（`git@host:path`）**不含 `://`**，任何用「有没有 `://`」判断"是不是远端"的代码都会把它
+    误当本地路径。`git_backend.is_missing_local_remote()` 是两后端共用的正确判据（2026-09-18 踩过：
+    该 bug 让 SSH remote 的 push 在联网前就报 `remote-unavailable`）。
+  - `3ed9780` 只放行了 SSH 的 **scheme 门禁**，**没有**覆盖 push 路径；新增远端形状支持时必须
+    同时验证 fetch 与 push（能 fetch ≠ 能 push）。
+
+- **模型侧：`max_output_tokens` 是「思考 + 答案」共用的预算**。DeepSeek-V4 系列**默认开启思考模式**
+  且 `effort=high`；预算太小会被 `reasoning_tokens` 吃光 → `content` 为空 → 表面报"不符合 schema"
+  （2026-09-18 真机：4096 被推理全部耗尽，且 API 当时**不返回** `finish_reason`，靠单一字段判断会漏）。
+  抽取/摘要/分类类任务一律 `thinking="disabled"`；截断判定必须同时看 `output_tokens >= 上限`。
+  能力清单以 `providers/llm/config.py:CAPABILITIES` 为准（含 `digest`），逐能力参数见 `config.example.toml`。
+
+## ⚠️ 交付产物基线（2026-09-18）
+
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091809`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `30cb1ed` 构建；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+  `WB_DOCK_ICON=0` 可退回菜单栏模式。
+- `dist/` **只保留最新一份**（`releases-local-0.4.9-b2026091809/` + `SummitWorkbench.app`）。
+  历史 `dist/releases/*` 曾按使用者要求整体清理（17 套 / 1.9G），需要旧产物请从对应提交重建。
 
 ## 付费与不可逆动作
 
@@ -41,11 +60,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（截至 `3ed9780`）
+## 验证命令与基线（截至 `30cb1ed`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 期望 1225 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈83.92%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 期望 1248 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.07%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 80 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault

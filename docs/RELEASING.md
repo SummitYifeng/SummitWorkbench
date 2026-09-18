@@ -1,13 +1,34 @@
 # SummitWorkbench macOS 发布
 
-## 当前 main 本机交付状态（2026-09-16）
+## 当前 main 本机交付状态（2026-09-18）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-`main` 本轮修复提交为 `74cb57b`。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091604`，前端身份为 `v2026.09.16-74cb57b-5236bd8a`；
-`tests/integration/test_packaged_app.py` 已使用该安装包通过（1 passed）。以下历史
-发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
+`main` 本轮提交为 `30cb1ed`。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091809`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
+`v2026.09.18-10277608`，由 `30cb1ed` 构建；`tests/integration/test_packaged_app.py`
+已使用该安装包通过（1 passed）。以下历史发布记录保留原结论；正式 DMG 的发布身份
+仍以对应 `release-metadata.json` 为准。
+
+本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
+
+| 项 | 值 |
+| --- | --- |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091809` |
+| 本次产物 | `dist/releases-local-0.4.9-b2026091809/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
+| 快捷入口 | `dist/SummitWorkbench.app`（与装机包同一份，逐字节一致） |
+| 本机测试基线 | `pytest -q` → **1248 passed, 1 skipped**；`--cov` → **84.07%**（门槛 80%） |
+
+> 历史 `dist/releases/*`（17 套，约 1.9G）已按使用者要求整体清理；需要旧产物请从
+> 对应 `git_commit` 重新执行 `BUILD_NUMBER=<n> ARCH=arm64 scripts/release-macos.sh` 重建。
+
+本轮交付里与使用者直接相关的两处行为变化（改版时要一起维护）：
+
+1. **原生壳恢复 Dock 图标**：`Info.plist` 的 `LSUIElement=false` + `AppDelegate` 用
+   `.regular`；`WB_DOCK_ICON=0` 可退回旧的菜单栏模式（见 `docs/DESKTOP_APP.md`）。
+2. **模型侧逐能力显式参数**：新增 `digest` 能力；`max_output_tokens` 是「思考 + 答案」
+   共用预算，抽取/摘要/分类类任务 `thinking="disabled"`（见 `config.example.toml` 与设置页
+   「模型参数（只读）」卡片）。
 
 当前 v0.4.4 build 9 的本地内部包已经完成发布验证。它是 arm64、M2+、ad-hoc 的
 `INTERNAL-DEV` 包，不是 Developer ID/notarized 公网发行包。发布结论依据本地门禁和本机交互验收；
@@ -42,15 +63,18 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 50）
+`dist/releases-local-0.4.9-b2026091809/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091809）
 
-SHA-256：`5fcd183f7b6e8dea2b73cc5baef1000fd1aa9ed03d930c8cdd855fc7ba86888b`
+认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
+与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。
+下面这一节保留 build 36–50 的历史账目，其产物已在 2026-09-18 的清理中移除。
 
-版本 `0.4.9`、build `50`，构建来源提交 `02a59c4`（把原生壳界面文案抽成纯函数 `UICopy`，
+历史记录（build 50，产物已清理）：`dist/releases/0.4.9/arm64/…dmg`，
+SHA-256 `5fcd183f7b6e8dea2b73cc5baef1000fd1aa9ed03d930c8cdd855fc7ba86888b`，
+版本 `0.4.9`、构建来源提交 `02a59c4`（把原生壳界面文案抽成纯函数 `UICopy`，
 加上功能单测与变异验证），对应前端 build identity 为 `v2026.09.14-02a59c4-92261f7c`。
 
-同一版本号内的内部迭代只递增 build，而 **DMG 文件名里不含 build 号**——认包请用 SHA-256，
-或装完后看设置页的 build 号。各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
+各轮的账（2026-09-14 按各自 `release-metadata.json` 逐个复核）：
 
 | build | 提交 | 内容 |
 | --- | --- | --- |

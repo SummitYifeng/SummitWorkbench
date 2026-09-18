@@ -1,10 +1,12 @@
 # SummitWorkbench
 
-## 2026-09-16 main 交付状态
+## 2026-09-18 main 交付状态
 
-本轮可靠性优化、“今日”页精简与全局 Markdown 展示修复，以及会议导入事务回调修复已合并到 `main`，本轮修复提交为 `74cb57b`。最新静态前端 bundle 的源码身份为 `v2026.09.16-74cb57b-5236bd8a`，由 `main` 上的代码构建；本机 App 已同步替换为 `0.4.9 / build 2026091604`。
+本轮修掉了三处会持续制造新错误的问题：**SSH（SCP 形状）remote 的 push 被误判为不存在的本地路径**、**逐字稿结构化失败的真因是输出预算被思考模式推理吃光（非上下文长度）**、**原生壳不显示 Dock 图标**。`main` 为 `30cb1ed`；最新静态前端 bundle 身份为 `v2026.09.18-10277608`（由 `main` 构建，不再把 git 提交编进身份，重建可逐字节复现）；本机 App 已替换为 `0.4.9 / build 2026091809`（`INTERNAL-DEV`、arm64、ad-hoc）。
 
-源码质量门已通过：1301 passed / 1 skipped，ruff、mypy strict、前端完整契约测试和生产构建均通过；已安装包 smoke test 通过（1 passed）。当前证据和剩余事项见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+源码质量门已通过：**1248 passed / 1 skipped、覆盖率 84.07%（门槛 80%）**，ruff、ruff format、mypy strict、前端完整契约测试与生产构建、打包 smoke 与集成测试均通过。当前证据和剩余事项见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+
+使用说明见 [桌面版使用指南](docs/product/WEB_USAGE_GUIDE.md) 与 [`docs/DESKTOP_APP.md`](docs/DESKTOP_APP.md)。
 
 SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
 
