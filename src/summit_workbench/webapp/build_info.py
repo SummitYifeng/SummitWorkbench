@@ -31,7 +31,7 @@ class WebBuildInfo:
     schema_version: int
     product_id: str
     frontend_build: str
-    git_revision: str
+    git_revision: str | None
     source_hash: str
     built_at: str
     index_sha256: str
@@ -59,7 +59,7 @@ class WebBuildInfo:
         if product_id != PRODUCT_ID:
             raise BuildInfoError(f"unexpected product_id: {product_id}")
         frontend_build = _required_str(raw, "frontend_build")
-        git_revision = _required_str(raw, "git_revision")
+        git_revision = _optional_str(raw, "git_revision")
         source_hash = _required_sha256(raw, "source_hash")
         built_at = _required_str(raw, "built_at")
         try:
@@ -136,6 +136,21 @@ def _required_str(raw: dict[str, object], key: str) -> str:
     value = raw.get(key)
     if not isinstance(value, str) or not value:
         raise BuildInfoError(f"{key} must be a non-empty string")
+    return value
+
+
+def _optional_str(raw: dict[str, object], key: str) -> str | None:
+    """可选溯源字段：缺失或空串都归一为 ``None``（不报错）。
+
+    ``git_revision`` 属于此列：工作树脏时构建器**刻意**写空串，表示「这份产物不对应
+    任何提交」。旧实现用 ``_required_str`` 读它，会让脏树构建出的包直接 503（2026-09-18
+    真机：4 个 webapi 测试红了才发现）。消费方本就按可选处理（非空才追加）。
+    """
+    value = raw.get(key)
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise BuildInfoError(f"{key} must be a string when present")
     return value
 
 
