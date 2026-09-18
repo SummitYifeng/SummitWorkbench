@@ -24,7 +24,27 @@ assert.equal(
     builtAt: '2026-09-03T00:00:00.000Z',
     gitRevision: 'abc1234',
   }).frontendBuild,
-  `v2026.09.03-abc1234-${firstHash.slice(0, 8)}`,
+  `v2026.09.03-${firstHash.slice(0, 8)}`,
+);
+// 回归守卫：身份不得依赖 git 提交，否则「重建 → 产物变 → 提交 → HEAD 变 → 产物又变」
+// 的自指循环会让仓库静态产物与装机包永远对不上（2026-09-18 踩到）。
+assert.equal(
+  makeBuildIdentity({
+    sourceHash: firstHash,
+    builtAt: '2026-09-03T00:00:00.000Z',
+    gitRevision: 'completely-different',
+  }).frontendBuild,
+  `v2026.09.03-${firstHash.slice(0, 8)}`,
+  'frontend build identity must not depend on the git revision',
+);
+assert.equal(
+  makeBuildIdentity({
+    sourceHash: firstHash,
+    builtAt: '2026-09-03T00:00:00.000Z',
+    gitRevision: 'abc1234',
+  }).gitRevision,
+  'abc1234',
+  'git revision stays available as provenance metadata',
 );
 console.log('Build identity tests passed');
 

@@ -22,8 +22,12 @@ export function computeSourceHash(entries) {
 
 export function makeBuildIdentity({ sourceHash, builtAt, gitRevision }) {
   const date = builtAt.slice(0, 10).replaceAll('-', '.');
+  // 身份只由「构建日期 + 前端源码内容哈希」构成，**刻意不含 git 提交**：
+  // 提交里包含构建产物本身，若身份依赖 HEAD，就会出现「重建 → 产物变 → 提交 → HEAD 变 →
+  // 再重建产物又变」的自指循环，仓库内静态产物与装机包永远对不上（2026-09-18 踩到）。
+  // 溯源不受影响：git_revision 仍写进 build-meta.json，只是不再影响 bundle 字节。
   return {
-    frontendBuild: `v${date}-${gitRevision}-${sourceHash.slice(0, 8)}`,
+    frontendBuild: `v${date}-${sourceHash.slice(0, 8)}`,
     gitRevision,
     sourceHash,
     builtAt,
