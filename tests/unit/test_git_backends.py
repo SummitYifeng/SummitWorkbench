@@ -103,6 +103,7 @@ def test_https_remote_without_username_is_a_credentials_error(kind: str, tmp_pat
 def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
     tmp_path: Path, monkeypatch
 ) -> None:
+    from dulwich import porcelain
     from summit_workbench.repositories import dulwich_git
     from summit_workbench.repositories.git_backend import GitAuthError
 
@@ -118,7 +119,7 @@ def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
         )
         raise RuntimeError("401 Unauthorized")
 
-    monkeypatch.setattr(dulwich_git.porcelain, "fetch", fake_fetch)
+    monkeypatch.setattr(porcelain, "fetch", fake_fetch)
     with pytest.raises(GitAuthError) as caught:
         backend.fetch()
     assert "Authentication failed" in caught.value.stderr
