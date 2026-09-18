@@ -31,6 +31,9 @@ _BACKOFF_BASE = 0.5
 class Usage:
     input_tokens: int
     output_tokens: int
+    # 思考模式下"想"掉的 token（含在 output_tokens 里）。DeepSeek 返回
+    # ``usage.completion_tokens_details.reasoning_tokens``；缺失为 None。
+    reasoning_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class CompletionResult:
     model_id: str
     attempts: int
     finish_reason: str | None = None
+    content_chars: int = 0
 
 
 class ModelClient:
@@ -75,6 +79,12 @@ class ModelClient:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+        # 思考模式：默认打开且 effort=high，而 reasoning_tokens 与最终 content 共用 output 预算。
+        # 抽取类任务（会议结构化）实测关掉更快更省且质量不降，故允许配置关闭/降级。
+        if self.cfg.thinking == "disabled":
+            payload["thinking"] = {"type": "disabled"}
+        elif self.cfg.thinking in {"low", "high", "max"}:
+            payload["reasoning_effort"] = self.cfg.thinking
 
         url = f"{self.cfg.base_url}/chat/completions"
         headers = {"Authorization": f"Bearer {self._key.get_secret_value()}"}
@@ -133,17 +143,24 @@ def _parse_completion(resp: httpx.Response, model_id: str, attempt: int) -> Comp
         raise LLMAPIError(f"{model_id} 响应缺少 choices/message", status=resp.status_code) from exc
 
     usage_raw = data.get("usage") or {}
+    details = usage_raw.get("completion_tokens_details")
+    reasoning_tokens = None
+    if isinstance(details, dict) and details.get("reasoning_tokens") is not None:
+        reasoning_tokens = int(details["reasoning_tokens"])
     usage = Usage(
         input_tokens=int(usage_raw.get("prompt_tokens", 0)),
         output_tokens=int(usage_raw.get("completion_tokens", 0)),
+        reasoning_tokens=reasoning_tokens,
     )
     choices = data.get("choices") or [{}]
     first_choice = choices[0] if isinstance(choices[0], dict) else {}
     finish_reason = first_choice.get("finish_reason")
+    text_value = "" if text is None else str(text)
     return CompletionResult(
-        text=str(text),
+        text=text_value,
         usage=usage,
         model_id=model_id,
         attempts=attempt,
         finish_reason=str(finish_reason) if finish_reason is not None else None,
+        content_chars=len(text_value),
     )

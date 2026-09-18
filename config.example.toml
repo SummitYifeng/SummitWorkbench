@@ -57,7 +57,12 @@ model_id = "deepseek-chat"              # 快速能力的模型 ID
 base_url = "https://api.deepseek.com/v1"
 credential_account = "shared"           # 对应 Keychain 里 api key 的 account
 timeout_seconds = 60
-max_output_tokens = 4096
+# 输出额度：思考模型的 reasoning_tokens 与最终答案**共用**这份预算。
+# 4096 在长逐字稿上会被推理吃光、content 为空（表现为"不符合 schema"），故默认 16384。
+max_output_tokens = 16384
+# 思考模式：default（供应商默认，DeepSeek 为打开且 effort=high）| disabled | low | high | max
+# 会议结构化等抽取任务实测 disabled 更快更省且质量不降。
+thinking = "default"
 context_window_tokens = 65536         # 快速能力的上下文窗口
 context_safety_ratio = 0.85           # 输入+预留输出达到窗口 85% 时启用分段
 

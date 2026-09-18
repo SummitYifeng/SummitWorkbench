@@ -148,6 +148,36 @@ def _schema_correction(error: ValidationError) -> str:
     return f"上一份 JSON 的本地校验失败（{loc}: {first['msg']}），请修正后只输出完整 JSON。"
 
 
+def _output_was_truncated(output_tokens: int, finish_reason: str | None, cfg: ModelConfig) -> bool:
+    """输出是否撞上额度上限。
+
+    两个判据缺一不可：``finish_reason == "length"`` 是供应商明确信号；``output_tokens >=
+    max_output_tokens`` 是兜底——DeepSeek 思考模式实测会**不返回** ``finish_reason`` 却把
+    推理把整份预算吃光（2026-09-18：账本 8 条 ``finish_reason`` 全空、输出恰好 4096、
+    content 为空），此时只靠供应商字段会把它误判成"schema 不合格"并原样重试，白烧调用。
+    """
+    return finish_reason == "length" or output_tokens >= cfg.max_output_tokens
+
+
+def _truncation_message(
+    cfg: ModelConfig,
+    output_tokens: int,
+    reasoning_tokens: int | None,
+    content_chars: int,
+) -> str:
+    """截断时给出可诊断的一句话：推理吃了多少、真正写了多少。"""
+    parts = [
+        f"输出达到上限 max_output_tokens={cfg.max_output_tokens}"
+        f"（实际 output_tokens={output_tokens}）"
+    ]
+    if reasoning_tokens is not None:
+        parts.append(f"其中推理 reasoning_tokens={reasoning_tokens}")
+    if content_chars == 0:
+        parts.append("content 为空：输出预算被推理耗尽，未产出任何 JSON")
+    parts.append("请提高 max_output_tokens 或关闭思考模式（thinking=disabled）")
+    return "；".join(parts)
+
+
 def _call_validated(
     model: ModelClient,
     cfg: ModelConfig,
@@ -178,9 +208,11 @@ def _call_validated(
             usages.append(usage)
             if usage_sink is not None:
                 usage_sink(usage)
-            if raw.finish_reason == "length":
+            if _output_was_truncated(raw.usage.output_tokens, raw.finish_reason, cfg):
                 raise OutputTruncated(
-                    f"模型输出达到 max_output_tokens={cfg.max_output_tokens}",
+                    _truncation_message(
+                        cfg, raw.usage.output_tokens, raw.usage.reasoning_tokens, raw.content_chars
+                    ),
                     attempts=network_attempt,
                     stage=stage,
                 )
@@ -300,8 +332,10 @@ def process_transcript(
             smaller_budget = max(1, min(2_000, estimate_tokens(chunk) // 2))
             smaller = split_transcript(chunk, smaller_budget)
             if len(smaller) < 2 or max(map(len, smaller)) >= len(chunk):
+                # 带上原始截断细节：否则用户只看到"已无法继续缩小该分段"，
+                # 仍然不知道真因是输出预算被推理吃光（2026-09-18 的教训）。
                 raise ProcessingFailure(
-                    "模型输出被截断，已无法继续缩小该分段",
+                    f"模型输出被截断，已无法继续缩小该分段；{exc}",
                     attempts=exc.attempts,
                     stage=exc.stage,
                 ) from exc

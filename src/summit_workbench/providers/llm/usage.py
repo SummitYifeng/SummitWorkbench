@@ -54,5 +54,17 @@ def record_from_result(
         currency=cfg.pricing.currency,
         price_input_per_mtok=cfg.pricing.input_per_mtok,
         price_output_per_mtok=cfg.pricing.output_per_mtok,
-        extra={"finish_reason": result.finish_reason or "unknown"},
+        extra={
+            "finish_reason": result.finish_reason or "unknown",
+            # 诊断三件套：推理吃掉多少、真正写出多少、是否撞上输出上限。
+            # 2026-09-18 的失败只有一行 reason（"不符合 schema"），看不出真因是
+            # "推理把输出预算吃光、content 为空"，只能事后翻账本反推。
+            "reasoning_tokens": str(result.usage.reasoning_tokens)
+            if result.usage.reasoning_tokens is not None
+            else "unknown",
+            "content_chars": str(result.content_chars),
+            "hit_output_limit": "yes"
+            if result.usage.output_tokens >= cfg.max_output_tokens
+            else "no",
+        },
     )

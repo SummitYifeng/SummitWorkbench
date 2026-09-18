@@ -224,6 +224,7 @@ def _apply_provider_settings(
             "credential_capability",
             "timeout_seconds",
             "max_output_tokens",
+            "thinking",
             "context_window_tokens",
             "context_safety_ratio",
             "pricing",

@@ -47,9 +47,15 @@ class ModelConfig:
     base_url: str
     credential_account: str
     timeout_seconds: float = 60.0
-    max_output_tokens: int = 4096
+    # 输出额度。**注意这是"思考 + 答案"共用的预算**：DeepSeek-V4 系列默认开思考模式时，
+    # reasoning_tokens 也从这里扣。2026-09-18 真机：4096 被推理全部吃光、content 为空，
+    # 表现成"模型输出不符合会议 schema"（实际一个字都没吐出来）。
+    max_output_tokens: int = 16384
     context_window_tokens: int = 65536
     context_safety_ratio: float = 0.85
+    # 思考模式策略：``default`` 不动（供应商默认）；``disabled`` 关闭思考（抽取类任务更快更省）；
+    # ``low``/``high``/``max`` 显式设 reasoning_effort。DeepSeek 文档：思考默认打开且 effort=high。
+    thinking: str = "default"
     pricing: ModelPricing = ModelPricing()
     workspace_id: str | None = None
     # ``shared`` is a capability-level fallback.  Older configs without this
@@ -107,9 +113,10 @@ def _model_from_table(
         base_url=str(base_url).rstrip("/"),
         credential_account=str(pick("credential_account", "shared")),
         timeout_seconds=float(pick("timeout_seconds", 60.0)),
-        max_output_tokens=int(pick("max_output_tokens", 4096)),
+        max_output_tokens=int(pick("max_output_tokens", 16384)),
         context_window_tokens=context_window_tokens,
         context_safety_ratio=context_safety_ratio,
+        thinking=str(pick("thinking", "default")),
         pricing=pricing,
         workspace_id=workspace_id,
         credential_capability=(
