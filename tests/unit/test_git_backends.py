@@ -168,6 +168,42 @@ def test_remote_push_clone_fetch_ff(kind: str, tmp_path: Path) -> None:
     assert (tmp_path / "c" / "f.txt").read_text(encoding="utf-8") == "two"
 
 
+def test_dulwich_scp_remote_push_roundtrip_reaches_transport(tmp_path: Path, monkeypatch) -> None:
+    """SCP 形状 SSH 地址必须能走到 push 传输层（2026-09-18 真机回归的机器守卫）。
+
+    旧守卫把 ``git@host:path`` 当成不存在的本地目录，push 在联网之前就抛
+    ``remote-unavailable``；本次只把「URL → 传输」的解析换成落地到本地 bare remote，
+    其余（守卫、refspec 选择、远端 ref 更新）都走真实实现。真实 SSH 回环需要本机
+    sshd 的公钥登录，环境相关性太强，故不放进单测。
+    """
+    from dulwich import porcelain
+    from dulwich.client import LocalGitClient
+    from dulwich.repo import Repo
+
+    bare = tmp_path / "remote.git"
+    _backend("dulwich", bare).init(bare=True)
+    repo = _backend("dulwich", tmp_path / "a")
+    repo.init()
+    (tmp_path / "a" / "f.txt").write_text("one", encoding="utf-8")
+    repo.add(["f.txt"])
+    repo.commit("wb: one", author=ID)
+    repo.add_remote("origin", "git@localhost:remote.git")
+
+    calls: list[str] = []
+
+    def route_to_local_bare(location, config=None, operation=None, **kwargs):
+        calls.append(location)
+        return LocalGitClient(), str(bare)
+
+    monkeypatch.setattr(porcelain, "get_transport_and_path", route_to_local_bare)
+
+    repo.push()  # 旧代码在这里抛 GitRemoteUnavailable
+
+    assert calls == ["git@localhost:remote.git"]
+    # 真推到了：bare remote 的 HEAD 分支已与本地 HEAD 一致（旧代码根本到不了这里）
+    assert Repo(str(bare)).refs[b"refs/heads/main"] == repo.head_revision().encode("ascii")
+
+
 def test_dulwich_merge_base_reads_diverged_refs(tmp_path: Path) -> None:
     """Production conflict details can resolve a common ancestor with Dulwich."""
     from dulwich.repo import Repo
