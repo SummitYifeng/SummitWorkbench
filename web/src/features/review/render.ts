@@ -270,7 +270,12 @@ export function reviewHtml(
   return (
     '<div class="review-toolbar">' +
     '<div><h3 class="section-title" style="margin:0">会议提取待确认</h3>' +
-    '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' + applyNudge + '</div>' +
+    '<p class="hint">' + pending + ' 条待确认 · 「✓ 批准」只做标记，点「应用（写回）」才会真正写入项目/创建飞书任务 · 截止早于今天的可用「一键拒绝过期项」清理</p>' +
+    '<p class="hint review-howto"><strong>怎么读这一页：</strong>' +
+    '灰标签是 AI 判断的类型——<strong>决策</strong>是会上说定的结论（只需落点，不需要截止日期）；' +
+    '<strong>行动项</strong>是某人要做的事（通常要给目标项目 + 截止日期）。' +
+    '显示「未定」表示 AI 没给出目标项目，按设计先落全局 inbox；要归到具体项目请点「修改」填目标项目。' +
+    '批准按钮被禁用是因为缺依据或落点，点「修改」补齐即可。点「来源」可回看原文核对 AI 有没有编。</p>' + applyNudge + '</div>' +
     '<div class="form-row">' +
     '<button class="ghost" data-action="reject-expired"' + (expiredCount === 0 ? ' disabled' : '') +
     ' title="不受当前筛选影响：把截止日期早于今天的待确认条目全部置为拒绝（当前 ' + expiredCount + ' 条）">一键拒绝过期项（' + expiredCount + '）</button>' +
