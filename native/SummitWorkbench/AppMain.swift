@@ -1,7 +1,8 @@
 import AppKit
 
-/// 最小主菜单：LSUIElement（accessory）应用没有系统菜单，Cmd+C/V/X/A 等编辑快捷键
-/// 必须经由主菜单的 Edit 菜单转发到第一响应者（WKWebView 内部编辑器），否则粘贴无效。
+/// 主菜单：常规 App（有 Dock 图标）与菜单栏模式（WB_DOCK_ICON=0）都需要它 ——
+/// Cmd+C/V/X/A 等编辑快捷键必须经由主菜单的 Edit 菜单转发到第一响应者
+/// （WKWebView 内部编辑器），否则粘贴无效。
 private func buildMainMenu() -> NSMenu {
     let mainMenu = NSMenu()
     let appItem = NSMenuItem()
@@ -33,7 +34,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = buildMainMenu()
-        NSApp.setActivationPolicy(.accessory)
+        // 常规 App：出现在 Dock 与 Cmd-Tab（2026-09-18 使用者反馈：安装后在「应用程序」
+        // 里点启动，Dock 里没有图标）。仍保留菜单栏模式入口：WB_DOCK_ICON=0 退回 .accessory。
+        let dockIconEnabled = ProcessInfo.processInfo.environment["WB_DOCK_ICON"] != "0"
+        NSApp.setActivationPolicy(dockIconEnabled ? .regular : .accessory)
+        if dockIconEnabled {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         coordinator.start(reason: "cold_start")
     }
 

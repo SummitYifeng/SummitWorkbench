@@ -198,7 +198,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>SummitWorkbench</string>
 $ICON_KEY
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>LSUIElement</key><true/>
+  <key>LSUIElement</key><false/>
   <key>LSMultipleInstancesProhibited</key><true/>
 </dict></plist>
 PLIST
