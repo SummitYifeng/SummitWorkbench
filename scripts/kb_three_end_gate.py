@@ -185,7 +185,8 @@ def active_profile(health: dict[str, Any]) -> dict[str, Any] | None:
 # ────────────────────── 闸门各段 ──────────────────────
 def gate_preflight(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, sk_url: str, sk_tok: str
-) -> None:
+) -> int:
+    """返回起始 pending_index，供 [3/5] 判断"闸门自己的写入有没有让索引变脏"。"""
     print("\n[1/5] 前置：三端可用 + 起始状态干净")
     rep.check(vault.is_dir(), f"vault 存在（{vault}）")
     rep.check(
@@ -212,6 +213,14 @@ def gate_preflight(
     rep.check(
         bool(health.get("ready")), "SK /api/health ready", f"active_kb={health.get('active_kb_id')}"
     )
+    prof = active_profile(health)
+    pending_before = int((prof or {}).get("pending_index") or 0)
+    if pending_before:
+        rep.warn(
+            "起始 pending_index>0（索引落后于库，非闸门问题）",
+            f"pending={pending_before}；可能是新的一天简报/一次 capture/审批写回造成",
+        )
+    return pending_before
 
 
 def gate_mutation(
@@ -248,7 +257,13 @@ def gate_mutation(
 
 
 def gate_corpus(
-    rep: Report, vault: Path, sk_url: str, sk_tok: str, vector_work: Path, marker: str
+    rep: Report,
+    vault: Path,
+    sk_url: str,
+    sk_tok: str,
+    vector_work: Path,
+    marker: str,
+    pending_before: int,
 ) -> None:
     """P1-4：原始逐字稿与 inbox 都不该进语料。"""
     print("\n[3/5] 语料边界：逐字稿与 inbox 都不得进检索语料")
@@ -274,11 +289,20 @@ def gate_corpus(
     health = http_json(f"{sk_url}/api/health", token=sk_tok, header="Authorization")
     prof = active_profile(health)
     if prof:
+        pending_after = int(prof.get("pending_index") or 0)
+        # 真正要守的是「闸门自己的写入（inbox capture）不得让索引变脏」；
+        # 起始就 >0 只是"索引落后于库"（新的一天简报 / 别人刚 capture / 审批写回），
+        # 与闸门要守的四类不变量无关，所以只告警不判失败。
         rep.check(
-            prof.get("pending_index") == 0,
-            "活动库 pending_index=0",
-            f"pending={prof.get('pending_index')}",
+            pending_after <= pending_before,
+            "闸门写入未让 pending_index 增长（inbox 不进语料）",
+            f"{pending_before} → {pending_after}",
         )
+        if pending_after:
+            rep.warn(
+                "活动库 pending_index>0（索引落后于库，非缺陷）",
+                f"pending={pending_after}；跑一次 SK 增量索引即可清零",
+            )
 
 
 def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None:
@@ -404,9 +428,9 @@ def main() -> int:
     print(f"  向量库      : {vector_work}")
     print("=" * 72)
 
-    gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
+    pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
     marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
-    gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker)
+    gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before)
     gate_retrieval(rep, sk_url, sk_tok, args.question)
     gate_cleanup(rep, vault, marker, not (args.keep or args.no_cleanup))
 
