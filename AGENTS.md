@@ -2,8 +2,8 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前交付源码提交 **`7b7df74`**（2026-09-19，即安装包 build `2026091920` 的来源；
-> 上一份是 `f710aca` → build `2026091919`（新增两个写入入口），再上份 `a49bb42` → build `2026091918`）。
+> 基线：当前交付源码提交 **`375ce98`**（2026-09-19，即安装包 build `2026091921` 的来源；
+> 上一份是 `7b7df74` → build `2026091920`，再上份 `f710aca` → build `2026091919`）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -71,11 +71,13 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091920`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `7b7df74` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份仍为
+- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091921`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `375ce98` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份仍为
   **`v2026.09.19-a99f4166`**（本版未改前端）；包内**已内置飞书默认凭据**
   （`build-manifest.json` 的 `feishu_credentials.complete=true`）。
-  更早的交付依次是 `f710aca` → build `2026091919`（新增写日志/写工作思考入口）、
+  **本版含两个用户可见的修复**：写日志不再留下未提交的项目页（`changed_paths`）、
+  以及「撤销历史」面板在打包 App（dulwich 后端）上**从空变有**。
+  更早的交付依次是 `7b7df74` → build `2026091920`、`f710aca` → build `2026091919`（新增两个写入入口）、
   `a49bb42` → build `2026091918`（批次 A 语料边界）、`2d1cf3a` → `2026091917`
   （Dulwich `1.2.15` 迁移 + 日常 CI 收窄为手动触发）。
   原生壳自 build `2026091813` 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
@@ -86,13 +88,12 @@
   不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
   生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
   发布目录**（要重建同一版本须先移除旧目录）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091920` 的
-  **App SHA-256 为 `abc12e30850ef02cb7ac93ac5130cc6f83b376dc2e13eb1e960fab282b44aa6a`**，
-  **DMG SHA-256 为 `d3ed49316516dc85e1d2b448772abd8e7704a553a12e0c2c198331d812336d90`**
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091921` 的
+  **App SHA-256 为 `6a975051d1a8ec753cccebcc1065f2f2397cc6718265e3c275cee0bbf73a984a`**，
+  **DMG SHA-256 为 `6add902d16f595e72c8dd214796ab8dffcc386fffa38ddce65f93fd562b4e4f2`**
   （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
-  装机包内**真实**依赖以发布目录的 `SBOM.json` 为准
-  （build `2026091920` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、
-  `ruff==0.16.7`、`hypothesis==6.168.0`，与前三版相同）。
+  装机包内**真实**依赖以发布目录的 `SBOM.json` 为准（本版依赖与前一版相同：
+  `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、`ruff==0.16.7`、`hypothesis==6.168.0`）。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -104,11 +105,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `7b7df74`）
+## 验证命令与基线（交付提交 `375ce98`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1353 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.31%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1355 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.30%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
@@ -250,6 +251,13 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
    （只能报错、不能阻止工作树变脏）；且用"新脏路径 − 写入前脏路径"判定，
    **被改动文件若此前已脏则完全静默**。⇒ 新增写路径时务必自己列全 `changed_paths`，
    不要指望这条兜底。
+
+7. **`log_grep` 返回的时间字段在两后端语义不同**（2026-09-19 修 `log_grep` 时发现，未修）：
+   system 侧用 `%aI`（**author** 时间），dulwich 侧用 `commit.commit_time`（**committer** 时间）。
+   SWB 自己写的提交两者相同（`commit_paths` 同时给 author/committer），所以现有守卫
+   （system 写库、`GIT_AUTHOR_DATE == GIT_COMMITTER_DATE`）**覆盖不到这个差异**；
+   若将来出现 author≠committer 的提交（手工造、别的工具写），两后端返回的第二项会不同。
+   要修的话需先确认"该返回哪个时间"（撤销面板的展示语义），别只改一侧。
 
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
