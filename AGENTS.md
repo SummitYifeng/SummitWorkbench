@@ -81,12 +81,20 @@
 ./.venv/bin/python -m pytest -q --cov           # 实测 84.05%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 84 篇全过
+./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
 ./.venv/bin/python scripts/kb_check_templates.py --templates ~/Documents/Work/_vault/templates
 ./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
 （`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1262，别把两者当矛盾。）
+
+> **改 `_vault` 结构（新增/删除目录、增删项目、增删 type）时，除上面的命令外还要跑
+> `scripts/kb_check_contract.py --vault …`**（只读）。它把 `conventions.md` 声明的
+> 目录/类型与库内实际比对，并**刻意分两层**：**FAIL** = 契约错/自相矛盾/与库内硬冲突
+> （如项目页集合对不上、已撤销目录又出现在 §1 树、库内出现契约未声明的 type）；
+> **WARN** = 契约已声明但按需创建、库内还没有（如 `thinking/`、0 篇的 `long-form-thought`）。
+> 别把 WARN 当缺陷修掉——那正是它存在的意义（第一阶段若不分层就会被误报挡住）。
 
 > **vault check 由 86 改为 84（2026-09-19，批次 A）**：`daily/2026-09-18.md` 与
 > `daily/2026-09-19.md` 已按新契约（简报不在库内）逐字搬到本机程序目录
@@ -102,14 +110,18 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
 **跨端回归闸门**（跨 SWB × `_vault` × SK，**会写 vault 并花一次极小模型费用**）：
 
 ```bash
-./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完自动清理验证件
+./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完自动清理验证件并推送清理提交
 ./.venv/bin/python scripts/kb_three_end_gate.py --keep     # 保留验证件供人工查看
+./.venv/bin/python scripts/kb_three_end_gate.py --no-push  # 清理提交只留本地（推送与否由使用者决定）
 ```
 
-一句话验完四类曾经"测试全绿却发生"的不变量：① 真实写入后**工作树干净**（S-1(a)）；
+一句话验完六类曾经"测试全绿却发生"的不变量：① 真实写入后**工作树干净**（S-1(a)）；
 ② `_signals/` **未被回跟踪**（S-1(b)）；③ 逐字稿与 `inbox.md` **不进语料**（P1-4）；
-④ 精排**真的生效**且结果里无 `meeting-transcript`（P0-4）。改了 vault 写路径、git 后端、
-检索策略或 SK 端点配置之后**跑它**。
+④ 精排**真的生效**且结果里无 `meeting-transcript`（P0-4）；
+⑤ **原件（`<project>/sources/`）与 `daily` / `weekly-review` 不进语料**（批次 A 语料边界）；
+⑥ **来源白名单覆盖真实库的全部主线项目**（`thinking` 在内；这条只在有真实库的环境成立，
+故放在闸门而不是只做单元测试）。改了 vault 写路径、git 后端、检索策略、来源白名单或
+SK 端点配置之后**跑它**。默认收尾会 `git push` vault；**只做验证不想推送时加 `--no-push`**。
 
 ## 内容层面的硬规则（2026-09-18 使用者定规）
 
