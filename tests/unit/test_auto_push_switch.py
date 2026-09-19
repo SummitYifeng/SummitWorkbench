@@ -208,7 +208,8 @@ def test_run_local_mutation_ignores_non_string_push_result(tmp_path: Path) -> No
 # 任何测试变红。下面这条 AST 守卫把"允许的直接调用点"钉成白名单：
 #
 # - `webapp/mutation_runtime.py::_push_after_commit`：**唯一的自动推送出口**（开关在这里生效）；
-# - `webapp/routers/sync.py::api_sync_conflict_recover`：使用者显式发起的同步（本就该推）。
+# - `webapp/routers/sync_conflicts.py::api_sync_conflict_recover`：使用者显式发起的同步
+#   （本就该推）。
 #
 # 新增直接调用点必须同时改这张名单并说明理由——那正是让下一个人"看得见"的地方。
 # 变异验证：在 `src/` 下任意模块加一处 `sync_coordinator.push_after_commit(...)`，本测试变红。
@@ -216,7 +217,7 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "summit_workbench"
 _COORDINATOR_MODULE = "summit_workbench.workflows.sync_coordinator"
 _ALLOWED_DIRECT_PUSH_CALL_SITES = {
     ("webapp/mutation_runtime.py", "_push_after_commit"),
-    ("webapp/routers/sync.py", "api_sync_conflict_recover"),
+    ("webapp/routers/sync_conflicts.py", "api_sync_conflict_recover"),
 }
 
 
