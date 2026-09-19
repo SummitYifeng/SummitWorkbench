@@ -449,7 +449,7 @@ def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeyp
 def test_gate_cleanup_removes_journal_artifact_and_restores_project_page(
     gate: Any, tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """[7/7] 收尾：日志页删除、项目页还原成写入前内容、工作树干净。"""
+    """[8/8] 收尾：日志页删除、项目页还原成写入前内容、工作树干净。"""
     vault = _seed_gate_vault(tmp_path)
     project_page = vault / "projects" / "FinanceOps.md"
     before = project_page.read_text(encoding="utf-8")
@@ -466,4 +466,168 @@ def test_gate_cleanup_removes_journal_artifact_and_restores_project_page(
     assert rep.failures == []
     assert not (vault / probe.path).exists()
     assert project_page.read_text(encoding="utf-8") == before
+    assert gate.worktree_dirty(vault) == []
+
+
+# ─────── [4/8] 收件箱提升：纯判据 + 真实 router 脱机验证（第九阶段新增） ───────
+
+_PROMOTE_MARKER = "【回归闸门验证件】feedface"
+_PROMOTE_ENTRY_ID = "web-20260919120000000000"
+_PROMOTE_COMMENT = "<!-- 在此追加，一行一条，形如：- [ ] 想法内容 #项目名 -->"
+
+
+def _promote_inbox(*entries: str) -> str:
+    """一个最小但形态正确的 `inbox.md`；`entries` 是「待处理条目」区里的正文块。"""
+    lines = [
+        "---",
+        "date: 2026-09-01",
+        "type: inbox",
+        "status: active",
+        "project: global",
+        "---",
+        "",
+        "# 全局收件箱（inbox）",
+        "",
+        "## 待处理条目",
+        "",
+        _PROMOTE_COMMENT,
+    ]
+    for entry in entries:
+        lines.append("")
+        lines.append(entry.rstrip("\n"))
+    # 结尾保留一个空行：真实 inbox.md 就是这样，也是收尾「逐字还原」要回到的形状。
+    return "\n".join(lines) + "\n\n"
+
+
+def _promote_entry_block() -> str:
+    return (
+        f"- [ ] #FinanceOps {_PROMOTE_MARKER} 跨端回归闸门\n"
+        f"  <!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->\n"
+        "  <!-- wb-capture-kind: idea -->\n"
+        "  <!-- wb-capture-project: FinanceOps -->\n"
+    )
+
+
+def test_target_page_problems_accepts_single_blank_and_single_marker(gate: Any) -> None:
+    page = (
+        f"# P\n\n## 下一步\n\n- 一件工作\n  <!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->\n\n## 阻塞\n"
+    )
+    assert gate.target_page_problems(page, _PROMOTE_ENTRY_ID) == []
+
+
+def test_target_page_problems_flags_double_blank(gate: Any) -> None:
+    """⑦ 的判据：新增段与下一个 `##` 区块之间只允许一个空行（第七阶段真机事故）。"""
+    page = (
+        f"# P\n\n## 下一步\n\n- 一件工作\n"
+        f"  <!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->\n\n\n## 阻塞\n"
+    )
+    problems = gate.target_page_problems(page, _PROMOTE_ENTRY_ID)
+    assert any("双空行" in item for item in problems)
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_target_page_problems_flags_marker_count_not_one(gate: Any, count: int) -> None:
+    """幂等键必须出现且只出现一次（重复批准不得重复追加 / 写丢了要能发现）。"""
+    marker = f"  <!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->\n"
+    page = "# P\n\n## 下一步\n\n" + (marker * count) + "\n## 阻塞\n"
+    problems = gate.target_page_problems(page, _PROMOTE_ENTRY_ID)
+    assert any(f"出现 {count} 次" in item for item in problems)
+
+
+def test_inbox_after_promotion_problems_accepts_removed_entry(gate: Any) -> None:
+    """条目移出后：正文标记消失、解析不到、无双空行、无占位行。"""
+    inbox = _promote_inbox()
+    assert gate.inbox_after_promotion_problems(inbox, _PROMOTE_ENTRY_ID, _PROMOTE_MARKER) == []
+
+
+def test_inbox_after_promotion_problems_flags_stale_entry(gate: Any) -> None:
+    """仍能解析到条目 / 正文标记还在 ⇒ 必须报出来（条目没被移出）。"""
+    inbox = _promote_inbox(_promote_entry_block())
+    problems = gate.inbox_after_promotion_problems(inbox, _PROMOTE_ENTRY_ID, _PROMOTE_MARKER)
+    assert any("仍在 inbox.md" in item for item in problems)
+    assert any("仍能被解析到" in item for item in problems)
+
+
+def test_inbox_after_promotion_problems_flags_double_blank(gate: Any) -> None:
+    inbox = _promote_inbox().replace("## 待处理条目\n\n", "## 待处理条目\n\n\n\n")
+    problems = gate.inbox_after_promotion_problems(inbox, _PROMOTE_ENTRY_ID, _PROMOTE_MARKER)
+    assert any("双空行" in item for item in problems)
+
+
+def test_inbox_after_promotion_problems_flags_empty_checkbox_placeholder(gate: Any) -> None:
+    """「不留占位行」：空的 `- [ ] ` 行必须被抓住。"""
+    inbox = _promote_inbox("- [ ]")
+    problems = gate.inbox_after_promotion_problems(inbox, _PROMOTE_ENTRY_ID, _PROMOTE_MARKER)
+    assert any("占位行" in item for item in problems)
+
+
+def test_missing_from_commit_reports_only_absent_paths(gate: Any) -> None:
+    assert gate.missing_from_commit(["a.md", "b.md"], ["a.md", "b.md"]) == []
+    assert gate.missing_from_commit(["a.md"], ["a.md", "b.md"]) == ["b.md"]
+
+
+def _seed_promote_vault(tmp_path: Path) -> tuple[Path, str, str]:
+    """建一个已提交的 git vault：capture 验证件在 `## 待处理条目` 区里 + 一个项目页。
+
+    返回 ``(vault, 无条目的 inbox 基线, 项目页基线)``——收尾后必须逐字回到这两个基线。
+    """
+    import subprocess
+
+    from summit_workbench.repositories.writeback import append_global_inbox
+
+    vault = tmp_path / "vault"
+    (vault / "projects").mkdir(parents=True)
+    page = (
+        "---\nproject: FinanceOps\ndate: 2026-09-01\ntype: project-main\nstatus: active\n"
+        "---\n\n# P\n\n## 当前状态\n\n## 下一步\n\n## 阻塞\n\n## 决策记录\n\n## 跟进事项\n"
+    )
+    (vault / "projects" / "FinanceOps.md").write_text(page, encoding="utf-8")
+    base_inbox = _promote_inbox()
+    (vault / "inbox.md").write_text(base_inbox, encoding="utf-8")
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@e.com"],
+        ["config", "user.name", "t"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "chore: seed"],
+    ):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    # 用真实写入口追加 capture 验证件并提交（与 [2/8] 的落盘形态一致）。
+    append_global_inbox(
+        vault,
+        f"#FinanceOps {_PROMOTE_MARKER} 跨端回归闸门",
+        _PROMOTE_ENTRY_ID,
+        markers=["wb-capture-kind: idea", "wb-capture-project: FinanceOps"],
+    )
+    for args in (["add", "-A"], ["commit", "-q", "-m", "wb: capture"]):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    return vault, base_inbox, page
+
+
+def test_gate_promote_to_project_passes_against_real_route(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """[4/8] 在真实提升路径上必须全绿，并能在 [8/8] 逐字还原项目页与 inbox.md。"""
+    vault, base_inbox, base_page = _seed_promote_vault(tmp_path)
+    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
+    rep = gate.Report()
+
+    probe = gate.gate_promote(rep, vault, "http://swb", "tok", "http://swb", _PROMOTE_MARKER)
+
+    assert rep.failures == [], rep.failures
+    assert probe is not None
+    assert probe.project == "FinanceOps"
+    assert probe.entry_id == _PROMOTE_ENTRY_ID
+    assert "inbox.md" in probe.files and "projects/FinanceOps.md" in probe.files
+    assert gate.worktree_dirty(vault) == []
+    page_after = (vault / "projects" / "FinanceOps.md").read_text(encoding="utf-8")
+    assert page_after.count(f"<!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->") == 1
+    assert "\n\n\n" not in page_after
+    assert _PROMOTE_MARKER not in (vault / "inbox.md").read_text(encoding="utf-8")
+
+    gate.gate_cleanup(rep, vault, _PROMOTE_MARKER, True, push=False, promote=probe)
+
+    assert rep.failures == []
+    assert (vault / "projects" / "FinanceOps.md").read_text(encoding="utf-8") == base_page
+    assert (vault / "inbox.md").read_text(encoding="utf-8") == base_inbox
     assert gate.worktree_dirty(vault) == []

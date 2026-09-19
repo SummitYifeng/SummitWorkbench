@@ -31,9 +31,26 @@
    规范化器在落盘阶段又追了一个机器形态的 `## 关联项目`）。
    **这一步不调用模型 ⇒ 不花钱**（capture 之后的第二次写入，收尾与 capture 同形清理）。
 
+2026-09-19 第九阶段再追加**收件箱提升路径**的不变量（`POST /api/inbox/promote`；同样只在
+"有真实库"的环境里才有意义）：
+
+8. **提升到项目页之后工作树必须干净，且 `inbox.md` 与 `projects/<项目>.md` 必须在同一个提交里**
+   → 这正是第七阶段"新增写入口不会自动被覆盖"教训第二次成立的场合：`capture`（写 `inbox.md`）
+   与 `/api/journal/log` 都被闸门覆盖了，而第九阶段新增的 promote 写入口没有。
+   本步**只覆盖 `project` 目标**（风险最高、无外部副作用）：**绝不在闸门里建真实飞书待办**
+   （`feishu-task` 会往使用者的飞书里写东西）；`thought` 目标与 `/api/journal/thought` 共用
+   落盘实现，风险低，留给单元测试。
+   复用 `[2/8]` 已写下的 capture 验证件（带 `wb-candidate` 标记、`#项目` 标签与本闸门标记），
+   断言：① HTTP 200 且 `ok=true`；② 写入后工作树干净（S-1(a)）；③ **同一个提交**同时触及
+   `inbox.md` 与 `projects/<项目>.md`（第七阶段事故的判据）；④ 条目已从 `inbox.md`「待处理条目」
+   区消失、不留占位行、不产生双空行（契约 §10）；⑤ 目标页新增段与下一个 `##` 区块之间只有
+   一个空行（`"\n\n\n" not in page`）；⑥ 同一 `wb-candidate` 幂等键在目标页出现且只出现一次。
+   **本步不调用模型 ⇒ 不花钱**（纯本地写盘 + 一次读取，收尾与 capture / journal 同形清理）。
+
 **⚠️ 写入与推送的边界（2026-09-19 真实事故，务必先读）**：
 
-闸门的 `[2/7]`（真实 capture）与 `[3/7]`（`/api/journal/log`）都会向 **SWB 端点**写入。
+闸门的 `[2/8]`（真实 capture）、`[3/8]`（`/api/journal/log`）与 `[4/8]`（`/api/inbox/promote`）
+都会向 **SWB 端点**写入。
 SWB 的每一条写路径在 commit 之后都会经 `sync_coordinator.push_after_commit` **自动推送
 vault 远端**——这是 App 的正常行为，
 但验证动作不该顺带推送。当时 `--no-push` 只挡住了闸门收尾那一个提交，挡不住端点自己的推送，
@@ -92,7 +109,12 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from summit_workbench.config.auto_push import AUTO_PUSH_DISABLE_ENV  # noqa: E402
 from summit_workbench.domain.vault import iter_headings  # noqa: E402
+from summit_workbench.repositories.inbox import (  # noqa: E402
+    find_entry,
+    parse_inbox_entries,
+)
 from summit_workbench.repositories.vault import parse_frontmatter  # noqa: E402
+from summit_workbench.repositories.writeback import GLOBAL_INBOX_HEADING  # noqa: E402
 from summit_workbench.webapp.knowledge_sources import (  # noqa: E402
     KNOWLEDGE_SOURCE_ROOTS,
     _is_knowledge_source,
@@ -104,12 +126,23 @@ DEFAULT_QUESTION = "奖学金折扣要不要收 royalty？"
 
 @dataclass(frozen=True)
 class JournalProbe:
-    """闸门写下的日志验证件，供 [7/7] 精确清理（含还原关联项目页）。"""
+    """闸门写下的日志验证件，供 [8/8] 精确清理（含还原关联项目页）。"""
 
     marker: str
     path: str  # vault 相对路径（空串 = 未能归一）
     project: str
     previous_commit: str  # 写入前的 HEAD，用于还原项目页 frontmatter
+    files: tuple[str, ...]  # 该提交触碰的 vault 文件（相对路径）
+
+
+@dataclass(frozen=True)
+class PromoteProbe:
+    """`[4/8]` 收件箱提升写下的验证件，供 `[8/8]` 逐字还原（项目页 + inbox）。"""
+
+    marker: str  # `[2/8]` 写下的 capture 标记（用于在 inbox.md 里定位条目）
+    entry_id: str  # 条目的稳定标识（`wb-candidate`）
+    project: str  # 目标项目页（提升后由端点解析出的规范 ID）
+    previous_commit: str  # 提升前的 HEAD（还原项目页与 inbox 用）
     files: tuple[str, ...]  # 该提交触碰的 vault 文件（相对路径）
 
 
@@ -274,7 +307,7 @@ def http_json_tolerant(
 
     日志步骤必须容错：500 正是它要守的那个缺陷的**症状**（漏列 `changed_paths` 会让
     `run_local_mutation` 的 `mutation_invariant` 反查触发，而日志页**已经提交**）。
-    若在这里 `SystemExit`，闸门会在 [3/7] 直接中断 —— 收尾被跳过，验证件与未提交的项目页
+    若在这里 `SystemExit`，闸门会在 [3/8] 直接中断 —— 收尾被跳过，验证件与未提交的项目页
     改动一起留在使用者的库里，正好是最坏的结局。
     """
     req = _json_request(url, token=token, payload=payload, header=header, origin=origin)
@@ -412,6 +445,80 @@ def project_ids_of(vault: Path) -> list[str]:
     return ids
 
 
+# ─────────── [4/8] 收件箱提升的纯判定（便于脱机验证 / 变异，契约 §10） ───────────
+def _pending_region_text(inbox_text: str) -> str:
+    """`## 待处理条目` 区的正文（不含标题行；缺该区块时退化为全文）。
+
+    只用于**读**判据（不删行），所以不重复实现删除语义；缺失区块时宁可把全文查一遍，
+    也不漏查（真实 inbox.md 一定带该区块）。
+    """
+    lines = inbox_text.splitlines()
+    matches = [i for i, line in enumerate(lines) if line.rstrip() == GLOBAL_INBOX_HEADING]
+    if not matches:
+        return inbox_text
+    start = matches[0] + 1
+    end = len(lines)
+    for index in range(start, len(lines)):
+        if lines[index].startswith("## "):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def target_page_problems(page_text: str, candidate_id: str) -> list[str]:
+    """提升后项目页的机械判据（空列表 = 通过）。契约 §10 + 第七阶段双空行事故。
+
+    ① 新增段与下一个 `##` 区块之间只有一个空行（`writeback._block_tail` 的写入纪律）；
+    ② 同一 `wb-candidate` 幂等键**出现且只出现一次**（重复批准不得重复追加）。
+    """
+    problems: list[str] = []
+    if "\n\n\n" in page_text:
+        problems.append("目标页出现双空行（新增段与下一个 ## 区块之间不止一个空行）")
+    marker = f"<!-- wb-candidate: {candidate_id} -->"
+    count = page_text.count(marker)
+    if count != 1:
+        problems.append(f"幂等键 {marker} 出现 {count} 次（应为 1 次）")
+    return problems
+
+
+def inbox_after_promotion_problems(inbox_text: str, entry_id: str, marker_text: str) -> list[str]:
+    """提升后 `inbox.md` 的机械判据（空列表 = 通过）。契约 §10。
+
+    条目必须**移出**「待处理条目」区、不留占位行、不产生双空行——这三条都是
+    `repositories.inbox.remove_inbox_entry` 的契约承诺，这里在真实写入后复核。
+    """
+    problems: list[str] = []
+    if marker_text and marker_text in inbox_text:
+        problems.append("条目正文（验证件标记）仍在 inbox.md 里")
+    try:
+        entries = parse_inbox_entries(inbox_text)
+    except ValueError as exc:
+        problems.append(f"inbox.md 无法解析：{exc}")
+        return problems
+    if find_entry(entries, entry_id) is not None:
+        problems.append("条目仍能被解析到（未移出「待处理条目」区）")
+    region = _pending_region_text(inbox_text)
+    if "\n\n\n" in region:
+        problems.append("「待处理条目」区出现双空行")
+    placeholders = [
+        line.strip()
+        for line in region.splitlines()
+        if line.lstrip().startswith("- [ ]") and not line.strip()[len("- [ ]") :].strip()
+    ]
+    if placeholders:
+        problems.append(f"留下空的复选框占位行：{placeholders}")
+    return problems
+
+
+def missing_from_commit(files: Iterable[str], required: Iterable[str]) -> list[str]:
+    """`required` 里哪些路径没有出现在提交触碰集合 `files` 中（空列表 = 都出现了）。
+
+    第七阶段事故的判据：`changed_paths` 漏列 ⇒ 目标页留在未提交状态，提交里就没有它。
+    """
+    have = set(files)
+    return [path for path in required if path not in have]
+
+
 # ────────────────────── 闸门各段 ──────────────────────
 # 同步状态判据（2026-09-19）。只有 `ready` 是"全绿"；下列状态对**闸门要守的不变量**无碍，
 # 降为 WARN 并在 detail 里说清含义——判 FAIL 会让连续第二次跑闸门（或离线/未配远端时）必挂。
@@ -431,8 +538,8 @@ _SYNC_WARN_STATES: dict[str, str] = {
 def gate_preflight(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, sk_url: str, sk_tok: str
 ) -> int:
-    """返回起始 pending_index，供 [5/7] 判断"闸门自己的写入有没有让索引变脏"。"""
-    print("\n[1/7] 前置：三端可用 + 起始状态干净")
+    """返回起始 pending_index，供 [6/8] 判断"闸门自己的写入有没有让索引变脏"。"""
+    print("\n[1/8] 前置：三端可用 + 起始状态干净")
     rep.check(vault.is_dir(), f"vault 存在（{vault}）")
     rep.check(
         not worktree_dirty(vault),
@@ -474,7 +581,7 @@ def gate_mutation(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, keep: bool
 ) -> str:
     """S-1(a)/S-1(b)：真实写入之后，工作树必须干净、`_signals` 必须没被回跟踪。"""
-    print("\n[2/7] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
+    print("\n[2/8] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
     marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:8]}"
     res = http_json(
         f"{swb_url}/api/capture",
@@ -519,7 +626,7 @@ def gate_journal_write(
 
     不调用模型 ⇒ 不花模型/嵌入费用。返回清理所需的验证件信息。
     """
-    print("\n[3/7] 日志写入路径：`/api/journal/log` 之后工作树干净、项目页（若被改动）一并提交")
+    print("\n[3/8] 日志写入路径：`/api/journal/log` 之后工作树干净、项目页（若被改动）一并提交")
     project_ids = project_ids_of(vault)
     if not project_ids:
         rep.warn("真实库没有主线项目页，跳过日志写入步骤", "无法覆盖关联项目页的提交路径")
@@ -619,6 +726,113 @@ def gate_journal_write(
     )
 
 
+def gate_promote(
+    rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, marker: str
+) -> PromoteProbe | None:
+    """`[4/8]`：把 `[2/8]` 的 capture 验证件提升到项目页，覆盖第九阶段新增的写路径。
+
+    **只测 `project` 目标**：它是三种里风险最高（要同时改 `inbox.md` 与项目页、且必须同一个
+    提交）且**无外部副作用**的一种；`feishu-task` 会真的往使用者的飞书里写东西，闸门绝不
+    触发；`thought` 与 `/api/journal/thought` 共用同一落盘实现，留给单元测试。
+
+    断言见模块 docstring 第 8 条。返回收尾所需的验证件信息；未能定位 capture 条目时返回
+    None（收尾仍会走通用的「删标记行」路径，把残留验证件清掉）。
+    """
+    print("\n[4/8] 收件箱提升路径：`/api/inbox/promote`（project）之后工作树干净且同提交")
+    inbox = vault / "inbox.md"
+    if not inbox.is_file():
+        rep.fail("收件箱不存在，无法提升 capture 验证件", str(inbox))
+        return None
+    try:
+        entries = parse_inbox_entries(inbox.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        rep.fail("inbox.md 无法解析，跳过提升步骤", str(exc))
+        return None
+    entry = next((item for item in entries if marker in item.text), None)
+    if entry is None:
+        # capture 步骤失败时条目不存在——判 FAIL（提升路径没被覆盖），但**不中断**收尾。
+        rep.fail("未能在收件箱找到 capture 验证件（[2/8] 是否成功？）", marker)
+        return None
+    requested_project = (entry.project or "").strip()
+    page = vault / "projects" / f"{requested_project}.md" if requested_project else None
+    page_before = page.read_bytes() if page is not None and page.is_file() else None
+    head_before = git(vault, "rev-parse", "HEAD").strip()
+
+    # 容错调用：缺陷回归时端点返回 500，这里仍要能记 FAIL 并走到收尾（见 http_json_tolerant）。
+    status, res = http_json_tolerant(
+        f"{swb_url}/api/inbox/promote",
+        token=swb_tok,
+        header="X-WB-Session-Token",
+        origin=swb_origin,
+        payload={
+            "id": entry.id,
+            "target": "project",
+            "project": requested_project,
+            "block": "next-step",
+        },
+    )
+    rep.check(
+        status == 200 and bool(res.get("ok")),
+        "inbox/promote 成功（project 目标）",
+        f"HTTP {status} {str(res.get('message') or '')[:160]}",
+    )
+    project = str(res.get("project") or requested_project).strip()
+    page = vault / "projects" / f"{project}.md" if project else None
+    head_after = git(vault, "rev-parse", "HEAD").strip()
+    files = tuple(
+        line.strip()
+        for line in git(vault, "show", "--name-only", "--format=", head_after).splitlines()
+        if line.strip()
+    )
+    commit = (res.get("commit") or {}).get("status")
+    rep.check(commit == "committed", "inbox/promote 产生了提交", f"commit={commit}")
+
+    # 核心断言：S-1(a)。即使端点报错，工作树也绝不能脏（漏列 changed_paths 的症状）。
+    dirty = worktree_dirty(vault)
+    rep.check(not dirty, "提升写入后工作树仍然干净（S-1(a)）", "" if not dirty else str(dirty[:5]))
+
+    required = ["inbox.md"] + ([f"projects/{project}.md"] if project else [])
+    missing = missing_from_commit(files, required)
+    rep.check(
+        not missing,
+        "提升提交同时触及 inbox.md 与目标项目页（同一提交）",
+        f"缺失 {missing}；HEAD 触及：{list(files)}",
+    )
+    if page is not None and page.is_file():
+        page_after = page.read_text(encoding="utf-8")
+        if page_before is not None:
+            rep.check(
+                page_after.encode("utf-8") != page_before,
+                "提升确实改动了目标项目页",
+                f"projects/{project}.md",
+            )
+        page_problems = target_page_problems(page_after, entry.id)
+        rep.check(
+            not page_problems,
+            "目标页无双空行、幂等键出现且只出现一次",
+            "；".join(page_problems),
+        )
+    else:
+        rep.fail("提升后目标项目页不存在", f"projects/{project}.md")
+
+    inbox_problems = inbox_after_promotion_problems(
+        inbox.read_text(encoding="utf-8"), entry.id, marker
+    )
+    rep.check(
+        not inbox_problems,
+        "条目已移出收件箱、不留占位行、不产生双空行（契约 §10）",
+        "；".join(inbox_problems),
+    )
+    rep.ok("本轮提升验证件", f"entry={entry.id} → projects/{project}.md")
+    return PromoteProbe(
+        marker=marker,
+        entry_id=entry.id,
+        project=project,
+        previous_commit=head_before,
+        files=files,
+    )
+
+
 def gate_source_whitelist(rep: Report, vault: Path) -> None:
     """来源白名单必须覆盖**真实库**的全部主线项目目录（含 `thinking`）。
 
@@ -626,7 +840,7 @@ def gate_source_whitelist(rep: Report, vault: Path) -> None:
     白名单是 SWB 的"看得见的常量"，故意不做运行时派生——代价就是必须有人（这里）
     在真实库上守它。
     """
-    print("\n[4/7] 来源白名单：真实库的全部主线项目都可达")
+    print("\n[5/8] 来源白名单：真实库的全部主线项目都可达")
     project_ids = project_ids_of(vault)
     rep.check(bool(project_ids), "真实库有主线项目页", f"{len(project_ids)} 个")
     missing = whitelist_missing(project_ids)
@@ -651,9 +865,10 @@ def gate_corpus(
     marker: str,
     pending_before: int,
     journal: JournalProbe | None = None,
+    promote: PromoteProbe | None = None,
 ) -> None:
     """P1-4 + 批次 A：语料边界——逐字稿 / inbox / 原件 / 简报周报都不该进语料。"""
-    print("\n[5/7] 语料边界：逐字稿、inbox、原件与简报周报都不得进检索语料")
+    print("\n[6/8] 语料边界：逐字稿、inbox、原件与简报周报都不得进检索语料")
     db = active_db(vector_work)
     # WAL 库用 mode=ro 打开会因缺 -shm 失败（实测），普通连接做 SELECT 是安全的
     con = sqlite3.connect(db, timeout=10)
@@ -687,14 +902,20 @@ def gate_corpus(
     if prof:
         pending_after = int(prof.get("pending_index") or 0)
         # 真正要守的是「闸门自己的写入不得让索引变脏」。capture 走 `inbox.md`（**不进语料**，
-        # 见上面 `counts["inbox"] == 0` 这条直接判据），而 [3/7] 的日志写入按契约是**会进
-        # 语料**的 work-log 页（外加被刷新 activity_at 的项目页）⇒ 允许的增长上限就是
-        # 那一次提交实际触碰的文件数，且超出即判失败。
-        allowed = len(journal.files) if journal is not None else 0
+        # 见上面 `counts["inbox"] == 0` 这条直接判据）；会进语料的是 [3/8] 的 work-log 页
+        # （外加被刷新 `activity_at` 的项目页）与 [4/8] 提升写下的目标项目页
+        # （`inbox.md` 本身不进语料）⇒ 允许的增长上限 = **两步写下的 vault 文件并集**
+        # （去重，因为提升可能落在日志已刷新的同一个项目页上）。超出即判失败。
+        written: set[str] = set()
+        if journal is not None:
+            written.update(journal.files)
+        if promote is not None:
+            written.update(promote.files)
+        allowed = len(written)
         rep.check(
             pending_after <= pending_before + allowed,
             "闸门写入未让 pending_index 超出自己写下的 vault 文件数",
-            f"{pending_before} → {pending_after}（[3/7] 写入 {allowed} 个文件）",
+            f"{pending_before} → {pending_after}（[3/8]+[4/8] 写下 {allowed} 个文件）",
         )
         if pending_after:
             rep.warn(
@@ -705,7 +926,7 @@ def gate_corpus(
 
 def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None:
     """P0-4 + 语料边界：精排必须真的生效，且结果里不得出现非语料类型。"""
-    print("\n[6/7] 检索路径：精排是否真的生效、结果是否混入非语料类型")
+    print("\n[7/8] 检索路径：精排是否真的生效、结果是否混入非语料类型")
     payload = {"query": question, "profile_id": "work"}
     req = urllib.request.Request(
         f"{sk_url}/api/chat/stream", data=json.dumps(payload).encode(), method="POST"
@@ -764,8 +985,9 @@ def gate_cleanup(
     *,
     push: bool,
     journal: JournalProbe | None = None,
+    promote: PromoteProbe | None = None,
 ) -> None:
-    print("\n[7/7] 收尾：清理验证件并恢复起始状态")
+    print("\n[8/8] 收尾：清理验证件并恢复起始状态")
     if not do_cleanup:
         rep.warn("已跳过清理（--keep/--no-cleanup）", f"请人工删除含标记的行：{marker}")
         if journal is not None:
@@ -773,8 +995,18 @@ def gate_cleanup(
                 "日志验证件同样被保留",
                 f"{journal.path or '（路径未知）'}（关联项目 {journal.project}）",
             )
+        if promote is not None:
+            rep.warn(
+                "提升验证件同样被保留",
+                f"projects/{promote.project}.md（条目 {promote.entry_id} 已移出 inbox.md）",
+            )
         return
     inbox = vault / "inbox.md"
+    # 提升步骤用 `remove_inbox_entry` 移出条目，不会保留 capture 追加时那一个分隔空行
+    # ⇒ 直接走下面的「删标记行」会与写入口的字节级还原差一个空行。先回到**提升前**的
+    # inbox（条目还在），再走同一套删行逻辑，收尾后 inbox.md 与闸门开始时逐字节一致。
+    if promote is not None and promote.previous_commit:
+        git(vault, "checkout", promote.previous_commit, "--", "inbox.md")
     lines = inbox.read_text(encoding="utf-8").splitlines(keepends=True)
     kept: list[str] = []
     i = 0
@@ -793,16 +1025,31 @@ def gate_cleanup(
         return
     inbox.write_text("".join(kept), encoding="utf-8")
     git(vault, "add", "inbox.md")
-    # [3/7] 的日志验证件要与 capture 行一起进**同一个**清理提交：删掉日志页（知道路径时），
-    # 并把关联项目页还原成写入前的内容（`activity_at` 是闸门刷的，不该由一次验证留给使用者）。
-    # 项目页的还原**不依赖**是否知道日志页路径——缺陷回归时响应可能没有 path，而项目页照样被改。
-    if journal is not None:
+    # [3/8] 的日志验证件与 [4/8] 的提升验证件要与 capture 行一起进**同一个**清理提交：
+    # 删掉日志页（知道路径时），并把被改动的项目页还原成写入前的内容（`activity_at` 与提升行
+    # 都是闸门写的，不该由一次验证留给使用者）。项目页的还原**不依赖**是否知道日志页路径——
+    # 缺陷回归时响应可能没有 path，而项目页照样被改。
+    restores: dict[str, str] = {}
+    if journal is not None and journal.project:
+        restores[f"projects/{journal.project}.md"] = journal.previous_commit
         if journal.path:
             git(vault, "rm", "-q", "--ignore-unmatch", journal.path)
-        git(vault, "checkout", journal.previous_commit, "--", f"projects/{journal.project}.md")
+    if promote is not None and promote.project:
+        # 日志与提升可能落在同一个项目页上：撞车时取**更早**的提交（journal 先跑，它的
+        # previous_commit 是 promote 的祖先），一次还原就同时撤销两步的改动。
+        restores.setdefault(f"projects/{promote.project}.md", promote.previous_commit)
+    for path, commit in restores.items():
+        if commit:
+            git(vault, "checkout", commit, "--", path)
+    if journal is not None:
         rep.ok(
             "日志验证件已清理、关联项目页已还原",
             f"{journal.path or '（日志页路径未知，仅还原项目页）'} + projects/{journal.project}.md",
+        )
+    if promote is not None:
+        rep.ok(
+            "提升验证件已还原",
+            f"projects/{promote.project}.md + inbox.md（条目 {promote.entry_id}）",
         )
     committed = subprocess.run(
         ["git", "-C", str(vault), "commit", "-m", "chore: 清理跨端回归闸门验证件"],
@@ -855,7 +1102,12 @@ def gate_origin_guard(rep: Report, vault: Path, origin_before: str, *, push_enab
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="SWB × _vault × SK 跨端回归闸门")
+    ap = argparse.ArgumentParser(
+        description=(
+            "SWB × _vault × SK 跨端回归闸门（8 步）；"
+            "写入路径覆盖 capture / journal-log / inbox-promote(project)"
+        )
+    )
     ap.add_argument("--vault", default=str(Path.home() / "Documents/Work/_vault"))
     ap.add_argument("--vector-work", default=str(Path.home() / ".summitknowledge/vector_work"))
     ap.add_argument("--question", default=DEFAULT_QUESTION)
@@ -938,8 +1190,12 @@ def main() -> int:
         pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
         marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
         journal = gate_journal_write(rep, vault, swb_url, swb_tok, swb_origin)
+        # [4/8] 必须在 [6/8] 的 pending_index 记账之前跑：提升写下的项目页也是语料文件。
+        promote = gate_promote(rep, vault, swb_url, swb_tok, swb_origin, marker)
         gate_source_whitelist(rep, vault)
-        gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before, journal)
+        gate_corpus(
+            rep, vault, sk_url, sk_tok, vector_work, marker, pending_before, journal, promote
+        )
         gate_retrieval(rep, sk_url, sk_tok, args.question)
         gate_cleanup(
             rep,
@@ -948,6 +1204,7 @@ def main() -> int:
             not (args.keep or args.no_cleanup),
             push=not no_push_cleanup,
             journal=journal,
+            promote=promote,
         )
     finally:
         gate_origin_guard(rep, vault, origin_before, push_enabled=not no_push_cleanup)
