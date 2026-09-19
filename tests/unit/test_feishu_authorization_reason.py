@@ -18,7 +18,9 @@ from summit_workbench.config.secrets import CredentialError, CredentialRef, reso
 from summit_workbench.providers.feishu import auth
 from summit_workbench.providers.feishu.config import FeishuConfig
 from summit_workbench.providers.feishu.errors import FeishuAuthError
+from summit_workbench.webapp import feishu_authorization
 from summit_workbench.webapp.app import create_app
+from summit_workbench.webapp.routers import settings as settings_routes
 from summit_workbench.webapp.routers.settings import _AuthorizationStates
 
 CFG = FeishuConfig(app_id="cli_test", redirect_uri="http://localhost:8765/callback")
@@ -205,6 +207,15 @@ def test_authorization_state_keeps_and_clears_reason(tmp_path: Path) -> None:
     state2 = states.issue("ws-1")
     assert states.finish(state2, workspace_id="ws-1", status="connected", reason="陈旧原因")
     assert states.lookup(state2).reason is None  # type: ignore[union-attr]
+
+
+def test_settings_keeps_compatibility_exports_for_authorization_helpers() -> None:
+    assert settings_routes._PendingAuthorization is feishu_authorization.PendingAuthorization
+    assert settings_routes._AuthorizationStates is feishu_authorization.AuthorizationStates
+    old_state_file = settings_routes._authorization_state_file
+    new_state_file = feishu_authorization.authorization_state_file
+    assert old_state_file is new_state_file
+    assert settings_routes._denied_reason is feishu_authorization.denied_reason
 
 
 def test_authorization_state_file_has_no_unexpected_fields(tmp_path: Path) -> None:
