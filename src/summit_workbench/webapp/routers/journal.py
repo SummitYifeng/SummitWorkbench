@@ -38,6 +38,10 @@ from summit_workbench.webapp.api import JournalLogPayload, JournalThoughtPayload
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
+from summit_workbench.webapp.services.work_log import (
+    thread_activity_migration,
+    work_log_outcome,
+)
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
 
 _THINKING_DIRNAME = "thinking"
@@ -170,9 +174,25 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
         except ValueError as exc:
             return {"ok": False, "message": str(exc)}
 
+        # 活动迁移 seam 与「本次触碰路径」的组装与 `/api/threads/logs` 共用同一个实现
+        # （`services/work_log.py`）：`append_work_log` 除日志页外还会刷新每个关联项目页的
+        # `activity_at`，漏列项目页会让它们留在未提交状态（S-1(a)，2026-09-19 真实事故）。
+        activity_migration = thread_activity_migration(ctx)
+
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            path = append_work_log(ctx.vault_dir, projects=projects, text=body)
-            return LocalMutationOutcome(path, (path,))
+            path = append_work_log(
+                ctx.vault_dir,
+                projects=projects,
+                text=body,
+                causation_operation_id=_operation_id,
+                activity_migration=activity_migration,
+            )
+            return work_log_outcome(
+                ctx.vault_dir,
+                path=path,
+                projects=projects,
+                migration=activity_migration,
+            )
 
         try:
             result = runtime.run("journal/log", mutate)

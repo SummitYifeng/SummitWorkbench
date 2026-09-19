@@ -1,7 +1,8 @@
 """线程路由（LEGACY-APP-SPLIT-PLAN Step 11 / J）。
 
 承载原 ``legacy_app`` 中 J 集群的 4 条线程路由：状态区块写回、活动一致性报告、
-工作日志追加、产物保存。``_thread_activity_migration`` 随迁。
+工作日志追加、产物保存。活动迁移 seam 与「本次触碰路径」的组装已抽到
+:mod:`summit_workbench.webapp.services.work_log`（与 ``/api/journal/log`` 共用）。
 
 ``register_project_read_routes``（projects 域）原本插在 ``/api/threads/state`` 与其余
 线程路由之间，因此这里也用两个注册函数、在原位置分别调用，使 ``app.routes`` 顺序与
@@ -27,23 +28,16 @@ from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.model_config import _load_model_config_for_context
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
+from summit_workbench.webapp.services.work_log import (
+    thread_activity_migration,
+    work_log_outcome,
+)
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
 from summit_workbench.workflows.thread_activity_migration import (
     ThreadActivityConsistencyReport,
     ThreadActivityMigration,
     ThreadActivityMigrationMode,
 )
-
-
-def _thread_activity_migration(ctx: WebContext) -> ThreadActivityMigration | None:
-    """Create the P2-01B seam only for a frozen production workspace context."""
-    if ctx.active_workspace is None or not ctx.workspace_id or not ctx.active_workspace.device_id:
-        return None
-    return ThreadActivityMigration.from_environment(
-        ctx.vault_dir,
-        workspace_id=ctx.workspace_id,
-        device_id=ctx.active_workspace.device_id,
-    )
 
 
 def register_thread_routes(dependencies: RouteDependencies, *, runtime: MutationRuntime) -> None:
@@ -97,7 +91,7 @@ def register_thread_document_routes(
     @app.get("/api/threads/activity-consistency")
     def api_thread_activity_consistency() -> dict[str, object]:
         """Return the deterministic old/new report for the P2-01B event slice."""
-        migration = _thread_activity_migration(ctx)
+        migration = thread_activity_migration(ctx)
         if migration is None:
             report = ThreadActivityConsistencyReport(
                 mode=ThreadActivityMigrationMode.LEGACY,
@@ -144,8 +138,7 @@ def register_thread_document_routes(
         involved = digest.involved if digest else []
         tags = digest.tags if digest else []
 
-        archives = [ctx.vault_dir / "projects" / f"{p}.md" for p in resolved]
-        activity_migration = _thread_activity_migration(ctx)
+        activity_migration = thread_activity_migration(ctx)
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = append_work_log(
@@ -160,13 +153,12 @@ def register_thread_document_routes(
                 causation_operation_id=_operation_id,
                 activity_migration=activity_migration,
             )
-            report = activity_migration.last_report.as_dict() if activity_migration else None
-            changed_paths = (
-                path,
-                *archives,
-                *(activity_migration.last_write_paths if activity_migration else ()),
+            return work_log_outcome(
+                ctx.vault_dir,
+                path=path,
+                projects=resolved,
+                migration=activity_migration,
             )
-            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
             result = runtime.run("threads/logs", mutate)
@@ -217,7 +209,7 @@ def register_thread_document_routes(
         title = (index.title if index and index.title else title_hint) or ""
         summary = index.summary if index else ""
         kind = index.kind if index else ArtifactKind.OTHER
-        activity_migration = _thread_activity_migration(ctx)
+        activity_migration = thread_activity_migration(ctx)
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
             path = save_thread_artifact(
@@ -230,13 +222,12 @@ def register_thread_document_routes(
                 causation_operation_id=_operation_id,
                 activity_migration=activity_migration,
             )
-            report = activity_migration.last_report.as_dict() if activity_migration else None
-            changed_paths = (
-                path,
-                ctx.vault_dir / "projects" / f"{project}.md",
-                *(activity_migration.last_write_paths if activity_migration else ()),
+            return work_log_outcome(
+                ctx.vault_dir,
+                path=path,
+                projects=[project],
+                migration=activity_migration,
             )
-            return LocalMutationOutcome(changed_paths[0], changed_paths[1:], report)
 
         try:
             result = runtime.run("threads/artifacts", mutate)
