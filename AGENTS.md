@@ -2,8 +2,8 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前交付源码提交 **`375ce98`**（2026-09-19，即安装包 build `2026091921` 的来源；
-> 上一份是 `7b7df74` → build `2026091920`，再上份 `f710aca` → build `2026091919`）。
+> 基线：当前交付源码提交 **`e1700e2`**（2026-09-19，即安装包 build `2026091922` 的来源；
+> 上一份是 `375ce98` → build `2026091921`，再上份 `7b7df74` → build `2026091920`）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -87,12 +87,13 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091921`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `375ce98` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份仍为
-  **`v2026.09.19-a99f4166`**（本版未改前端）；包内**已内置飞书默认凭据**
+- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091922`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `e1700e2` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份升到
+  **`v2026.09.19-4a04d298`**（`assets/index-lNgDRgFe.js` / `index-DXsifFKj.css`）；包内**已内置飞书默认凭据**
   （`build-manifest.json` 的 `feishu_credentials.complete=true`）。
-  **本版含两个用户可见的修复**：写日志不再留下未提交的项目页（`changed_paths`）、
-  以及「撤销历史」面板在打包 App（dulwich 后端）上**从空变有**。
+  **本版含一个新入口**：【今日】页的「收件箱（N 条）」块与「提升为…」弹层（契约 §10 的收件箱提升通路）。
+  上一版 `375ce98` → build `2026091921` 含两个用户可见修复：写日志不再留下未提交的项目页
+  （`changed_paths`）、以及「撤销历史」面板在打包 App（dulwich 后端）上**从空变有**。
   更早的交付依次是 `7b7df74` → build `2026091920`、`f710aca` → build `2026091919`（新增两个写入入口）、
   `a49bb42` → build `2026091918`（批次 A 语料边界）、`2d1cf3a` → `2026091917`
   （Dulwich `1.2.15` 迁移 + 日常 CI 收窄为手动触发）。
@@ -104,10 +105,12 @@
   不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
   生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
   发布目录**（要重建同一版本须先移除旧目录）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091921` 的
-  **App SHA-256 为 `6a975051d1a8ec753cccebcc1065f2f2397cc6718265e3c275cee0bbf73a984a`**，
-  **DMG SHA-256 为 `6add902d16f595e72c8dd214796ab8dffcc386fffa38ddce65f93fd562b4e4f2`**
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091922` 的
+  **App SHA-256 为 `21db9aa7c0821a15cd24121d86a4c1414fbd8ea7c29fcd74230e8d0db73fe246`**，
+  **DMG SHA-256 为 `a98de53908c796ca2739907421c007248ff15cdd6fdb77e6786638771e9cfe4a`**
   （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
+  上一版 build `2026091921` 的 App/DMG SHA-256 分别是 `6a975051…f73a984a` / `6add902d…62b4e4f2`
+  （旧发布目录已移到 `/tmp/swb-releases-0.4.9-superseded`，`release-macos.sh` 拒绝覆盖同名目录）。
   装机包内**真实**依赖以发布目录的 `SBOM.json` 为准（本版依赖与前一版相同：
   `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、`ruff==0.16.7`、`hypothesis==6.168.0`）。
 
@@ -121,11 +124,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `375ce98`）
+## 验证命令与基线（交付提交 `e1700e2`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1355 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.30%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1372 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.45%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
@@ -134,7 +137,7 @@
 ./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
-（`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1262，别把两者当矛盾。）
+（`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1355，别把两者当矛盾。）
 
 > **`kb_verify_links.py` 的覆盖范围（2026-09-19 修过一次静默回归）**：覆盖 `[[目标#区块]]`、
 > `` `路径#区块` ``，以及**有唯一来源上下文**的裸锚点 `` `#区块` ``；**不覆盖** `###` 及更深的
@@ -274,6 +277,17 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
    （system 写库、`GIT_AUTHOR_DATE == GIT_COMMITTER_DATE`）**覆盖不到这个差异**；
    若将来出现 author≠committer 的提交（手工造、别的工具写），两后端返回的第二项会不同。
    要修的话需先确认"该返回哪个时间"（撤销面板的展示语义），别只改一侧。
+
+8. **手工写进 `inbox.md` 的条目拿不到 `#项目` 启发式**（2026-09-19 第九阶段收尾时发现，未修）：
+   `repositories/inbox.py` 的 `project` / `due` **只认 `wb-capture-*` 机器标记**，而
+   `suggest_promotion` 的第 2 条规则写的是「有 `#项目` ⇒ `project`」；`inbox.md` 的抬头又**明确邀请**
+   手写 `- [ ] 想法内容 #项目名`。⇒ 手工条目（无标记）会被默认判成「一篇工作思考」，与文档自相矛盾
+   （`_entry_payload` 返回的 `projects` 已经用 `extract_project_tags` 解出了标签，只是没进启发式）。
+   修法（一处、不破坏 `inbox.py` 的"纯逻辑不读盘"）：在 `routers/inbox.py::_entry_payload` 用
+   `dataclasses.replace(entry, project=entry.project or (projects[0] if projects else None))` 再交给
+   `suggest_promotion`，并在 `_promote_to_project` / `_promote_to_feishu_task` 用同一回退值。
+   守卫：手工 `- [ ] … #it-development`（无标记）经 `GET /api/inbox` 的 `suggested_target == "project"`。
+   影响面：只影响**默认选中项**（弹层里项目仍能从下拉里选到，提升本身不坏），故列第 ② 类登记待办。
 
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
