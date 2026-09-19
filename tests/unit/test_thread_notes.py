@@ -52,7 +52,7 @@ def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
     assert validate_note(note.meta, note.body) == []
     assert note.meta["type"] == "work-log"
     assert note.meta["projects"] == ["FinanceOps", "CoachFinance"]
-    assert note.meta["status"] == "generated"
+    assert note.meta["status"] == "active"
     # `area: work` 是工作库约定；缺它会让日志进不了 SK 的「笔记总览」清单
     # （综合类问题按 area 过滤，2026-09-15 实测漏掉了全库唯一那篇日志）。
     assert note.meta["area"] == "work"
@@ -71,13 +71,53 @@ def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
     assert note.meta["involved"] == ["木子", "冯老师"]
 
 
-def test_append_work_log_requires_text_and_project(tmp_path: Path) -> None:
+def test_append_work_log_requires_text_and_allows_no_project(tmp_path: Path) -> None:
+    """正文必填；项目**可省**——不绑项目写 `project: global`（契约 §1.1/§3，2026-09-19）。
+
+    变异验证：把 `append_work_log` 里「空 projects 写 project: global」改回抛错，本用例变红。
+    """
     vault = tmp_path / "vault"
     _mk_project(vault, "P1")
-    with pytest.raises(ValueError, match="至少"):
-        append_work_log(vault, projects=[], text="x")
+    path = append_work_log(vault, text="今天处理了三件事", now=datetime(2026, 9, 3, 12, tzinfo=UTC))
+    note = load_note(path)
+    assert note.parse_error is None
+    assert note.meta["type"] == "work-log"
+    assert note.meta["status"] == "active"
+    assert note.meta["project"] == "global"
+    assert "projects" not in note.meta  # project 与 projects 不得并存
+    assert validate_note(note.meta, note.body) == []
+    # 没有项目就没有 `## 关联项目` 回链
+    assert "## 关联项目" not in note.body
     with pytest.raises(ValueError, match="不能为空"):
         append_work_log(vault, projects=["P1"], text="   ")
+
+
+def test_append_work_log_keeps_handwritten_blocks(tmp_path: Path) -> None:
+    """正文自带 `##` 区块（照库内模板写的手写日志）时原样保留，不再套一层空的 `## 原文`。
+
+    变异验证：把 `_has_top_level_h2` 分支去掉（恒套 `## 原文`），本用例变红。
+    """
+    vault = tmp_path / "vault"
+    _mk_project(vault, "P1")
+    path = append_work_log(
+        vault,
+        projects=["P1"],
+        text=(
+            "## 今天 / 本周做了什么\n\n对齐结算口径。\n\n"
+            "## 进展与变化\n\n拿到了确认。\n\n"
+            "## 卡点与需要谁\n\n等对方回。\n\n"
+            "## 下一步\n\n出 V1.1。\n\n"
+            "## 关联\n\n- 与 [[projects/P1]] 相关。\n"
+        ),
+        now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+    )
+    note = load_note(path)
+    assert note.parse_error is None
+    assert validate_note(note.meta, note.body) == []
+    assert "## 今天 / 本周做了什么" in note.body
+    assert "## 关联" in note.body
+    assert "## 原文" not in note.body  # 没被套一层空的「原文」
+    assert "- [[projects/P1]]" in note.body  # 规范化仍补上关联项目回链
 
 
 def test_save_thread_artifact_single_project_schema(tmp_path: Path) -> None:
@@ -139,9 +179,10 @@ def test_log_endpoint_falls_back_to_raw_when_model_offline(
     note_path = Path(body["path"])
     note = load_note(note_path)
     assert validate_note(note.meta, note.body) == []
-    # 推进日志恒为 `generated`（低权威但可参与事实问答）；`draft` 会被检索契约整体排除，
-    # 而「模型不可用只存原文」恰恰是最需要被检索到的证据。摘要有无写在 summary 字段。
-    assert note.meta["status"] == "generated"
+    # 日志正文是使用者手写的原始记录 ⇒ `active`（契约 §3/§9.1，2026-09-19 起）。
+    # 「模型不可用只存原文」不降级：既不用 `draft`（会被整体排除出事实语料），也不再标
+    # `generated`（那是"完全由机器生成、无人工正文"才用的低权威档）。摘要有无写在 summary。
+    assert note.meta["status"] == "active"
     assert "summary" not in note.meta
 
 
@@ -199,7 +240,7 @@ def test_append_work_log_rejects_duplicate_heading_without_writing(tmp_path: Pat
         append_work_log(
             vault,
             projects=["FinanceOps"],
-            text="## 原文\n\n用户自己又写了一个同名区块。\n",
+            text="## 原文\n\n第一段。\n\n## 原文\n\n用户又写了一个同名区块。\n",
             now=datetime(2026, 9, 3, 12, tzinfo=UTC),
         )
     assert not (vault / "logs").exists()  # 不落半成品
@@ -239,8 +280,12 @@ def test_save_thread_artifact_rejects_duplicate_heading_without_writing(tmp_path
     assert not (vault / "artifacts").exists()  # 不落半成品
 
 
-def test_work_log_without_summary_is_generated_and_fact_eligible(tmp_path: Path) -> None:
-    """无摘要的推进日志仍是 `generated`（低权威可检索），不是被排除的 `draft`。"""
+def test_work_log_without_summary_is_active_and_fact_eligible(tmp_path: Path) -> None:
+    """无摘要的推进日志仍是正常内容（`active`）：可检索、且不再是低权威派生内容。
+
+    2026-09-19 契约变更：日志正文是使用者手写的原始记录 ⇒ `active`；缺摘要只由 `summary`
+    字段缺失表达，不降级成 `draft`（`draft` 会被检索契约整体排除出事实语料）。
+    """
     from summit_workbench.domain.retrieval_contract import (
         is_derived_low_authority,
         is_fact_retrieval_eligible,
@@ -256,10 +301,10 @@ def test_work_log_without_summary_is_generated_and_fact_eligible(tmp_path: Path)
         now=datetime(2026, 9, 3, 12, tzinfo=UTC),
     )
     note = load_note(path)
-    assert note.meta["status"] == "generated"
+    assert note.meta["status"] == "active"
     assert "summary" not in note.meta  # 摘要缺失由字段表达，不降级成 draft
     assert is_fact_retrieval_eligible(note.meta) is True
-    assert is_derived_low_authority(note.meta) is True  # 但不能单独支撑高置信事实
+    assert is_derived_low_authority(note.meta) is False  # active 不是 generated 低权威档
     assert validate_retrieval_readiness(note.meta, note.body) == []
 
 

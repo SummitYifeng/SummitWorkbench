@@ -52,7 +52,8 @@ def test_new_template_keeps_placeholder_project_optional(name: str) -> None:
     """模板不得硬编码项目绑定，否则 `free` scope 的笔记会被迫挂到某个项目上。
 
     `global` scope 的模板（workstream / index）按 schema 必须写 `project: global`；
-    `multi` scope 的 work-log 必须写 `projects: [...]`（那是它的正确形态，不是硬编码项目）。
+    `free` scope 的模板（含 2026-09-19 起的 work-log）**不得**写死 `project:` / `projects:`
+    ——绑定是可选项，绑定方式写在注释里。
     """
     from summit_workbench.domain.vault import NOTE_TYPES
 

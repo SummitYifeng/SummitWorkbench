@@ -13,8 +13,12 @@ date: "{{date}}"
 summary: 这次工作记录覆盖了什么
 tags: []
 aliases: []
-# 跨项目工作日志用 projects；单项目用 project（二者不可同时出现）
-projects: ["{{project}}"]
+# 项目绑定**可选**（work-log 自 2026-09-19 起 scope=free）：
+#   不绑  → 写 project: global（日常日志，不属于任何项目）
+#   单个  → project: <项目 ID>
+#   多个  → projects: [<项目 ID>, <项目 ID>]（与 project 不可同时出现）
+# 需要绑定时，取消下面一行的注释并填真实项目 ID：
+# projects: [it-development]
 ---
 
 # {{title}}

@@ -3,8 +3,10 @@
 两条写入都遵守 vault schema（统一 frontmatter + 固定区块），落盘后即时 self-check，
 保证任何写进 vault 的内容都能通过 ``wb vault check``：
 
-- 推进日志 ``_vault/logs/YYYY-MM-DD-<seq>.md``：``type: work-log``，可关联 1..n 个
-  线程/仓库项目（``projects: [...]``），正文保留原文 + AI 摘要；模型不可用时原文照存。
+- 推进日志 ``_vault/logs/YYYY-MM-DD-<seq>.md``：``type: work-log``，可关联 **0..n** 个
+  项目（绑定 0 个写 ``project: global``、1 个写 ``project: <id>``、多个写 ``projects: [...]``）；
+  正文是使用者的原始记录 ⇒ ``status: active``（2026-09-19 起；纯机器生成、无人工正文才用
+  ``generated``，契约 §3/§4.10/§9.1）。模型摘要只是附加，不可用时原文照存。
 - AI 产物 ``_vault/artifacts/<project>-<seq>.md``：``type: thread-doc``，单项目
   （``project: <id>``），frontmatter 带 ``title / summary / kind`` 供检索命中。
 """
@@ -23,6 +25,7 @@ import yaml
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.domain.time import business_date
+from summit_workbench.domain.vault import iter_headings
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.workflows.knowledge_normalization import (
@@ -105,10 +108,15 @@ def _touch_projects_activity(vault_dir: Path, projects: Iterable[str], day: str)
             update_note_status(vault_dir, path, status, extra={"activity_at": day})
 
 
+def _has_top_level_h2(text: str) -> bool:
+    """正文里是否已有可引用的 ``##`` 区块（围栏代码里的不算）。"""
+    return any(level == 2 and heading for level, heading in iter_headings(text))
+
+
 def append_work_log(
     vault_dir: Path,
     *,
-    projects: Sequence[str],
+    projects: Sequence[str] = (),
     text: str,
     summary: str = "",
     involved: Iterable[str] = (),
@@ -119,16 +127,20 @@ def append_work_log(
     causation_operation_id: str | None = None,
     activity_migration: ThreadActivityMigration | None = None,
 ) -> Path:
-    """落一条推进日志（可关联多线程）。``text`` 必填；``summary`` 空 = 模型未消化，原文照存。"""
+    """落一条推进日志（可关联 0..n 个线程）。``text`` 必填；``summary`` 空 = 模型未消化，原文照存。
+
+    空项目 = 日常日志（不属于任何项目）：写 ``project: global``，且**不**刷新任何项目档案的
+    ``activity_at``（2026-09-19，契约 §1.1/§3）。正文若已自带 ``##`` 区块（例如照库内模板写的
+    五区块手写日志）则原样保留；否则包一层 ``## 原文``（机器写入形态）——契约 §4.10 的两套区块
+    并存，这里按"调用方给了什么就用什么"选形态。
+    """
     body_text = _clean_text(text)
     if not body_text:
         raise ValueError("日志正文不能为空")
-    if not projects:
-        raise ValueError("推进日志至少要关联一个项目/线程")
     occurred_at = now or datetime.now(UTC)
     day = _day(occurred_at)
     projects_list = list(dict.fromkeys(projects))
-    heading = f"推进日志 {day}（{projects_list[0]} 等）"
+    heading = f"推进日志 {day}（{projects_list[0]} 等）" if projects_list else f"推进日志 {day}"
     meta: dict[str, object] = {
         "date": day,
         # `area: work` 是工作库的既有约定（16 个模板全都带它）。SK 侧的综合类问题按 `area`
@@ -138,13 +150,17 @@ def append_work_log(
         # 会回退成文件名（`2026-09-14-001`），总览里就只剩日期、语义全丢。
         "title": heading,
         "type": "work-log",
-        # 推进日志是**用户自己的原始记录**，始终落 `generated`：按共享检索契约的权威顺序，
-        # 工作日志属于「低权威 generated 内容」一层——可参与回答，但不能单独支撑高置信事实。
-        # 这里不再用 `draft` 表示「模型未消化」：`draft` 会被检索契约整体排除出事实语料，
-        # 而「原文照存」恰恰是最需要的证据（摘要是否存在写在 `summary` 里，不写进 status）。
-        "status": "generated",
-        "projects": projects_list,
+        # 日志正文是**使用者自己的原始记录** ⇒ `active`（契约 §3/§9.1，2026-09-19 起）。
+        # 此前恒为 `generated`（低权威），把使用者手写的日常日志也一并降了权威；只有
+        # **完全由机器生成、无人工正文**的日志才用 `generated`。
+        "status": "active",
     }
+    if projects_list:
+        meta["projects"] = projects_list
+    else:
+        # 不绑项目：契约 §1.1/§3 规定写 `project: global`（scope=free 允许；`project`
+        # 与 `projects` 不得并存）。
+        meta["project"] = "global"
     if summary:
         meta["summary"] = summary
     involved_list = list(dict.fromkeys(i.strip() for i in involved if i.strip()))
@@ -158,10 +174,13 @@ def append_work_log(
     if decision:
         meta["decision"] = decision
 
-    # 保留 ``## 原文`` 区块名与「原文 + AI 摘要」两段结构：project_view 的兜底片段
-    # 按 ``## 原文`` 读取日志首段，并发落盘测试也以该区块为契约。规范化器只在
-    # 「输入没有 H2」时才生成 ``## 工作记录`` 默认区块，这里走「已有 H2 → 保留结构」。
-    raw_body = f"# {heading}\n\n## 原文\n\n{body_text}\n"
+    # 机器写入形态保留 ``## 原文``（+ 摘要时 ``## AI 摘要``）：project_view 的兜底片段
+    # 按 ``## 原文`` 读取日志首段、并发落盘测试也以该区块为契约。若调用方给的正文**已经**
+    # 带 ``##`` 区块（照模板写的手写日志），就原样用它，不再套一层空的 ``## 原文``。
+    if _has_top_level_h2(body_text):
+        raw_body = f"# {heading}\n\n{body_text}\n"
+    else:
+        raw_body = f"# {heading}\n\n## 原文\n\n{body_text}\n"
     if summary:
         raw_body += f"\n## AI 摘要\n\n{summary}\n"
     normalized = normalize_generated_body(
@@ -184,8 +203,9 @@ def append_work_log(
             path = logs_dir / f"{day}-{seq:03d}.md"
         _write_note(path, meta, body)
         _check(path)
+        # 无项目时是空循环（不动任何档案）；迁移投影也只在有项目时才记录。
         _touch_projects_activity(vault_dir, projects_list, day)
-        if activity_migration is not None:
+        if activity_migration is not None and projects_list:
             activity_migration.record_work_log(
                 path,
                 projects=projects_list,

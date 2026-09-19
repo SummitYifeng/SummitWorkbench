@@ -75,8 +75,10 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
     # 知识线程项目（无 Work 文件夹）的收件箱：_vault/inboxes/<project>.md。
     # 仓库项目沿用各仓库文件夹内的 input/inbox.md，不属于 vault schema 校验范围。
     "project-inbox": NoteTypeSpec(scope="single"),
-    # 推进日志：可关联 1..n 个线程/项目（R3 工作日志总结多个工作），projects 必填。
-    "work-log": NoteTypeSpec(scope="multi"),
+    # 推进日志：可关联 0..n 个项目（2026-09-19 起 scope=free）——日常日志常常不属于任何项目，
+    # 此时写 `project: global`（契约 §1.1/§3/§4.10）；绑定一个项目写 `project: <id>`，
+    # 绑定多个写 `projects: [...]`。`project` 与 `projects` 仍不得并存（free 的既有约束）。
+    "work-log": NoteTypeSpec(scope="free"),
     # AI 产物（阶段总结/PRD/背景包/timeline）：绑定单一线程，project 必填。
     "thread-doc": NoteTypeSpec(scope="single"),
     "meeting-note": NoteTypeSpec(
