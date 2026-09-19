@@ -47,10 +47,10 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
 # ───────────────────────── 日志 ─────────────────────────
 
 
-def test_log_without_project_lands_as_global(tmp_path: Path) -> None:
-    """无项目的日志必须能落盘，且写 `project: global`（契约 §1.1/§3）。"""
+def test_log_with_only_did_lands_as_five_block_journal(tmp_path: Path) -> None:
+    """只填「今天做了什么」也能落盘：五区块形态 + 无项目 → `project: global`。"""
     client, vault = _client(tmp_path)
-    r = client.post("/api/journal/log", json={"text": "今天处理了三件事，明天继续。"})
+    r = client.post("/api/journal/log", json={"did": "今天处理了三件事，明天继续。"})
     body = r.json()
     assert r.status_code == 200 and body["ok"] is True
     assert body["projects"] == []
@@ -66,7 +66,47 @@ def test_log_without_project_lands_as_global(tmp_path: Path) -> None:
     assert "projects" not in note.meta
     assert is_fact_retrieval_eligible(note.meta) is True
     assert is_derived_low_authority(note.meta) is False
+    # 「日常手记」形态：只有填了的那段 + 恒在的 ## 关联；**没有** ## 原文
+    assert "## 今天 / 本周做了什么" in note.body
+    assert "## 关联" in note.body
+    assert "- （无）" in note.body  # 无关联项目时的占位
     assert "今天处理了三件事" in note.body
+    assert "## 原文" not in note.body
+    # 空段不生成空区块
+    assert "## 下一步" not in note.body
+    assert "## 进展与变化" not in note.body
+    assert "## 卡点与需要谁" not in note.body
+
+
+def test_log_with_all_four_sections_generates_five_blocks(tmp_path: Path) -> None:
+    """四段齐全 ⇒ 五个区块（四段 + `## 关联`），顺序与契约一致。"""
+    client, vault = _client(tmp_path)
+    r = client.post(
+        "/api/journal/log",
+        json={
+            "did": "今天做了 A。",
+            "remaining": "B 还没做。",
+            "reflection": "感悟：C。",
+            "blockers": "卡在 D。",
+            "projects": ["财务运营"],
+        },
+    )
+    body = r.json()
+    assert body["ok"] is True
+    note = load_note(Path(body["path"]))
+    assert validate_note(note.meta, note.body) == []
+    assert note.meta["projects"] == ["FinanceOps"]
+    assert "project" not in note.meta
+    positions = [
+        note.body.index("## 今天 / 本周做了什么"),
+        note.body.index("## 进展与变化"),
+        note.body.index("## 卡点与需要谁"),
+        note.body.index("## 下一步"),
+        note.body.index("## 关联"),
+    ]
+    assert positions == sorted(positions)
+    assert "- [[projects/FinanceOps]]" in note.body
+    assert "- （无）" not in note.body  # 有项目就不写占位
 
 
 def test_log_without_project_does_not_touch_any_project_activity(tmp_path: Path) -> None:
@@ -74,14 +114,35 @@ def test_log_without_project_does_not_touch_any_project_activity(tmp_path: Path)
     client, vault = _client(tmp_path)
     archive = vault / "projects" / "FinanceOps.md"
     before = archive.read_text(encoding="utf-8")
-    r = client.post("/api/journal/log", json={"text": "不属于任何项目的一天。"})
+    r = client.post("/api/journal/log", json={"did": "不属于任何项目的一天。"})
     assert r.json()["ok"] is True
     assert archive.read_text(encoding="utf-8") == before
 
 
+def test_log_rejects_when_every_section_is_empty(tmp_path: Path) -> None:
+    """四段全空 ⇒ 拒绝并点名四段（不落盘）。"""
+    client, vault = _client(tmp_path)
+    r = client.post("/api/journal/log", json={"did": " ", "remaining": "", "blockers": "\n"})
+    body = r.json()
+    assert body["ok"] is False
+    assert "至少填一段" in body["message"]
+    assert "今天做了什么" in body["message"]
+    assert not (vault / "logs").exists()
+
+
+def test_log_rejects_oversized_single_block(tmp_path: Path) -> None:
+    """单块超 ~1500 字符 ⇒ 拒绝（超长块会被切成共享同一锚点的子块）。"""
+    client, vault = _client(tmp_path)
+    r = client.post("/api/journal/log", json={"did": "字" * 1600})
+    body = r.json()
+    assert body["ok"] is False
+    assert "1500" in body["message"] and "写工作思考" in body["message"]
+    assert not (vault / "logs").exists()
+
+
 def test_log_resolves_aliases_and_binds_projects(tmp_path: Path) -> None:
     client, vault = _client(tmp_path)
-    r = client.post("/api/journal/log", json={"projects": ["财务运营"], "text": "对齐结算口径。"})
+    r = client.post("/api/journal/log", json={"projects": ["财务运营"], "did": "对齐结算口径。"})
     body = r.json()
     assert body["ok"] is True and body["projects"] == ["FinanceOps"]
     note = load_note(Path(body["path"]))
@@ -92,7 +153,7 @@ def test_log_resolves_aliases_and_binds_projects(tmp_path: Path) -> None:
 
 def test_log_rejects_unknown_project(tmp_path: Path) -> None:
     client, _vault = _client(tmp_path)
-    r = client.post("/api/journal/log", json={"projects": ["Ghost"], "text": "x"})
+    r = client.post("/api/journal/log", json={"projects": ["Ghost"], "did": "x"})
     body = r.json()
     assert body["ok"] is False and "未建档" in body["message"]
 

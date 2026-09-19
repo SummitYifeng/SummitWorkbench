@@ -13,7 +13,11 @@ from fastapi.testclient import TestClient
 
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.domain.vault import iter_headings, validate_note
-from summit_workbench.repositories.thread_notes import append_work_log, save_thread_artifact
+from summit_workbench.repositories.thread_notes import (
+    append_work_log,
+    render_journal_body,
+    save_thread_artifact,
+)
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
 
@@ -69,6 +73,41 @@ def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
     )
     assert path2.name == "2026-09-03-002.md"
     assert note.meta["involved"] == ["木子", "冯老师"]
+
+
+# ── 「日常手记」形态渲染（契约 §4.10）──
+
+
+def test_render_journal_body_only_filled_sections_plus_related() -> None:
+    """空段不出区块；`## 关联` 恒在、无项目时写 `- （无）`。"""
+    body = render_journal_body(sections={"did": "做了 A。"}, projects=[])
+    assert "## 今天 / 本周做了什么\n\n做了 A。" in body
+    assert "## 关联\n\n- （无）" in body
+    for absent in ("## 下一步", "## 进展与变化", "## 卡点与需要谁"):
+        assert absent not in body
+
+
+def test_render_journal_body_uses_contract_order_and_dedupes_projects() -> None:
+    body = render_journal_body(
+        sections={"did": "a", "remaining": "b", "reflection": "c", "blockers": "d"},
+        projects=["P1", "P1", "P2"],
+    )
+    headings = [line for line in body.splitlines() if line.startswith("## ")]
+    assert headings == [
+        "## 今天 / 本周做了什么",
+        "## 进展与变化",
+        "## 卡点与需要谁",
+        "## 下一步",
+        "## 关联",
+    ]
+    assert body.count("- [[projects/P1]]") == 1
+    assert "- [[projects/P2]]" in body
+
+
+def test_render_journal_body_rejects_oversized_block() -> None:
+    """单块（含标题行）超 ~1500 字符 ⇒ 抛错（超长块会被切成共享同一锚点的子块）。"""
+    with pytest.raises(ValueError, match="1500"):
+        render_journal_body(sections={"did": "字" * 1600}, projects=[])
 
 
 def test_append_work_log_requires_text_and_allows_no_project(tmp_path: Path) -> None:

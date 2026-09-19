@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,6 +39,54 @@ if TYPE_CHECKING:
 _SLUG_RE = re.compile(r"[^A-Za-z0-9\u4e00-\u9fff_-]+")
 _LOGS_DIRNAME = "logs"
 _ARTIFACTS_DIRNAME = "artifacts"
+
+# ── 「日常手记」形态（契约 §4.10）────────────────────────────────────────────
+# App「写工作日志」按使用者的话术采集四段，落盘换成标准区块名；
+# `## 关联` 恒在（无关联项目时写 `- （无）`）。
+# 落盘顺序 = 契约 §4.10 / 库内模板 `templates/work-log.template.md` 的五区块顺序。
+JOURNAL_FIELD_HEADINGS: tuple[tuple[str, str], ...] = (
+    ("did", "## 今天 / 本周做了什么"),
+    ("reflection", "## 进展与变化"),
+    ("blockers", "## 卡点与需要谁"),
+    ("remaining", "## 下一步"),
+)
+JOURNAL_RELATED_HEADING = "## 关联"
+# 单个 `##` 块（含标题行）上限：超过会被 SK 切成**共享同一锚点**的子块，`路径#区块` 不再唯一
+# （契约 §9.1「结论块瘦身」/ §4.10）。
+JOURNAL_MAX_BLOCK_CHARS = 1500
+# 表单标签（使用者的原话）——报错与文档都用它，避免两处漂移。
+JOURNAL_FIELD_LABELS: dict[str, str] = {
+    "did": "今天做了什么",
+    "remaining": "还剩什么没做",
+    "reflection": "今天的一点感悟",
+    "blockers": "卡点与需要谁",
+}
+
+
+def render_journal_body(*, sections: Mapping[str, str], projects: Sequence[str] = ()) -> str:
+    """把 App 表单四段渲染成「日常手记」五区块正文（纯函数，便于单测）。
+
+    - 某一段为空 ⇒ **不生成该区块**（不写"（无）"占位，有几段写几段）；
+    - `## 关联` **恒在**：无关联项目时写 `- （无）`，保持五区块齐全；
+    - 任一段超过 :data:`JOURNAL_MAX_BLOCK_CHARS` ⇒ 抛 :class:`ValueError`
+      （超长块会被切成共享同一锚点的子块，引用不再唯一）。
+    """
+    parts: list[str] = []
+    for field, heading in JOURNAL_FIELD_HEADINGS:
+        value = (sections.get(field) or "").strip()
+        if not value:
+            continue
+        if len(heading) + 2 + len(value) > JOURNAL_MAX_BLOCK_CHARS:
+            label = JOURNAL_FIELD_LABELS[field]
+            raise ValueError(
+                f"「{label}」超过 {JOURNAL_MAX_BLOCK_CHARS} 字符（{len(value)} 字）："
+                "超长区块会被切成共享同一锚点的子块、引用不再唯一；"
+                "请精简，或改用「写工作思考」/分析笔记"
+            )
+        parts.append(f"{heading}\n\n{value}")
+    links = "\n".join(f"- [[projects/{project}]]" for project in dict.fromkeys(projects))
+    parts.append(f"{JOURNAL_RELATED_HEADING}\n\n{links or '- （无）'}")
+    return "\n\n".join(parts) + "\n"
 
 
 def _day(now: datetime | None) -> str:

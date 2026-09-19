@@ -28,7 +28,11 @@ from summit_workbench.domain.retrieval_contract import validate_retrieval_readin
 from summit_workbench.domain.vault import WORKSTREAM_VOCAB, validate_note
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.project_registry import load_project_registry
-from summit_workbench.repositories.thread_notes import append_work_log
+from summit_workbench.repositories.thread_notes import (
+    JOURNAL_FIELD_LABELS,
+    append_work_log,
+    render_journal_body,
+)
 from summit_workbench.repositories.vault import parse_frontmatter
 from summit_workbench.webapp.api import JournalLogPayload, JournalThoughtPayload
 from summit_workbench.webapp.dependencies import RouteDependencies
@@ -145,19 +149,29 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
 
     @app.post("/api/journal/log", response_model=None)
     def api_journal_log(payload: JournalLogPayload) -> dict[str, object]:
-        """写一条日常工作日志（可关联 0..n 个项目；不绑项目 → `project: global`）。"""
-        text = payload.text.strip()
-        if not text:
-            return {"ok": False, "message": "日志正文不能为空"}
+        """写一条「日常手记」（五区块形态；可关联 0..n 个项目；不绑项目 → `project: global`）。"""
+        sections = {
+            "did": payload.did,
+            "remaining": payload.remaining,
+            "reflection": payload.reflection,
+            "blockers": payload.blockers,
+        }
+        if not any(value.strip() for value in sections.values()):
+            labels = " / ".join(JOURNAL_FIELD_LABELS.values())
+            return {"ok": False, "message": f"至少填一段：{labels}"}
         projects, unknown = _resolve_projects(ctx.vault_dir, payload.projects)
         if unknown:
             return {
                 "ok": False,
                 "message": "项目未建档：" + "、".join(unknown) + "（先在「项目」页建档）",
             }
+        try:
+            body = render_journal_body(sections=sections, projects=projects)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            path = append_work_log(ctx.vault_dir, projects=projects, text=text)
+            path = append_work_log(ctx.vault_dir, projects=projects, text=body)
             return LocalMutationOutcome(path, (path,))
 
         try:

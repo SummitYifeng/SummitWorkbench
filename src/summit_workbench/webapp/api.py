@@ -129,12 +129,17 @@ class ProjectStatePayload(BaseModel):
 
 
 class JournalLogPayload(BaseModel):
-    """写一条日常工作日志：正文必填（空正文由路由给出清晰提示），关联项目**可选**（0..n）。
+    """写一条「日常手记」（契约 §4.10 的五区块形态）：四段**至少填一段**，关联项目可选。
 
-    不绑项目 = 契约 §1.1/§3 的 `project: global`（日常日志常常不属于任何项目）。
+    四段按使用者的话术采集，落盘换成标准区块名（`did`→`## 今天 / 本周做了什么`、
+    `remaining`→`## 下一步`、`reflection`→`## 进展与变化`、`blockers`→`## 卡点与需要谁`）；
+    空段不生成区块。「至少填一段」由路由给出点名提示（不用 422 挡）。
     """
 
-    text: str = Field(default="", max_length=100_000)
+    did: str = Field(default="", max_length=200_000)
+    remaining: str = Field(default="", max_length=200_000)
+    reflection: str = Field(default="", max_length=200_000)
+    blockers: str = Field(default="", max_length=200_000)
     projects: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
         default_factory=list, max_length=100
     )
