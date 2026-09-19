@@ -2,7 +2,7 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：源码提交 **`17bfde8`**（2026-09-19，即安装包 build `2026091816` 的来源）。
+> 基线：当前迁移交付源码提交 **`2d1cf3a`**（2026-09-19，即安装包 build `2026091917` 的来源）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -52,18 +52,17 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091816`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `17bfde8` 构建。相对上一版 `d738d13`（build `2026091815`）只有三类改动：
-  ① 4 个依赖升级（uvicorn `0.53.0`、pyinstaller `6.22.3`、ruff `0.16.7`、hypothesis `6.168.0`，均只动 `uv.lock`）；
-  ② `0f37ac7` 刷新前端构建产物（build id 日期滚到 09-19，6 行）；③ 文档。
-  **Python 源码（`src/`）一行未改** —— 所以两版行为等价，但**包内依赖版本不同**（这正是重建的理由）。
+- 本机 `/Applications/SummitWorkbench.app` 目标为 `0.4.9 / build 2026091917`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `2d1cf3a` 构建；前端身份为 `v2026.09.19-6550855f`。本轮将 Dulwich 锁定为
+  `1.2.15` 并迁移提交/类型契约，同时把日常 CI 收窄为手动触发；包内 SBOM 已核验
+  `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、`ruff==0.16.7`、`hypothesis==6.168.0`。
   前端身份 `v2026.09.19-6550855f`（两版相同）；原生壳自 build `2026091813` 起**保留 Dock 图标**
   （`LSUIElement=false` + `.regular`），`WB_DOCK_ICON=0` 可退回菜单栏模式。
   装机包内**真实**依赖以发布目录的 `SBOM.json` 为准
-  （build `2026091816` 实测 `uvicorn==0.53.0`、`pyinstaller==6.22.3`）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`（App + DMG + `SHA256SUMS` + `release-metadata.json`）；App SHA-256 为
-  `c5f51f657c214f15866488a79da00701fac31115ef5673b372c3ba5c0a585b18`，DMG SHA-256 为
-  `d6786ff234242bab9da4a7a55d2f205da81ebb458d31b1595fa5a3d9315c527e`。
+  （build `2026091917` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`）。
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091917` 的 App SHA-256 为
+  `b253f8c701f7d43b591a2dcff98f23ff669fd49c3f8e94f228a791ecb0449671`，DMG SHA-256 为
+  `52468c18e6879066a96265e01c0b6be7c75a51b9f23d09d92972f39c2d99be2b`。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -75,11 +74,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（源码提交 `17bfde8`）
+## 验证命令与基线（迁移交付提交 `2d1cf3a`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 期望 1262 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.05%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1266 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.04%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 86 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault

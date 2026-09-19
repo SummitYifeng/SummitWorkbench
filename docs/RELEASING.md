@@ -1,28 +1,24 @@
 # SummitWorkbench macOS 发布
 
-## 当前 main 本机交付状态（2026-09-19，latest）
+## 当前本地交付状态（2026-09-19，Dulwich 1.2 迁移分支）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-本轮发布产物由提交 `17bfde8` 构建。相对上一版 `d738d13`（build `2026091815`）只有三类改动：
-4 个依赖升级（uvicorn `0.53.0` / pyinstaller `6.22.3` / ruff `0.16.7` / hypothesis `6.168.0`，
-均只动 `uv.lock`）、`0f37ac7` 刷新前端构建产物、文档；**`src/**/*.py` 一行未改**。本机
-`/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091816`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
-`v2026.09.19-6550855f`（未变）；`tests/integration/test_packaged_app.py`
-已使用该安装包通过（1 passed），跨端回归闸门 `kb_three_end_gate.py` 对该安装包 **22/22 PASS**。
-以下历史发布记录保留原结论；正式 DMG 的发布身份
-仍以对应 `release-metadata.json` 为准。
+本轮发布产物由提交 `2d1cf3a` 构建，完成 Dulwich `1.2.15` API/类型迁移与 CI 手动触发收窄。
+`tests/integration/test_packaged_app.py` 已随发布脚本通过；前端身份为
+`v2026.09.19-6550855f`。本地完整门禁为 **1266 passed / 1 skipped**、覆盖率 **84.04%**，
+vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确认一次临时写入与极小模型费用后运行。
+以下历史发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
 
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091816` |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091917`（安装后 smoke 通过） |
 | 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| App SHA-256 | `c5f51f657c214f15866488a79da00701fac31115ef5673b372c3ba5c0a585b18` |
-| DMG SHA-256 | `d6786ff234242bab9da4a7a55d2f205da81ebb458d31b1595fa5a3d9315c527e` |
-| 本机测试基线 | `pytest -q` → **1262 passed, 1 skipped**；`--cov` → **84.05%**（门槛 80%） |
+| App SHA-256 | `b253f8c701f7d43b591a2dcff98f23ff669fd49c3f8e94f228a791ecb0449671`（见 metadata） |
+| DMG SHA-256 | `52468c18e6879066a96265e01c0b6be7c75a51b9f23d09d92972f39c2d99be2b` |
+| 本机测试基线 | `pytest -q` → **1266 passed, 1 skipped**；`--cov` → **84.04%**（门槛 80%） |
 
 本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`。
 本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
@@ -79,7 +75,7 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091816）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091917）
 
 认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
 与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。

@@ -1,5 +1,28 @@
 # 未验证清单（单一真源）
 
+## 2026-09-19 Dulwich 1.2 迁移执行记录（本地隔离分支）
+
+本轮执行分支为 `codex/dulwich-1-2-migration`，当前提交 `2d1cf3a`；历史 §I 关于
+`dulwich 0.22.8` 的评估与失败证据保留不变。本轮已完成：依赖锁定
+`dulwich>=1.2.15,<1.3`、`Repo.do_commit` 迁移、1.2 类型契约收窄、深层 `.gitignore` 否定规则守卫，
+以及日常 CI 改为仅 `workflow_dispatch`；release/tag workflow 未改。
+
+已取得的本地证据：
+
+- 聚焦同步/冲突/双设备套件：**93 passed**；完整本地门禁：**1266 passed / 1 skipped**，覆盖率
+  **84.04%**；ruff、format、mypy、TypeScript、前端契约、secret scan、原生更新行为测试全部通过。
+- vault 只读门禁：schema **86 篇**、链接、模板 **15 个**、决策卫生 **19 篇**全部通过。
+- arm64 内部包：`0.4.9 / build 2026091917`，包内 `dulwich==1.2.15`，metadata 源码提交为
+  `2d1cf3aea7f59ea35f36a34bc0ed52c1207d9e9e`；DMG SHA-256 为
+  `52468c18e6879066a96265e01c0b6be7c75a51b9f23d09d92972f39c2d99be2b`，App SHA-256 记录在
+  `release-metadata.json` 为 `b253f8c701f7d43b591a2dcff98f23ff669fd49c3f8e94f228a791ecb0449671`。
+- `x86_64` 构建契约按预期以非零状态拒绝，且没有创建输出；日常远端 CI 已固定为手动触发，push/PR
+  不会自动消耗 runner。
+
+仍需取得证据：真实 HTTPS no-op push（fetch 已成功，但 push 因 GitHub 443 连接超时未完成）、用户确认后的
+跨端回归闸门，以及最终合并/推送和一次手动远端 CI。SSH no-op push、安装后 App smoke 已通过；剩余步骤
+可能触及外部仓库、临时写入 `_vault` 或 GitHub 计费，按执行方案分阶段确认；不触发全量重嵌。
+
 > **历史条目说明（2026-09-17）**：本清单中关于 `wb ask`、`wb kb`、本地索引、`qa-answer` 或 `--kb-diagnostic` 的条目属于已退役实现的历史验收证据；当前 SWB 不再提供这些能力，语义检索统一由 SummitKnowledge 承担。
 
 ## 2026-09-16 main 当前交付说明
