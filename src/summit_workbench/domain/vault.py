@@ -320,7 +320,9 @@ def _is_machine_page(relative_path: PurePath | None) -> bool:
     parts = relative_path.parts
     if not parts:
         return False
-    if parts[0] in {"daily", "logs", "artifacts", "reviews"}:
+    # 机器写入页（只豁免"必填"）。`daily` / `reviews` 自 2026-09-19 起已不在库内
+    # （简报/周报写在本机程序目录），不再是机器写入页——留着只会让库内同名目录被过度豁免。
+    if parts[0] in {"logs", "artifacts"}:
         return True
     if relative_path in {
         PurePath("inbox.md"),

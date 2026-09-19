@@ -103,12 +103,10 @@ def test_check_vault_enforces_workstream_only_for_work_vault_notes(tmp_path):
 @pytest.mark.parametrize(
     "relative_path",
     (
-        "daily/2026-09-14.md",
         "logs/2026-09-14-001.md",
         "artifacts/summary.md",
         "inbox.md",
         "review/meetings.md",
-        "reviews/weekly.md",
         "index/projects.md",
         "README.md",
     ),
@@ -122,6 +120,24 @@ def test_check_vault_exempts_machine_pages_from_required_workstream(tmp_path, re
     )
 
     assert path not in check_vault(tmp_path, work_vault=True)
+
+
+@pytest.mark.parametrize("relative_path", ("daily/2026-09-14.md", "reviews/weekly.md"))
+def test_check_vault_no_longer_exempts_the_removed_machine_dirs(tmp_path, relative_path):
+    """`daily/` 与 `reviews/` 自批次 A 起不在库内，不再是"机器写入页"。
+
+    变异验证：把这两个目录加回 `_is_machine_page` 的豁免集合，本用例立刻变红。
+    """
+    path = tmp_path / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "---\ndate: 2026-09-14\ntype: note\nstatus: active\narea: work\n---\n\n# 旧页\n",
+        encoding="utf-8",
+    )
+
+    results = check_vault(tmp_path, work_vault=True)
+    assert path in results
+    assert any(issue.field == "workstream" for issue in results[path])
 
 
 def test_check_vault_does_not_exempt_invalid_workstream_value(tmp_path):

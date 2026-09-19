@@ -29,8 +29,9 @@
 
 - **`workstream` 门禁是"按需启用"的**：`check_vault(..., work_vault=True)` 才生效
   （`cli/vault.py:39`、`cli/doctor.py:96` 已启用；开关定义在 `repositories/vault.py:99`）。
-  语义：机器写入页（`daily/ logs/ artifacts/ reviews/ index/*.md inbox.md review/meetings.md README.md`）
-  **只豁免"必填"，值存在但越界时仍报错**。
+  语义：机器写入页（`logs/ artifacts/ index/*.md inbox.md review/meetings.md README.md`）
+  **只豁免"必填"，值存在但越界时仍报错**。（`daily/`、`reviews/` 自 2026-09-19 起已不在库内，
+  已从豁免集合删除——见「验证命令与基线」下的 `kb_verify_links` 说明与批次 A 迁移。）
 - **`type: workstream` 是活的页面类型，不要当死代码删除**
   （`templates/vault/workstream.template.md` 存在，`tests/unit/test_vault_templates.py:22` 断言了它）。
   别把它与 frontmatter 的 `workstream:` **字段**混淆。
@@ -99,6 +100,16 @@
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
 （`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1262，别把两者当矛盾。）
 
+> **`kb_verify_links.py` 的覆盖范围（2026-09-19 修过一次静默回归）**：覆盖 `[[目标#区块]]`、
+> `` `路径#区块` ``，以及**有唯一来源上下文**的裸锚点 `` `#区块` ``；**不覆盖** `###` 及更深的
+> 锚点（契约只把 `#`/`##` 当块边界，`_vault/conventions.md` §13 遗留 12），以及**没有/无法唯一
+> 确定来源页**的裸锚点（§13 遗留 13）。判据是 `source_context()`：**扫全篇「来源标记行」**
+> （拉丁词用词界，否则路径里的 `sources/` 会被当成 "source" 标记）→ 全篇唯一则用它；多个候选时
+> 收敛到**开头区块**声明的那个；候选必须能解析且**不是本页自身**。
+> ⚠️ 它曾"只看首块"，第五阶段把 H1 前的前言并进第一个 `##` 后，裸锚点计数 **56 → 0**：
+> 门禁不再校验那两页，却仍报"全部可解析"。**看输出时务必核对"裸锚点 N 条"这个数**——
+> 期望 **56**；掉到 0 就是覆盖又断了，不是"库变干净了"。
+
 > **改 `_vault` 结构（新增/删除目录、增删项目、增删 type）时，除上面的命令外还要跑
 > `scripts/kb_check_contract.py --vault …`**（只读）。它把 `conventions.md` 声明的
 > 目录/类型与库内实际比对，并**刻意分两层**：**FAIL** = 契约错/自相矛盾/与库内硬冲突
@@ -143,9 +154,11 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
 ./.venv/bin/python scripts/kb_three_end_gate.py                # 默认：收尾清理提交会 push vault
 ```
 预检会**醒目打印**本次写入打的是哪个 SWB 端点、该端点是否启用了 `WB_NO_AUTO_PUSH`；
-收尾会打印 vault `origin/main` 前后取值，**未启用推送模式却发生变化时逐条告警**
-（绝不藏在裸 PASS 后面）。`--no-push` 是 `--no-push-cleanup` 的弃用别名（旧名容易被误读为
-"整个闸门不推送"，实际只关收尾那一推）。
+收尾会打印 vault `origin/main` 前后取值，**未启用推送模式却发生变化时判 FAIL**（不是告警——
+只看退出码也要能发现"验证意外推送了 vault"）。`[1/6]` 把 `state=local-ahead` 当 **WARN**
+（本机有未推送提交正常且安全，推荐的验证姿势本身就会制造它，判 FAIL 会导致第二次跑闸门必挂）。
+另外 `--no-push` 是 `--no-push-cleanup` 的弃用别名（旧名容易被误读为"整个闸门不推送"，
+实际只关收尾那一推）。
 
 一句话验完六类曾经"测试全绿却发生"的不变量：① 真实写入后**工作树干净**（S-1(a)）；
 ② `_signals/` **未被回跟踪**（S-1(b)）；③ 逐字稿与 `inbox.md` **不进语料**（P1-4）；
@@ -173,15 +186,14 @@ SK 端点配置之后**跑它**。
    （`git_backend.py:207`），CLI 默认 system。改 git 语义时必须**两个后端都验**
    （已有跨后端参数化测试，保持它）。
 
-2. **跨端闸门的三个判据缺陷**（2026-09-19 批次 A 收口时实测发现，尚未修）：
-   ① `[1/6]` 把 `state=local-ahead` 判成 **FAIL**——但"本机有提交未推送"是**正常且安全**的状态
-   （界面常规横幅就是它），而推荐的验证姿势（`--no-push-cleanup` + 不自动推送）**本身就会制造
-   local-ahead**⇒**连续跑两次闸门，第二次必在 `[1/6]` 失败**（本机实测）。应像 `error` 那样降为 WARN。
-   ② `[推送守卫]` 只告警、不判失败——而它正是"验证意外推送"的判据，只看退出码的 agent 会忽略它，
-   **应改为 FAIL**。
-   ③ `WB_NO_AUTO_PUSH` 目前只在 `mutation_runtime._push_after_commit` 这一层生效；将来若有人新增
-   **绕过该出口**的自动推送路径不会被覆盖（显式 `/api/sync/run`、`wb sync` 本就该推，不受影响）
-   ⇒**补一条"自动推送必须经过单一出口"的结构性守卫**。
+2. ~~**跨端闸门的三个判据缺陷**~~ —— **已修（2026-09-19 第六·五阶段，提交见本批 `fix:`）**：
+   ① `[1/6]` 的 `state=local-ahead` 降为 **WARN**（"本机有未推送提交"正常且安全，且推荐验证姿势
+   本身就会制造它——判 FAIL 会让第二次跑闸门必挂）；② `[推送守卫]` 改为 **FAIL**（只看退出码也要
+   能发现"验证意外推送了 vault"）；③ 新增**结构性守卫**
+   `tests/unit/test_auto_push_switch.py::test_auto_push_goes_through_the_single_gated_outlet`
+   ——AST 扫 `src/`，把"允许直接调 `sync_coordinator.push_after_commit` 的调用点"钉成白名单
+   （`mutation_runtime._push_after_commit` + `routers/sync.py` 的显式恢复推送），新增绕过出口的
+   调用点会立刻变红。
 
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
