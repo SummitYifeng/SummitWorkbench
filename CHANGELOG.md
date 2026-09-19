@@ -1,3 +1,36 @@
+## [0.4.10] - 2026-09-19
+
+> 修一个**用户可见的同步阻断**：打包 App（固定 dulwich）× **HTTPS 远端永远同步失败**，
+> 而界面只说「未分类的同步失败」。无破坏性变更、无新依赖。
+
+### 修复
+
+- **HTTPS fetch 的传输参数必须交给接受它们的入口**：dulwich `1.2.15` 把 `pool_manager`
+  从 `porcelain.fetch` 的签名里移除了（fetch/push/clone 三者只有后两者还有 `**kwargs`），
+  而 `repositories/dulwich_git.py` 的 fetch 仍按 0.22.x 的 API 把 `transport_kwargs()`
+  交给它 ⇒ `TypeError: fetch() got an unexpected keyword argument 'pool_manager'`，被
+  `_classify_remote()` 兜底成 `unclassified`。
+  改为复刻 `porcelain.fetch` 的做法：`get_transport_and_path(...)`（**接受** `pool_manager`）
+  建 client → `client.fetch()` → `_import_remote_refs()` 落 `refs/remotes/<remote>/*`。
+- **影响面**：自 dulwich `1.2.15` 迁移（build `2026091917`）起，**任何 HTTPS 远端在打包 App
+  里都无法同步**。本地路径/SSH 远端不受影响（`transport_kwargs()` 对非 HTTPS 返回 `{}`），
+  CLI 默认走 system git 后端也不受影响——这正是它藏了这么久的原因（详见下方「为什么没被门禁挡住」）。
+- **守卫**：`tests/contract/test_dulwich_api_contract.py`（行为回归 + 参数面收敛 + 依赖前提
+  三条），已做变异验证——把 fetch 还原成旧实现，行为回归那条立刻变红。
+
+### 为什么没被门禁挡住（值得记住）
+
+1. 单测要么把 `transport_kwargs` monkeypatch 成 `{}`（本地路径远端走这个分支），要么只断言
+   它的**内容**，从没拿真实签名调过一次 HTTPS fetch；
+2. CLI 默认 system git 后端，只有打包 App 固定 dulwich；
+3. 结果就是「测试全绿 + CLI 正常 + 打包 App 里 HTTPS 同步永远坏」。
+
+### 观察项
+
+`unclassified` 是 `_classify_remote()` 对**未识别异常类型**的兜底码。这次真因是编程错误
+（调用点与依赖 API 漂移），不是网络/凭据。**以后再见 `unclassified`，先怀疑后端调用与依赖
+API 漂移，而不是先查网络。**
+
 ## [0.4.9] - 2026-09-19
 
 > 第二大脑的**检索与决策层做深**，工作知识库**首批入库落地**，并修掉几个一直没被门禁覆盖的真缺陷。

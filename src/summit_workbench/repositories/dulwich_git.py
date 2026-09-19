@@ -22,6 +22,7 @@ from typing import Any, cast
 from urllib.parse import urlsplit
 
 from dulwich import porcelain
+from dulwich.client import get_transport_and_path
 from dulwich.diff_tree import tree_changes
 from dulwich.errors import NotGitRepository
 from dulwich.ignore import IgnoreFilterManager
@@ -689,15 +690,35 @@ class DulwichGitBackend:
         url = self._remote_url(repo, remote)
         with _silenced() as sink:
             try:
-                # 传 remote *名称* 而非 URL：porcelain.fetch 仅在 remote_name 非空时
-                # 调用 _import_remote_refs，把远端 refs/heads/* 落到 refs/remotes/<remote>/*。
-                # 传 URL 会得到 remote_name=None，导致 HTTPS 下 ahead/behind 永不更新。
-                porcelain.fetch(
-                    repo,
-                    remote_location=remote,
-                    errstream=sink,
+                # ⚠️ dulwich 1.2 起 ``porcelain.fetch`` **不再接受 transport kwargs**
+                # （``pool_manager`` 被移出签名；fetch/push/clone 里只有后两者还有 ``**kwargs``）。
+                # 而 HTTPS 在 frozen 环境必须带 CA bundle 与系统代理，所以这里复刻
+                # ``porcelain.fetch`` 的做法自己建 client —— ``get_transport_and_path``
+                # 仍然接受 ``pool_manager``。
+                # 2026-09-19 真机：仍按旧 API 把 kwarg 交给 ``porcelain.fetch`` 会得到
+                # ``TypeError: fetch() got an unexpected keyword argument 'pool_manager'``，
+                # 被兜底压成 ``unclassified`` ⇒ 打包 App（固定 dulwich）里 **HTTPS 远端
+                # 永远同步失败**，界面只说「未分类的同步失败」。
+                # 守卫：tests/contract/test_dulwich_api_contract.py
+                remote_name, remote_location = porcelain.get_remote_repo(repo, remote)
+                client, path = get_transport_and_path(
+                    remote_location,
+                    config=repo.get_config_stack(),
+                    operation="fetch",
                     **self.transport_kwargs(url, operation="fetch"),
                 )
+                fetch_result = client.fetch(path.encode(), repo, progress=sink.write)
+                if remote_name is not None:
+                    # 传 remote *名称* 时把远端 refs/heads/* 落到 refs/remotes/<remote>/*；
+                    # 传 URL（``remote_name is None``）时 ahead/behind 永不更新。
+                    # 复用 porcelain 自己的助手（mypy 不认为它是对外导出，故经 cast 取）；
+                    # 与 porcelain.fetch 的落 refs 语义一致。
+                    cast(Any, porcelain)._import_remote_refs(
+                        repo.refs,
+                        remote_name,
+                        fetch_result.refs,
+                        b"fetch: from " + remote_location.encode(),
+                    )
             except Exception as exc:  # noqa: BLE001 - 跨库分类
                 raise _classify_remote(
                     exc, f"fetch {remote} 失败", stderr=_sink_text(sink)

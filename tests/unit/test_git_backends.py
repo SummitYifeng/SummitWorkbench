@@ -105,8 +105,13 @@ def test_https_remote_without_username_is_a_credentials_error(kind: str, tmp_pat
 def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from dulwich import porcelain
+    """fetch 必须把（脱敏后的）传输层诊断附进 typed error。
 
+    2026-09-19 改接缝：dulwich 1.2 的 ``porcelain.fetch`` 不再接受传输参数，fetch 改为自己
+    经 ``get_transport_and_path`` 建 client（见 ``tests/contract/test_dulwich_api_contract.py``）。
+    因此这里 monkeypatch 的对象从 ``porcelain.fetch`` 换成「传输入口 + client」，
+    **断言的性质不变**：诊断文本保留、凭据字符串脱敏。
+    """
     from summit_workbench.repositories import dulwich_git
     from summit_workbench.repositories.git_backend import GitAuthError
 
@@ -116,13 +121,21 @@ def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
     backend = dulwich_git.DulwichGitBackend(tmp_path / "repo", username="alice")
     monkeypatch.setattr(backend, "transport_kwargs", lambda *_args, **_kwargs: {})
 
-    def fake_fetch(*_args, errstream, **_kwargs):
-        errstream.write(
-            b"fatal: Authentication failed for https://alice:" + b"secret-token" + b"@example.git\n"
-        )
-        raise RuntimeError("401 Unauthorized")
+    class _FailingClient:
+        def fetch(self, _path, _target, progress=None):
+            assert progress is not None, "transport 诊断必须接到 sink 上"
+            progress(
+                b"fatal: Authentication failed for https://alice:"
+                + b"secret-token"
+                + b"@example.git\n"
+            )
+            raise RuntimeError("401 Unauthorized")
 
-    monkeypatch.setattr(porcelain, "fetch", fake_fetch)
+    monkeypatch.setattr(
+        dulwich_git,
+        "get_transport_and_path",
+        lambda *_args, **_kwargs: (_FailingClient(), "/example/private.git"),
+    )
     with pytest.raises(GitAuthError) as caught:
         backend.fetch()
     assert "Authentication failed" in caught.value.stderr
