@@ -154,7 +154,7 @@ def _commit_files(vault: Path) -> set[str]:
     return {name for name in out.split("\0") if name.strip()}
 
 
-def _client(tmp_path: Path) -> tuple[TestClient, Path]:
+def _client(tmp_path: Path, *, inbox_text: str | None = None) -> tuple[TestClient, Path]:
     """一个**已提交**的 git vault：项目页 + 两条收件箱条目（写入前工作树干净）。"""
     vault = tmp_path / "vault"
     (vault / "projects").mkdir(parents=True)
@@ -163,7 +163,9 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
         "---\n\n# P\n\n## 当前状态\n\n## 下一步\n\n## 阻塞\n\n## 决策记录\n\n## 跟进事项\n",
         encoding="utf-8",
     )
-    (vault / "inbox.md").write_text(_inbox_text(_TWO_ENTRIES), encoding="utf-8")
+    (vault / "inbox.md").write_text(
+        inbox_text if inbox_text is not None else _inbox_text(_TWO_ENTRIES), encoding="utf-8"
+    )
     # 与真实库一致：`_signals/` 是机器状态、被忽略（否则 outbox 账本会让工作树"变脏"，
     # 那是环境不真实，不是缺陷）。契约 §0 / 闸门 S-1(b)。
     (vault / ".gitignore").write_text("_signals/\n", encoding="utf-8")
@@ -219,6 +221,45 @@ def test_promote_to_project_next_step(tmp_path: Path) -> None:
     assert "\n\n\n" not in remaining
     files = _commit_files(vault)
     assert {"inbox.md", f"projects/{PROJECT}.md"} <= files
+
+
+def test_promote_leaves_exactly_one_blank_line_before_the_next_block(tmp_path: Path) -> None:
+    """回归守卫：写进项目页的条目与下一个 `## ` 区块之间**只有一个空行**。
+
+    变异靶：`writeback._append_under_heading` 曾把区块尾随空行留在 `lines[end:]` 里，
+    于是它自己补的那个空行与原空行叠成两个（2026-09-19 真机：提升到「下一步」后
+    与「阻塞」之间多出一个空行）。这条只看"有没有双空行"，不看具体文案。
+    """
+    client, vault = _client(tmp_path)
+    assert (
+        client.post(
+            "/api/inbox/promote", json={"id": "web-a", "target": "project", "project": PROJECT}
+        ).json()["ok"]
+        is True
+    )
+    page = (vault / "projects" / f"{PROJECT}.md").read_text(encoding="utf-8")
+    assert "\n\n\n" not in page
+    assert "把翻译流程定稿" in page.split("## 下一步")[1].split("## 阻塞")[0]
+
+
+def test_hand_written_entry_uses_its_project_tag(tmp_path: Path) -> None:
+    """手工写进 `inbox.md` 的条目没有机器标记，但正文 `#项目` 仍是路由信号（待办 8 的守卫）。
+
+    `inbox.md` 抬头**邀请**手写 `- [ ] 想法内容 #项目名`；若只看 `wb-capture-project` 标记，
+    这种条目会被默认判成「一篇工作思考」，与 `suggest_promotion` 第 2 条规则自相矛盾。
+    """
+    client, vault = _client(tmp_path, inbox_text=_inbox_text([("把翻译流程定稿 #FinanceOps", [])]))
+    item = client.get("/api/inbox").json()["items"][0]
+    assert item["project"] is None  # 机器标记确实没有
+    assert item["projects"] == [PROJECT]  # 正文标签解析得出来
+    assert item["suggested_target"] == "project"
+
+    # 弹层没给项目时，提升也必须落到正文标签指的项目（不能要求使用者再选一次）
+    body = client.post("/api/inbox/promote", json={"id": item["id"], "target": "project"}).json()
+    assert body["ok"] is True, body
+    assert _porcelain(vault) == ""
+    assert "把翻译流程定稿" in (vault / "projects" / f"{PROJECT}.md").read_text(encoding="utf-8")
+    assert "把翻译流程定稿" not in (vault / "inbox.md").read_text(encoding="utf-8")
 
 
 def test_promote_reads_the_next_step_without_duplicating_markers(tmp_path: Path) -> None:

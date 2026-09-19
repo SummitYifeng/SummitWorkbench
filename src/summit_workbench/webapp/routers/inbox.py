@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,21 @@ from summit_workbench.workflows.review_apply import create_task_through_outbox
 _INBOX_FILENAME = "inbox.md"
 
 
+def _with_text_project(entry: InboxEntry, projects: list[str]) -> InboxEntry:
+    """补上「正文里的 `#项目`」这个路由信号（契约 §10）。
+
+    `inbox.md` 的抬头**明确邀请**使用者手写 `- [ ] 想法内容 #项目名`；这种条目没有
+    `wb-capture-project` 机器标记，而本地启发式的第 2 条规则看的正是 `entry.project`
+    ⇒ 不补的话，手工条目会被默认判成「一篇工作思考」，与规则本身自相矛盾
+    （2026-09-19 第九阶段收尾时实测，见 AGENTS.md 已知待办 8）。
+
+    标记优先：它是写入口的判定结果，可能已经过别名归一；正文标签只在标记缺失时兜底。
+    """
+    if entry.project or not projects:
+        return entry
+    return replace(entry, project=projects[0])
+
+
 def register_inbox_routes(
     dependencies: RouteDependencies,
     *,
@@ -76,14 +92,15 @@ def register_inbox_routes(
     def _entry_payload(entry: InboxEntry) -> dict[str, object]:
         """一条待处理条目的读侧 payload（含本地启发式的默认目标，不调模型）。"""
         registry = load_project_registry(ctx.vault_dir)
-        suggested, reason = suggest_promotion(entry)
+        projects = extract_project_tags(entry.text, registry)
+        suggested, reason = suggest_promotion(_with_text_project(entry, projects))
         return {
             "id": entry.id,
             "text": entry.text,
             "kind": entry.kind,
             "due": entry.due,
             "project": entry.project,
-            "projects": extract_project_tags(entry.text, registry),
+            "projects": projects,
             "candidate_id": entry.candidate_id,
             "suggested_target": suggested,
             "suggested_reason": reason,
@@ -210,10 +227,11 @@ def register_inbox_routes(
         payload: InboxPromotePayload, entry: InboxEntry, inbox: Path
     ) -> dict[str, object]:
         """→ 项目页的 `## 下一步`（我的下一步）或 `## 跟进事项`（他人的行动项）。"""
-        raw_project = payload.project.strip() or (entry.project or "")
+        registry = load_project_registry(ctx.vault_dir)
+        effective = _with_text_project(entry, extract_project_tags(entry.text, registry))
+        raw_project = payload.project.strip() or (effective.project or "")
         if not raw_project:
             return {"ok": False, "message": "请选择要写入的项目（这条没有 #项目 标签）"}
-        registry = load_project_registry(ctx.vault_dir)
         project = registry.resolve(raw_project)
         if project is None:
             return {"ok": False, "message": f"项目未建档：{raw_project}（先在「项目」页建档）"}
@@ -317,6 +335,10 @@ def register_inbox_routes(
         # 飞书任务要求全天 start 与 due 同时给（AGENTS.md「飞书任务时效」）：缺开始日期时
         # 默认与截止同一天，形成一个"当天到期"的任务。
         start = payload.start_date.strip() or due
+        registry = load_project_registry(ctx.vault_dir)
+        target_project = _with_text_project(
+            entry, extract_project_tags(entry.text, registry)
+        ).project
         from summit_workbench.webapp.feishu_pool import _build_task_creator
 
         try:
@@ -326,7 +348,7 @@ def register_inbox_routes(
                 description=entry.text,
                 due_date=due,
                 start_at=start,
-                target_project=entry.project or None,
+                target_project=target_project,
                 task_creator=_build_task_creator(ctx, feishu_clients),
             )
         except ValueError as exc:
@@ -342,7 +364,7 @@ def register_inbox_routes(
                         decision="approved",
                         ai_original=entry.text,
                         final_description=entry.text,
-                        target_project=entry.project or None,
+                        target_project=target_project,
                         route="feishu-task",
                         due_date=due,
                         destination="feishu-task",
