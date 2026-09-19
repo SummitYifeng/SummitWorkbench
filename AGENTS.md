@@ -28,6 +28,22 @@
     自动填，`project: global` 或不绑项目。
 - 两条都经 `MutationRuntime.run`（自动 commit；`WB_NO_AUTO_PUSH=1` 关自动推送），落盘复用
   `repositories/thread_notes.append_work_log`——**不要另写一套落盘**。
+- **收件箱提升通路**（2026-09-19 起，契约 §10）——`inbox.md` 的条目可以被提升为正式内容：
+  - **`GET /api/inbox`** ——待处理条目 + 稳定标识 + `#项目` 解析 + capture 机器标记
+    （`wb-capture-kind/-due/-project`）+ **本地启发式**的默认目标。**纯读、绝不调模型**。
+  - **`POST /api/inbox/suggest`** ——**显式按钮**才调一次 `capture` 能力的模型，只给建议、不写盘。
+  - **`POST /api/inbox/promote`** ——三种目标各有既有落盘实现，**不要另写第二套**：
+    `project` → `repositories/writeback.py`（`## 下一步` / `## 跟进事项`）；
+    `feishu-task` → `workflows/review_apply.py::create_task_through_outbox`（审批写回同一条
+    outbox 路径：账本 + `candidate_id` 幂等 + 结果未知不重 POST；**库内不留可检索正文**，
+    只在 `review/archive/` 留痕）；`thought` → `repositories/thread_notes.py::write_thought_note`
+    （与 `/api/journal/thought` **同一实现**，第六·六阶段那套思考落盘已上移到这里）。
+    三者都必须：**同一个提交**里把条目移出 `inbox.md`、**不留占位行**（§10），且
+    `changed_paths` 列全（目标页 + inbox；第七阶段的事故就是漏列）。
+  - **成本线**：列表渲染不调模型；只有「让 AI 判断这条适合变成什么」这个显式按钮会花钱。
+    机器守卫：`tests/unit/test_inbox_promote.py::test_read_endpoint_never_calls_the_model`
+    + `web/scripts/test-browser-contract.mjs` 的**位置**守卫（`/api/inbox/suggest` 只许出现在
+    `web/src/features/today/inbox.ts`）。
 - **改 `web/` 之后必须 `npm --prefix web run build` 并把产物一起提交**（产物在
   `src/summit_workbench/webapp/static/`，含 `build-meta.json` 的前端身份）；只改源码不重建，
   面板上看到的还是旧界面。前端契约测试：`npm --prefix web run test:frontend`。
