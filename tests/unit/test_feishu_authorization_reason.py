@@ -224,6 +224,10 @@ def test_settings_keeps_connection_registration_compatibility_export() -> None:
         settings_routes.register_settings_connection_routes
         is settings_connections.register_settings_connection_routes
     )
+    assert (
+        settings_routes.register_restricted_connection_routes
+        is settings_connections.register_restricted_connection_routes
+    )
 
 
 def test_authorization_state_file_has_no_unexpected_fields(tmp_path: Path) -> None:
