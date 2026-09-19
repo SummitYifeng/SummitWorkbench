@@ -21,10 +21,21 @@
    这条守卫必须放在闸门里：`tests/unit/test_knowledge_sources.py` 在 CI/异机会因拿不到
    真实库而 skip，等于没守住。
 
+2026-09-19 第七阶段再追加**日志写入路径**的不变量（同样只在"有真实库"的环境里才有意义）：
+
+7. **`/api/journal/log` 写入后工作树必须干净，且关联项目页必须与日志页同一个提交** →
+   闸门此前只覆盖 `capture`（写 `inbox.md`）这一条写路径，所以**没能发现**这个缺陷：
+   journal 路径只把日志页交给 `changed_paths`，而 `append_work_log` 会刷新每个关联项目页的
+   `activity_at` ⇒ 项目页留在未提交的 `M` 状态（`/api/threads/logs` 一直是对的，新入口漏抄）。
+   同一步顺带守契约 §4.10：落盘页面里「关联」类区块只能有一个（渲染函数输出是对的，是
+   规范化器在落盘阶段又追了一个机器形态的 `## 关联项目`）。
+   **这一步不调用模型 ⇒ 不花钱**（capture 之后的第二次写入，收尾与 capture 同形清理）。
+
 **⚠️ 写入与推送的边界（2026-09-19 真实事故，务必先读）**：
 
-闸门的 `[2/6]` 会向 **SWB 端点**发一次真实 capture。SWB 的每一条写路径在 commit 之后都会
-经 `sync_coordinator.push_after_commit` **自动推送 vault 远端**——这是 App 的正常行为，
+闸门的 `[2/7]`（真实 capture）与 `[3/7]`（`/api/journal/log`）都会向 **SWB 端点**写入。
+SWB 的每一条写路径在 commit 之后都会经 `sync_coordinator.push_after_commit` **自动推送
+vault 远端**——这是 App 的正常行为，
 但验证动作不该顺带推送。当时 `--no-push` 只挡住了闸门收尾那一个提交，挡不住端点自己的推送，
 结果验证件连同本地未推提交被一起发布到了 `origin/main`。
 
@@ -72,6 +83,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -79,6 +91,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from summit_workbench.config.auto_push import AUTO_PUSH_DISABLE_ENV  # noqa: E402
+from summit_workbench.domain.vault import iter_headings  # noqa: E402
 from summit_workbench.repositories.vault import parse_frontmatter  # noqa: E402
 from summit_workbench.webapp.knowledge_sources import (  # noqa: E402
     KNOWLEDGE_SOURCE_ROOTS,
@@ -87,6 +100,18 @@ from summit_workbench.webapp.knowledge_sources import (  # noqa: E402
 
 MARKER_PREFIX = "【回归闸门验证件】"
 DEFAULT_QUESTION = "奖学金折扣要不要收 royalty？"
+
+
+@dataclass(frozen=True)
+class JournalProbe:
+    """闸门写下的日志验证件，供 [7/7] 精确清理（含还原关联项目页）。"""
+
+    marker: str
+    path: str  # vault 相对路径（空串 = 未能归一）
+    project: str
+    previous_commit: str  # 写入前的 HEAD，用于还原项目页 frontmatter
+    files: tuple[str, ...]  # 该提交触碰的 vault 文件（相对路径）
+
 
 # 检索返回里**绝不允许出现**的类型：逐字稿、原件、简报/周复盘（契约 §5.2）。
 FORBIDDEN_CORPUS_TYPES = frozenset({"meeting-transcript", "source", "daily", "weekly-review"})
@@ -198,6 +223,25 @@ def sk_endpoint() -> tuple[str, str, str]:
     return "http://127.0.0.1:8580", token, pid[0]
 
 
+def _json_request(
+    url: str,
+    *,
+    token: str,
+    payload: dict[str, Any] | None = None,
+    header: str,
+    origin: str | None = None,
+) -> urllib.request.Request:
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
+    # SK 用 `Authorization: Bearer <token>`，SWB 用 `X-WB-Session-Token: <token>`
+    req.add_header(header, f"Bearer {token}" if header == "Authorization" else token)
+    if data:
+        req.add_header("Content-Type", "application/json")
+    if origin:
+        req.add_header("Origin", origin)
+    return req
+
+
 def http_json(
     url: str,
     *,
@@ -207,14 +251,7 @@ def http_json(
     origin: str | None = None,
     timeout: int = 180,
 ) -> dict[str, Any]:
-    data = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
-    # SK 用 `Authorization: Bearer <token>`，SWB 用 `X-WB-Session-Token: <token>`
-    req.add_header(header, f"Bearer {token}" if header == "Authorization" else token)
-    if data:
-        req.add_header("Content-Type", "application/json")
-    if origin:
-        req.add_header("Origin", origin)
+    req = _json_request(url, token=token, payload=payload, header=header, origin=origin)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 永远直连
     try:
         with opener.open(req, timeout=timeout) as resp:
@@ -222,6 +259,36 @@ def http_json(
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")
         raise SystemExit(f"✗ HTTP {exc.code} {url}\n{body[:500]}") from None
+
+
+def http_json_tolerant(
+    url: str,
+    *,
+    token: str,
+    payload: dict[str, Any] | None = None,
+    header: str,
+    origin: str | None = None,
+    timeout: int = 180,
+) -> tuple[int, dict[str, Any]]:
+    """同 :func:`http_json`，但**不因 HTTP 错误码退出**，返回 ``(status, body)``。
+
+    日志步骤必须容错：500 正是它要守的那个缺陷的**症状**（漏列 `changed_paths` 会让
+    `run_local_mutation` 的 `mutation_invariant` 反查触发，而日志页**已经提交**）。
+    若在这里 `SystemExit`，闸门会在 [3/7] 直接中断 —— 收尾被跳过，验证件与未提交的项目页
+    改动一起留在使用者的库里，正好是最坏的结局。
+    """
+    req = _json_request(url, token=token, payload=payload, header=header, origin=origin)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return resp.status, cast(dict[str, Any], json.loads(resp.read().decode("utf-8")))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        try:
+            parsed = json.loads(body)
+        except json.JSONDecodeError:
+            parsed = {"ok": False, "message": body[:500]}
+        return exc.code, cast(dict[str, Any], parsed)
 
 
 # ────────────────────────── git ──────────────────────────
@@ -364,8 +431,8 @@ _SYNC_WARN_STATES: dict[str, str] = {
 def gate_preflight(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, sk_url: str, sk_tok: str
 ) -> int:
-    """返回起始 pending_index，供 [4/6] 判断"闸门自己的写入有没有让索引变脏"。"""
-    print("\n[1/6] 前置：三端可用 + 起始状态干净")
+    """返回起始 pending_index，供 [5/7] 判断"闸门自己的写入有没有让索引变脏"。"""
+    print("\n[1/7] 前置：三端可用 + 起始状态干净")
     rep.check(vault.is_dir(), f"vault 存在（{vault}）")
     rep.check(
         not worktree_dirty(vault),
@@ -407,7 +474,7 @@ def gate_mutation(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, keep: bool
 ) -> str:
     """S-1(a)/S-1(b)：真实写入之后，工作树必须干净、`_signals` 必须没被回跟踪。"""
-    print("\n[2/6] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
+    print("\n[2/7] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
     marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:8]}"
     res = http_json(
         f"{swb_url}/api/capture",
@@ -436,6 +503,105 @@ def gate_mutation(
     return marker
 
 
+def gate_journal_write(
+    rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str
+) -> JournalProbe | None:
+    """S-1(a)：`/api/journal/log` 写一条**不调模型**的日志之后，工作树必须干净。
+
+    这条步骤是 2026-09-19 真实使用当场暴露的缺陷的机器守卫：journal 路径只把日志页交给
+    `LocalMutationOutcome.changed_paths`，而 `append_work_log` 会刷新每个关联项目页的
+    `activity_at` ⇒ 项目页留在未提交的 `M` 状态。**闸门当时没有覆盖这条写路径，所以它没发现。**
+
+    顺带守契约 §4.10：落盘页面里「关联」类区块只能有一个（渲染输出是对的，是规范化器在
+    落盘阶段又追加了机器形态的 `## 关联项目`；只断言渲染函数永远看不到）。
+
+    不调用模型 ⇒ 不花模型/嵌入费用。返回清理所需的验证件信息。
+    """
+    print("\n[3/7] 日志写入路径：`/api/journal/log` 之后工作树干净、关联项目页一并提交")
+    project_ids = project_ids_of(vault)
+    if not project_ids:
+        rep.warn("真实库没有主线项目页，跳过日志写入步骤", "无法覆盖关联项目页的提交路径")
+        return None
+    project = project_ids[0]
+    marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:8]}（日志）"
+    head_before = git(vault, "rev-parse", "HEAD").strip()
+    # 容错调用：缺陷回归时端点返回 500，这里仍要能记 FAIL 并走到收尾（见 http_json_tolerant）。
+    status, res = http_json_tolerant(
+        f"{swb_url}/api/journal/log",
+        token=swb_tok,
+        header="X-WB-Session-Token",
+        origin=swb_origin,
+        payload={"did": f"{marker} 跨端回归闸门日志写入", "projects": [project]},
+    )
+    rep.check(
+        status == 200 and bool(res.get("ok")),
+        "journal/log 成功（无 mutation_invariant 反查报错）",
+        f"HTTP {status} {str(res.get('message') or '')[:160]}",
+    )
+
+    head_after = git(vault, "rev-parse", "HEAD").strip()
+    files = tuple(
+        ln.strip()
+        for ln in git(vault, "show", "--name-only", "--format=", head_after).splitlines()
+        if ln.strip()
+    )
+    raw_path = str(res.get("path") or "")
+    log_rel = ""
+    if raw_path:
+        try:
+            log_rel = Path(raw_path).relative_to(vault).as_posix()
+        except ValueError:
+            log_rel = ""
+    if not log_rel:
+        # 500 场景：响应里没有 path，但日志页**已经提交**了 ⇒ 从 HEAD 反推。
+        # 只认 `logs/` 开头的唯一候选，避免把 capture 的 `inbox.md` 误当日志页删掉。
+        candidates = [f for f in files if f != f"projects/{project}.md"]
+        if len(candidates) == 1 and candidates[0].startswith("logs/"):
+            log_rel = candidates[0]
+            rep.warn("响应未给出日志页路径，已从提交反推", log_rel)
+    commit = (res.get("commit") or {}).get("status")
+    rep.check(
+        commit == "committed" or (bool(log_rel) and log_rel in files),
+        "journal/log 产生了提交",
+        f"commit={commit} HEAD 触及：{list(files)}",
+    )
+
+    # 核心断言：S-1(a)。放在页面断言之前——即使 API 报错，工作树也绝不能脏。
+    dirty = worktree_dirty(vault)
+    rep.check(not dirty, "日志写入后工作树仍然干净（S-1(a)）", "" if not dirty else str(dirty[:5]))
+
+    if log_rel:
+        rep.check(log_rel in files, "日志提交包含日志页本身", f"HEAD 触及：{list(files)}")
+    # 缺陷 1 的判据：关联项目页必须在**同一个**提交里（漏列 ⇒ 它留在未提交状态）。
+    rep.check(
+        f"projects/{project}.md" in files,
+        "日志提交一并包含关联项目页（changed_paths 未漏列）",
+        f"HEAD 触及：{list(files)}",
+    )
+    if log_rel and (vault / log_rel).is_file():
+        _meta, body, _err = parse_frontmatter((vault / log_rel).read_text(encoding="utf-8"))
+        headings = [text for level, text in iter_headings(body) if level == 2]
+        related = [h for h in headings if h in {"关联", "关联项目"}]
+        rep.check(
+            related == ["关联"],
+            "日志页只有一个「关联」区块（契约 §4.10）",
+            f"实际：{related}",
+        )
+        rep.check(
+            len(headings) == len(set(headings)),
+            "日志页无可引用的重复 H2（锚点唯一）",
+            f"区块：{headings}",
+        )
+    rep.ok("本轮日志验证件标记", marker)
+    return JournalProbe(
+        marker=marker,
+        path=log_rel,
+        project=project,
+        previous_commit=head_before,
+        files=files,
+    )
+
+
 def gate_source_whitelist(rep: Report, vault: Path) -> None:
     """来源白名单必须覆盖**真实库**的全部主线项目目录（含 `thinking`）。
 
@@ -443,7 +609,7 @@ def gate_source_whitelist(rep: Report, vault: Path) -> None:
     白名单是 SWB 的"看得见的常量"，故意不做运行时派生——代价就是必须有人（这里）
     在真实库上守它。
     """
-    print("\n[3/6] 来源白名单：真实库的全部主线项目都可达")
+    print("\n[4/7] 来源白名单：真实库的全部主线项目都可达")
     project_ids = project_ids_of(vault)
     rep.check(bool(project_ids), "真实库有主线项目页", f"{len(project_ids)} 个")
     missing = whitelist_missing(project_ids)
@@ -467,9 +633,10 @@ def gate_corpus(
     vector_work: Path,
     marker: str,
     pending_before: int,
+    journal: JournalProbe | None = None,
 ) -> None:
     """P1-4 + 批次 A：语料边界——逐字稿 / inbox / 原件 / 简报周报都不该进语料。"""
-    print("\n[4/6] 语料边界：逐字稿、inbox、原件与简报周报都不得进检索语料")
+    print("\n[5/7] 语料边界：逐字稿、inbox、原件与简报周报都不得进检索语料")
     db = active_db(vector_work)
     # WAL 库用 mode=ro 打开会因缺 -shm 失败（实测），普通连接做 SELECT 是安全的
     con = sqlite3.connect(db, timeout=10)
@@ -502,13 +669,15 @@ def gate_corpus(
     prof = active_profile(health)
     if prof:
         pending_after = int(prof.get("pending_index") or 0)
-        # 真正要守的是「闸门自己的写入（inbox capture）不得让索引变脏」；
-        # 起始就 >0 只是"索引落后于库"（新的一天简报 / 别人刚 capture / 审批写回），
-        # 与闸门要守的不变量无关，所以只告警不判失败。
+        # 真正要守的是「闸门自己的写入不得让索引变脏」。capture 走 `inbox.md`（**不进语料**，
+        # 见上面 `counts["inbox"] == 0` 这条直接判据），而 [3/7] 的日志写入按契约是**会进
+        # 语料**的 work-log 页（外加被刷新 activity_at 的项目页）⇒ 允许的增长上限就是
+        # 那一次提交实际触碰的文件数，且超出即判失败。
+        allowed = len(journal.files) if journal is not None else 0
         rep.check(
-            pending_after <= pending_before,
-            "闸门写入未让 pending_index 增长（inbox 不进语料）",
-            f"{pending_before} → {pending_after}",
+            pending_after <= pending_before + allowed,
+            "闸门写入未让 pending_index 超出自己写下的 vault 文件数",
+            f"{pending_before} → {pending_after}（[3/7] 写入 {allowed} 个文件）",
         )
         if pending_after:
             rep.warn(
@@ -519,7 +688,7 @@ def gate_corpus(
 
 def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None:
     """P0-4 + 语料边界：精排必须真的生效，且结果里不得出现非语料类型。"""
-    print("\n[5/6] 检索路径：精排是否真的生效、结果是否混入非语料类型")
+    print("\n[6/7] 检索路径：精排是否真的生效、结果是否混入非语料类型")
     payload = {"query": question, "profile_id": "work"}
     req = urllib.request.Request(
         f"{sk_url}/api/chat/stream", data=json.dumps(payload).encode(), method="POST"
@@ -570,10 +739,23 @@ def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None
         )
 
 
-def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, push: bool) -> None:
-    print("\n[6/6] 收尾：清理验证件并恢复起始状态")
+def gate_cleanup(
+    rep: Report,
+    vault: Path,
+    marker: str,
+    do_cleanup: bool,
+    *,
+    push: bool,
+    journal: JournalProbe | None = None,
+) -> None:
+    print("\n[7/7] 收尾：清理验证件并恢复起始状态")
     if not do_cleanup:
         rep.warn("已跳过清理（--keep/--no-cleanup）", f"请人工删除含标记的行：{marker}")
+        if journal is not None:
+            rep.warn(
+                "日志验证件同样被保留",
+                f"{journal.path or '（路径未知）'}（关联项目 {journal.project}）",
+            )
         return
     inbox = vault / "inbox.md"
     lines = inbox.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -594,6 +776,17 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, pus
         return
     inbox.write_text("".join(kept), encoding="utf-8")
     git(vault, "add", "inbox.md")
+    # [3/7] 的日志验证件要与 capture 行一起进**同一个**清理提交：删掉日志页（知道路径时），
+    # 并把关联项目页还原成写入前的内容（`activity_at` 是闸门刷的，不该由一次验证留给使用者）。
+    # 项目页的还原**不依赖**是否知道日志页路径——缺陷回归时响应可能没有 path，而项目页照样被改。
+    if journal is not None:
+        if journal.path:
+            git(vault, "rm", "-q", "--ignore-unmatch", journal.path)
+        git(vault, "checkout", journal.previous_commit, "--", f"projects/{journal.project}.md")
+        rep.ok(
+            "日志验证件已清理、关联项目页已还原",
+            f"{journal.path or '（日志页路径未知，仅还原项目页）'} + projects/{journal.project}.md",
+        )
     committed = subprocess.run(
         ["git", "-C", str(vault), "commit", "-m", "chore: 清理跨端回归闸门验证件"],
         capture_output=True,
@@ -727,11 +920,17 @@ def main() -> int:
     try:
         pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
         marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
+        journal = gate_journal_write(rep, vault, swb_url, swb_tok, swb_origin)
         gate_source_whitelist(rep, vault)
-        gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before)
+        gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before, journal)
         gate_retrieval(rep, sk_url, sk_tok, args.question)
         gate_cleanup(
-            rep, vault, marker, not (args.keep or args.no_cleanup), push=not no_push_cleanup
+            rep,
+            vault,
+            marker,
+            not (args.keep or args.no_cleanup),
+            push=not no_push_cleanup,
+            journal=journal,
         )
     finally:
         gate_origin_guard(rep, vault, origin_before, push_enabled=not no_push_cleanup)

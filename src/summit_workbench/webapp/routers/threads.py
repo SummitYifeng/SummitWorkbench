@@ -23,7 +23,6 @@ from summit_workbench.webapp.api import (
     LogAppendPayload,
     ProjectStatePayload,
 )
-from summit_workbench.webapp.context import WebContext
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.model_config import _load_model_config_for_context
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
@@ -35,7 +34,6 @@ from summit_workbench.webapp.services.work_log import (
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
 from summit_workbench.workflows.thread_activity_migration import (
     ThreadActivityConsistencyReport,
-    ThreadActivityMigration,
     ThreadActivityMigrationMode,
 )
 

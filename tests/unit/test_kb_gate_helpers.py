@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -30,10 +31,21 @@ def _load_gate() -> Any:
     为什么不用 `spec.loader.exec_module`：pyc 头里的源 mtime 只有 1 秒粒度，
     **同秒内等长改动**（如 `fail` ↔ `warn`）会命中过期字节码，让变异验证得出错误结论
     （2026-09-19 实测踩到）。
+
+    必须先把模块登记进 `sys.modules` 再 exec：脚本里的 `@dataclass` 会按 `cls.__module__`
+    回查 `sys.modules` 建类，查不到就会 `AttributeError: 'NoneType' object has no attribute
+    '__dict__'`（加 `JournalProbe` 时实测踩到）。
     """
     module = ModuleType("kb_three_end_gate_under_test")
     module.__file__ = str(_GATE_PATH)
-    exec(compile(_GATE_PATH.read_text(encoding="utf-8"), str(_GATE_PATH), "exec"), module.__dict__)
+    sys.modules[module.__name__] = module
+    try:
+        exec(
+            compile(_GATE_PATH.read_text(encoding="utf-8"), str(_GATE_PATH), "exec"),
+            module.__dict__,
+        )
+    finally:
+        sys.modules.pop(module.__name__, None)
     return module
 
 
@@ -176,7 +188,7 @@ def test_origin_guard_is_quiet_when_push_mode_may_explain_it(gate: Any, tmp_path
     assert rep.failures == []
 
 
-# ───────── [1/6] 预检：安全/中性的同步状态不得判 FAIL，保护态必须 FAIL ─────────
+# ───────── [1/7] 预检：安全/中性的同步状态不得判 FAIL，保护态必须 FAIL ─────────
 
 # 这些状态对闸门要守的不变量无碍（2026-09-19 逐个核对 domain.sync.SyncState）：
 # 判 FAIL 会让"连续第二次跑闸门""离线""未配远端""认证过期"这类正常情形必挂。
@@ -238,3 +250,177 @@ def test_preflight_still_fails_on_unsafe_or_unknown_states(
     vault.mkdir()
     rep = _preflight_with_state(gate, vault, monkeypatch, state)
     assert any("state 健康" in item for item in rep.failures), state
+
+
+# ─────────────── [3/7] 日志写入步骤：用真实 router 脱机验证（第七阶段新增） ───────────────
+
+
+def _seed_gate_vault(tmp_path: Path) -> Path:
+    """建一个已提交的 git vault：一个项目页 + 一行 capture 验证件的 inbox.md。"""
+    import subprocess
+
+    vault = tmp_path / "vault"
+    (vault / "projects").mkdir(parents=True)
+    (vault / "projects" / "FinanceOps.md").write_text(
+        "---\nproject: FinanceOps\ndate: 2026-09-01\ntype: project-main\nstatus: active\n"
+        "---\n\n# P\n\n## 当前状态\n\n## 下一步\n\n## 阻塞\n\n## 决策记录\n\n## 跟进事项\n",
+        encoding="utf-8",
+    )
+    (vault / "inbox.md").write_text(
+        f"# inbox\n\n- [ ] {_GATE_MARKER} 跨端回归闸门\n", encoding="utf-8"
+    )
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@e.com"],
+        ["config", "user.name", "t"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "chore: seed"],
+    ):
+        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
+    return vault
+
+
+_GATE_MARKER = "【回归闸门验证件】deadbeef"
+
+
+def _route_backed_http(vault: Path, tmp_path: Path) -> Any:
+    """把闸门的 `http_json_tolerant` 接到**真实 router**（临时库），不联网、不碰真实库。"""
+    import urllib.parse
+
+    from fastapi.testclient import TestClient
+
+    from summit_workbench.webapp.app import WebContext, create_app
+
+    ctx = WebContext(vault_dir=vault, work_root=tmp_path, timezone="Asia/Shanghai")
+    client = TestClient(create_app(ctx, static_dir=tmp_path / "no-static"))
+
+    def fake_tolerant(url: str, *, payload: dict[str, object] | None = None, **_kwargs: object):
+        resp = client.post(urllib.parse.urlparse(url).path, json=payload)
+        return resp.status_code, resp.json()
+
+    return fake_tolerant
+
+
+def test_gate_journal_write_passes_against_real_route(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """[3/7] 在真实写入路径上必须全绿，并返回可清理的验证件信息。"""
+    vault = _seed_gate_vault(tmp_path)
+    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
+    rep = gate.Report()
+
+    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
+
+    assert rep.failures == []
+    assert probe is not None
+    assert probe.project == "FinanceOps"
+    assert probe.path.startswith("logs/")
+    assert (vault / probe.path).is_file()
+    # 日志页 + 关联项目页必须在同一个提交里（缺陷 1 的判据）
+    assert f"projects/{probe.project}.md" in probe.files
+    assert probe.path in probe.files
+    assert gate.worktree_dirty(vault) == []
+
+
+def test_gate_journal_write_fails_when_changed_paths_loses_the_project_page(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """反向护栏（变异靶）：漏列 changed_paths 的真实后果必须判 FAIL，且**不得**中断闸门。
+
+    精确复刻缺陷的 git 现场：日志页已提交、项目页（activity_at）留在未提交状态，端点返回
+    HTTP 500 `mutation_invariant` **且响应里没有 path**。要求：
+    ① 不抛异常（`http_json` 会在 500 上 SystemExit，日志步骤必须用容错版，否则收尾会被跳过、
+       验证件与脏改动留在使用者库里 —— 那正是最坏的结局）；
+    ② "工作树仍然干净"判 FAIL；
+    ③ 日志页路径能从 HEAD 反推出来，好让收尾仍能清理它。
+    """
+    import subprocess
+
+    vault = _seed_gate_vault(tmp_path)
+    project_page = vault / "projects" / "FinanceOps.md"
+
+    def fake_tolerant(_url: str, **_kwargs: object) -> tuple[int, dict[str, object]]:
+        # 复刻缺陷现场：日志页提交，项目页改脏但没进 changed_paths。
+        log = vault / "logs" / "2026-09-19-001.md"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("# 日志\n\n## 关联\n\n- （无）\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(vault), "add", "logs"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-C", str(vault), "commit", "-q", "-m", "wb: journal/log [x]"],
+            check=True,
+            capture_output=True,
+        )
+        project_page.write_text(
+            project_page.read_text(encoding="utf-8") + "<!-- 未提交的项目页改动 -->\n",
+            encoding="utf-8",
+        )
+        return 500, {"ok": False, "code": "mutation_invariant", "message": "…未提交路径…"}
+
+    monkeypatch.setattr(gate, "http_json_tolerant", fake_tolerant)
+    rep = gate.Report()
+    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
+
+    assert any("工作树仍然干净" in item for item in rep.failures), rep.failures
+    assert any("journal/log 成功" in item for item in rep.failures), rep.failures
+    assert any("关联项目页" in item for item in rep.failures), rep.failures
+    assert probe is not None
+    assert probe.path == "logs/2026-09-19-001.md"  # 从 HEAD 反推，收尾仍能清理
+    # 收尾必须把项目页还原、清掉日志页，最终工作树干净。
+    gate.gate_cleanup(rep, vault, _GATE_MARKER, True, push=False, journal=probe)
+    assert gate.worktree_dirty(vault) == []
+    assert not (vault / "logs" / "2026-09-19-001.md").exists()
+
+
+def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeypatch: Any) -> None:
+    """500 时容错版返回 ``(status, body)``；`http_json` 仍保持"醒目 SystemExit"不变。"""
+    import io
+    import urllib.error
+    import urllib.request
+
+    class _FailingOpener:
+        def open(self, _req: object, timeout: int | None = None) -> object:
+            raise urllib.error.HTTPError(
+                "http://swb/api/journal/log",
+                500,
+                "Internal Server Error",
+                {},
+                io.BytesIO(b'{"ok": false, "code": "mutation_invariant"}'),
+            )
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *a, **k: _FailingOpener())
+    status, body = gate.http_json_tolerant(
+        "http://swb/api/journal/log", token="t", payload={"did": "x"}, header="X-WB-Session-Token"
+    )
+    assert status == 500
+    assert body["code"] == "mutation_invariant"
+    # 反向护栏：其它步骤仍依赖 http_json 的"非 2xx 就醒目退出"。
+    with pytest.raises(SystemExit):
+        gate.http_json(
+            "http://swb/api/journal/log",
+            token="t",
+            payload={"did": "x"},
+            header="X-WB-Session-Token",
+        )
+
+
+def test_gate_cleanup_removes_journal_artifact_and_restores_project_page(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """[7/7] 收尾：日志页删除、项目页还原成写入前内容、工作树干净。"""
+    vault = _seed_gate_vault(tmp_path)
+    project_page = vault / "projects" / "FinanceOps.md"
+    before = project_page.read_text(encoding="utf-8")
+    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
+
+    rep = gate.Report()
+    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
+    assert probe is not None and rep.failures == []
+    assert (vault / probe.path).is_file()
+    assert "activity_at" in project_page.read_text(encoding="utf-8")
+
+    gate.gate_cleanup(rep, vault, _GATE_MARKER, True, push=False, journal=probe)
+
+    assert rep.failures == []
+    assert not (vault / probe.path).exists()
+    assert project_page.read_text(encoding="utf-8") == before
+    assert gate.worktree_dirty(vault) == []
