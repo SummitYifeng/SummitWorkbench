@@ -185,11 +185,14 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
 ⑤ **原件（`<project>/sources/`）与 `daily` / `weekly-review` 不进语料**（批次 A 语料边界）；
 ⑥ **来源白名单覆盖真实库的全部主线项目**（`thinking` 在内；这条只在有真实库的环境成立，
 故放在闸门而不是只做单元测试）；
-⑦ **`/api/journal/log` 写入后工作树干净、关联项目页与日志页同一个提交、落盘页面只有一个
-「关联」区块**（第七阶段新增；`[3/7]` 这一步**不调用模型所以不花钱**）。第 ⑦ 条迟到的原因
-值得记住：闸门原来只覆盖 `capture`（写 `inbox.md`）这一条写路径，而**新增写入口不会自动
-被覆盖**——journal 路径漏列 `changed_paths` 就是这样在"闸门全绿"的情况下漏掉的。改了 vault
-写路径、git 后端、检索策略、来源白名单或 SK 端点配置之后**跑它**。
+⑦ **`/api/journal/log` 写入后工作树干净、关联项目页（若本次确实被改动）与日志页同一个
+提交、落盘页面只有一个「关联」区块**（第七阶段新增，第八阶段把判据改精确；`[3/7]` 这一步
+**不调用模型所以不花钱**）。"若本次确实被改动"是必须的：`_touch_projects_activity` 只刷
+`activity_at`，而 `update_note_status` 的重写**幂等** ⇒ 同一天第二次写日志时项目页根本不变，
+"提交里没有项目页"是**正确行为**（2026-09-19 真机实跑就是被这条假阴性挡住的）。
+第 ⑦ 条迟到的原因值得记住：闸门原来只覆盖 `capture`（写 `inbox.md`）这一条写路径，而
+**新增写入口不会自动被覆盖**——journal 路径漏列 `changed_paths` 就是这样在"闸门全绿"的
+情况下漏掉的。改了 vault 写路径、git 后端、检索策略、来源白名单或 SK 端点配置之后**跑它**。
 
 ## 内容层面的硬规则（2026-09-18 使用者定规）
 
@@ -218,19 +221,26 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
    （`mutation_runtime._push_after_commit` + `routers/sync.py` 的显式恢复推送），新增绕过出口的
    调用点会立刻变红。
 
-3. **闸门 `[3/7]` 有一条日期相关的假阴性断言**（2026-09-19 真机实跑发现，待修）：
-   它断言"日志提交必须一并包含关联项目页"。但 `_touch_projects_activity` 只刷新 `activity_at`，
-   而 `update_note_status` 的重写是**幂等**的 ⇒ **同一天第二次写日志时项目页不再变化**，
-   于是"提交里没有项目页"是**正确行为**、断言却判 FAIL。修法：把判据改成**精确的**
-   ——"若本次写入确实改动了项目页（比对写入前后内容），则它必须在同一个提交里；未改动则不要求"。
-   **`[3/7]` 里"写入后工作树干净（S-1(a)）"才是真正防住这个缺陷的那条**，不要因为修这条而弱化它。
+3. ~~**闸门 `[3/7]` 的日期相关假阴性断言**~~ —— **已修（2026-09-19 第八阶段）**：
+   它曾断言"日志提交必须一并包含关联项目页"。但 `_touch_projects_activity` 只刷新 `activity_at`，
+   而 `update_note_status` 的重写是**幂等**的 ⇒ 同一天第二次写日志时项目页不再变化，
+   于是"提交里没有项目页"是**正确行为**、断言却判 FAIL（真机实跑：
+   `❌ 日志提交一并包含关联项目页 — HEAD 触及：['logs/2026-09-19-002.md']`）。
+   修法：`[3/7]` 在写入前后各读一次项目页字节，**只有内容确实变了才要求它进同一个提交**；
+   "写入后工作树干净（S-1(a)）"**原样保留、未弱化**（它才是真正防住原缺陷的那条）。
+   守卫：`tests/unit/test_kb_gate_helpers.py::test_gate_journal_write_tolerates_idempotent_project_page`
+   （真实 router 连写两次；断言第二次项目页字节不变、走"未变化"分支、零 FAIL、工作树干净）。
 
-4. **`dulwich` 后端的 `log_grep` 语义与 system 后端不一致（用户可见，待修）**：
-   `autocommit._WB_PREFIX_GREP = "^wb:"`，system 走 `git log --grep`（**正则**）、
-   dulwich 走 `needle in subject`（**字面子串**）⇒ 打包 App（固定 dulwich）里
-   `list_wb_commits()` 恒返回 `[]`，**「撤销历史」面板应当是空的**。
-   实测：`log_grep('^wb:')` system=1 行 / dulwich=0 行。修法：让 `dulwich_git.log_grep` 走正则，
-   或把常量改成两后端通用形式，**并补一条两后端参数化守卫**。
+4. ~~**`dulwich` 后端的 `log_grep` 语义与 system 不一致（用户可见）**~~ —— **已修（2026-09-19 第八阶段）**：
+   `autocommit._WB_PREFIX_GREP = "^wb:"`；system 走 `git log --grep`（**正则**，且 `^`/`$` 按
+   **消息的每一行**锚定），dulwich 原是 `needle in subject`（**字面子串**、且只看主题）⇒ 打包 App
+   （固定 dulwich）里 `list_wb_commits()` 恒返回 `[]`、**「撤销历史」面板空白**。
+   修法：`dulwich_git.log_grep` 改为 `re.search(pattern, 整条消息, re.MULTILINE)`，主题按
+   `git log --pretty=%s` 规则算（`_git_subject`：首个空行前的整段、换行折空格、续行缩进保留）。
+   **残留差异（未修，已登记）**：git 用 POSIX ERE、这里用 Python `re`，`\d` / `\w` / lookaround
+   等写法两者不同；生产上只用 `^wb:`，两种 flavour 一致。
+   守卫：`tests/unit/test_git_backends.py::test_log_grep_semantics_agree_across_backends`
+   （两后端 × 7 个模式，含把 `wb:` 放进正文的那一行）。
 
 5. **`update_note_status` 会重排整个 frontmatter**（噪音，非缺陷）：它用 `yaml.safe_dump`
    整篇重写，于是"只刷 `activity_at`"会把 `tags: [a, b]` 这类 flow style 变成 block style。
