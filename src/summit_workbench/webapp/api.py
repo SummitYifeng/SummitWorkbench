@@ -163,6 +163,35 @@ class JournalThoughtPayload(BaseModel):
     workstream: str | None = Field(default=None, max_length=32)
 
 
+class InboxPromotePayload(BaseModel):
+    """把一条收件箱条目提升为正式内容（契约 §10 的三种目标）。
+
+    ``id`` 是 `GET /api/inbox` 给出的**稳定标识**（capture 写的 `wb-candidate`，或手工
+    条目的 `local-<摘要>-<序号>`）。三个目标各自用到的字段不同，缺字段由路由给点名提示
+    （不用 422 挡），因为提示要能直接显示在弹层里。
+    """
+
+    id: str = Field(min_length=1, max_length=200)
+    target: Literal["project", "feishu-task", "thought"]
+    # project 目标
+    project: str = Field(default="", max_length=200)
+    block: Literal["next-step", "followup"] = "next-step"
+    # feishu-task 目标（`due_date` 缺省时用条目自带的 wb-capture-due）
+    due_date: str = Field(default="", max_length=32)
+    start_date: str = Field(default="", max_length=32)
+    # thought 目标（三段必填，沿用「写工作思考」的表单语义）
+    problem: str = Field(default="", max_length=200_000)
+    thinking: str = Field(default="", max_length=200_000)
+    conclusion: str = Field(default="", max_length=200_000)
+    summary: str = Field(default="", max_length=2_000)
+
+
+class InboxSuggestPayload(BaseModel):
+    """「让 AI 判断这条适合变成什么」——**显式按钮**才调一次 capture 能力的模型。"""
+
+    id: str = Field(min_length=1, max_length=200)
+
+
 class UndoRevertPayload(BaseModel):
     """撤销一次系统自动提交（``wb:`` 前缀的 vault 提交）。"""
 

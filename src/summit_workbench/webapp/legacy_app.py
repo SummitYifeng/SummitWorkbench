@@ -65,6 +65,7 @@ from summit_workbench.webapp.routers.brief import (
     register_brief_routes,
 )
 from summit_workbench.webapp.routers.capture import register_capture_routes
+from summit_workbench.webapp.routers.inbox import register_inbox_routes
 from summit_workbench.webapp.routers.journal import register_journal_routes
 from summit_workbench.webapp.routers.meetings import register_meetings_routes
 from summit_workbench.webapp.routers.onboarding import register_onboarding_routes
@@ -211,6 +212,7 @@ def create_app(
     register_thread_document_routes(dependencies, runtime=runtime)
     register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_journal_routes(dependencies, runtime=runtime)
+    register_inbox_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_brief_routes(dependencies, runtime=runtime)
     register_meetings_routes(dependencies, runtime=runtime, importer=meeting_importer)
     register_undo_routes(dependencies, runtime=runtime)

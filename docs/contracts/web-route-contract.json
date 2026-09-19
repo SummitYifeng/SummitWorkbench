@@ -83,6 +83,40 @@
   },
   {
     "method": [
+      "GET"
+    ],
+    "path": "/api/inbox",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/inbox/promote",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "InboxPromotePayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/inbox/suggest",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "InboxSuggestPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
       "POST"
     ],
     "path": "/api/journal/log",

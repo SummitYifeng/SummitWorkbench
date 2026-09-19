@@ -16,24 +16,19 @@
 
 from __future__ import annotations
 
-import re
-import secrets
 from pathlib import Path
 
-import yaml
 from fastapi import FastAPI
 
-from summit_workbench.config.locking import workspace_lock
-from summit_workbench.domain.retrieval_contract import validate_retrieval_readiness
-from summit_workbench.domain.vault import WORKSTREAM_VOCAB, validate_note
-from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.domain.vault import WORKSTREAM_VOCAB
 from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.thread_notes import (
     JOURNAL_FIELD_LABELS,
+    ThoughtNote,
     append_work_log,
     render_journal_body,
+    write_thought_note,
 )
-from summit_workbench.repositories.vault import parse_frontmatter
 from summit_workbench.webapp.api import JournalLogPayload, JournalThoughtPayload
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
@@ -43,13 +38,6 @@ from summit_workbench.webapp.services.work_log import (
     work_log_outcome,
 )
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
-
-_THINKING_DIRNAME = "thinking"
-_SLUG_RE = re.compile(r"[^a-z0-9]+")
-_SUMMARY_LIMIT = 80
-_TITLE_LIMIT = 60
-# 契约 §2.1 的「本库叠加必填」——`long-form-thought` 不是机器写入页，必须全写。
-_OVERLAY_REQUIRED = ("id", "title", "area", "workstream", "created", "updated", "summary")
 
 
 def _resolve_projects(vault_dir: Path, names: list[str]) -> tuple[list[str], list[str]]:
@@ -67,83 +55,6 @@ def _resolve_projects(vault_dir: Path, names: list[str]) -> tuple[list[str], lis
         elif canonical not in resolved:
             resolved.append(canonical)
     return resolved, unknown
-
-
-def _slugify(text: str, *, fallback: str) -> str:
-    """标题 → 文件名 slug（小写英文 kebab-case）；纯中文标题回退到 id 短码。"""
-    slug = _SLUG_RE.sub("-", text.lower()).strip("-")
-    return slug[:60].strip("-") or fallback
-
-
-def _first_line(text: str, *, limit: int) -> str:
-    collapsed = " ".join(text.strip().split())
-    return collapsed if len(collapsed) <= limit else collapsed[:limit].rstrip() + "…"
-
-
-def _derive_summary(conclusion: str, *, limit: int = _SUMMARY_LIMIT) -> str:
-    """缺省摘要：取「当前结论」首句，限 ~80 字（契约要求 `summary` 必填）。"""
-    text = " ".join(conclusion.strip().split())
-    cut = len(text)
-    for sep in ("。", "！", "？", "；", ".", "!", "?", ";"):
-        index = text.find(sep)
-        if index != -1:
-            cut = min(cut, index + 1)
-    summary = text[:cut].strip()
-    if len(summary) > limit:
-        summary = summary[:limit].rstrip() + "…"
-    return summary or _first_line(conclusion, limit=limit)
-
-
-def _validate_thought_text(text: str) -> None:
-    """落盘**前**跑 schema + 检索就绪两层校验（不合格就拒绝，不写半成品）。"""
-    meta, body, error = parse_frontmatter(text)
-    if error is not None:
-        raise ValueError(f"frontmatter 无法解析：{error}")
-    missing = [name for name in _OVERLAY_REQUIRED if not meta.get(name)]
-    if missing:
-        raise ValueError("缺本库叠加必填字段：" + ", ".join(missing))
-    problems = [str(issue) for issue in validate_note(meta, body)]
-    problems += [f"检索就绪：{issue}" for issue in validate_retrieval_readiness(meta, body)]
-    if problems:
-        raise ValueError("思考页不符合契约：" + "；".join(problems))
-
-
-def _render_thought_note(
-    *,
-    title: str,
-    workstream: str,
-    projects: list[str],
-    summary: str,
-    day: str,
-    problem: str,
-    thinking: str,
-    conclusion: str,
-) -> str:
-    meta: dict[str, object] = {
-        "id": f"{day}-{secrets.token_hex(2)}",
-        "title": title,
-        "area": "work",
-        "workstream": workstream,
-        "type": "long-form-thought",
-        "status": "active",
-        "created": day,
-        "updated": day,
-        "date": day,
-        "summary": summary,
-    }
-    if projects:
-        meta["projects"] = projects
-    else:
-        # 契约 §1.1：跨项目思考不绑定任何项目；`project: global` 与 `projects` 不得并存。
-        meta["project"] = "global"
-    frontmatter = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
-    body = (
-        f"# {title}\n\n"
-        f"## 问题缘起\n\n{problem.strip()}\n\n"
-        f"## 思考展开\n\n{thinking.strip()}\n\n"
-        f"## 当前结论\n\n{conclusion.strip()}\n"
-    )
-    return f"---\n{frontmatter}\n---\n\n{body}"
 
 
 def register_journal_routes(dependencies: RouteDependencies, *, runtime: MutationRuntime) -> None:
@@ -237,49 +148,35 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
                 "message": "项目未建档：" + "、".join(unknown) + "（先在「项目」页建档）",
             }
         day = ctx.today()
-        title = (payload.title or "").strip() or _first_line(
-            payload.summary or sections["问题缘起"], limit=_TITLE_LIMIT
-        )
-        summary = (payload.summary or "").strip() or _derive_summary(sections["当前结论"])
-        fallback = secrets.token_hex(2)
-        slug = _slugify(title, fallback=fallback)
-        prefix = day.replace("-", "")
 
-        def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
-            # 目录按需创建（不放 .gitkeep）；先校验、后落盘，绝不写半成品。
-            thinking_dir = ctx.vault_dir / _THINKING_DIRNAME
-            path = thinking_dir / f"{prefix}-{slug}.md"
-            suffix = 2
-            while path.exists():
-                path = thinking_dir / f"{prefix}-{slug}-{suffix}.md"
-                suffix += 1
-            text = _render_thought_note(
-                title=title,
-                workstream=workstream,
-                projects=projects,
-                summary=summary,
+        def mutate(_operation_id: str) -> LocalMutationOutcome[ThoughtNote]:
+            # 落盘全部交给 `repositories/thread_notes.write_thought_note`（唯一实现）：
+            # 目录按需创建、缺标题/摘要时派生、先校验后落盘、同名取序号不覆盖。
+            note = write_thought_note(
+                ctx.vault_dir,
                 day=day,
                 problem=sections["问题缘起"],
                 thinking=sections["思考展开"],
                 conclusion=sections["当前结论"],
+                projects=projects,
+                workstream=workstream,
+                title=payload.title or "",
+                summary=payload.summary or "",
             )
-            _validate_thought_text(text)
-            with workspace_lock(ctx.vault_dir.parent):
-                atomic_write_text(path, text, ensure_parents=True)
-            return LocalMutationOutcome(path, (path,))
+            return LocalMutationOutcome(note, (note.path,))
 
         try:
             result = runtime.run("journal/thought", mutate)
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
-        path = result.business_return
+        note = result.business_return
         git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
-            "message": f"已写入工作思考 → {path.name}{git_note}",
-            "path": str(path),
-            "title": title,
-            "summary": summary,
+            "message": f"已写入工作思考 → {note.path.name}{git_note}",
+            "path": str(note.path),
+            "title": note.title,
+            "summary": note.summary,
             "workstream": workstream,
             "projects": projects,
             **_mutation_fields(result),

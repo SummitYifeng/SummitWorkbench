@@ -14,8 +14,10 @@ from summit_workbench.domain.external_action import ExternalActionKind, External
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
     UNRESOLVED,
+    ApprovalCandidate,
     CandidateDecision,
     CandidateKind,
+    EvidenceRef,
     ReviewEntry,
     RouteTarget,
 )
@@ -406,6 +408,49 @@ def _run_external(
                 f"{EXTERNAL_ACTION_ACCOUNTING_FAILED}: 远端可能已创建，结果待核对"
             ) from exc
     return destination, remote_id, succeeded.operation_id
+
+
+def create_task_through_outbox(
+    *,
+    vault_dir: Path,
+    candidate_id: str,
+    description: str,
+    due_date: str | None,
+    task_creator: TaskCreator,
+    start_at: str | None = None,
+    target_project: str | None = None,
+) -> tuple[str, str]:
+    """经**同一条外部动作路径**创建一条飞书待办，返回 ``(remote_id, operation_id)``。
+
+    收件箱提升的「一条待办」（契约 §10）与会议审批写回共用这里的 `_run_external`：
+    outbox 账本、按 `candidate_id` 的幂等去重、以及"结果未知就绝不重 POST"三条纪律
+    **只有一处实现**——待办的真源在飞书，重复创建是使用者直接可见的破坏。
+
+    这里只需要给它一个合成候选：提升是使用者在收件箱条目上显式点的，没有会议逐字稿，
+    所以证据锚点用条目自身（`inbox:<id>`）。
+    """
+    candidate = ApprovalCandidate(
+        candidate_id=candidate_id,
+        kind=CandidateKind.ACTION_ITEM,
+        description=description,
+        target_project=target_project,
+        route=RouteTarget.FEISHU_TASK,
+        evidence=EvidenceRef(anchor=f"inbox:{candidate_id}"),
+        due_date=due_date,
+        start_at=start_at,
+    )
+    entry = ReviewEntry(
+        candidate=candidate,
+        ai_original=description,
+        meeting_date="",
+        meeting_title="收件箱提升",
+        note_link="",
+        transcript_link="",
+    )
+    _destination, remote_id, operation_id = _run_external(
+        entry, vault_dir, task_creator=task_creator, meeting_creator=None
+    )
+    return remote_id, operation_id
 
 
 def _candidate_unchanged_since(current: ReviewEntry, original: ReviewEntry | None) -> bool:

@@ -11,10 +11,14 @@ from summit_workbench.domain.review import CandidateKind
 from summit_workbench.domain.time import business_date
 from summit_workbench.repositories._atomic import atomic_write_text
 
-_GLOBAL_INBOX_HEADING = "## 待处理条目"
+# 全局收件箱的待处理区标题。**公开**为唯一真源：解析侧（`repositories/inbox.py`）与
+# 写入口必须用同一个字符串，否则会出现"写得进去、读不出来"的静默错位。
+GLOBAL_INBOX_HEADING = "## 待处理条目"
+_GLOBAL_INBOX_HEADING = GLOBAL_INBOX_HEADING
 
 # 知识线程项目的「他人行动项责任记录」区块（主档案内可选固定区块，见 conventions.md）。
-_PROJECT_FOLLOWUP_HEADING = "## 跟进事项"
+PROJECT_FOLLOWUP_HEADING = "## 跟进事项"
+_PROJECT_FOLLOWUP_HEADING = PROJECT_FOLLOWUP_HEADING
 
 
 def _ensure_global_inbox(path: Path) -> None:
