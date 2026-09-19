@@ -147,3 +147,20 @@ def test_origin_main_rev_reads_tracking_ref(gate: Any, tmp_path: Path) -> None:
         text=True,
     ).stdout.strip()
     assert gate.origin_main_rev(repo) == head
+
+
+def test_origin_guard_warns_when_not_pushing_but_remote_moved(gate: Any, tmp_path: Path) -> None:
+    """未启用推送模式却发生推送 ⇒ 必须进告警清单（2026-09-19 事故的机器守卫）。"""
+    repo = tmp_path / "vault"
+    repo.mkdir()
+    rep = gate.Report()
+    gate.gate_origin_guard(rep, repo, "deadbee", push_enabled=False)
+    assert any("origin/main" in item for item in rep.warnings)
+
+
+def test_origin_guard_is_quiet_when_push_mode_may_explain_it(gate: Any, tmp_path: Path) -> None:
+    repo = tmp_path / "vault"
+    repo.mkdir()
+    rep = gate.Report()
+    gate.gate_origin_guard(rep, repo, "deadbee", push_enabled=True)
+    assert rep.warnings == []
