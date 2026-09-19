@@ -16,6 +16,18 @@
     .venv/bin/python scripts/kb_verify_links.py <vault 路径>
     .venv/bin/python scripts/kb_verify_links.py <vault 路径> --quiet
 
+覆盖范围（读结论前先看）：
+
+- **覆盖**：`[[目标]]` / `[[目标#区块]]`（含 `|别名`）、`` `路径#区块` ``，以及**有唯一来源上下文**
+  的裸锚点 `` `#区块` ``；
+- **不覆盖**：`###` 及更深的锚点（契约只把 `#` / `##` 当块边界，见 conventions §13 遗留 12）；
+  以及**没有或无法唯一确定来源页**的裸锚点（§13 遗留 13 登记的形态：`inbox.md`、
+  `index/sop.md`、`review/meetings.md`、`decisions/*`、部分 `sources/*`、
+  `conventions.md` 自身举例）。
+- ⚠️ **2026-09-19 覆盖回归**：`source_context` 曾"只看首块"，第五阶段把 H1 前的前言并进第一个
+  `##` 后首块只剩 H1 ⇒ 两页来源推不出来 ⇒ 裸锚点计数 **56 → 0**（门禁不再校验，却仍报
+  "全部可解析"）。现在改为**扫全篇标记行 + 开头区块收敛**，计数恢复 56。
+
 退出码：0 = 全部可解析；1 = 存在死链或失效锚点；2 = 路径不存在。
 """
 
@@ -43,7 +55,9 @@ FENCED_BLOCK = re.compile(r"^[ \t]*(?:```|~~~).*?^[ \t]*(?:```|~~~)[ \t]*$", re.
 INLINE_CODE = re.compile(r"`[^`\n]*`")
 BARE_REF = re.compile(r"`#([^`\n]+?)`")
 SOURCE_PATH = re.compile(r"(?<![\w./-])([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\.md)")
-SOURCE_MARKER = re.compile(r"来源|出处|真源|原件|副本|source|copy", re.I)
+# 来源标记行：只认这些词所在的行。拉丁词用**词界**，否则路径 `…/sources/x.md` 里的
+# "sources" 会被当成 "source" 标记，把"正文里提到的路径"误判成来源（假歧义）。
+SOURCE_MARKER = re.compile(r"来源|出处|真源|原件|副本|\bsource\b|\bcopy\b", re.I)
 
 
 def markdown_files(vault: Path) -> list[Path]:
@@ -59,10 +73,50 @@ def headings(source_id: str, text: str) -> set[str]:
     return {chunk.heading for chunk in chunk_markdown(source_id, text) if chunk.heading}
 
 
+def _source_candidates(
+    text: str, by_rel: dict[str, Path], basenames: set[str], self_path: Path | None
+) -> list[Path]:
+    """扫描 ``text`` 里「来源标记行」上出现的、**能解析且不是本页自身**的路径。
+
+    - 只认 :data:`SOURCE_MARKER` **标记行**：不扫全部正文，否则正文里提到的路径会被误判成来源；
+    - 只收**能在库内解析**的路径：`source` 页的「原件」常是本机绝对路径（如
+      `/Users/…/Desktop/…`），那些不是库内来源上下文；
+    - 排除**本页自身**：`source` 页的 `## 来源` 会列「vault 内副本」＝本页，自指不是来源上下文。
+    """
+    found: list[Path] = []
+    for line in text.splitlines():
+        if not SOURCE_MARKER.search(line):
+            continue
+        for raw in SOURCE_PATH.findall(line):
+            resolved = resolve(raw, by_rel, basenames)
+            if resolved is not None and resolved != self_path:
+                found.append(resolved)
+    return list(dict.fromkeys(found))
+
+
 def source_context(
-    body: str, by_rel: dict[str, Path], basenames: set[str]
+    body: str,
+    by_rel: dict[str, Path],
+    basenames: set[str],
+    self_path: Path | None = None,
 ) -> tuple[Path | None, bool]:
-    """Return (unique source, ambiguous) from the first content block only."""
+    """推断本页裸锚点所属的**来源页**；返回 ``(来源, 是否歧义)``。
+
+    为什么要扫全篇（2026-09-19 覆盖回归）：此前只看 ``chunks[0]``。第五阶段把 H1 之前的
+    前言并进了第一个 ``##`` 区块（即 ``chunks[1]``），``chunks[0]`` 于是只剩 H1，两页的
+    来源指针被移出扫描范围——「裸锚点」计数从 56 **静默**掉到 0：门禁不再校验它们，却仍
+    显示"全部可解析"。
+
+    判据（保持「唯一才算得出，多义视为无法判定」的语义）：
+
+    1. 只认 :data:`SOURCE_MARKER` **标记行**（不扫全部正文）；
+    2. 候选只收能解析、且不是本页自身的路径；
+    3. **全篇**恰好一个候选 → 用它（来源只在一处被提到时也能找到；
+       也覆盖"标记行在第二个块里"的第五阶段形态）；
+    4. 全篇多个候选时，收敛到**开头区块**（首块 + 第一个 ``#``/``##`` 区块，正是第五阶段
+       前言并段的落点）里声明的那个；开头也恰好一个 → 用它；
+    5. 否则视为"无法判定"：开头仍多个 → 歧义（沿用改前语义，报问题）；一个都没有 → 不计数。
+    """
     content = body
     if body.startswith("---"):
         end = body.find("\n---", 3)
@@ -71,14 +125,15 @@ def source_context(
     chunks = chunk_markdown("", content)
     if not chunks:
         return None, False
-    candidates: list[str] = []
-    for line in chunks[0].text.splitlines():
-        if SOURCE_MARKER.search(line):
-            candidates.extend(SOURCE_PATH.findall(line))
-    unique = list(dict.fromkeys(candidates))
-    if len(unique) != 1:
-        return None, len(unique) > 1
-    return resolve(unique[0], by_rel, basenames), False
+    whole = _source_candidates(content, by_rel, basenames, self_path)
+    if len(whole) == 1:
+        return whole[0], False
+    opening = _source_candidates(
+        "\n".join(chunk.text for chunk in chunks[:2]), by_rel, basenames, self_path
+    )
+    if len(opening) == 1:
+        return opening[0], False
+    return None, len(opening) > 1
 
 
 def build_maps(files: list[Path], vault: Path) -> tuple[dict[str, Path], set[str], dict[Path, str]]:
@@ -178,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
             if not match.group(1).lstrip().startswith("#")
         ]
         if bare_refs:
-            source, ambiguous = source_context(body, by_rel, basenames)
+            source, ambiguous = source_context(body, by_rel, basenames, path)
             if ambiguous:
                 problems.append(f"{rel}: 裸锚点来源上下文有歧义，无法安全解析")
             elif source is not None:
