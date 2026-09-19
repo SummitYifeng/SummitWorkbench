@@ -2,7 +2,7 @@
 
 ## 2026-09-19 Dulwich 1.2 迁移执行状态
 
-本地隔离分支 `codex/dulwich-1-2-migration` 已完成 Dulwich `1.2.15` 迁移与手动 CI 收窄：
+本轮已合并到本地 `main`，完成 Dulwich `1.2.15` 迁移与手动 CI 收窄：
 依赖锁定为 `dulwich>=1.2.15,<1.3`，远端日常质量门只保留 `workflow_dispatch`，完整本地门禁为
 **1266 passed / 1 skipped、覆盖率 84.04%**。arm64 内部包 `0.4.9 / build 2026091917`
 已构建并通过打包验证；交付包与当前阶段的剩余人工/跨端确认见

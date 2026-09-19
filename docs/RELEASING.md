@@ -1,6 +1,6 @@
 # SummitWorkbench macOS 发布
 
-## 当前本地交付状态（2026-09-19，Dulwich 1.2 迁移分支）
+## 当前本地交付状态（2026-09-19，本地 main）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 

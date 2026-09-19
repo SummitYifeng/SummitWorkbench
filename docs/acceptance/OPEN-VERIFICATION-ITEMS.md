@@ -2,7 +2,7 @@
 
 ## 2026-09-19 Dulwich 1.2 迁移执行记录（本地隔离分支）
 
-本轮执行分支为 `codex/dulwich-1-2-migration`，当前提交 `2d1cf3a`；历史 §I 关于
+本轮实现提交 `2d1cf3a` 已合并到本地 `main`（当前交付文档提交为 `391fefa`）；历史 §I 关于
 `dulwich 0.22.8` 的评估与失败证据保留不变。本轮已完成：依赖锁定
 `dulwich>=1.2.15,<1.3`、`Repo.do_commit` 迁移、1.2 类型契约收窄、深层 `.gitignore` 否定规则守卫，
 以及日常 CI 改为仅 `workflow_dispatch`；release/tag workflow 未改。
