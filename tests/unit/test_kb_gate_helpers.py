@@ -316,9 +316,51 @@ def test_gate_journal_write_passes_against_real_route(
     assert probe.project == "FinanceOps"
     assert probe.path.startswith("logs/")
     assert (vault / probe.path).is_file()
-    # 日志页 + 关联项目页必须在同一个提交里（缺陷 1 的判据）
+    # 项目页本次确实变了（fixture 里它没有 activity_at）⇒ 判据要求它在同一个提交里
+    # （缺陷 1 的精确判据）。
     assert f"projects/{probe.project}.md" in probe.files
     assert probe.path in probe.files
+    assert gate.worktree_dirty(vault) == []
+
+
+def test_gate_journal_write_tolerates_idempotent_project_page(
+    gate: Any,
+    tmp_path: Path,
+    monkeypatch: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """同一天**第二次**写日志：项目页幂等不变 ⇒ 不得因此判 FAIL。
+
+    这是 2026-09-19 真机实跑发现的**假阴性**：`_touch_projects_activity` 只刷 `activity_at`，
+    而 `update_note_status` 的重写是幂等的 ⇒ 第二次写日志时项目页不再变化，"提交里没有项目页"
+    是正确行为，老断言（恒要求它在提交里）却判 FAIL：
+    `❌ 日志提交一并包含关联项目页 — HEAD 触及：['logs/2026-09-19-002.md']`。
+
+    修法后：只有"内容确实变了"才要求它进提交。本用例走**真实 router** 连写两次，并断言
+    ① 第二次项目页字节级不变（前提校验，否则测试会假绿）；② 走的是"未变化"分支；
+    ③ 没有任何 FAIL，且 S-1(a) 的工作树干净是**真的**干净（不是靠放宽判据换来的）。
+    """
+    vault = _seed_gate_vault(tmp_path)
+    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
+    project_page = vault / "projects" / "FinanceOps.md"
+
+    first = gate.Report()
+    first_probe = gate.gate_journal_write(first, vault, "http://swb", "tok", "http://swb")
+    assert first.failures == [], first.failures
+    assert first_probe is not None
+    assert f"projects/{first_probe.project}.md" in first_probe.files  # 第一次：页变了、进了提交
+    after_first = project_page.read_bytes()
+    capsys.readouterr()
+
+    second = gate.Report()
+    second_probe = gate.gate_journal_write(second, vault, "http://swb", "tok", "http://swb")
+    output = capsys.readouterr().out
+
+    assert project_page.read_bytes() == after_first, "前提：同一天第二次写入必须幂等"
+    assert second_probe is not None and second_probe.path != first_probe.path  # 是**另一条**日志
+    assert f"projects/{second_probe.project}.md" not in second_probe.files  # 没变 ⇒ 不进提交
+    assert second.failures == [], second.failures
+    assert "关联项目页本次未变化" in output  # 确实走了新分支
     assert gate.worktree_dirty(vault) == []
 
 

@@ -514,15 +514,24 @@ def gate_journal_write(
 
     顺带守契约 §4.10：落盘页面里「关联」类区块只能有一个（渲染输出是对的，是规范化器在
     落盘阶段又追加了机器形态的 `## 关联项目`；只断言渲染函数永远看不到）。
+    再顺带守 changed_paths 的**精确**判据：只有本次确实改动了关联项目页时，才要求它与日志页
+    同一个提交——同一天第二次写日志时项目页幂等不变，要求它进提交是假阴性（见函数体注释）。
 
     不调用模型 ⇒ 不花模型/嵌入费用。返回清理所需的验证件信息。
     """
-    print("\n[3/7] 日志写入路径：`/api/journal/log` 之后工作树干净、关联项目页一并提交")
+    print("\n[3/7] 日志写入路径：`/api/journal/log` 之后工作树干净、项目页（若被改动）一并提交")
     project_ids = project_ids_of(vault)
     if not project_ids:
         rep.warn("真实库没有主线项目页，跳过日志写入步骤", "无法覆盖关联项目页的提交路径")
         return None
     project = project_ids[0]
+    project_page = vault / "projects" / f"{project}.md"
+    # 判据必须**精确**（2026-09-19 真机实跑修正的假阴性）：`_touch_projects_activity` 只刷
+    # `activity_at`，而 `update_note_status` 的重写是**幂等**的 ⇒ 同一天第二次写日志时项目页
+    # 根本不变，此时"提交里没有项目页"是**正确行为**。老断言（恒要求它在提交里）会在那一刻误报
+    # FAIL（实测输出：`❌ 日志提交一并包含关联项目页 — HEAD 触及：['logs/2026-09-19-002.md']`），
+    # 而同一步的 S-1(a) 是通过的。⇒ 先记写入前的内容，写入后再比：**变了才要求它在提交里**。
+    project_before = project_page.read_bytes() if project_page.is_file() else None
     marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:8]}（日志）"
     head_before = git(vault, "rev-parse", "HEAD").strip()
     # 容错调用：缺陷回归时端点返回 500，这里仍要能记 FAIL 并走到收尾（见 http_json_tolerant）。
@@ -572,12 +581,20 @@ def gate_journal_write(
 
     if log_rel:
         rep.check(log_rel in files, "日志提交包含日志页本身", f"HEAD 触及：{list(files)}")
-    # 缺陷 1 的判据：关联项目页必须在**同一个**提交里（漏列 ⇒ 它留在未提交状态）。
-    rep.check(
-        f"projects/{project}.md" in files,
-        "日志提交一并包含关联项目页（changed_paths 未漏列）",
-        f"HEAD 触及：{list(files)}",
-    )
+    # 缺陷 1 的判据（精确版）：**只有本次写入确实改动了**关联项目页时，才要求它出现在同一个
+    # 提交里（漏列 ⇒ 它留在未提交状态）。项目页没变时不作要求——见上面 `project_before` 的说明。
+    project_after = project_page.read_bytes() if project_page.is_file() else None
+    if project_after != project_before:
+        rep.check(
+            f"projects/{project}.md" in files,
+            "写入确实改动了关联项目页 ⇒ 它必须在同一个提交里（changed_paths 未漏列）",
+            f"HEAD 触及：{list(files)}",
+        )
+    else:
+        rep.ok(
+            "关联项目页本次未变化（同日重复写入的幂等结果）⇒ 不要求在提交里",
+            f"HEAD 触及：{list(files)}",
+        )
     if log_rel and (vault / log_rel).is_file():
         _meta, body, _err = parse_frontmatter((vault / log_rel).read_text(encoding="utf-8"))
         headings = [text for level, text in iter_headings(body) if level == 2]
