@@ -111,3 +111,39 @@ def test_whitelist_covers_canonical_projects_and_thinking(gate: Any) -> None:
     assert "thinking" in gate.KNOWLEDGE_SOURCE_ROOTS
     # 反例护栏：库外目录仍必须被拒（白名单不得被顺手放宽）
     assert gate.whitelist_missing(["notes"]) == ["notes"]
+
+
+# ─────────────── 推送守卫 / 端点解析（第四·五阶段新增） ───────────────
+
+
+def test_auto_push_state_of_unknown_pid_is_not_enabled(gate: Any) -> None:
+    """读不到进程/环境时保守返回 False/None——绝不默认"已启用不推送"。"""
+    assert gate.auto_push_state_of_pid(None) is None
+    assert gate.auto_push_state_of_pid("999999") is False
+
+
+def test_origin_main_rev_reads_tracking_ref(gate: Any, tmp_path: Path) -> None:
+    import subprocess
+
+    repo = tmp_path / "vault"
+    repo.mkdir()
+    for args in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    (repo / "a.md").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "a.md"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-q", "-m", "x"], check=True, capture_output=True
+    )
+    assert gate.origin_main_rev(repo) == "(无 origin/main)"
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", "HEAD"],
+        check=True,
+        capture_output=True,
+    )
+    head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    assert gate.origin_main_rev(repo) == head

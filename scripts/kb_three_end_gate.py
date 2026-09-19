@@ -21,15 +21,39 @@
    这条守卫必须放在闸门里：`tests/unit/test_knowledge_sources.py` 在 CI/异机会因拿不到
    真实库而 skip，等于没守住。
 
+**⚠️ 写入与推送的边界（2026-09-19 真实事故，务必先读）**：
+
+闸门的 `[2/6]` 会向 **SWB 端点**发一次真实 capture。SWB 的每一条写路径在 commit 之后都会
+经 `sync_coordinator.push_after_commit` **自动推送 vault 远端**——这是 App 的正常行为，
+但验证动作不该顺带推送。当时 `--no-push` 只挡住了闸门收尾那一个提交，挡不住端点自己的推送，
+结果验证件连同本地未推提交被一起发布到了 `origin/main`。
+
+⇒ **正确姿势**：用**源码**起一个带 `WB_NO_AUTO_PUSH=1` 的服务，再用 `--swb-url/--swb-token`
+把闸门指过去：
+
+    WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
+        ./.venv/bin/python -m summit_workbench.cli.main web --host 127.0.0.1 --port 8791 &
+    ./.venv/bin/python scripts/kb_three_end_gate.py \
+        --swb-url http://127.0.0.1:8791 --swb-token ... --no-push-cleanup
+
+不要拿正在跑的 App 做验证：App 里没有这个开关（装了新版本才有），capture 必然推送。
+
 用法（**会写 vault、会花钱**：一次极小模型调用 + 检索时的嵌入/精排费用）：
 
     ./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完整闸门并自动清理验证件
     ./.venv/bin/python scripts/kb_three_end_gate.py --keep     # 保留验证件供人工查看
     ./.venv/bin/python scripts/kb_three_end_gate.py --no-cleanup
-    ./.venv/bin/python scripts/kb_three_end_gate.py --no-push  # 清理提交只留本地，不推 vault
+    # 收尾提交只留本地、不推 vault：
+    ./.venv/bin/python scripts/kb_three_end_gate.py --no-push-cleanup
+    # 指向"源码起、带 WB_NO_AUTO_PUSH=1"的服务：
+    ./.venv/bin/python scripts/kb_three_end_gate.py --swb-url URL --swb-token TOK
 
-默认行为不变（清理提交后推送）；`--no-push` 只把推送这一步显式关掉，并记为 WARN——
-推送与否是使用者的决定，不该由一次验证顺带执行。
+`--no-push` 是 `--no-push-cleanup` 的**弃用别名**（同名参数历史上只关掉收尾那一推，容易
+被读成"整个闸门不推送"；实际挡不住端点自动推送）。
+
+默认行为不变（清理提交后推送）；`--no-push-cleanup` 只把**收尾那一次**推送显式关掉，并记为
+WARN——推送与否是使用者的决定，不该由一次验证顺带执行。闸门还会记录 vault 的 `origin/main`
+前后取值：**未启用收尾推送却发生变化时**会醒目告警（那说明有别的写入者推了 vault）。
 
 退出码：0 = 全部通过（允许 WARN）；1 = 有 FAIL。
 """
@@ -38,10 +62,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Iterable
@@ -51,6 +77,7 @@ from typing import Any, cast
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from summit_workbench.config.auto_push import AUTO_PUSH_DISABLE_ENV  # noqa: E402
 from summit_workbench.repositories.vault import parse_frontmatter  # noqa: E402
 from summit_workbench.webapp.knowledge_sources import (  # noqa: E402
     KNOWLEDGE_SOURCE_ROOTS,
@@ -88,22 +115,74 @@ class Report:
 
 # ────────────────────── 进程与令牌 ──────────────────────
 def _env_of(pid: str, name: str) -> str:
-    out = subprocess.run(["ps", "eww", "-p", pid], capture_output=True, text=True).stdout
+    """从进程环境读一个变量；读不到（进程不存在/无权限/命令失败）返回空串。"""
+    try:
+        out = subprocess.run(["ps", "eww", "-p", pid], capture_output=True, text=True).stdout
+    except OSError:
+        return ""
     for token in out.split():
         if token.startswith(f"{name}="):
             return token.split("=", 1)[1]
     return ""
 
 
-def swb_endpoint(home: Path) -> tuple[str, str]:
+def _pid_listening_on(port: int) -> str | None:
+    """监听某端口的进程 pid（用来读它的环境变量）；查不到返回 None。"""
+    try:
+        out = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True,
+            text=True,
+        ).stdout.split()
+    except OSError:
+        return None
+    return out[0] if out else None
+
+
+def auto_push_state_of_pid(pid: str | None) -> bool | None:
+    """该端点进程是否启用了"不自动推送"。None = 查不到进程/环境。
+
+    闸门必须能说清"这次 capture 会不会被端点自动推送"——否则又一次"验证顺手推了 vault"。
+    """
+    if not pid:
+        return None
+    raw = _env_of(str(pid), AUTO_PUSH_DISABLE_ENV)
+    if raw == "":
+        # 变量缺失与变量为空都视为"未启用"——与 auto_push_disabled() 的判据一致。
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def swb_endpoint(
+    home: Path,
+    *,
+    url: str | None = None,
+    token: str | None = None,
+) -> tuple[str, str, str | None]:
+    """解析 SWB 端点 → ``(base_url, session_token, pid|None)``。
+
+    - 显式 ``--swb-url``（配合 ``--swb-token`` 或 env ``WB_SESSION_TOKEN``）优先；
+      这种形态通常指向"源码起、带 ``WB_NO_AUTO_PUSH=1``"的服务。
+    - 否则沿用 ``runtime.json``（即用户正在跑的 App）——注意 App 里**没有**新开关，
+      capture 会被自动 commit + push。
+    """
+    if url:
+        base = url.rstrip("/")
+        resolved = token or os.environ.get("WB_SESSION_TOKEN", "")
+        if not resolved:
+            raise SystemExit("✗ 指定 --swb-url 时必须同时提供 --swb-token（或设 WB_SESSION_TOKEN）")
+        parsed = urllib.parse.urlsplit(base)
+        pid = _pid_listening_on(parsed.port) if parsed.port else None
+        return base, resolved, pid
     runtime = home / "Library/Application Support/SummitWorkbench/runtime.json"
     if not runtime.is_file():
         raise SystemExit("✗ 未找到 SWB runtime.json：SummitWorkbench 是否在运行？")
     data = json.loads(runtime.read_text(encoding="utf-8"))
-    token = _env_of(str(data["pid"]), "WB_SESSION_TOKEN")
-    if not token:
+    pid = str(data["pid"])
+    tok = _env_of(pid, "WB_SESSION_TOKEN")
+    if not tok:
         raise SystemExit("✗ 无法从 SWB 进程环境读取 WB_SESSION_TOKEN")
-    return f"http://127.0.0.1:{data['port']}", token
+    return f"http://127.0.0.1:{data['port']}", tok, pid
 
 
 def sk_endpoint() -> tuple[str, str, str]:
@@ -155,6 +234,11 @@ def worktree_dirty(vault: Path) -> list[str]:
 
 def tracked_signals(vault: Path) -> list[str]:
     return [ln for ln in git(vault, "ls-files", "_signals/").splitlines() if ln.strip()]
+
+
+def origin_main_rev(vault: Path) -> str:
+    """vault 的 ``origin/main`` 当前取值（本地跟踪 ref）；没有则返回占位串。"""
+    return git(vault, "rev-parse", "--short", "origin/main").strip() or "(无 origin/main)"
 
 
 def push_vault(vault: Path) -> tuple[bool, str]:
@@ -507,7 +591,7 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, pus
     dirty = worktree_dirty(vault)
     rep.check(not dirty, "收尾后工作树干净", "" if not dirty else str(dirty[:5]))
     if not push:
-        rep.warn("清理提交未推送（--no-push；vault 本地仍自洽）", "由使用者决定何时 push")
+        rep.warn("清理提交未推送（--no-push-cleanup；vault 本地仍自洽）", "由使用者决定何时 push")
     else:
         pushed, push_detail = push_vault(vault)
         if pushed:
@@ -520,6 +604,28 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, pus
     rep.ok("inbox 待处理条目", str(pending))
 
 
+def gate_origin_guard(rep: Report, vault: Path, origin_before: str, *, push_enabled: bool) -> str:
+    """记录 ``origin/main`` 前后取值；**未启用推送模式却变化**时醒目告警。
+
+    这是 2026-09-19 事故的机器守卫：那次闸门"PASS"了，但端点在自己推送 vault。
+    这里绝不静默——变化一定进告警清单，而最终 PASS 行会逐条列出告警。
+    """
+    origin_after = origin_main_rev(vault)
+    print("\n[推送守卫] vault origin/main")
+    print(f"  跑闸门前 : {origin_before}")
+    print(f"  跑闸门后 : {origin_after}")
+    if origin_after == origin_before:
+        rep.ok("origin/main 未变化（本次验证没有推送到远端）", origin_after)
+    elif push_enabled:
+        rep.ok("origin/main 的变化可由闸门自己的收尾推送解释", f"{origin_before} → {origin_after}")
+    else:
+        rep.warn(
+            "❗未启用推送模式，但 vault 的 origin/main 变了 —— 有别的写入者推送了 vault",
+            f"{origin_before} → {origin_after}（很可能是 SWB 端点的自动推送）",
+        )
+    return origin_after
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="SWB × _vault × SK 跨端回归闸门")
     ap.add_argument("--vault", default=str(Path.home() / "Documents/Work/_vault"))
@@ -528,36 +634,89 @@ def main() -> int:
     ap.add_argument("--keep", action="store_true", help="保留验证件（不清理）")
     ap.add_argument("--no-cleanup", action="store_true", help="同 --keep")
     ap.add_argument(
+        "--no-push-cleanup",
+        action="store_true",
+        help="收尾提交只留本地，不推送 vault（默认仍推送；它只管收尾那一推，挡不住端点自动推送）",
+    )
+    ap.add_argument(
         "--no-push",
         action="store_true",
-        help="清理提交只留本地，不推送 vault（默认仍推送；推送与否由使用者决定）",
+        help="[弃用] 同 --no-push-cleanup；旧名容易被误读为'整个闸门不推送'",
+    )
+    ap.add_argument(
+        "--swb-url",
+        default=None,
+        help=(
+            "SWB 端点（默认用 runtime.json 里正在跑的 App；验证请指向带 "
+            "WB_NO_AUTO_PUSH=1 的源码服务）"
+        ),
+    )
+    ap.add_argument(
+        "--swb-token",
+        default=None,
+        help="配合 --swb-url 的会话令牌（或用环境变量 WB_SESSION_TOKEN）",
     )
     args = ap.parse_args()
+
+    no_push_cleanup = bool(args.no_push_cleanup or args.no_push)
+    if args.no_push and not args.no_push_cleanup:
+        print(
+            "ℹ --no-push 已弃用：改名为 --no-push-cleanup"
+            "（它只管收尾那一推，挡不住端点自己的自动推送）"
+        )
 
     vault = Path(args.vault).expanduser()
     vector_work = Path(args.vector_work).expanduser()
     home = Path.home()
     rep = Report()
 
-    swb_url, swb_tok = swb_endpoint(home)
+    swb_url, swb_tok, swb_pid = swb_endpoint(home, url=args.swb_url, token=args.swb_token)
     swb_origin = swb_url
     sk_url, sk_tok, _ = sk_endpoint()
+    auto_push_off = auto_push_state_of_pid(swb_pid)
+    origin_before = origin_main_rev(vault)
 
     print("=" * 72)
     print("跨端回归闸门：SWB → _vault → SK")
     print(f"  vault      : {vault}")
-    print(f"  SWB        : {swb_url}")
+    print(f"  SWB        : {swb_url}（pid {swb_pid or '未知'}）")
     print(f"  SK         : {sk_url}")
     print(f"  向量库      : {vector_work}")
-    print(f"  收尾推送    : {'否（--no-push）' if args.no_push else '是（默认）'}")
+    print(f"  收尾推送    : {'否（--no-push-cleanup）' if no_push_cleanup else '是（默认）'}")
+    print(f"  origin/main : {origin_before}")
+    print("-" * 72)
+    if auto_push_off is True:
+        print(
+            f"  ✅ 自动推送  : 端点已启用 {AUTO_PUSH_DISABLE_ENV}=1（capture 只 commit，不推远端）"
+        )
+    elif auto_push_off is False:
+        print(
+            f"  ⚠️  自动推送  : 该端点【未】启用 {AUTO_PUSH_DISABLE_ENV}"
+            " —— 本次 capture 会被自动 commit 并推送到 vault 远端！"
+        )
+        rep.warn(
+            f"SWB 端点未启用 {AUTO_PUSH_DISABLE_ENV}：本次 capture 可能自动推送到 vault 远端",
+            swb_url,
+        )
+    else:
+        print(
+            f"  ⚠️  自动推送  : 无法确认该端点是否启用 {AUTO_PUSH_DISABLE_ENV}"
+            " —— 保守假设未启用，本次验证可能推送 vault！"
+        )
+        rep.warn(f"无法确认 SWB 端点是否启用 {AUTO_PUSH_DISABLE_ENV}：验证可能推送 vault", swb_url)
     print("=" * 72)
 
-    pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
-    marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
-    gate_source_whitelist(rep, vault)
-    gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before)
-    gate_retrieval(rep, sk_url, sk_tok, args.question)
-    gate_cleanup(rep, vault, marker, not (args.keep or args.no_cleanup), push=not args.no_push)
+    try:
+        pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
+        marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
+        gate_source_whitelist(rep, vault)
+        gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before)
+        gate_retrieval(rep, sk_url, sk_tok, args.question)
+        gate_cleanup(
+            rep, vault, marker, not (args.keep or args.no_cleanup), push=not no_push_cleanup
+        )
+    finally:
+        gate_origin_guard(rep, vault, origin_before, push_enabled=not no_push_cleanup)
 
     print("\n" + "=" * 72)
     if rep.failures:
@@ -567,12 +726,17 @@ def main() -> int:
         )
         for item in rep.failures:
             print(f"  ❌ {item}")
+        for item in rep.warnings:
+            print(f"  ⚠️  {item}")
         print("=" * 72)
         return 1
-    print(
-        "结果：\033[32mPASS\033[0m"
-        + (f"（{len(rep.warnings)} 项告警，见上）" if rep.warnings else "")
-    )
+    if rep.warnings:
+        # 告警逐条列出：绝不让"验证推了 vault"这类事故藏在裸 PASS 后面。
+        print(f"结果：\033[32mPASS\033[0m（{len(rep.warnings)} 项告警，逐条如下）")
+        for item in rep.warnings:
+            print(f"  ⚠️  {item}")
+    else:
+        print("结果：\033[32mPASS\033[0m")
     print("=" * 72)
     return 0
 
