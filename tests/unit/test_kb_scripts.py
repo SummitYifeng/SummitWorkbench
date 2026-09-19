@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -22,11 +21,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load(name: str) -> ModuleType:
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
+    """按**源码**执行脚本，绕过 `__pycache__`。
+
+    `spec.loader.exec_module` 走字节码缓存，而 pyc 头里的源 mtime 只有 1 秒粒度——
+    同秒内等长改动会命中过期 pyc，让变异验证得出错误结论（2026-09-19 实测踩到）。
+    """
+    path = ROOT / "scripts" / f"{name}.py"
+    module = ModuleType(name)
+    module.__file__ = str(path)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
     return module
 
 

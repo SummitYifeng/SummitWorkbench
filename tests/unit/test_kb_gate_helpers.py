@@ -176,7 +176,26 @@ def test_origin_guard_is_quiet_when_push_mode_may_explain_it(gate: Any, tmp_path
     assert rep.failures == []
 
 
-# ─────────────── [1/6] 预检：local-ahead 是正常态，不得判 FAIL ───────────────
+# ───────── [1/6] 预检：安全/中性的同步状态不得判 FAIL，保护态必须 FAIL ─────────
+
+# 这些状态对闸门要守的不变量无碍（2026-09-19 逐个核对 domain.sync.SyncState）：
+# 判 FAIL 会让"连续第二次跑闸门""离线""未配远端""认证过期"这类正常情形必挂。
+_SYNC_WARN_STATES = (
+    "error",
+    "local-ahead",
+    "offline-local-ahead",
+    "remote-ahead",
+    "unconfigured",
+    "syncing",
+    "auth-required",
+)
+# 写库真的不安全的保护态 + 未知状态：必须 FAIL。
+_SYNC_FAIL_STATES = (
+    "diverged-protected",
+    "dirty-protected",
+    "remote-scheme-unsupported",
+    "totally-unknown",
+)
 
 
 def _preflight_with_state(gate: Any, vault: Path, monkeypatch: Any, state: str) -> Any:
@@ -195,22 +214,27 @@ def _preflight_with_state(gate: Any, vault: Path, monkeypatch: Any, state: str) 
     return rep
 
 
-def test_preflight_treats_local_ahead_as_a_warning(
-    gate: Any, tmp_path: Path, monkeypatch: Any
+@pytest.mark.parametrize("state", _SYNC_WARN_STATES)
+def test_preflight_downgrades_safe_sync_states(
+    gate: Any, tmp_path: Path, monkeypatch: Any, capsys: pytest.CaptureFixture[str], state: str
 ) -> None:
-    """本机有未推送提交是正常且安全的状态；推荐验证姿势本身就会制造它，不能判 FAIL。"""
+    """安全/中性的同步状态只告警（含详细含义），不判 FAIL。"""
     vault = tmp_path / "vault"
     vault.mkdir()
-    rep = _preflight_with_state(gate, vault, monkeypatch, "local-ahead")
-    assert rep.failures == []
-    assert any("local-ahead" in item for item in rep.warnings)
+    rep = _preflight_with_state(gate, vault, monkeypatch, state)
+    output = capsys.readouterr().out
+    assert rep.failures == [], state
+    assert any(state in item for item in rep.warnings), state
+    if state == "auth-required":
+        assert "重新登录" in output  # detail 里说清怎么办
 
 
-def test_preflight_still_fails_on_an_unexpected_sync_state(
-    gate: Any, tmp_path: Path, monkeypatch: Any
+@pytest.mark.parametrize("state", _SYNC_FAIL_STATES)
+def test_preflight_still_fails_on_unsafe_or_unknown_states(
+    gate: Any, tmp_path: Path, monkeypatch: Any, state: str
 ) -> None:
-    """只有 local-ahead（与 error）被降级；其它异常状态仍必须 FAIL。"""
+    """`diverged*`/`dirty*` 保护态与未知状态仍必须 FAIL（不认识不等于没事）。"""
     vault = tmp_path / "vault"
     vault.mkdir()
-    rep = _preflight_with_state(gate, vault, monkeypatch, "diverged-protected")
-    assert any("state 健康" in item for item in rep.failures)
+    rep = _preflight_with_state(gate, vault, monkeypatch, state)
+    assert any("state 健康" in item for item in rep.failures), state

@@ -346,6 +346,21 @@ def project_ids_of(vault: Path) -> list[str]:
 
 
 # ────────────────────── 闸门各段 ──────────────────────
+# 同步状态判据（2026-09-19）。只有 `ready` 是"全绿"；下列状态对**闸门要守的不变量**无碍，
+# 降为 WARN 并在 detail 里说清含义——判 FAIL 会让连续第二次跑闸门（或离线/未配远端时）必挂。
+# `diverged-protected` / `dirty-protected` 是**写库真的不安全**的保护态，保留 FAIL；
+# 未知状态同样 FAIL（不要用"没见过的就当没事"来掩盖）。
+_SYNC_WARN_STATES: dict[str, str] = {
+    "error": "网络类，不判失败",
+    "local-ahead": "本机有未推送提交——正常且安全（推荐验证姿势本身就会制造它）",
+    "offline-local-ahead": "离线且本机有未推送提交——正常（下次联网再推）",
+    "remote-ahead": "远端有新提交、本地未拉——正常（交给 wb sync，不是闸门职责）",
+    "unconfigured": "未配置远端——vault 本地自洽即可，无需同步",
+    "syncing": "另一次同步正在进行——稍后重跑即可",
+    "auth-required": "远端认证失效，需重新登录（wb sync / 设置页重新授权）",
+}
+
+
 def gate_preflight(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, sk_url: str, sk_tok: str
 ) -> int:
@@ -366,20 +381,14 @@ def gate_preflight(
         f"{swb_url}/api/sync/status", token=swb_tok, header="X-WB-Session-Token", origin=swb_origin
     )
     state = sync.get("state")
+    detail = str(sync.get("detail") or "")
     if state == "ready":
         rep.ok("SWB 同步 state=ready")
-    elif state == "error":
-        rep.warn("SWB 同步 state=error", f"{sync.get('detail')}（网络类，不判失败）")
-    elif state == "local-ahead":
-        # 本机有提交未推送是**正常且安全**的状态（界面常规横幅就是它）。而且推荐的验证姿势
-        # （--no-push-cleanup + WB_NO_AUTO_PUSH=1）本身就会制造 local-ahead ⇒ 若判 FAIL，
-        # 连续跑两次闸门第二次必挂（2026-09-19 实测）。与 error 同形降为 WARN。
-        rep.warn(
-            "SWB 同步 state=local-ahead",
-            "本机有未推送提交——正常且安全（推荐验证姿势本身就会制造它）",
-        )
+    elif state in _SYNC_WARN_STATES:
+        reason = _SYNC_WARN_STATES[state]
+        rep.warn(f"SWB 同步 state={state}", f"{detail}（{reason}）" if detail else reason)
     else:
-        rep.fail("SWB 同步 state 健康", f"state={state} detail={sync.get('detail')}")
+        rep.fail("SWB 同步 state 健康", f"state={state} detail={detail}")
     health = http_json(f"{sk_url}/api/health", token=sk_tok, header="Authorization")
     rep.check(
         bool(health.get("ready")), "SK /api/health ready", f"active_kb={health.get('active_kb_id')}"
