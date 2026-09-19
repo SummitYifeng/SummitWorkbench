@@ -145,13 +145,19 @@ def test_workflow_compatibility_module_reexports_domain_implementation() -> None
     assert normalize_generated_body is domain_normalize_generated_body
     assert format_normalization_error is domain_format_normalization_error
 
-    kwargs = {
-        "note_type": "thread-doc",
-        "title": "固定样例",
-        "text": "# 重复标题\n\n## 结论\n\n保留原文。",
-        "project_links": ["p1"],
-    }
-    assert normalize_generated_body(**kwargs) == domain_normalize_generated_body(**kwargs)
+    expected = normalize_generated_body(
+        note_type="thread-doc",
+        title="固定样例",
+        text="# 重复标题\n\n## 结论\n\n保留原文。",
+        project_links=["p1"],
+    )
+    actual = domain_normalize_generated_body(
+        note_type="thread-doc",
+        title="固定样例",
+        text="# 重复标题\n\n## 结论\n\n保留原文。",
+        project_links=["p1"],
+    )
+    assert expected == actual
 
 
 def test_repositories_do_not_runtime_import_workflows() -> None:
@@ -174,8 +180,8 @@ def test_repositories_do_not_runtime_import_workflows() -> None:
             )
             if any(module.startswith("summit_workbench.workflows") for module in modules):
                 violations.append(f"{node.lineno}: {modules}")
-        for child in ast.iter_child_nodes(node):
-            visit(child, in_type_checking=in_type_checking)
+        for child_node in ast.iter_child_nodes(node):
+            visit(child_node, in_type_checking=in_type_checking)
 
     for path in sorted(root.glob("*.py")):
         visit(ast.parse(path.read_text(encoding="utf-8")))

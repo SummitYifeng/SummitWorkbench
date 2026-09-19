@@ -47,18 +47,28 @@ def test_thread_notes_keeps_thought_compatibility_exports(
     assert render_thought_note is extracted_thought_notes.render_thought_note
     assert write_thought_note is extracted_thought_notes.write_thought_note
 
-    kwargs = {
-        "title": "固定思考样例",
-        "workstream": "cross",
-        "projects": ["P1"],
-        "summary": "结论摘要",
-        "day": "2026-09-19",
-        "problem": "问题",
-        "thinking": "思考",
-        "conclusion": "结论",
-    }
     monkeypatch.setattr("secrets.token_hex", lambda _bytes: "abcd")
-    assert render_thought_note(**kwargs) == extracted_thought_notes.render_thought_note(**kwargs)
+    expected = render_thought_note(
+        title="固定思考样例",
+        workstream="cross",
+        projects=["P1"],
+        summary="结论摘要",
+        day="2026-09-19",
+        problem="问题",
+        thinking="思考",
+        conclusion="结论",
+    )
+    actual = extracted_thought_notes.render_thought_note(
+        title="固定思考样例",
+        workstream="cross",
+        projects=["P1"],
+        summary="结论摘要",
+        day="2026-09-19",
+        problem="问题",
+        thinking="思考",
+        conclusion="结论",
+    )
+    assert expected == actual
 
 
 def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:
