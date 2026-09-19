@@ -18,7 +18,7 @@ import re
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 from dulwich import porcelain
@@ -26,7 +26,8 @@ from dulwich.diff_tree import tree_changes
 from dulwich.errors import NotGitRepository
 from dulwich.ignore import IgnoreFilterManager
 from dulwich.index import IndexEntry
-from dulwich.objects import Blob, Commit, Tree
+from dulwich.objects import Blob, Commit, ObjectID, Tree
+from dulwich.refs import Ref
 from dulwich.repo import Repo
 
 from summit_workbench.config.tls_trust import ca_bundle_path as ca_bundle_path
@@ -49,7 +50,37 @@ from summit_workbench.repositories.git_backend import (
     is_missing_local_remote,
 )
 
-Entry = tuple[str, bytes]  # (octal mode, blob sha)
+Entry = tuple[str, ObjectID]  # (octal mode, blob sha)
+
+
+def _object_id(value: bytes) -> ObjectID:
+    """Narrow Dulwich's runtime-compatible bytes values to its typed object id."""
+    return cast(ObjectID, value)
+
+
+def _commit_object(repo: Repo, sha: ObjectID) -> Commit:
+    obj = repo[sha]
+    if not isinstance(obj, Commit):
+        raise GitError("对象不是 commit")
+    return obj
+
+
+def _tree_object(repo: Repo, sha: ObjectID) -> Tree:
+    obj = repo[sha]
+    if not isinstance(obj, Tree):
+        raise GitError("对象不是 tree")
+    return obj
+
+
+def _blob_object(repo: Repo, sha: ObjectID) -> Blob:
+    obj = repo[sha]
+    if not isinstance(obj, Blob):
+        raise GitError("对象不是 blob")
+    return obj
+
+
+def _commit_message(commit: Commit) -> bytes:
+    return cast(bytes, commit.message)
 
 
 def _identity_bytes(identity: CommitIdentity | None) -> bytes:
@@ -198,7 +229,7 @@ class _DirNode:
     """重建树时的目录节点：children 按文件名排序。"""
 
     def __init__(self) -> None:
-        self.files: list[tuple[bytes, str, bytes]] = []  # (name, mode, sha)
+        self.files: list[tuple[bytes, str, ObjectID]] = []  # (name, mode, sha)
         self.dirs: dict[bytes, _DirNode] = {}
 
 
@@ -231,13 +262,13 @@ class DulwichGitBackend:
             raise GitError(f"不是 git 仓库：{self._path}") from exc
 
     @staticmethod
-    def _ref(repo: Repo, name: bytes) -> bytes | None:
+    def _ref(repo: Repo, name: bytes) -> ObjectID | None:
         try:
-            return repo.refs[name]
+            return repo.refs[Ref(name)]
         except KeyError:
             return None
 
-    def _head_sha(self, repo: Repo) -> bytes | None:
+    def _head_sha(self, repo: Repo) -> ObjectID | None:
         return self._ref(repo, b"HEAD")
 
     def _branch_ref(self, repo: Repo) -> bytes:
@@ -252,16 +283,16 @@ class DulwichGitBackend:
         message: str,
         *,
         author: CommitIdentity | None,
-        tree: bytes | None = None,
-        parent: bytes | None = None,
-    ) -> bytes:
+        tree: ObjectID | None = None,
+        parent: ObjectID | None = None,
+    ) -> ObjectID:
         identity = _identity_bytes(author)
-        new_sha = repo.do_commit(
+        new_sha = repo.get_worktree().commit(
             message=message.encode("utf-8"),
             author=identity,
             committer=identity,
             tree=tree,
-            ref=b"HEAD",
+            ref=Ref(b"HEAD"),
             merge_heads=[parent] if parent else None,
         )
         return new_sha
@@ -352,7 +383,7 @@ class DulwichGitBackend:
         if self._config_get(repo, section, b"url") is None:
             return
         config = repo.get_config()
-        config.pop(section, None)
+        config._values.pop(section, None)
         config.write_to_path()
 
     def set_upstream(self, remote: str = "origin", branch: str | None = None) -> None:
@@ -375,7 +406,7 @@ class DulwichGitBackend:
 
     def _head_ref_name(self, repo: Repo) -> bytes | None:
         """HEAD 符号引用最终指向的分支 ref（detached HEAD → None）。"""
-        raw = repo.refs.read_ref(b"HEAD")
+        raw = repo.refs.read_ref(Ref(b"HEAD"))
         if not raw or not raw.startswith(b"ref: "):
             return None  # detached HEAD（raw 为 sha）或未初始化
         return raw[len(b"ref: ") :]
@@ -407,7 +438,7 @@ class DulwichGitBackend:
     def upstream_revision(self) -> str:
         return self._upstream_sha(self._open()).decode("ascii")
 
-    def _upstream_sha(self, repo: Repo) -> bytes:
+    def _upstream_sha(self, repo: Repo) -> ObjectID:
         """@ {u} 语义：branch.<name>.remote + merge 对应的远端追踪 ref。"""
         ref_name = self._head_ref_name(repo)
         if ref_name is None or not ref_name.startswith(b"refs/heads/"):
@@ -424,17 +455,17 @@ class DulwichGitBackend:
 
     # ---- 工作树/暂存区 ----
 
-    def _head_tree_id(self, repo: Repo) -> bytes | None:
+    def _head_tree_id(self, repo: Repo) -> ObjectID | None:
         head = self._head_sha(repo)
         if head is None:
             return None
         try:
-            return repo[head].tree  # type: ignore[attr-defined]
+            return _object_id(_commit_object(repo, head).tree)
         except (KeyError, TypeError, AttributeError):
             return None
 
     @staticmethod
-    def _flatten(repo: Repo, tree_id: bytes | None) -> dict[str, Entry]:
+    def _flatten(repo: Repo, tree_id: ObjectID | None) -> dict[str, Entry]:
         if tree_id is None:
             return {}
         flat: dict[str, Entry] = {}
@@ -443,20 +474,20 @@ class DulwichGitBackend:
             for name, mode, sha in tree.iteritems():
                 rel = f"{prefix}{name.decode('utf-8')}"
                 if mode & 0o40000:
-                    walk(f"{rel}/", repo[sha])  # type: ignore[arg-type]
+                    walk(f"{rel}/", _tree_object(repo, sha))
                 else:
                     flat[rel] = (f"{mode:o}", sha)
 
-        walk("", repo[tree_id])  # type: ignore[arg-type]
+        walk("", _tree_object(repo, tree_id))
         return flat
 
-    def _index_entries(self, repo: Repo) -> dict[str, bytes]:
+    def _index_entries(self, repo: Repo) -> dict[str, ObjectID]:
         index = repo.open_index()
-        entries: dict[str, bytes] = {}
+        entries: dict[str, ObjectID] = {}
         for path, entry in index.iteritems():
             sha = getattr(entry, "sha", None)
             if sha is not None:
-                entries[path.decode("utf-8")] = sha
+                entries[path.decode("utf-8")] = _object_id(sha)
         return entries
 
     def _staged_paths(self, repo: Repo) -> list[str]:
@@ -666,9 +697,9 @@ class DulwichGitBackend:
                 branch = ref[len(prefix) :]
                 sha = self._ref(remote_repo, ref)
                 if sha is not None:
-                    repo.refs[tracking_base + branch] = sha
+                    repo.refs[Ref(tracking_base + branch)] = sha
 
-    def _ancestor_count(self, repo: Repo, include: bytes, exclude: bytes | None) -> int:
+    def _ancestor_count(self, repo: Repo, include: ObjectID, exclude: ObjectID | None) -> int:
         walker = repo.get_walker(include=[include], exclude=[exclude] if exclude else None)
         return sum(1 for _ in walker)
 
@@ -688,14 +719,14 @@ class DulwichGitBackend:
         head = self._head_sha(repo)
         if head is None:
             return 0
-        exclude: list[bytes] = []
+        exclude: list[ObjectID] = []
         if self.has_upstream():
             exclude.append(self._upstream_sha(repo))
-        return sum(
-            1
-            for entry in repo.get_walker(include=[head], exclude=exclude)
-            if entry.commit.message.decode("utf-8", "replace").lstrip().startswith("wb:")
-        )
+        count = 0
+        for entry in repo.get_walker(include=[head], exclude=exclude):
+            if _commit_message(entry.commit).decode("utf-8", "replace").lstrip().startswith("wb:"):
+                count += 1
+        return count
 
     def ff_merge_upstream(self) -> None:
         repo = self._open()
@@ -713,24 +744,24 @@ class DulwichGitBackend:
             raise GitNonFastForward("无法快进合并（存在分叉，需人工处理）")
         self._move_to(repo, upstream)
 
-    def _move_to(self, repo: Repo, target: bytes) -> None:
+    def _move_to(self, repo: Repo, target: ObjectID) -> None:
         """快进当前分支到 target：更新 ref 并把工作树/index 同步到新树。"""
         branch_ref = self._branch_ref(repo)
         old_tree = self._head_tree_id(repo)
-        repo.refs[branch_ref] = target
-        new_tree = repo[target].tree  # type: ignore[attr-defined]
+        repo.refs[Ref(branch_ref)] = target
+        new_tree = _commit_object(repo, target).tree
         self._sync_worktree(repo, old_tree, new_tree)
 
-    def _sync_worktree(self, repo: Repo, old_tree: bytes | None, new_tree: bytes) -> None:
+    def _sync_worktree(self, repo: Repo, old_tree: ObjectID | None, new_tree: ObjectID) -> None:
         """把工作树与 index 从旧树同步到新树（写/删文件 + reset index）。"""
         old_flat = self._flatten(repo, old_tree)
         new_flat = self._flatten(repo, new_tree)
         for path, (mode, sha) in new_flat.items():
             if old_flat.get(path, ("", b""))[1] != sha:
-                blob = repo[sha]
+                blob = _blob_object(repo, sha)
                 destination = self._path / path
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(blob.data)  # type: ignore[attr-defined]
+                destination.write_bytes(blob.data)
                 try:
                     destination.chmod(int(mode, 8) & 0o777)
                 except OSError:
@@ -741,10 +772,10 @@ class DulwichGitBackend:
                     (self._path / path).unlink()
                 except FileNotFoundError:
                     pass
-        repo.reset_index(new_tree)
+        repo.get_worktree().reset_index(new_tree)
 
     @staticmethod
-    def _is_ancestor(repo: Repo, ancestor: bytes | None, descendant: bytes | None) -> bool:
+    def _is_ancestor(repo: Repo, ancestor: ObjectID | None, descendant: ObjectID | None) -> bool:
         """**不看 commit_time** 的图可达性：ancestor 是否为 descendant 的祖先（含相等）。
 
         D9：dulwich 的 ``graph.can_fast_forward`` 用 commit_time 剪枝（``WorkList`` 按
@@ -756,8 +787,8 @@ class DulwichGitBackend:
             return False
         if ancestor == descendant:
             return True
-        seen: set[bytes] = set()
-        stack: list[bytes] = [descendant]
+        seen: set[ObjectID] = set()
+        stack: list[ObjectID] = [descendant]
         while stack:
             sha = stack.pop()
             if sha in seen:
@@ -794,7 +825,7 @@ class DulwichGitBackend:
         只有**图可达性复核确认远端 tip 是本地 head 的祖先**（真快进）时才显式强推这
         一个分支一次；复核不通过仍然是 typed ``GitNonFastForward``，绝不无条件 force。
         """
-        if not self._is_ancestor(repo, exc.current_sha, exc.new_sha):
+        if not self._is_ancestor(repo, _object_id(exc.current_sha), _object_id(exc.new_sha)):
             raise GitNonFastForward(f"push {remote} 失败（非快进被拒）") from exc
         refspec = self._push_refspec(repo)
         if refspec is None:
@@ -847,7 +878,7 @@ class DulwichGitBackend:
         if remote_head is not None and remote_head != head:
             raise GitNonFastForward(f"push {remote} 失败（远端拒绝非快进）")
 
-    def _peek_remote_head(self, url: str) -> bytes | None:
+    def _peek_remote_head(self, url: str) -> ObjectID | None:
         if url.startswith(("http://", "https://")):
             return None  # HTTP(S) 远端 refs 由真实 HTTPS 门（P0-10/P0-13）验证
         try:
@@ -866,13 +897,11 @@ class DulwichGitBackend:
         target = self._resolve_sha(repo, sha)
         if head is None:
             raise GitError("没有可撤销的提交")
-        commit = repo[target]
-        parent_tree: bytes | None = (
-            repo[commit.parents[0]].tree  # type: ignore[attr-defined]
-            if commit.parents
-            else None
+        commit = _commit_object(repo, target)
+        parent_tree: ObjectID | None = (
+            _commit_object(repo, commit.parents[0]).tree if commit.parents else None
         )
-        target_tree = commit.tree  # type: ignore[attr-defined]
+        target_tree = commit.tree
         base_flat = self._flatten(repo, parent_tree)
         target_flat = self._flatten(repo, target_tree)
         head_flat = self._flatten(repo, self._head_tree_id(repo))
@@ -896,24 +925,29 @@ class DulwichGitBackend:
 
     # ---- 读提交/历史 ----
 
-    def _resolve_sha(self, repo: Repo, sha: str) -> bytes:
+    def _resolve_sha(self, repo: Repo, sha: str) -> ObjectID:
         try:
-            obj = repo.object_store[sha.encode("ascii")]
+            obj = repo.object_store[_object_id(sha.encode("ascii"))]
         except (KeyError, ValueError) as exc:
             raise GitInvalidRevision(f"无法解析提交：{sha}") from exc
-        if getattr(obj, "type_name", b"") != b"commit":
+        if not isinstance(obj, Commit):
             raise GitInvalidRevision(f"{sha} 不是 commit 对象")
         return obj.id
 
     def resolve_commit(self, sha: str) -> str:
         return self._resolve_sha(self._open(), sha).decode("ascii")
 
-    def _commit(self, repo: Repo, sha: str):
-        return repo[self._resolve_sha(repo, sha)]
+    def _commit(self, repo: Repo, sha: str) -> Commit:
+        return _commit_object(repo, self._resolve_sha(repo, sha))
 
     def commit_subject(self, sha: str) -> str:
         repo = self._open()
-        return self._commit(repo, sha).message.decode("utf-8", "replace").strip().splitlines()[0]
+        return (
+            _commit_message(self._commit(repo, sha))
+            .decode("utf-8", "replace")
+            .strip()
+            .splitlines()[0]
+        )
 
     def commit_parent_count(self, sha: str) -> int:
         return len(self._commit(self._open(), sha).parents)
@@ -926,10 +960,13 @@ class DulwichGitBackend:
         repo = self._open()
         commit = self._commit(repo, sha)
         parent_id = commit.parents[0] if commit.parents else None
-        parent_tree = repo[parent_id].tree if parent_id else None  # type: ignore[attr-defined]
+        parent_tree = _commit_object(repo, parent_id).tree if parent_id else None
         names: set[str] = set()
         for change in tree_changes(repo.object_store, parent_tree, commit.tree):
-            path = change.new.path if change.new is not None else change.old.path
+            entry = change.new if change.new is not None else change.old
+            if entry is None:
+                continue
+            path = entry.path
             names.add(path.decode("utf-8"))
         return sorted(names)
 
@@ -967,7 +1004,7 @@ class DulwichGitBackend:
         entry = self._flatten(repo, commit.tree).get(path)
         if entry is None:
             return None
-        return repo[entry[1]].data  # type: ignore[attr-defined]
+        return _blob_object(repo, entry[1]).data
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
         repo = self._open()
@@ -993,22 +1030,22 @@ class DulwichGitBackend:
         repo = self._open()
         commit = self._commit(repo, sha)
         parent_id = commit.parents[0] if commit.parents else None
-        parent_tree = repo[parent_id].tree if parent_id else None  # type: ignore[attr-defined]
+        parent_tree = _commit_object(repo, parent_id).tree if parent_id else None
         parent_flat = self._flatten(repo, parent_tree)
         blocks: list[str] = []
         for change in tree_changes(repo.object_store, parent_tree, commit.tree):
             if change.new is not None:
                 path = change.new.path.decode("utf-8")
-                new_data = repo[change.new.sha].data  # type: ignore[attr-defined]
+                new_data = _blob_object(repo, change.new.sha).data
                 old_data = (
-                    repo[parent_flat[path][1]].data  # type: ignore[attr-defined]
-                    if path in parent_flat
-                    else b""
+                    _blob_object(repo, parent_flat[path][1]).data if path in parent_flat else b""
                 )
             else:
+                if change.old is None:
+                    continue
                 path = change.old.path.decode("utf-8")
                 new_data = b""
-                old_data = repo[change.old.sha].data  # type: ignore[attr-defined]
+                old_data = _blob_object(repo, change.old.sha).data
             diff = "".join(
                 difflib.unified_diff(
                     old_data.decode("utf-8", "replace").splitlines(keepends=True),
@@ -1042,9 +1079,9 @@ class DulwichGitBackend:
 
 def _rebuild_tree(
     repo: Repo,
-    base_tree_id: bytes | None,
+    base_tree_id: ObjectID | None,
     overrides: dict[str, Entry | None],
-) -> bytes:
+) -> ObjectID:
     """基于 base 树重建一棵树：把 overrides（路径→entry 或 None=删除）落进去。
 
     从底向上构建目录节点后一次性写入 object store，保证子树 id 正确。
@@ -1059,7 +1096,7 @@ def _rebuild_tree(
                 current = current.dirs.setdefault(key, _DirNode())
         return current
 
-    def set_file(rel: str, mode: str, sha: bytes) -> None:
+    def set_file(rel: str, mode: str, sha: ObjectID) -> None:
         dir_path, _, name = rel.rpartition("/")
         node_for(dir_path).files.append((name.encode("utf-8"), mode, sha))
 
@@ -1072,7 +1109,7 @@ def _rebuild_tree(
     for rel, (mode, sha) in merged.items():
         set_file(rel, mode, sha)
 
-    def build(node: _DirNode) -> bytes:
+    def build(node: _DirNode) -> ObjectID:
         tree = Tree()
         for name, child in sorted(node.dirs.items()):
             tree.add(name, 0o40000, build(child))

@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 from dulwich.graph import can_fast_forward
+from dulwich.objects import Commit, ObjectID
+from dulwich.refs import Ref
 from dulwich.repo import Repo
 
 from summit_workbench.repositories.git_backend import (
@@ -267,7 +269,9 @@ def test_dulwich_scp_remote_push_roundtrip_reaches_transport(tmp_path: Path, mon
 
     assert calls == ["git@localhost:remote.git"]
     # 真推到了：bare remote 的 HEAD 分支已与本地 HEAD 一致（旧代码根本到不了这里）
-    assert Repo(str(bare)).refs[b"refs/heads/main"] == repo.head_revision().encode("ascii")
+    assert Repo(str(bare)).refs[Ref(b"refs/heads/main")] == ObjectID(
+        repo.head_revision().encode("ascii")
+    )
 
 
 def test_dulwich_merge_base_reads_diverged_refs(tmp_path: Path) -> None:
@@ -289,8 +293,8 @@ def test_dulwich_merge_base_reads_diverged_refs(tmp_path: Path) -> None:
     local = repo.head_revision()
 
     raw_repo = Repo(str(tmp_path / "repo"))
-    raw_repo.refs[b"refs/heads/other"] = base.encode("ascii")
-    raw_repo.refs[b"HEAD"] = b"ref: refs/heads/other"
+    raw_repo.refs[Ref(b"refs/heads/other")] = ObjectID(base.encode("ascii"))
+    raw_repo.refs.set_symbolic_ref(Ref(b"HEAD"), Ref(b"refs/heads/other"))
     (tmp_path / "repo" / "remote.txt").write_text("remote", encoding="utf-8")
     repo.add(["remote.txt"])
     repo.commit("wb: remote", author=ID)
@@ -381,12 +385,15 @@ def _skewed_commit(path: Path, message: str, *, when: int) -> str:
     ``backend.commit`` 用当前时间；D9 的坏区只有在**远端父提交比本地提交新**时出现，
     所以这里绕过后端直接写 commit 对象（仍走 ``ref=b"HEAD"``，语义与正常提交一致）。
     """
-    sha: bytes = Repo(str(path)).do_commit(
-        message=message.encode("utf-8"),
-        author=b"Skew Author <skew@example.com>",
-        committer=b"Skew Author <skew@example.com>",
-        commit_timestamp=when,
-        ref=b"HEAD",
+    sha = (
+        Repo(str(path))
+        .get_worktree()
+        .commit(
+            message=message.encode("utf-8"),
+            author=b"Skew Author <skew@example.com>",
+            committer=b"Skew Author <skew@example.com>",
+            commit_timestamp=when,
+        )
     )
     return sha.decode("ascii")
 
@@ -426,7 +433,11 @@ def test_push_succeeds_when_remote_parent_committer_time_is_newer(tmp_path: Path
     # 前置断言：确认确实落在 D9 的坏区（dulwich 认为不可快进，而图上是真快进）。
     # 保留这条是为了防止哪天 dulwich 修好了、本用例悄悄失去覆盖；届时请连同图复核一起复核。
     assert (
-        can_fast_forward(Repo(str(tmp_path / "local")), base.encode("ascii"), head.encode("ascii"))
+        can_fast_forward(
+            Repo(str(tmp_path / "local")),
+            ObjectID(base.encode("ascii")),
+            ObjectID(head.encode("ascii")),
+        )
         is False
     )
 
@@ -520,6 +531,7 @@ def test_identity_and_revert_message_recorded(tmp_path: Path) -> None:
         repo.commit("wb: authored", author=ID)
         git_repo = Repo(str(tmp_path / f"repo-{kind}"))
         commit = git_repo[git_repo.head()]
+        assert isinstance(commit, Commit)
         assert commit.author == b"Conformance \xe4\xbd\x9c\xe8\x80\x85 <conformance@example.com>"
 
 
@@ -581,6 +593,22 @@ def test_add_skips_ignored_paths_for_both_backends(kind: str, tmp_path: Path) ->
     assert not repo.has_staged_changes()
     assert "_signals/meeting-state/log.jsonl" not in repo.staged_paths()
     assert b"_signals/meeting-state/log.jsonl" not in Repo(str(tmp_path / "repo")).open_index()
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_add_honors_deep_gitignore_negation(kind: str, tmp_path: Path) -> None:
+    """A deeper negation rule must re-include only its matching path."""
+    repo = _backend(kind, tmp_path / "repo")
+    repo.init()
+    (tmp_path / "repo" / ".gitignore").write_text("*.cache\n!nested/keep.cache\n", encoding="utf-8")
+    nested = tmp_path / "repo" / "nested"
+    nested.mkdir()
+    (nested / "keep.cache").write_text("keep\n", encoding="utf-8")
+    (nested / "drop.cache").write_text("drop\n", encoding="utf-8")
+
+    repo.add([".gitignore", "nested/keep.cache", "nested/drop.cache"])
+
+    assert repo.staged_paths() == [".gitignore", "nested/keep.cache"]
 
 
 def test_dulwich_clean_status_ignores_workspace_lock_file(tmp_path: Path) -> None:
