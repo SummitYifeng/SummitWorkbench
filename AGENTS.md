@@ -2,7 +2,8 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前迁移交付源码提交 **`2d1cf3a`**（2026-09-19，即安装包 build `2026091917` 的来源）。
+> 基线：当前交付源码提交 **`a49bb42`**（2026-09-19，即安装包 build `2026091918` 的来源；
+> 上一份是迁移交付 `2d1cf3a` → build `2026091917`）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -52,17 +53,26 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` 目标为 `0.4.9 / build 2026091917`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `2d1cf3a` 构建；前端身份为 `v2026.09.19-6550855f`。本轮将 Dulwich 锁定为
-  `1.2.15` 并迁移提交/类型契约，同时把日常 CI 收窄为手动触发；包内 SBOM 已核验
-  `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、`ruff==0.16.7`、`hypothesis==6.168.0`。
-  前端身份 `v2026.09.19-6550855f`（两版相同）；原生壳自 build `2026091813` 起**保留 Dock 图标**
-  （`LSUIElement=false` + `.regular`），`WB_DOCK_ICON=0` 可退回菜单栏模式。
+- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091918`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `a49bb42` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份仍为
+  `v2026.09.19-6550855f`（批次 A 未改前端源码）；包内**已内置飞书默认凭据**
+  （`build-manifest.json` 的 `feishu_credentials.complete=true`）。
+  上一份交付是 `2d1cf3a` → build `2026091917`（Dulwich `1.2.15` 迁移 + 日常 CI 收窄为手动触发）。
+  原生壳自 build `2026091813` 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
+  `WB_DOCK_ICON=0` 可退回菜单栏模式。
+- **本机重建必须带内置飞书凭据**：默认 `REQUIRE_BUNDLED_FEISHU=true`，缺
+  `WB_FEISHU_APP_ID` / `WB_FEISHU_APP_SECRET` 会在**打包阶段**才失败（前面几十分钟的测试与
+  PyInstaller 全白跑 —— 2026-09-19 批次 A 交付实测踩到）。凭据从**上一个含内置凭据的包**里取证、
+  不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
+  生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
+  发布目录**（要重建同一版本须先移除旧目录）。
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091918` 的
+  **App SHA-256 为 `8b23e5bcf0d24de322bd3f826b1d3337fbebd59680d801d7bee4a30cfd6e4c37`**，
+  **DMG SHA-256 为 `8a30b9ef8a73f5efd3764f418bca463b65ce60b2914347827e3846dced3d6c61`**
+  （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
   装机包内**真实**依赖以发布目录的 `SBOM.json` 为准
-  （build `2026091917` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091917` 的 App SHA-256 为
-  `b253f8c701f7d43b591a2dcff98f23ff669fd49c3f8e94f228a791ecb0449671`，DMG SHA-256 为
-  `52468c18e6879066a96265e01c0b6be7c75a51b9f23d09d92972f39c2d99be2b`。
+  （build `2026091918` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、
+  `ruff==0.16.7`、`hypothesis==6.168.0`，与上一版相同）。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -74,11 +84,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（迁移交付提交 `2d1cf3a`）
+## 验证命令与基线（交付提交 `a49bb42`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1274 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.05%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1306 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.10%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 84 篇全过
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
@@ -162,6 +172,16 @@ SK 端点配置之后**跑它**。
 1. **`.venv` CLI 与打包 App 的 git 后端不同**（提示，非缺陷）：打包 App 固定 dulwich
    （`git_backend.py:207`），CLI 默认 system。改 git 语义时必须**两个后端都验**
    （已有跨后端参数化测试，保持它）。
+
+2. **跨端闸门的三个判据缺陷**（2026-09-19 批次 A 收口时实测发现，尚未修）：
+   ① `[1/6]` 把 `state=local-ahead` 判成 **FAIL**——但"本机有提交未推送"是**正常且安全**的状态
+   （界面常规横幅就是它），而推荐的验证姿势（`--no-push-cleanup` + 不自动推送）**本身就会制造
+   local-ahead**⇒**连续跑两次闸门，第二次必在 `[1/6]` 失败**（本机实测）。应像 `error` 那样降为 WARN。
+   ② `[推送守卫]` 只告警、不判失败——而它正是"验证意外推送"的判据，只看退出码的 agent 会忽略它，
+   **应改为 FAIL**。
+   ③ `WB_NO_AUTO_PUSH` 目前只在 `mutation_runtime._push_after_commit` 这一层生效；将来若有人新增
+   **绕过该出口**的自动推送路径不会被覆盖（显式 `/api/sync/run`、`wb sync` 本就该推，不受影响）
+   ⇒**补一条"自动推送必须经过单一出口"的结构性守卫**。
 
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
