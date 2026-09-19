@@ -886,6 +886,9 @@ def test_api_project_activate_creates_registration(tmp_path: Path, monkeypatch) 
     assert resp.json()["ok"] is True
     note = load_note(vault / "projects" / "BrandNew.md")
     assert note.meta["status"] == "active"
+    # 契约 §13.4：activate 的"无页则建档"路径也要一并预建项目目录骨架。
+    for subdir in ("notes", "sources"):
+        assert (vault / "BrandNew" / subdir / ".gitkeep").is_file()
     # 幂等：重复激活仍是 ok
     assert client.post("/api/projects/activate", json={"name": "BrandNew"}).json()["ok"] is True
     # 归档后再激活 = 恢复
@@ -905,6 +908,23 @@ def test_api_project_archive_unregistered_creates_archived(tmp_path: Path, monke
     assert note.meta["status"] == "archived"
     # 幂等
     assert client.post("/api/projects/archive", json={"name": "FreshFolder"}).json()["ok"] is True
+
+
+def test_api_project_create_builds_vault_scaffold_only(tmp_path: Path, monkeypatch) -> None:
+    """`/api/projects/create` 建档时在 **vault 内**预建 notes/、sources/ 占位。
+
+    契约 §13.4；且**不碰** `work_root/<id>`（那是"Work 下的仓库项目"，另一回事）。
+    """
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    client, vault = _client(tmp_path, seed_review=False)
+    resp = client.post("/api/projects/create", json={"project_id": "NewLine"})
+    body = resp.json()
+    assert body["ok"] is True, body
+    for subdir in ("notes", "sources"):
+        placeholder = vault / "NewLine" / subdir / ".gitkeep"
+        assert placeholder.is_file(), placeholder
+        assert placeholder.name == ".gitkeep"  # 不是 .md，不进检索
+    assert not (tmp_path / "NewLine").exists()  # work_root 未被创建
 
 
 def test_api_projects_reject_invalid_targets(tmp_path: Path, monkeypatch) -> None:

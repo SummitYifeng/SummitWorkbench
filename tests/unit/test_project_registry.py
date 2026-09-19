@@ -130,6 +130,31 @@ def test_ensure_project_active_creates_schema_valid_note(tmp_path):
     assert validate_note(note.meta, note.body) == []
 
 
+def test_create_and_activate_build_the_project_scaffold(tmp_path):
+    """契约 §13.4：新建项目必须同时建 `<id>/notes/` 与 `<id>/sources/`（各带 .gitkeep）。
+
+    变异验证：把 `create_project_note` 里的 `ensure_project_dirs(...)` 删掉，本用例变红。
+    """
+    create_project_note(tmp_path, "Created", now=datetime(2026, 9, 3, tzinfo=UTC))
+    ensure_project_active(tmp_path, "Activated", now=datetime(2026, 9, 4, tzinfo=UTC))
+    for project in ("Created", "Activated"):
+        for subdir in ("notes", "sources"):
+            placeholder = tmp_path / project / subdir / ".gitkeep"
+            assert placeholder.is_file(), placeholder
+            # 占位文件不是 .md ⇒ 不进检索、不参与 schema 校验
+            assert placeholder.name == ".gitkeep" and not placeholder.name.endswith(".md")
+
+
+def test_scaffold_is_idempotent_and_never_overwrites(tmp_path):
+    create_project_note(tmp_path, "P1", now=datetime(2026, 9, 3, tzinfo=UTC))
+    marker = tmp_path / "P1" / "sources" / ".gitkeep"
+    marker.write_text("keep me", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        create_project_note(tmp_path, "P1", now=datetime(2026, 9, 3, tzinfo=UTC))
+    assert marker.read_text(encoding="utf-8") == "keep me"  # 不覆盖既有占位
+    assert (tmp_path / "P1" / "notes" / ".gitkeep").is_file()
+
+
 def test_archive_restore_roundtrip_refreshes_updated(tmp_path):
     _project(tmp_path, "P1")
     archive_project(tmp_path, "P1", now=datetime(2026, 9, 3, tzinfo=UTC))

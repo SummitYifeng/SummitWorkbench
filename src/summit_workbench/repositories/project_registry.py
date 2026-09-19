@@ -91,6 +91,28 @@ def load_project_registry(vault_dir: Path) -> ProjectRegistry:
     return ProjectRegistry(frozenset(canonical), alias_map, aliases_by_project)
 
 
+_PROJECT_SCAFFOLD_SUBDIRS = ("notes", "sources")
+
+
+def ensure_project_dirs(vault_dir: Path, project_id: str) -> tuple[Path, ...]:
+    """按契约 §13.4 预建项目脚手架：``<id>/notes/.gitkeep`` 与 ``<id>/sources/.gitkeep``。
+
+    理由（契约 §1 硬规则例外②）：git 不跟踪空目录，没有占位文件就无法跨机器存活；
+    而 §13.4 明确"新建项目必须同时建目录"——不再存在"只有项目页、没有项目目录"的形态。
+
+    幂等：已存在的占位文件原样保留（不覆盖）。**只动 vault**，绝不碰 ``work_root/<id>``。
+    占位文件是 ``.gitkeep``（不是 ``.md``），所以不进检索、也不参与 schema 校验。
+    """
+    placeholders: list[Path] = []
+    for subdir in _PROJECT_SCAFFOLD_SUBDIRS:
+        placeholder = vault_dir / project_id / subdir / ".gitkeep"
+        placeholder.parent.mkdir(parents=True, exist_ok=True)
+        if not placeholder.exists():
+            atomic_write_text(placeholder, "", ensure_parents=True)
+        placeholders.append(placeholder)
+    return tuple(placeholders)
+
+
 def create_project_note(
     vault_dir: Path,
     project_id: str,
@@ -101,6 +123,7 @@ def create_project_note(
     """在 ``_vault/projects/`` 新建一篇符合 schema 的 project-main 笔记。
 
     只建第二大脑侧的项目档案（不碰任何 GitHub 仓库）。已存在则报错，避免覆盖历史。
+    同时按契约 §13.4 预建 ``<id>/notes/``、``<id>/sources/`` 及其 ``.gitkeep``。
     """
     if not PROJECT_ID_RE.match(project_id):
         raise ValueError(
@@ -111,6 +134,8 @@ def create_project_note(
         path = vault_dir / "projects" / f"{project_id}.md"
         if path.exists():
             raise FileExistsError(f"项目已存在：{path}")
+        # 先建目录骨架、再写档案：即使档案写失败，重试仍是幂等的，不会留下"有页无目录"。
+        ensure_project_dirs(vault_dir, project_id)
         day = business_date(now or datetime.now(UTC))
         clean_aliases = [alias.strip() for alias in (aliases or []) if alias.strip()]
         alias_line = f"aliases: [{', '.join(clean_aliases)}]\n" if clean_aliases else ""
