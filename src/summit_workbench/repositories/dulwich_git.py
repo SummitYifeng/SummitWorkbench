@@ -292,7 +292,7 @@ class DulwichGitBackend:
                     **dict(self.transport_kwargs(url, operation="clone")),
                 )
             except Exception as exc:  # noqa: BLE001 - 需要跨库分类
-                raise _classify_remote(exc, "clone 失败") from exc
+                raise _classify_remote(exc, "clone 失败", stderr=_sink_text(sink)) from exc
         # 补齐 branch.<name>.remote/merge（git clone 语义；dulwich porcelain 可能不写）
         repo = self._open()
         ref_name = self._head_ref_name(repo)

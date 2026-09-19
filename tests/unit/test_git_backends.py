@@ -127,6 +127,35 @@ def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
     assert "secret-token" not in caught.value.stderr
 
 
+def test_dulwich_clone_preserves_sanitized_transport_diagnostic(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """clone 与 fetch/push 一样，必须把（脱敏后的）传输层诊断附进 typed error。
+
+    2026-09-19 补：此前只有 fetch/push 传了 ``stderr=``，clone 漏了 —— 于是 onboarding
+    连接私有远端失败时又退回笼统文案，使用者无法区分凭据 / TLS / 代理 / 网络。
+    """
+    from dulwich import porcelain
+
+    from summit_workbench.repositories import dulwich_git
+    from summit_workbench.repositories.git_backend import GitAuthError
+
+    backend = dulwich_git.DulwichGitBackend(tmp_path / "repo", username="alice")
+    monkeypatch.setattr(backend, "transport_kwargs", lambda *_args, **_kwargs: {})
+
+    def fake_clone(*_args, errstream, **_kwargs):
+        errstream.write(
+            b"fatal: Authentication failed for https://alice:secret-token@example.git\n"
+        )
+        raise RuntimeError("401 Unauthorized")
+
+    monkeypatch.setattr(porcelain, "clone", fake_clone)
+    with pytest.raises(GitAuthError) as caught:
+        backend.clone("https://github.com/example/private.git", tmp_path / "cloned")
+    assert "Authentication failed" in caught.value.stderr
+    assert "secret-token" not in caught.value.stderr
+
+
 def _backend(kind: str, path: Path):
     # 直接实例化具体后端（不经运行时选择），避免向进程 env 写入 WB_GIT_BACKEND 泄漏到其它测试
     if kind == "dulwich":
