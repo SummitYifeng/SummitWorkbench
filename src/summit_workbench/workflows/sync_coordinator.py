@@ -198,8 +198,6 @@ def _sync_single_repo(
         return classify_repo_error(exc), repo_error_reason(exc)
     try:
         if counts.behind > 0:
-            if dirty:
-                return SyncState.DIRTY_PROTECTED, "worktree-dirty"
             try:
                 repo.ff_merge_upstream()
             except GitAuthError:
@@ -223,6 +221,36 @@ def _sync_single_repo(
     except GitError as exc:
         return classify_repo_error(exc), repo_error_reason(exc)
     return SyncState.READY, ""
+
+
+def _failed_push_snapshot(
+    vault_dir: Path,
+    *,
+    workspace_id: str,
+    previous: SyncSnapshot | None,
+    state: SyncState,
+    detail: str,
+    backend_kind: str | None,
+    username: str | None,
+) -> SyncSnapshot:
+    """构造所有推送失败共用的 pending/时间戳/持久化前快照。"""
+    return _snapshot(
+        workspace_id,
+        state=state,
+        pending=max(
+            1,
+            pending_wb_commits(
+                vault_dir,
+                backend_kind=backend_kind,
+                workspace_id=workspace_id,
+                username=username,
+            ),
+        ),
+        detail=detail,
+        last_sync_at=previous.last_sync_at if previous is not None else None,
+        remote_checked_at=previous.remote_checked_at if previous is not None else None,
+        remote_check_status=RemoteCheckStatus.FAILED,
+    )
 
 
 _REMOTE_STAGING_PREFIX = ".summit-workbench-remote-"
@@ -401,6 +429,7 @@ def push_after_commit(
         )
         return state, snapshot
     push_reason: str | None = None
+    failure_detail = ""
     try:
         repo.push()
         state = SyncState.READY
@@ -416,87 +445,32 @@ def push_after_commit(
     except GitAuthError:
         push_reason = "auth-rejected"
         state = SyncState.AUTH_REQUIRED
-        snapshot = _snapshot(
-            ws_id,
-            state=state,
-            pending=max(
-                1,
-                pending_wb_commits(
-                    vault_dir,
-                    backend_kind=backend_kind,
-                    workspace_id=workspace_id,
-                    username=username,
-                ),
-            ),
-            detail="凭据需要重新配置（auth-rejected）",
-            last_sync_at=previous.last_sync_at if previous is not None else None,
-            remote_checked_at=previous.remote_checked_at if previous is not None else None,
-            remote_check_status=RemoteCheckStatus.FAILED,
-        )
+        failure_detail = "凭据需要重新配置（auth-rejected）"
     except GitNonFastForward:
         push_reason = "non-fast-forward"
         state = SyncState.DIVERGED_PROTECTED
-        snapshot = _snapshot(
-            ws_id,
-            state=state,
-            pending=max(
-                1,
-                pending_wb_commits(
-                    vault_dir,
-                    backend_kind=backend_kind,
-                    workspace_id=workspace_id,
-                    username=username,
-                ),
-            ),
-            detail="远端分叉，本地提交已保留（non-fast-forward）",
-            last_sync_at=previous.last_sync_at if previous is not None else None,
-            remote_checked_at=previous.remote_checked_at if previous is not None else None,
-            remote_check_status=RemoteCheckStatus.FAILED,
-        )
+        failure_detail = "远端分叉，本地提交已保留（non-fast-forward）"
     except GitError as exc:
         if is_offline_error(exc):
             push_reason = "offline"
             state = SyncState.OFFLINE_LOCAL_AHEAD
-            snapshot = _snapshot(
-                ws_id,
-                state=state,
-                pending=max(
-                    1,
-                    pending_wb_commits(
-                        vault_dir,
-                        backend_kind=backend_kind,
-                        workspace_id=workspace_id,
-                        username=username,
-                    ),
-                ),
-                detail="离线，本地提交已保留（offline）",
-                last_sync_at=previous.last_sync_at if previous is not None else None,
-                remote_checked_at=previous.remote_checked_at if previous is not None else None,
-                remote_check_status=RemoteCheckStatus.FAILED,
-            )
+            failure_detail = "离线，本地提交已保留（offline）"
         else:
             push_reason = repo_error_reason(exc)
             state = SyncState.ERROR
-            snapshot = _snapshot(
-                ws_id,
-                state=state,
-                pending=max(
-                    1,
-                    pending_wb_commits(
-                        vault_dir,
-                        backend_kind=backend_kind,
-                        workspace_id=workspace_id,
-                        username=username,
-                    ),
-                ),
-                # 稳定原因码 + 短句：绝不把 dulwich/Keychain 的原始文本（可能含 URL、
-                # 主机名或路径）写进持久化状态与界面。
-                detail=repo_reason_detail(repo_error_reason(exc)),
-                last_sync_at=previous.last_sync_at if previous is not None else None,
-                remote_checked_at=previous.remote_checked_at if previous is not None else None,
-                remote_check_status=RemoteCheckStatus.FAILED,
-            )
+            # 稳定原因码 + 短句：绝不把 dulwich/Keychain 的原始文本（可能含 URL、
+            # 主机名或路径）写进持久化状态与界面。
+            failure_detail = repo_reason_detail(push_reason)
     if push_reason is not None:
+        snapshot = _failed_push_snapshot(
+            vault_dir,
+            workspace_id=ws_id,
+            previous=previous,
+            state=state,
+            detail=failure_detail,
+            backend_kind=backend_kind,
+            username=username,
+        )
         # G3：wb 提交后的中心推送失败同样落一行（push_after_commit 不经过 sync_workspace）。
         log_sync_outcome(state=state.value, reasons=[("push", push_reason)], home=home)
     if home is not None:

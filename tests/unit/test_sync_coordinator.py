@@ -12,9 +12,12 @@ import subprocess
 import threading
 from pathlib import Path
 
+import pytest
+
 from summit_workbench.domain.sync import (
     AutomationOutcome,
     RemoteCheckStatus,
+    SyncSnapshot,
     SyncState,
     classify_repo_error,
     combine_repo_states,
@@ -26,6 +29,7 @@ from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.git_backend import (
     CommitIdentity,
     GitAuthError,
+    GitNonFastForward,
     GitRemoteSchemeUnsupported,
 )
 from summit_workbench.repositories.local_sync_state import (
@@ -378,6 +382,70 @@ def test_auth_required_distinct_from_offline(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(GitRepo, "push", auth_push)
     state, _ = push_after_commit(a_root)
     assert state is SyncState.AUTH_REQUIRED
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_state", "expected_detail"),
+    [
+        (
+            GitAuthError("认证失败", stderr="Authentication failed"),
+            SyncState.AUTH_REQUIRED,
+            "凭据需要重新配置（auth-rejected）",
+        ),
+        (
+            GitNonFastForward("远端有新提交"),
+            SyncState.DIVERGED_PROTECTED,
+            "远端分叉，本地提交已保留（non-fast-forward）",
+        ),
+        (
+            GitError("离线：unable to access ... Connection refused", stderr="offline"),
+            SyncState.OFFLINE_LOCAL_AHEAD,
+            "离线，本地提交已保留（offline）",
+        ),
+        (GitError("普通失败"), SyncState.ERROR, "未分类的同步失败（unclassified）"),
+    ],
+)
+def test_push_failure_snapshots_preserve_each_public_shape(
+    monkeypatch,
+    tmp_path: Path,
+    error: GitError,
+    expected_state: SyncState,
+    expected_detail: str,
+) -> None:
+    """认证、分叉、离线和通用失败都保留既有快照字段与时间戳。"""
+    from summit_workbench.workflows import sync_coordinator
+
+    vault = tmp_path / "_vault"
+    vault.mkdir()
+    previous = SyncSnapshot(
+        workspace_id="ws-1",
+        state=SyncState.READY,
+        pending_commits=0,
+        last_sync_at="2026-09-18T00:00:00+00:00",
+        remote_checked_at="2026-09-18T00:00:01+00:00",
+        remote_check_status=RemoteCheckStatus.SUCCESS,
+    )
+    monkeypatch.setattr(sync_coordinator, "load_sync_state_if_available", lambda *_: previous)
+    monkeypatch.setattr(sync_coordinator, "pending_wb_commits", lambda *args, **kwargs: 4)
+    monkeypatch.setattr(GitRepo, "has_remote", lambda self, name="origin": True)
+    monkeypatch.setattr(GitRepo, "has_upstream", lambda self: True)
+
+    def fail_push(self) -> None:
+        raise error
+
+    monkeypatch.setattr(GitRepo, "push", fail_push)
+
+    state, snapshot = sync_coordinator.push_after_commit(vault, workspace_id="ws-1")
+
+    assert state is expected_state
+    assert snapshot is not None
+    assert snapshot.workspace_id == "ws-1"
+    assert snapshot.state is expected_state
+    assert snapshot.pending_commits == 4
+    assert snapshot.detail == expected_detail
+    assert snapshot.last_sync_at == previous.last_sync_at
+    assert snapshot.remote_checked_at == previous.remote_checked_at
+    assert snapshot.remote_check_status is RemoteCheckStatus.FAILED
 
 
 def test_discover_skips_remote_clone_staging(tmp_path) -> None:
