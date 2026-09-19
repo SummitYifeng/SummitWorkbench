@@ -2,8 +2,8 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前交付源码提交 **`a49bb42`**（2026-09-19，即安装包 build `2026091918` 的来源；
-> 上一份是迁移交付 `2d1cf3a` → build `2026091917`）。
+> 基线：当前交付源码提交 **`f710aca`**（2026-09-19，即安装包 build `2026091919` 的来源；
+> 上一份是批次 A 收口 `a49bb42` → build `2026091918`，再上份是迁移交付 `2d1cf3a` → build `2026091917`）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -71,11 +71,12 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091918`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `a49bb42` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份仍为
-  `v2026.09.19-6550855f`（批次 A 未改前端源码）；包内**已内置飞书默认凭据**
+- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091919`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `f710aca` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份
+  **`v2026.09.19-a99f4166`**（本版改了前端：新增写日志/写工作思考入口）；包内**已内置飞书默认凭据**
   （`build-manifest.json` 的 `feishu_credentials.complete=true`）。
-  上一份交付是 `2d1cf3a` → build `2026091917`（Dulwich `1.2.15` 迁移 + 日常 CI 收窄为手动触发）。
+  前三份交付依次是 `a49bb42` → build `2026091918`（批次 A 语料边界）、`2d1cf3a` → `2026091917`
+  （Dulwich `1.2.15` 迁移 + 日常 CI 收窄为手动触发）。
   原生壳自 build `2026091813` 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
   `WB_DOCK_ICON=0` 可退回菜单栏模式。
 - **本机重建必须带内置飞书凭据**：默认 `REQUIRE_BUNDLED_FEISHU=true`，缺
@@ -84,13 +85,13 @@
   不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
   生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
   发布目录**（要重建同一版本须先移除旧目录）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091918` 的
-  **App SHA-256 为 `8b23e5bcf0d24de322bd3f826b1d3337fbebd59680d801d7bee4a30cfd6e4c37`**，
-  **DMG SHA-256 为 `8a30b9ef8a73f5efd3764f418bca463b65ce60b2914347827e3846dced3d6c61`**
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091919` 的
+  **App SHA-256 为 `a4a8f14a627a202e977f3fc14d1b326fa46ada5a2391f6def98d466ba7001a84`**，
+  **DMG SHA-256 为 `c2bcbd4039d2744fcb953c6098f60004aff0459afe540226715dc06129e14253`**
   （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
   装机包内**真实**依赖以发布目录的 `SBOM.json` 为准
-  （build `2026091918` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、
-  `ruff==0.16.7`、`hypothesis==6.168.0`，与上一版相同）。
+  （build `2026091919` 实测 `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、
+  `ruff==0.16.7`、`hypothesis==6.168.0`，与前两版相同）。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -102,11 +103,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `a49bb42`）
+## 验证命令与基线（交付提交 `f710aca`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1306 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.10%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1342 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.30%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 84 篇全过
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
