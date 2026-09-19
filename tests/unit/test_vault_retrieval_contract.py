@@ -14,7 +14,13 @@ from summit_workbench.domain.retrieval_contract import (
     is_non_fact_status,
     validate_retrieval_readiness,
 )
-from summit_workbench.domain.vault import STATUS_VOCAB, has_unbalanced_fence, iter_headings
+from summit_workbench.domain.vault import (
+    NON_RETRIEVED_TYPES,
+    STATUS_VOCAB,
+    has_unbalanced_fence,
+    iter_headings,
+    validate_note,
+)
 
 _PROJECT_MAIN_BODY = (
     "# P1\n\n## 当前状态\n\n进行中\n\n## 下一步\n\n继续\n\n## 阻塞\n\n无\n\n## 决策记录\n\n无\n"
@@ -124,6 +130,26 @@ def test_non_retrieved_types_skip_retrieval_checks() -> None:
     body = "# 索引\n\n## 分节\n\na\n\n## 分节\n\nb\n"
     for note_type in ("index", "conventions", "inbox", "template", "prompt", "workflow"):
         assert _codes(_meta(note_type, "active"), body) == []
+
+
+def test_source_and_transcript_are_write_only_types() -> None:
+    """2026-09-19 契约对齐：原件与逐字稿都不进检索语料（含重复标题也不报检索问题）。"""
+    assert {"source", "meeting-transcript"} <= NON_RETRIEVED_TYPES
+    body = "# 原件\n\n## 分节\n\na\n\n## 分节\n\nb\n"  # 重复 H2：检索就绪会报
+    for note_type in ("source", "meeting-transcript"):
+        assert _codes(_meta(note_type, "active"), body) == []
+        assert is_fact_retrieval_eligible(_meta(note_type, "active")) is False
+
+
+def test_source_skips_retrieval_readiness_but_keeps_fixed_block_schema() -> None:
+    """两层职责不可互相吞掉：source 不再做检索就绪校验，但固定区块仍由 validate_note 守。"""
+    body = "# 原件\n\n## 来源\n\n正文\n"  # 缺 `## 要点` / `## 关联`
+    # 检索就绪：source 只写不检索 → 不报（变异验证：把 source 移出 NON_RETRIEVED_TYPES 即红）
+    assert _codes(_meta("source", "active"), body) == []
+    # 结构校验：固定区块照旧缺失即报（变异验证：删掉 NOTE_TYPES["source"] 的 required_blocks 即红）
+    issues = validate_note(_meta("source", "active"), body)
+    messages = " ".join(str(issue) for issue in issues)
+    assert "要点" in messages and "关联" in messages
 
 
 # --------------------------------------------------------------------- superseded

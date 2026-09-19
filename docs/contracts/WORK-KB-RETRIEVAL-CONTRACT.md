@@ -79,17 +79,22 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 ### 5.1 会被检索的类型
 
 `project-main`、`work-log`、`thread-doc`、`meeting-note`、`daily`、
-`weekly-review`、`workstream`、`note`、`decision`、`source`、`long-form-thought`。
+`weekly-review`、`workstream`、`note`、`decision`、`long-form-thought`。
 
-`meeting-transcript` 虽是合法的原始记录类型，但不属于检索语料，也不进入精排候选。
+（`daily` / `weekly-review` 仍在本词表中，但 2026-09-19 起**不落在工作库内**：简报与
+周复盘由 SWB 写在本机程序目录，见 `_vault/conventions.md` §1/§3。）
 
 ### 5.2 只写不检索的类型
 
 `index`（MOC 导航）、`conventions`（规范）、`inbox` / `project-inbox`（收件箱）、
 `approval-page`（审批页）、`prompt`、`workflow`、`standard`、`template`、`qa-insight`、
-`meeting-transcript`（原始逐字稿，仅供证据回链）。
+`meeting-transcript`（原始逐字稿，仅供证据回链）、
+`source`（原件层，仅作可点开的证据文件）。
 
 这些类型正文结构自由，**不要求**有 `##`，也不做检索就绪校验。
+
+> `source` 是**例外**：它只写不检索，但仍须按 §5.3 写固定区块——写作结构不变，
+> 只是不参与检索；这是「结构校验」与「检索就绪校验」两层职责的区别。
 
 ### 5.3 固定区块类型
 
@@ -107,9 +112,10 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 1. 当前项目主页、主题结论、有效决策。
 2. 已应用内容、结构化会议笔记、周期复盘。
 3. 工作日志、thread-doc、daily 和其他 `generated` 内容。
-4. `source`——默认作为**证据层**（问「原话 / 原文」时允许提升）。
 
-`meeting-transcript` 是原始噪音材料，**不进入工作库检索语料，也不参与精排**；需要检索会议内容时，使用结构化的 `meeting-note` 及其证据索引。
+`source` 与 `meeting-transcript` 是**证据层**：**不进入工作库检索语料、不参与精排候选**
+（§5.2）；要核对原文口径时，由结论页里的出处链接点开原件。需要检索会议内容时，使用结构化的
+`meeting-note` 及其证据索引。
 
 **硬规则**：权威度**只能**在语义相关候选中调整，不得让无关的「高权威页面」强行上榜。
 
