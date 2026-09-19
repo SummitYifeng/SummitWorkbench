@@ -44,7 +44,11 @@ export function todayHtml(options: TodayRenderOptions, captureValue: string): st
     '<input id="capture-input" type="text" placeholder="记点什么…（想法 / 承诺，可用 #项目 标注）" value="' +
     esc(captureValue) + '"><button class="primary" type="submit"' + (options.capturing ? ' disabled' : '') + '>' +
     (options.capturing ? '保存中…' : '记入') + '</button></form>' +
-    '<p class="hint">回车即记入全局 inbox；说清「要做什么 + 截止 + #项目」的，AI 会帮你分类。</p></div>';
+    '<p class="hint">回车即记入全局 inbox；说清「要做什么 + 截止 + #项目」的，AI 会帮你分类。</p>' +
+    '<div class="row today-journal-actions">' +
+    '<button class="ghost" type="button" data-action="journal-log" title="写今天 / 本周的工作日志（落在 logs/）">写工作日志</button>' +
+    '<button class="ghost" type="button" data-action="journal-thought" title="写一篇工作思考（落在 thinking/，会被检索）">写工作思考</button>' +
+    '</div></div>';
   const header = '<div class="brief-head"><div class="brief-head-main"><p class="kicker">今天</p>' +
     '<h2>' + esc(state.day) + '</h2></div><div class="brief-head-side"><span class="health ' +
     options.health.tone + '"></span><span>' + esc(options.health.label) + '</span></div>' +

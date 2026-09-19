@@ -60,6 +60,7 @@ import {
   archiveProject,
   backFromProjectDetail,
   mountProjects,
+  projectDisplayName,
   renderProjects,
   resetProjectsForWorkspace,
   revealQueuedProjectFocus,
@@ -105,6 +106,8 @@ import {
   createTodayActions,
   mountToday,
   mountTodayActions,
+  openJournalLogModal,
+  openJournalThoughtModal,
   openRowEditModal,
   plusMinutesInput,
   resetTodayForWorkspace,
@@ -112,6 +115,7 @@ import {
   retryImport,
   todayUi,
   tsToDatetimeLocal,
+  type ProjectChoice,
   type TodayActions,
 } from './features/today';
 
@@ -394,6 +398,14 @@ function render(): void {
   applyRestoredDraft();
 }
 
+/** 「今日」页两个新入口的项目候选：name = 规范 ID，title = 中文显示名。 */
+function todayProjectChoices(): ProjectChoice[] {
+  return (state?.projects ?? []).map((project) => ({
+    name: project.name,
+    title: projectDisplayName(project),
+  }));
+}
+
 function renderToday(view: HTMLElement): void {
   todayActions ??= createTodayActions(view);
   mountToday(view, state, {
@@ -588,6 +600,14 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'run-brief') {
     void runBrief();
+    return;
+  }
+  if (action === 'journal-log') {
+    openJournalLogModal(todayProjectChoices());
+    return;
+  }
+  if (action === 'journal-thought') {
+    openJournalThoughtModal(todayProjectChoices());
     return;
   }
   if (action === 'task-complete') {

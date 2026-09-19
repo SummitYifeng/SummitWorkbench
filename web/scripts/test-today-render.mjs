@@ -62,6 +62,11 @@ try {
     assert.match(html, /id="file-input"/);
     assert.match(html, /id="btn-pick"/);
     assert.match(html, /data-action="run-brief"/);
+    // 「今日」页两个新入口（写工作日志 / 写工作思考）必须在「记点什么」附近可见
+    assert.match(html, /data-action="journal-log"/);
+    assert.match(html, /data-action="journal-thought"/);
+    assert.match(html, /写工作日志/);
+    assert.match(html, /写工作思考/);
     const taskAt = html.indexOf('class="bf-sec-title">待办任务');
     const meetingAt = html.indexOf('class="bf-sec-title">会议');
     const actionAt = html.indexOf('class="bf-sec-title">需要行动');
