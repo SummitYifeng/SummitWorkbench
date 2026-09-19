@@ -85,6 +85,30 @@
     "method": [
       "POST"
     ],
+    "path": "/api/journal/log",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "JournalLogPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
+    "path": "/api/journal/thought",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "JournalThoughtPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/meetings/import",
     "request_fields": [
       "file"

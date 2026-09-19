@@ -128,6 +128,36 @@ class ProjectStatePayload(BaseModel):
     text: str = Field(min_length=1, max_length=100_000)
 
 
+class JournalLogPayload(BaseModel):
+    """写一条日常工作日志：正文必填（空正文由路由给出清晰提示），关联项目**可选**（0..n）。
+
+    不绑项目 = 契约 §1.1/§3 的 `project: global`（日常日志常常不属于任何项目）。
+    """
+
+    text: str = Field(default="", max_length=100_000)
+    projects: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=100
+    )
+
+
+class JournalThoughtPayload(BaseModel):
+    """写一篇工作思考：三段正文都必填（`long-form-thought` 的三个固定区块）。
+
+    三段**不用** pydantic 的 `min_length` 卡：缺段要由路由回点名的提示
+    （「缺少必填段落：## 思考展开」），而不是笼统的 422。
+    """
+
+    problem: str = Field(default="", max_length=200_000)
+    thinking: str = Field(default="", max_length=200_000)
+    conclusion: str = Field(default="", max_length=200_000)
+    projects: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list, max_length=100
+    )
+    summary: str | None = Field(default=None, max_length=2_000)
+    title: str | None = Field(default=None, max_length=200)
+    workstream: str | None = Field(default=None, max_length=32)
+
+
 class UndoRevertPayload(BaseModel):
     """撤销一次系统自动提交（``wb:`` 前缀的 vault 提交）。"""
 
