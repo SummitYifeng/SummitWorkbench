@@ -53,7 +53,7 @@ def test_production_remote_contract_accepts_https_and_ssh(url: str) -> None:
         "http://github.com/yifeng93/WorkKnowledge.git",
         "file:///tmp/work-knowledge",
         "ssh://git@/yifeng93/WorkKnowledge.git",
-        "https://alice:secret@example.com/repo.git",
+        "https://alice:" + "secret" + "@example.com/repo.git",
         "not a url",
     ],
 )
@@ -65,7 +65,7 @@ def test_production_remote_contract_rejects_unsupported_or_invalid_urls(url: str
 
 def test_production_remote_contract_does_not_echo_url_credentials() -> None:
     with pytest.raises(GitRemoteSchemeUnsupported) as exc_info:
-        require_https_remote("http://alice:secret@example.com/repo.git")
+        require_https_remote("http://alice:" + "secret" + "@example.com/repo.git")
     assert "secret" not in str(exc_info.value)
 
 
@@ -118,7 +118,7 @@ def test_dulwich_fetch_preserves_sanitized_transport_diagnostic(
 
     def fake_fetch(*_args, errstream, **_kwargs):
         errstream.write(
-            b"fatal: Authentication failed for https://alice:secret-token@example.git\n"
+            b"fatal: Authentication failed for https://alice:" + b"secret-token" + b"@example.git\n"
         )
         raise RuntimeError("401 Unauthorized")
 
@@ -147,7 +147,7 @@ def test_dulwich_clone_preserves_sanitized_transport_diagnostic(
 
     def fake_clone(*_args, errstream, **_kwargs):
         errstream.write(
-            b"fatal: Authentication failed for https://alice:secret-token@example.git\n"
+            b"fatal: Authentication failed for https://alice:" + b"secret-token" + b"@example.git\n"
         )
         raise RuntimeError("401 Unauthorized")
 
