@@ -53,7 +53,8 @@
 
 默认行为不变（清理提交后推送）；`--no-push-cleanup` 只把**收尾那一次**推送显式关掉，并记为
 WARN——推送与否是使用者的决定，不该由一次验证顺带执行。闸门还会记录 vault 的 `origin/main`
-前后取值：**未启用收尾推送却发生变化时**会醒目告警（那说明有别的写入者推了 vault）。
+前后取值：**未启用收尾推送却发生变化时判 FAIL**（那说明有别的写入者推了 vault——2026-09-19
+正是这样"验证顺手推了库"，只看退出码的 agent 必须能发现）。
 
 退出码：0 = 全部通过（允许 WARN）；1 = 有 FAIL。
 """
@@ -369,6 +370,14 @@ def gate_preflight(
         rep.ok("SWB 同步 state=ready")
     elif state == "error":
         rep.warn("SWB 同步 state=error", f"{sync.get('detail')}（网络类，不判失败）")
+    elif state == "local-ahead":
+        # 本机有提交未推送是**正常且安全**的状态（界面常规横幅就是它）。而且推荐的验证姿势
+        # （--no-push-cleanup + WB_NO_AUTO_PUSH=1）本身就会制造 local-ahead ⇒ 若判 FAIL，
+        # 连续跑两次闸门第二次必挂（2026-09-19 实测）。与 error 同形降为 WARN。
+        rep.warn(
+            "SWB 同步 state=local-ahead",
+            "本机有未推送提交——正常且安全（推荐验证姿势本身就会制造它）",
+        )
     else:
         rep.fail("SWB 同步 state 健康", f"state={state} detail={sync.get('detail')}")
     health = http_json(f"{sk_url}/api/health", token=sk_tok, header="Authorization")
@@ -605,10 +614,10 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, pus
 
 
 def gate_origin_guard(rep: Report, vault: Path, origin_before: str, *, push_enabled: bool) -> str:
-    """记录 ``origin/main`` 前后取值；**未启用推送模式却变化**时醒目告警。
+    """记录 ``origin/main`` 前后取值；**未启用推送模式却变化**时判 FAIL。
 
     这是 2026-09-19 事故的机器守卫：那次闸门"PASS"了，但端点在自己推送 vault。
-    这里绝不静默——变化一定进告警清单，而最终 PASS 行会逐条列出告警。
+    这里判 **FAIL**（不是告警）：只看退出码的 agent 必须立刻发现"验证意外推送了 vault"。
     """
     origin_after = origin_main_rev(vault)
     print("\n[推送守卫] vault origin/main")
@@ -619,7 +628,7 @@ def gate_origin_guard(rep: Report, vault: Path, origin_before: str, *, push_enab
     elif push_enabled:
         rep.ok("origin/main 的变化可由闸门自己的收尾推送解释", f"{origin_before} → {origin_after}")
     else:
-        rep.warn(
+        rep.fail(
             "❗未启用推送模式，但 vault 的 origin/main 变了 —— 有别的写入者推送了 vault",
             f"{origin_before} → {origin_after}（很可能是 SWB 端点的自动推送）",
         )

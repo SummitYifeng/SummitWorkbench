@@ -14,9 +14,9 @@
 
 from __future__ import annotations
 
-import importlib.util
 import sqlite3
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -25,10 +25,15 @@ _GATE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "kb_three_end_gat
 
 
 def _load_gate() -> Any:
-    spec = importlib.util.spec_from_file_location("kb_three_end_gate_under_test", _GATE_PATH)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """按**源码**执行闸门脚本，绕过 `__pycache__`。
+
+    为什么不用 `spec.loader.exec_module`：pyc 头里的源 mtime 只有 1 秒粒度，
+    **同秒内等长改动**（如 `fail` ↔ `warn`）会命中过期字节码，让变异验证得出错误结论
+    （2026-09-19 实测踩到）。
+    """
+    module = ModuleType("kb_three_end_gate_under_test")
+    module.__file__ = str(_GATE_PATH)
+    exec(compile(_GATE_PATH.read_text(encoding="utf-8"), str(_GATE_PATH), "exec"), module.__dict__)
     return module
 
 
@@ -149,13 +154,17 @@ def test_origin_main_rev_reads_tracking_ref(gate: Any, tmp_path: Path) -> None:
     assert gate.origin_main_rev(repo) == head
 
 
-def test_origin_guard_warns_when_not_pushing_but_remote_moved(gate: Any, tmp_path: Path) -> None:
-    """未启用推送模式却发生推送 ⇒ 必须进告警清单（2026-09-19 事故的机器守卫）。"""
+def test_origin_guard_fails_when_not_pushing_but_remote_moved(gate: Any, tmp_path: Path) -> None:
+    """未启用推送模式却发生推送 ⇒ 必须 **FAIL**（2026-09-19 事故的机器守卫）。
+
+    只看退出码的 agent 也要能发现"验证意外推送了 vault"；变异验证：改回 WARN 即变红。
+    """
     repo = tmp_path / "vault"
     repo.mkdir()
     rep = gate.Report()
     gate.gate_origin_guard(rep, repo, "deadbee", push_enabled=False)
-    assert any("origin/main" in item for item in rep.warnings)
+    assert any("origin/main" in item for item in rep.failures)
+    assert rep.warnings == []
 
 
 def test_origin_guard_is_quiet_when_push_mode_may_explain_it(gate: Any, tmp_path: Path) -> None:
@@ -164,3 +173,44 @@ def test_origin_guard_is_quiet_when_push_mode_may_explain_it(gate: Any, tmp_path
     rep = gate.Report()
     gate.gate_origin_guard(rep, repo, "deadbee", push_enabled=True)
     assert rep.warnings == []
+    assert rep.failures == []
+
+
+# ─────────────── [1/6] 预检：local-ahead 是正常态，不得判 FAIL ───────────────
+
+
+def _preflight_with_state(gate: Any, vault: Path, monkeypatch: Any, state: str) -> Any:
+    def fake_http(url: str, **_kwargs: object) -> dict[str, object]:
+        if url.endswith("/api/sync/status"):
+            return {"state": state, "detail": ""}
+        return {
+            "ready": True,
+            "active_kb_id": "work",
+            "profiles": [{"id": "work", "pending_index": 0, "rerank_degraded": False}],
+        }
+
+    monkeypatch.setattr(gate, "http_json", fake_http)
+    rep = gate.Report()
+    gate.gate_preflight(rep, vault, "http://swb", "tok", "http://swb", "http://sk", "tok")
+    return rep
+
+
+def test_preflight_treats_local_ahead_as_a_warning(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """本机有未推送提交是正常且安全的状态；推荐验证姿势本身就会制造它，不能判 FAIL。"""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    rep = _preflight_with_state(gate, vault, monkeypatch, "local-ahead")
+    assert rep.failures == []
+    assert any("local-ahead" in item for item in rep.warnings)
+
+
+def test_preflight_still_fails_on_an_unexpected_sync_state(
+    gate: Any, tmp_path: Path, monkeypatch: Any
+) -> None:
+    """只有 local-ahead（与 error）被降级；其它异常状态仍必须 FAIL。"""
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    rep = _preflight_with_state(gate, vault, monkeypatch, "diverged-protected")
+    assert any("state 健康" in item for item in rep.failures)
