@@ -13,10 +13,15 @@ from fastapi.testclient import TestClient
 
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.domain.vault import iter_headings, validate_note
+from summit_workbench.repositories import thought_notes as extracted_thought_notes
 from summit_workbench.repositories.thread_notes import (
+    ThoughtNote,
     append_work_log,
+    derive_thought_summary,
     render_journal_body,
+    render_thought_note,
     save_thread_artifact,
+    write_thought_note,
 )
 from summit_workbench.repositories.vault import load_note
 from summit_workbench.webapp.app import WebContext, create_app
@@ -32,6 +37,28 @@ def _mk_project(vault: Path, project: str, aliases: list[str] | None = None) -> 
         "\n## 跟进事项\n",
         encoding="utf-8",
     )
+
+
+def test_thread_notes_keeps_thought_compatibility_exports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert ThoughtNote is extracted_thought_notes.ThoughtNote
+    assert derive_thought_summary is extracted_thought_notes.derive_thought_summary
+    assert render_thought_note is extracted_thought_notes.render_thought_note
+    assert write_thought_note is extracted_thought_notes.write_thought_note
+
+    kwargs = {
+        "title": "固定思考样例",
+        "workstream": "cross",
+        "projects": ["P1"],
+        "summary": "结论摘要",
+        "day": "2026-09-19",
+        "problem": "问题",
+        "thinking": "思考",
+        "conclusion": "结论",
+    }
+    monkeypatch.setattr("secrets.token_hex", lambda _bytes: "abcd")
+    assert render_thought_note(**kwargs) == extracted_thought_notes.render_thought_note(**kwargs)
 
 
 def test_append_work_log_multi_project_and_schema(tmp_path: Path) -> None:

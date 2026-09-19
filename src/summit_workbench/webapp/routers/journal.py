@@ -22,12 +22,11 @@ from fastapi import FastAPI
 
 from summit_workbench.domain.vault import WORKSTREAM_VOCAB
 from summit_workbench.repositories.project_registry import load_project_registry
+from summit_workbench.repositories.thought_notes import ThoughtNote, write_thought_note
 from summit_workbench.repositories.thread_notes import (
     JOURNAL_FIELD_LABELS,
-    ThoughtNote,
     append_work_log,
     render_journal_body,
-    write_thought_note,
 )
 from summit_workbench.webapp.api import JournalLogPayload, JournalThoughtPayload
 from summit_workbench.webapp.dependencies import RouteDependencies

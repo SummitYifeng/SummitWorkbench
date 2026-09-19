@@ -37,7 +37,7 @@ from summit_workbench.repositories.inbox import (
 )
 from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.review_audit import ExecutionRecord, archive_executions
-from summit_workbench.repositories.thread_notes import write_thought_note
+from summit_workbench.repositories.thought_notes import write_thought_note
 from summit_workbench.repositories.writeback import (
     append_project_followup,
     append_project_main,
