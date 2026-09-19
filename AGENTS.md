@@ -77,16 +77,21 @@
 ## 验证命令与基线（迁移交付提交 `2d1cf3a`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1266 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.04%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1274 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 实测 84.05%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
-./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 86 篇全过
+./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 84 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
 ./.venv/bin/python scripts/kb_check_templates.py --templates ~/Documents/Work/_vault/templates
 ./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
 （`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1262，别把两者当矛盾。）
+
+> **vault check 由 86 改为 84（2026-09-19，批次 A）**：`daily/2026-09-18.md` 与
+> `daily/2026-09-19.md` 已按新契约（简报不在库内）逐字搬到本机程序目录
+> `profile_dir(<workspace_id>)/briefs/` 后从库内 `git rm`，空 `reviews/` 一并移除。
+> 86 − 2 = 84。
 
 **`uv sync` 会按 extras 收窄依赖，裸跑会卸掉构建工具**：dev 工具在 `dev` extra、
 PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` 或

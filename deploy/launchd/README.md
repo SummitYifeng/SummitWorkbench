@@ -1,7 +1,8 @@
 # launchd 定时（M2-7）
 
 Mac Studio 上的自动调度。晨间简报每日 08:00（`com.summitworkbench.brief`），
-周复盘每周一 07:30（`com.summitworkbench.weekly`，复盘上一自然周，赶在当日 08:00 简报前提交）。
+周复盘每周一 07:30（`com.summitworkbench.weekly`，复盘上一自然周）。
+两者都**不写知识库**（自 2026-09-19 起落本机程序目录），因此不再需要提交/推送步骤。
 
 ## 安装
 
@@ -22,8 +23,9 @@ launchctl kickstart -k gui/$(id -u)/com.summitworkbench.brief
 tail -n 40 ~/Library/Logs/summitworkbench-brief.log
 ```
 
-当日 `_vault/daily/YYYY-MM-DD.md` 应出现简报区块，且 vault 里多出一条
-`chore(brief): 晨间简报 …` 提交。
+简报应出现在本机程序目录
+`~/Library/Application Support/SummitWorkbench/profiles/<workspace_id>/briefs/YYYY-MM-DD.md`
+（**不再**写 `_vault/daily/`，库内也不应出现新的提交）。
 
 ## 卸载
 
@@ -35,7 +37,8 @@ rm ~/Library/LaunchAgents/com.summitworkbench.brief.plist ~/Library/LaunchAgents
 
 ## 说明
 
-- `wb brief --commit --push` 只暂存并提交**简报自己写的文件**（当日笔记 + 信号快照），
-  不会波及 vault 里你的其它未提交改动；落后远端时不推送，交由 `wb sync` 合并。
+- 简报/周复盘不在知识库内（落本机程序目录），`wb brief --commit --push` /
+  `wb weekly --commit --push` 是**显式无操作**（参数保留只为兼容既有装机 plist）。
+  模板已不再传这两个参数。
 - 主机在 08:00 处于休眠时，launchd 会在下次唤醒补跑一次。
 - 简报生成时若健康度非「正常」（采集源失败/排序降级/当日无信号），会发一条 macOS 通知。
