@@ -1,18 +1,24 @@
 # SummitWorkbench
 
-## 2026-09-19 Dulwich 1.2 迁移执行状态
+## 2026-09-19 交付状态（本地 `main`）
 
-本轮已合并到本地 `main`，完成 Dulwich `1.2.15` 迁移与手动 CI 收窄：
-依赖锁定为 `dulwich>=1.2.15,<1.3`，远端日常质量门只保留 `workflow_dispatch`，完整本地门禁为
-**1266 passed / 1 skipped、覆盖率 84.04%**。arm64 内部包 `0.4.9 / build 2026091917`
-已构建并通过打包验证；交付包与当前阶段的剩余人工/跨端确认见
-[未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+**已交付**：arm64 内部包 `0.4.9 / build 2026091923`，源码提交 **`0c9ff4f`**，本机
+`/Applications/SummitWorkbench.app` 已替换并 smoke 通过；前端身份 `v2026.09.19-4a04d298`。
+本版含两个用户可见修复：手工写进 `inbox.md` 的条目按正文 `#项目` 路由、写回项目页不再多出空行。
 
-## 2026-09-18 main 交付状态
+**当前 `main` 已领先交付包**：HEAD 为 **`c9b3fc5`**（`64e733b`…`c9b3fc5` 是一批**纯代码简化重构**，
+**尚未打包**：后端拆出 `settings_connections.py` / `sync_conflicts.py` / `feishu_authorization.py` /
+`thought_notes.py` / `domain/knowledge_normalization.py`，前端下沉 `features/diagnostics.ts` 等）。
+在 `c9b3fc5` 实测：`pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**（门槛 80%），
+ruff / format / mypy strict / 前端契约测试与生产构建全过；静态前端身份为 `v2026.09.19-d1a8ace7`。
+**装机包仍是 `2026091923`，只有重新构建才会带上这批重构。**
 
-本轮修掉了三处会持续制造新错误的问题：**SSH（SCP 形状）remote 的 push 被误判为不存在的本地路径**、**逐字稿结构化失败的真因是输出预算被思考模式推理吃光（非上下文长度）**、**原生壳不显示 Dock 图标**。`main` 为 `2e898b0`；最新静态前端 bundle 身份为 `v2026.09.18-296e6770`（由 `main` 构建，不再把 git 提交编进身份，重建可逐字节复现）；本机 App 已替换为 `0.4.9 / build 2026091813`（`INTERNAL-DEV`、arm64、ad-hoc，**保留 Dock 图标**）。内容层面：会议笔记不再生成 `## AI 建议`（九区块减为八区块），决策页新增「只记业务结论」硬规则与机器守卫。设置页按使用者偏好精简为三张主卡（工作区 / AI 模型 / 飞书，每张一行），自动化与模型参数移入「高级与维护」。
+剩余人工/跨端确认见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)，逐版变更见
+[CHANGELOG.md](CHANGELOG.md)，发布流程与内置凭据见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-源码质量门已通过：**1262 passed / 1 skipped、覆盖率 84.05%（门槛 80%）**，ruff、ruff format、mypy strict、前端完整契约测试与生产构建、打包 smoke 与集成测试均通过。当前证据和剩余事项见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+## 2026-09-18 交付状态（历史）
+
+修掉三处会持续制造新错误的问题：SSH（SCP 形状）remote 的 push 被误判为不存在的本地路径、逐字稿结构化失败的真因是输出预算被思考模式推理吃光、原生壳不显示 Dock 图标。内容层面：会议笔记不再生成 `## AI 建议`（九区块减为八区块），决策页新增「只记业务结论」硬规则与机器守卫。设置页按使用者偏好精简为三张主卡（工作区 / AI 模型 / 飞书，每张一行），自动化与模型参数移入「高级与维护」。该轮详情见 `CHANGELOG.md`。
 
 使用说明见 [桌面版使用指南](docs/product/WEB_USAGE_GUIDE.md) 与 [`docs/DESKTOP_APP.md`](docs/DESKTOP_APP.md)。
 
@@ -65,10 +71,10 @@ SummitWorkbench/
 ├── README.md / PROJECTDESC.md / config.example.toml
 ├── docs/
 │   ├── product/          # 权威 PRD
-│   ├── archive/          # 已完成阶段的背景、计划、旧验收和设计预览
+│   ├── archive/          # 已完成阶段的背景、计划、旧验收、设计预览与**已完结的实施/交接记录**
 │   ├── decisions/        # 当前架构决策记录（ADR 0043–0045；历史 ADR 见 archive/decisions/）
 │   ├── acceptance/       # 当前版本本地发布验收
-│   ├── implementation/   # 当前增量实施与交接记录
+│   ├── implementation/   # 只剩两份拆分方案的「指路 stub」（原文已归位 archive/implementation/）
 │   ├── contracts/        # API/路由契约
 │   └── DESKTOP_APP.md    # macOS .app 打包说明
 ├── src/summit_workbench/

@@ -1,8 +1,25 @@
 # 未验证清单（单一真源）
 
-## 2026-09-19 Dulwich 1.2 迁移执行记录（本地隔离分支）
+## 当前交付状态（2026-09-19，本地 `main`）
 
-本轮实现提交 `2d1cf3a` 已合并到本地 `main`（当前交付文档提交为 `391fefa`）；历史 §I 关于
+- **已交付**：arm64 内部包 `0.4.9 / build 2026091923`，源码提交 **`0c9ff4f`**，前端身份
+  `v2026.09.19-4a04d298`；App SHA-256 `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`、
+  DMG SHA-256 `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c`
+  （**以发布目录 `release-metadata.json` 为准**）。
+- **当前 `main` 已领先该交付包**：HEAD **`c9b3fc5`**（`64e733b`…`c9b3fc5` 是一批**纯代码简化重构**，
+  **未打包**；后端拆出 `settings_connections.py` / `sync_conflicts.py` / `feishu_authorization.py` /
+  `thought_notes.py` / `domain/knowledge_normalization.py`，前端下沉 `features/diagnostics.ts` 等）。
+  静态前端身份为 `v2026.09.19-d1a8ace7`。
+- **本地门禁**：`c9b3fc5` 实测 `pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**
+  （门槛 80%）；交付提交 `0c9ff4f` 当时为 1375 / 84.46%。
+- **vault 只读门禁**（2026-09-19 实测）：`wb vault check` → **86 篇全部通过**——判据是"全部通过"，
+  篇数随真实写入增长，不是契约判据。
+- 下面各节是**各自日期当时**的验收与缺口记录：已关闭的条目保留原文，**仍未关闭的能力缺口（§G1/G2 等）
+  以本文为准**（ADR 0043 指定）。行号锚点若因后续重构漂移，以代码为准。
+
+## 2026-09-19 Dulwich 1.2 迁移执行记录（历史，状态见上一节）
+
+本轮实现提交 `2d1cf3a` 已合并到本地 `main`（当时的交付文档提交为 `391fefa`）；历史 §I 关于
 `dulwich 0.22.8` 的评估与失败证据保留不变。本轮已完成：依赖锁定
 `dulwich>=1.2.15,<1.3`、`Repo.do_commit` 迁移、1.2 类型契约收窄、深层 `.gitignore` 否定规则守卫，
 以及日常 CI 改为仅 `workflow_dispatch`；release/tag workflow 未改。
@@ -208,12 +225,12 @@
 
 | 模块 | 覆盖率 | 备注 |
 |---|---|---|
-| `cli/ask.py` | 21% | 主要是真实模型链路 |
+| ~~`cli/ask.py`~~ | — | **已退役**（本地问答已下线，语义检索归 SummitKnowledge；该文件已从仓库删除，见本文开头的历史条目说明） |
 | `cli/web.py` | 24% | 拉起服务，需进程级测试 |
 | `cli/model.py` | 30% | 需真实模型 |
 | `cli/vault.py` | 33% | |
 | `config/tls_trust.py` | 33% | TLS/CA 分支 |
-| `webapp/routers/settings.py` | 42% | 设置页大量 API 分支 |
+| `webapp/routers/settings.py` | 42% | 设置页大量 API 分支（**该数字是 2026-09-19 拆分前按整个设置模块测的**；现在设置域拆成 `settings.py` 600 行 + `settings_connections.py` 550 行，需重测） |
 | `workflows/threadnotes.py` | 44% | |
 | `cli/meeting.py` | 46% | 已由 16% 提升；余下需飞书/模型 |
 | `cli/feishu.py` | 48% | 已由 20% 提升；余下需真实 API |
@@ -915,8 +932,8 @@ D8 同一路径第二次选「保留双方副本」必然 `preserve_both_path_co
 
 | # | 缺口 | 证据 | 影响 |
 |---|---|---|---|
-| G1 | 界面没有 `automation-primary` 的**显式接管**入口 | `POST /api/sync/primary/claim`（`routers/sync.py:398`）全仓只有后端定义，前端只**显示** `automation_primary_device_id`（`features/sync/banner.ts:35`），没有任何调用点 | 主设备代数变更只能靠命令行/直接调 API；换机或主设备丢失时需要人工介入 |
-| G2 | 界面没有把**已有本地工作台首次发布到新远端**的路径 | 设置页的 remote 区块只做**规范化**（preview 要求已存在 `origin` + `upstream`，`routers/settings.py:808`）；向导的 remote 模式只做 **clone**（已有远端 → 本地） | 本地已存在、远端还没建的工作台必须手工 `git init` / `git remote add` / 首次 push（本轮 §A7 第 4 步就是这么绕的） |
+| G1 | 界面没有 `automation-primary` 的**显式接管**入口 | `POST /api/sync/primary/claim`（`routers/sync.py:93`，2026-09-19 重构后行号；原记 398）全仓只有后端定义，前端只**显示** `automation_primary_device_id`（`features/sync/banner.ts:35`），没有任何调用点 | 主设备代数变更只能靠命令行/直接调 API；换机或主设备丢失时需要人工介入 |
+| G2 | 界面没有把**已有本地工作台首次发布到新远端**的路径 | 设置页的 remote 区块只做**规范化**（preview 要求已存在 `origin` + `upstream`，`routers/settings.py:156`，2026-09-19 重构后行号；原记 808）；向导的 remote 模式只做 **clone**（已有远端 → 本地） | 本地已存在、远端还没建的工作台必须手工 `git init` / `git remote add` / 首次 push（本轮 §A7 第 4 步就是这么绕的） |
 | G3 | 同步/面板日志缺少失败细节 | D3 只解决了**状态可读性**（稳定错误码 + 脱敏原因进 `sync-state.json` 与横幅）；`workflows/sync_coordinator.py` 与 `domain/sync.py` 里**没有任何 logger 调用**，`~/Library/Logs/summitworkbench-panel.log` 至今只有 `component: "launcher"` 记录 | 排查"昨晚为什么没同步"只能去翻 API 内存快照或重启 App 触发一次；日志文件本身永远不含同步失败 |
 
 ## O. build 29 的 D1–D8 闭环复验与收尾（2026-09-13）
@@ -1296,6 +1313,10 @@ PROJECTDESC/ADR/tests/scripts）：
   `DELIVERY-CLEANUP-REPORT.md`、`V0-4-4-UX-UI-*.md`、`UI-VERIFICATION-*`、
   `V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`、`DUAL-DEVICE-REHEARSAL.md`）都有至少一条入引用，
   按铁律**一律不动**（尤其是 `LEGACY-MAIN-SPLIT-PLAN.md` 被 CHANGELOG 与三个测试的注释引用）。
+- **后续（2026-09-19）**：上述"一律不动"被有意覆盖过一次——除 `V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`、
+  `DUAL-DEVICE-REHEARSAL.md`（仍在 `docs/acceptance/`）外，其余实施/交接类文档已整体归位
+  `docs/archive/implementation/`；`LEGACY-APP-SPLIT-PLAN.md` / `LEGACY-MAIN-SPLIT-PLAN.md` 在原路径
+  留**指路 stub**，所以 CHANGELOG 与三个测试的引用仍然成立（链接与行号已同步修正）。
 - 本轮**未**拆 `CHANGELOG.md`（对齐时该选项未被选中）。
 
 **③ 冗余代码**（vulture 2.16 经 `uvx` 临时运行，**未加入 `pyproject.toml` 依赖**）：
@@ -1306,7 +1327,7 @@ PROJECTDESC/ADR/tests/scripts）：
   只用 `user_client`，无 getattr/反射调用）、`tests/contract/test_llm_client.py` 未使用的 `capfd` 形参。
 - 保留的假阳性：`config/settings.py` 的 `dotenv_settings` / `file_secret_settings` 是
   pydantic-settings `settings_customise_sources` 的形参，且上游是**按关键字**调用
-  （`main.py:442`），改名或删除会直接让配置加载 TypeError；`cli/*` 命令函数、
+  （`config/settings.py:62`，2026-09-19 重构后位置；原记于当时的 `main.py` 第 442 行），改名或删除会直接让配置加载 TypeError；`cli/*` 命令函数、
   `webapp/request_boundary.py` / `app_shell.py` 的嵌套 handler、`domain/*` 的 pydantic validator
   都是装饰器/反射注册，vulture 看不到调用点。
 - 前端另查：`web/src/**/index.ts` 的再导出零未使用符号；`tsc` 已开 `noUnusedLocals` /

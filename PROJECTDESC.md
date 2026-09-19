@@ -1,8 +1,13 @@
 # SummitWorkbench · Project Description
 
-## 当前可靠性候选
+## 当前状态（2026-09-19）
 
-2026-09-16 分支 codex/reliability-luna 已按执行方案完成 8 项可靠性优化。源码质量门为 1297 passed / 1 skipped；静态 bundle 源码身份 84db2d3，bundle 提交 dfe6655。当前尚未替换已安装 App，候选包 smoke、真实凭据、退出故障注入和双机新鲜度矩阵仍需发布前验证。
+`0.4.9` 已交付：arm64 内部包 **build `2026091923`**（源码 `0c9ff4f`）已装到本机 `/Applications`
+并通过打包 smoke；此后 `main` 又落了一批**纯代码简化重构**（`64e733b`…`c9b3fc5`，**未打包**）。
+当前 HEAD `c9b3fc5` 的本地门禁为 **1395 passed / 1 skipped、覆盖率 84.54%**（门槛 80%），
+ruff / format / mypy strict / 前端契约与生产构建全过；静态前端身份 `v2026.09.19-d1a8ace7`。
+真实凭据、跨端闸门与双机新鲜度矩阵仍按需在发布前复验，见
+[未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
 
 ## 项目元信息
 
@@ -10,7 +15,7 @@
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑；作为工作知识库的**唯一写入方**（看板、采集、审批、源数据处理），**高级语义检索归属 SummitKnowledge** |
-| 当前阶段 | 交付包仍为 `v0.4.7`；本轮为 `v0.4.9` 可靠性优化候选（分支 `codex/reliability-luna`），8 项失败收尾与状态可见性优化已完成，源码质量门通过；候选安装包与真机复验尚未完成。M3 与 P2-03 均不实施。 |
+| 当前阶段 | `v0.4.9` 已交付（build `2026091923` / 源码 `0c9ff4f`，装机并 smoke 通过）；`main` 已领先一批**未打包**的代码简化重构（`c9b3fc5`）。M3 与 P2-03 均不实施。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |

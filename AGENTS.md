@@ -2,8 +2,11 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前交付源码提交 **`0c9ff4f`**（2026-09-19，即安装包 build `2026091923` 的来源；
+> 基线：当前**已交付**源码提交 **`0c9ff4f`**（2026-09-19，即安装包 build `2026091923` 的来源；
 > 上一份是 `e1700e2` → build `2026091922`，再上份 `375ce98` → build `2026091921`）。
+> ⚠️ `main` 已在其之上落了一批**纯代码简化重构**（2026-09-19，`64e733b`…`c9b3fc5`，**尚未打包**；
+> 模块落点见 `docs/implementation/LEGACY-*-SPLIT-PLAN.md` 两份 stub 的「收口现状」）。
+> 引用路径/行号前先确认它在**交付提交**还是**当前 HEAD** 上成立。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -36,8 +39,9 @@
     `project` → `repositories/writeback.py`（`## 下一步` / `## 跟进事项`）；
     `feishu-task` → `workflows/review_apply.py::create_task_through_outbox`（审批写回同一条
     outbox 路径：账本 + `candidate_id` 幂等 + 结果未知不重 POST；**库内不留可检索正文**，
-    只在 `review/archive/` 留痕）；`thought` → `repositories/thread_notes.py::write_thought_note`
-    （与 `/api/journal/thought` **同一实现**，第六·六阶段那套思考落盘已上移到这里）。
+    只在 `review/archive/` 留痕）；`thought` → `repositories/thought_notes.py::write_thought_note`
+    （与 `/api/journal/thought` **同一实现**，第六·六阶段那套思考落盘已上移到这里；
+    该模块 2026-09-19 从 `repositories/thread_notes.py` 拆出）。
     三者都必须：**同一个提交**里把条目移出 `inbox.md`、**不留占位行**（§10），且
     `changed_paths` 列全（目标页 + inbox；第七阶段的事故就是漏列）。
   - **成本线**：列表渲染不调模型；只有「让 AI 判断这条适合变成什么」这个显式按钮会花钱。
@@ -50,10 +54,12 @@
 
 ## ⚠️ 不要相信本仓库的历史文档
 
-- `docs/implementation/*` 里大量写的是**已被撤销**的旧结构
-  （`clusters/`、`## 主题簇`、`hr/people`、按人页）。
+- `docs/archive/implementation/*`（2026-09-19 从 `docs/implementation/` 整体归位的 16 篇）里大量写的是
+  **已被撤销**的旧结构（`clusters/`、`## 主题簇`、`hr/people`、按人页）。
   这些文件是**当时的历史计划/会话快照**，已加「结构已过时」横幅，**保留原文**，
   **不要照它判断现有目录结构**，也不要"顺手"把它们改成新结构（会伪造历史）。
+  `docs/implementation/` 现在只留两份 SPLIT-PLAN 的**指路 stub**（源码 docstring 与测试注释按那两个
+  路径引用）；要看拆分后的模块落点看 stub 的「收口现状」，别翻 archive 里的旧行号。
 - 判断当前结构**一律以 `_vault/conventions.md` 与 `_vault` 实际内容为准**。
 - 仍有价值的活文档：`docs/product/WEB_USAGE_GUIDE.md`、`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`
   —— 这两份已按当前结构校正过，**改动结构时要同步更新它们**。
@@ -137,11 +143,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `0c9ff4f`）
+## 验证命令与基线（交付提交 `0c9ff4f`；下表数字在 HEAD `c9b3fc5` 重测）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1375 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 实测 84.46%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 实测 1395 passed, 1 skipped（c9b3fc5）
+./.venv/bin/python -m pytest -q --cov           # 实测 84.54%（门槛 80%，同一 commit）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault
@@ -150,7 +156,8 @@
 ./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
-（`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1372，别把两者当矛盾。）
+（`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的全量数，别把两者当矛盾——
+所以这里**不写死**那个子集数。）
 
 > **`kb_verify_links.py` 的覆盖范围（2026-09-19 修过一次静默回归）**：覆盖 `[[目标#区块]]`、
 > `` `路径#区块` ``，以及**有唯一来源上下文**的裸锚点 `` `#区块` ``；**不覆盖** `###` 及更深的
@@ -173,6 +180,9 @@
 > `daily/2026-09-19.md` 已按新契约（简报不在库内）逐字搬到本机程序目录
 > `profile_dir(<workspace_id>)/briefs/` 后从库内 `git rm`，空 `reviews/` 一并移除。
 > 86 − 2 = 84。
+> **注：84 是批次 A 当时的瞬间值。**此后 `logs/`（日常手记）与 `thinking/`（工作思考）的真实写入
+> 又把它涨回 **86**（2026-09-19 实测，与上面「当前 86」一致）——篇数只反映库里有多少页，
+> **不是契约判据**；判据始终是"全部通过"。
 
 **`uv sync` 会按 extras 收窄依赖，裸跑会卸掉构建工具**：dev 工具在 `dev` extra、
 PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` 或
@@ -260,7 +270,8 @@ git 后端、检索策略、来源白名单或 SK 端点配置之后**跑它**�
    能发现"验证意外推送了 vault"）；③ 新增**结构性守卫**
    `tests/unit/test_auto_push_switch.py::test_auto_push_goes_through_the_single_gated_outlet`
    ——AST 扫 `src/`，把"允许直接调 `sync_coordinator.push_after_commit` 的调用点"钉成白名单
-   （`mutation_runtime._push_after_commit` + `routers/sync.py` 的显式恢复推送），新增绕过出口的
+   （`mutation_runtime._push_after_commit` + `routers/sync_conflicts.py::api_sync_conflict_recover`
+   的显式恢复推送；后者 2026-09-19 前在 `routers/sync.py`，重构后 `sync.py` 已无该调用点），新增绕过出口的
    调用点会立刻变红。
 
 3. ~~**闸门 `[3/8]` 的日期相关假阴性断言**~~ —— **已修（2026-09-19 第八阶段）**：

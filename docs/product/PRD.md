@@ -466,7 +466,11 @@ prompt_version: <meeting-processor prompt 版本>
 #### 3.2.1 Prompt 管理
 
 - 位置：`SummitWorkbench/prompts/`，随 git 版本化
-- 每个 prompt 单独文件，文件名即用途（`brief-ranker.md`、`session-wrapup.md`、`inbox-router.md`、`meeting-processor.md`、`weekly-review.md`）
+- 每个 prompt 单独文件，文件名即用途。**当前仓库内实际为 6 个**：`meeting-processor.md`（会议结构化）、
+  `meeting-merger.md`（分段会议合并）、`brief-ranker.md`（简报行动排序）、`capture-classifier.md`
+  （捕捉分类）、`log-digest.md`（日志/产物摘要）、`artifact-index.md`（产物索引）。
+  **已退役或从未落地**：`session-wrapup.md`（M3，ADR 0044 决定不实施）、`inbox-router.md`
+  （分类职责已由 `capture-classifier.md` 承担）、`weekly-review.md`（周复盘不再有独立 prompt）。
 - 变更走 git commit，可回滚
 - **禁止在脚本中内联 prompt 字符串**
 

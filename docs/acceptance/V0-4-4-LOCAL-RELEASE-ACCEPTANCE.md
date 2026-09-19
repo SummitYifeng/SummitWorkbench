@@ -70,7 +70,7 @@ GitHub Actions 因账户付款/额度问题未启动；该阻塞已于 2026-09-1
 
 本节记录 build 9 之后源码继续演进后的本地浏览器复核，不改变上方已发布 DMG 的历史身份。
 
-完整的原始计划、U01–U19 状态和后续执行顺序见 [`V0-4-4-UX-UI-HANDOFF.md`](../implementation/V0-4-4-UX-UI-HANDOFF.md)。
+完整的原始计划、U01–U19 状态和后续执行顺序见 [`V0-4-4-UX-UI-HANDOFF.md`](../archive/implementation/V0-4-4-UX-UI-HANDOFF.md)（该文档已于 2026-09-19 归位 `docs/archive/implementation/`）。
 
 - 当前源码提交：`ce0b27e`；设置页布局修复已提交并推送到 `main`。
 - 质量门复核：`pytest tests/unit` 766 passed、5 warnings；Web route contract 1 passed；ruff、format、mypy 全部通过。

@@ -335,7 +335,8 @@ Keychain 都不动。**
 ### D6 · 干净工作区没有任何"主动拉取"入口（影响日常多设备使用）
 
 - **证据**：全仓只有 `/api/sync/run` 会调用 `sync_coordinator.sync_workspace()`（`grep -rn
-  "sync_workspace(" src/summit_workbench/webapp/routers/` 只有 `routers/sync.py:445` 一处）；而
+  "sync_workspace(" src/summit_workbench/webapp/routers/` 只有 `routers/sync.py:181` 一处
+  （原记为 `:445`；2026-09-19 重构拆分该文件后行号变化））；而
   `/api/sync/run` 在前端**只由同步横幅的「立即重试」按钮触发**，横幅在状态 `ready` 时是**隐藏**的
   （`banner.ts`：`shouldShow = state !== 'ready' && state !== 'unconfigured'`）。60 秒轮询只调
   `refreshSyncBanner()`（读 `/api/sync/status`，即**内存快照**）与 `checkVersion`；

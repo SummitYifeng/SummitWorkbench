@@ -26,7 +26,7 @@
 9. `web/package.json`、`web/src/main.ts`、`web/src/legacy-main.ts`
 10. 本轮相关 feature、API、领域逻辑和测试
 
-本档案对应的实施记录是 [`V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md`](V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md)，最新本地发布/浏览器记录是 [`V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`](../acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md)。
+本档案对应的实施记录是 [`V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md`](V0-4-4-UX-UI-INCREMENTAL-IMPLEMENTATION.md)，最新本地发布/浏览器记录是 [`V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md`](../../acceptance/V0-4-4-LOCAL-RELEASE-ACCEPTANCE.md)。
 
 ### 两份 v0.4.4 文档的职责
 
@@ -349,6 +349,6 @@
 - **发布链路实跑**：`v0.4.4-rc.1` tag 触发 `release.yml` 全绿，签名 DMG、`update-feed.json`、SBOM、
   SHA256SUMS 全部产出并作为 prerelease 发布到公开 Updates 仓库，`latest` 保持 `v0.4.2` 未被污染。
 - **本条之后，未验证项不再在本文件中逐条维护**：请以
-  [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](../acceptance/OPEN-VERIFICATION-ITEMS.md) 为单一真源。
+  [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](../../acceptance/OPEN-VERIFICATION-ITEMS.md) 为单一真源。
   同日新增的自动化覆盖：冲突恢复端到端测试、`wb sync/review/meeting/feishu` 行为测试、
   `packaged App smoke` 入 CI、pre-push 本地门禁。

@@ -1,11 +1,14 @@
 # 桌面 App（macOS）
 
-## 当前 main 交付状态（2026-09-18，build 2026091811）
+## 已交付状态（2026-09-19，build 2026091923）
 
-当前源码已合并到 `main` 提交 `3b11122`。本机已安装 `0.4.9 / build 2026091811`，
-由提交 `3b11122` 构建，前端身份为 `v2026.09.18-adfd748a`（本次无前端改动）；已通过隔离打包 smoke test
+本机已安装 `0.4.9 / build 2026091923`，由提交 `0c9ff4f` 构建，前端身份为
+`v2026.09.19-4a04d298`（该版无前端改动，故身份与上一版相同）；已通过隔离打包 smoke test
 与 `tests/integration/test_packaged_app.py`。安装后的版本、build 和前端身份以 App 内
 `/api/version` 与 `Contents/Resources/web/static/build-meta.json` 为准。
+
+> ⚠️ 仓库 `main` 已领先该装机包（HEAD `c9b3fc5`，一批未打包的代码简化重构；静态前端身份
+> `v2026.09.19-d1a8ace7`）。**改动 `web/` 或后端后要看到变化，必须重新构建并替换 App。**
 
 当前生产路径是自包含的 Swift/AppKit + WebKit 壳：App 先验证 `/api/version`，服务 ready 后才创建页面导航，随后由唯一的 WKWebView 加载带 build identity 的 canonical URL。Chrome 已不再是运行或构建依赖。
 

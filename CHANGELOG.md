@@ -1,8 +1,9 @@
-## [0.4.9] - 2026-09-14
+## [0.4.9] - 2026-09-19
 
 > 第二大脑的**检索与决策层做深**，工作知识库**首批入库落地**，并修掉几个一直没被门禁覆盖的真缺陷。
 > **不破**既有硬边界：无向量库 / 无 RAG / 不加第三方依赖；不引云服务端、不引守护进程。
-> 本轮为**内部 INTERNAL-DEV 迭代**（build 36→42），**未打 tag、未发布**到 Updates 仓库；
+> 本轮为**内部 INTERNAL-DEV 迭代**（旧编号 build 36→42；2026-09-19 起 build 号改为 `yyyyMMddNN`
+> 形态，本版最终交付 **build `2026091923`**），**未打 tag、未发布**到 Updates 仓库；
 > 最新已发布 tag 仍是 `v0.4.8`。
 
 ### 新增
@@ -139,6 +140,90 @@
     全局响应式规则逐条保留）。
   - 理由：一个入口一个职责——看板归 SWB、语义问答归 SK；界面越窄，日常使用频率越高。
 
+### 交付增量（2026-09-15 ～ 09-19）
+
+补记 09-14 之后、直到交付 build `2026091923` 的全部批次（此前 CHANGELOG 未覆盖）。
+
+**检索就绪与契约（09-15）**
+
+- **`wb vault check` 增加检索就绪校验**（`validate_retrieval_readiness`）：重复 H2、`superseded`
+  缺替代链接不再等到 SK 侧引用退化才暴露。
+- **`work-log` 的 `status` 与两套形态解耦**（「日常手记」五区块 / 「推进日志」`## 原文`）：
+  手写落 `active`、纯机器产物落 `generated`，机器生成的日志保持**事实可检索**。
+- **知识正文写入前确定性规范化**；**知识沉淀出处改为可解析的 `路径#区块`**（不再只留时间戳）。
+- 新增并固化 [`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`](docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md)
+  （写入路径与校验点、状态与权威顺序）；配套契约测试把该文档与实现锁在同版本。
+
+**今日页与 Markdown 展示（09-16）**
+
+- 「今日」页由长列表收敛为**五个内容模块**（含空状态引导）；用户正文在所有展示入口统一走
+  安全 Markdown 规范化，脏 Markdown 用例入测试。
+- **下线「第二大脑」与「指南」两个页签**：页签由六个收敛为四个（今日 / 审批 / 项目 / 设置）；
+  语义问答归 SummitKnowledge（`/api/ask`、SSR 问答表单、`features/ask`、`features/guide` 一并移除，
+  `/api/sources/read` 与只读来源面板保留）。
+
+**可靠性与同步（09-16 ～ 09-18）**
+
+- 会议导入**可续跑**（中断后重跑只处理未完成项）；外部动作（飞书任务）中断后可安全恢复、不重复创建。
+- 有界请求与有界原生服务关停；业务时间统一用**北京时间**；飞书凭据预检与打包前置校验加固。
+- **SSH（SCP 形状）remote 的 push 修复**：`git@host:path` 不含 `://`，此前被误判为"不存在的本地
+  路径"，联网前就报 `remote-unavailable`；新增跨后端守卫。
+- **原生壳恢复 Dock 图标**（`LSUIElement=false` + `.regular`，`WB_DOCK_ICON=0` 可退回菜单栏模式）。
+
+**模型侧（09-18）**
+
+- **逐能力显式配置**：`max_output_tokens` 是「思考 + 答案」共用预算，抽取/摘要/分类一律
+  `thinking="disabled"`；**长逐字稿结构化失败的真因是输出预算被推理吃光**（不是上下文长度），
+  并修掉把长文档摘要压到 10 秒的硬编码超时；新增 `digest` 能力。
+
+**内容契约与界面偏好（09-18）**
+
+- **会议笔记不再生成 `## AI 建议`**（九区块减为八区块）；决策页新增「只记业务结论」硬规则与机器
+  守卫 `scripts/kb_check_decision_hygiene.py`。
+- 设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），自动化与模型参数移入「高级与维护」。
+
+**写入入口与收件箱提升（09-19，契约 §4.10 / §10）**
+
+- **`POST /api/journal/log`「日常手记」**：`did` / `remaining` / `reflection` / `blockers` 至少填一段，
+  落 `logs/<日期>-<seq>.md`、`status: active`，单块 > 1500 字符拒绝。
+- **`POST /api/journal/thought`「工作思考」**：三段必填，落 `thinking/<YYYYMMDD>-<slug>.md`，
+  落盘前过 schema + 检索就绪 + 叠加必填。
+- **收件箱提升通路**：`GET /api/inbox` 纯读、本地启发式、**绝不调模型**；三种目标
+  `project` / `feishu-task` / `thought` 各复用既有落盘实现，提升后条目**移出收件箱、不留占位行**、
+  与目标写在**同一个提交**；只有显式按钮 `POST /api/inbox/suggest` 才调一次模型。
+- 【今日】页新增「写工作日志」「写工作思考」两个入口，以及「收件箱（N 条）」块与「提升为…」弹层。
+
+**批次 A 语料边界与自检（09-19）**
+
+- 简报与周复盘改落**本机程序目录**（不再写知识库），`daily/`、`reviews/` 从库内移除；
+  检索类型与来源白名单对齐契约（补 8 个主线项目目录与 `thinking`，去 6 个死目录）。
+- 新增 `scripts/kb_check_contract.py`（`conventions.md` 声明的目录/类型 vs 库内实际，FAIL/WARN 分层）；
+  修 `kb_verify_links.py` 的裸锚点覆盖回归（来源上下文改为扫全篇标记行）。
+
+**验证纪律与门禁（09-19）**
+
+- **`WB_NO_AUTO_PUSH=1`**：写入照常 commit、**不自动 push**，响应里显式标注 `auto_push.skipped`
+  （绝不记成同步成功）——起因是一次验证动作被运行中的 App 自动推送进了 `origin/main`；
+  同时新增 AST 结构守卫，把"唯一自动推送出口"钉成白名单。
+- **跨端回归闸门 `scripts/kb_three_end_gate.py` 扩到 8 步**：工作树干净、`_signals/` 未回跟踪、
+  逐字稿与 `inbox.md` 不进语料、精排生效、原件与 `daily`/`weekly-review` 不进语料、来源白名单、
+  `journal/log` 与 `inbox/promote` 写路径（后两步不调模型、不花钱）。
+- **dulwich 后端的 `log_grep` 改为正则匹配整条消息**：打包 App（固定 dulwich）里「撤销历史」面板
+  此前恒为空。
+- `--no-push-cleanup` 取代易误读的 `--no-push`；pre-push 钩子的 Swift 步骤改为 `env -u SDKROOT`
+  （macOS git 包装器注入的 `SDKROOT` 会让 `xcrun swiftc` 报"SDK 与编译器不匹配"）。
+- **两处用户可见修复**：写回固定区块不再与自己的空行叠成双空行；手工写进 `inbox.md` 的条目也能按
+  正文 `#项目` 走默认目标（此前一律默认判成「一篇工作思考」）。
+
+**代码简化重构（09-19，尚未打包）**
+
+- 后端纯拆移/收敛：`routers/settings_connections.py`、`routers/sync_conflicts.py`、
+  `webapp/feishu_authorization.py`、`repositories/thought_notes.py`、
+  `domain/knowledge_normalization.py`；前端下沉 `features/diagnostics.ts`、
+  `features/projects/actions.ts`、`features/review/actions.ts`。
+- `web/src/legacy-main.ts` 964 → **922 行**（只剩类型契约、跨域状态、`render()`、全局派发与
+  `mountLegacyWorkbench`）。拆分蓝图已归档，`docs/implementation/LEGACY-*-SPLIT-PLAN.md` 只留指路 stub。
+
 ### 验证与产物
 
 - `0.4.9` build **42**（`git_commit=70f6753`、前端 `v2026.09.14-70f6753-4d072dbb`）已构建并安装到
@@ -149,6 +234,15 @@
   `kb-acceptance-installed-2026-09-14-build41.txt`、
   `kb-round-2026-09-14-verbatim-and-sources-read.txt`。
 - **DMG 文件名里没有 build 号**——认包请核 SHA-256，或看设置页的 build 号。
+- **2026-09-19 起 build 号改为 `yyyyMMddNN`**；本版最终交付 **build `2026091923`**
+  （`git_commit=0c9ff4f`、前端 `v2026.09.19-4a04d298`）已构建、安装到 `/Applications` 并通过打包
+  smoke；App SHA-256 `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`、
+  DMG SHA-256 `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c`。
+- 本版内交付序列：`2d1cf3a` → `2026091917` · `a49bb42` → `2026091918` · `f710aca` → `2026091919` ·
+  `7b7df74` → `2026091920` · `375ce98` → `2026091921` · `e1700e2` → `2026091922` ·
+  `0c9ff4f` → `2026091923`。
+- 该交付包之后 `main` 又落了一批**未打包**的代码简化重构（HEAD `c9b3fc5`）：本地门禁
+  `pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**。
 
 ### 已知不足（未解决，透明记录）
 
