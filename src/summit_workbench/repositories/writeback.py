@@ -34,6 +34,24 @@ def _ensure_global_inbox(path: Path) -> None:
     )
 
 
+def _block_tail(lines: list[str], start: int, heading_index: int) -> tuple[int, int]:
+    """区块正文的 ``(end, tail)``：``end`` 是正文最后一行的**下一行**（尾随空行不算正文），
+    ``tail`` 是 ``end`` 之后第一个**非空**行（下一个 ``## `` 区块标题，或文末）。
+
+    两者之间只会是空行。必须分开返回：调用方在 ``end`` 处插入、由自己写的空行负责间隔，
+    若把 ``[end:tail]`` 的空行原样留下，就会和调用方的空行叠成**双空行**
+    （2026-09-19 真机：收件箱条目提升到项目页「下一步」后，与「阻塞」之间多出一个空行；
+    同一形状的 bug 也在 `set_project_status` 里）。
+    """
+    end = heading_index
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    tail = end
+    while tail < len(lines) and not lines[tail].strip():
+        tail += 1
+    return end, tail
+
+
 def _append_under_heading(
     path: Path, heading: str, line: str, candidate_id: str, markers: Sequence[str] | None = None
 ) -> bool:
@@ -60,11 +78,10 @@ def _append_under_heading(
         if lines[index].startswith("## "):
             end = index
             break
-    while end > start and not lines[end - 1].strip():
-        end -= 1
+    end, tail = _block_tail(lines, start, end)
     extra = [f"  <!-- {m} -->" for m in (markers or [])]
     addition = ["", f"- {line}", f"  {marker}", *extra, ""]
-    updated = [*lines[:end], *addition, *lines[end:]]
+    updated = [*lines[:end], *addition, *lines[tail:]]
     atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
     return True
 
@@ -90,12 +107,12 @@ def set_project_status(vault_dir: Path, project: str, text: str) -> tuple[Path, 
             if lines[index].startswith("## "):
                 end = index
                 break
-        # 去掉被替换区间首尾的空行，再以「文本 + 空行」接入下一个区块。
+        # 去掉被替换区间首尾的空行，再以「文本 + 空行」接入下一个区块；
+        # 尾随空行必须**丢弃**而不是留在 lines[end:] 里，否则和下面的 "" 叠成双空行。
         while start < end and not lines[start].strip():
             start += 1
-        while end > start and not lines[end - 1].strip():
-            end -= 1
-        updated = [*lines[:start], text, "", *lines[end:]]
+        end, tail = _block_tail(lines, start, end)
+        updated = [*lines[:start], text, "", *lines[tail:]]
         atomic_write_text(path, "\n".join(updated).rstrip() + "\n")
         return path, True
 

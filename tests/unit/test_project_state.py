@@ -42,6 +42,20 @@ def test_set_project_status_replaces_only_status_block(tmp_path: Path) -> None:
     assert note.meta["updated"] == "2026-09-02"  # helper 不碰 frontmatter
 
 
+def test_set_project_status_keeps_a_single_blank_before_the_next_block(tmp_path: Path) -> None:
+    """回归守卫：「文本 + 空行」接入下一个区块时不得留下区块尾随空行（双空行）。
+
+    与 `writeback._append_under_heading` 同一形状的缺陷：把尾随空行留在 `lines[end:]` 里
+    就会和调用方补的空行叠成两个（2026-09-19 收件箱提升真机实测同源）。
+    """
+    vault = tmp_path / "vault"
+    path = _archive(vault)
+    set_project_status(vault, "FinanceOps", "木子试任 Finance Ops。")
+    text = path.read_text(encoding="utf-8")
+    assert "\n\n\n" not in text
+    assert "木子试任 Finance Ops。\n\n## 下一步" in text
+
+
 def test_set_project_status_requires_archive(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     import pytest
