@@ -497,3 +497,50 @@ def test_approved_meeting_note_moves_pending_review_to_applied(tmp_path):
     assert after.meta["status"] == "applied"
     assert is_fact_retrieval_eligible(after.meta) is True
     assert after.body == before.body  # 状态收口只改 frontmatter，正文原样保留
+
+
+def test_all_rejected_meeting_note_still_becomes_applied(tmp_path):
+    """契约 §9.1 没有"全部拒绝"例外：应用后笔记一律 applied，不因全否而踢出检索。
+
+    2026-09-19 修正：此前用「本批历史上有没有 approved」决定**整篇笔记**的 status，
+    把 AI 的行动项全否掉会连带摘要与事实一起离开语料。现在「全部被拒」只如实记录在
+    review/archive（裁决=rejected）与 _signals/meeting-state/log.jsonl（终态 ignored）。
+    """
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    _project_main(vault)
+    note_path = _meeting_note_file(vault)
+    refresh_review_page(
+        vault,
+        [
+            _entry(
+                "m:n#action-item-0",
+                decision=CandidateDecision.REJECTED,
+                route=RouteTarget.PROJECT_MAIN,
+            ),
+            _entry(
+                "m:n#action-item-1",
+                decision=CandidateDecision.REJECTED,
+                route=RouteTarget.PROJECT_MAIN,
+            ),
+        ],
+    )
+    _pending(vault)
+
+    report = apply_meeting_review(
+        vault, work, apply=True, now=datetime(2026, 8, 31, 12, tzinfo=UTC)
+    )
+    assert report.rejected == 2
+    assert report.applied == 0
+
+    # 笔记：applied（重新构成事实语料），正文未被改动。
+    after = load_note(note_path)
+    assert after.meta["status"] == "applied"
+    assert is_fact_retrieval_eligible(after.meta) is True
+    # 任务状态：如实记录"全部被拒" → ignored（不再决定笔记去留）。
+    task = latest_task(vault, "m:n")
+    assert task is not None and task.state is ProcessingState.IGNORED
+    # 审计归档：两条 rejected 裁决留痕（"全部被拒"的事实仍可回溯）。
+    assert report.archive_path is not None
+    audit = report.archive_path.read_text(encoding="utf-8")
+    assert audit.count("rejected") >= 2

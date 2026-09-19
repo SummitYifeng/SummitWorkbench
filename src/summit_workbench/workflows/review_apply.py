@@ -506,6 +506,8 @@ def _update_meeting_states(
         if task is None or task.state is not ProcessingState.PENDING_REVIEW:
             continue
         historical = completed_decisions(vault_dir, task_key)
+        # 会议**任务状态**（机器事实）如实记录本批裁决：有 approved → applied；
+        # 全部 rejected → ignored。它只描述"审批结果"，不代表笔记内容被否定。
         final_state = (
             ProcessingState.APPLIED
             if CandidateDecision.APPROVED in historical
@@ -514,7 +516,12 @@ def _update_meeting_states(
         touched_paths.append(record_task(vault_dir, task.advanced_to(final_state), now=now))
         note_path = _note_path(vault_dir, entries[0].note_link)
         if note_path is not None:
-            update_note_status(vault_dir, note_path, final_state.value)
+            # 会议**笔记状态**按契约 §9.1 一律置 applied：未审批（pending-review）不进语料，
+            # 审批应用（applied）后才进——契约没有"全部被拒就转 ignored"这个例外。把 AI 的
+            # 行动项全否掉不该连带把整篇笔记（含摘要与事实）踢出检索。
+            # "全部被拒"的事实仍留在 review/archive/<时间戳>.md（裁决=rejected）与
+            # _signals/meeting-state/log.jsonl（该 task_key 的 ignored 终态）里。
+            update_note_status(vault_dir, note_path, ProcessingState.APPLIED.value)
             touched_paths.append(note_path)
     return touched_paths
 
