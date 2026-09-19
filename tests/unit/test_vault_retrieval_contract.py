@@ -152,6 +152,15 @@ def test_source_skips_retrieval_readiness_but_keeps_fixed_block_schema() -> None
     assert "要点" in messages and "关联" in messages
 
 
+def test_daily_and_weekly_review_are_write_only_types() -> None:
+    """简报/周复盘已不在库内：SK 检索排除、SWB 名单必须跟上（另一处"两侧名单对不上"）。"""
+    assert {"daily", "weekly-review"} <= NON_RETRIEVED_TYPES
+    body = "# 简报\n\n## 分节\n\na\n\n## 分节\n\nb\n"  # 重复 H2：检索就绪会报
+    for note_type in ("daily", "weekly-review"):
+        assert _codes(_meta(note_type, "active"), body) == []
+        assert is_fact_retrieval_eligible(_meta(note_type, "active")) is False
+
+
 # --------------------------------------------------------------------- superseded
 
 

@@ -153,12 +153,16 @@ NOTE_TYPES: dict[str, NoteTypeSpec] = {
 # 规范化（``workflows/knowledge_normalization.py``）都从这里取，避免各写一份词表而漂移。
 
 # 会被 SummitKnowledge 工作库检索实际读入的类型。其余类型（导航页、规范页、收件箱、
-# 模板、派生洞察、项目收件箱、**原件与逐字稿**）只写不检索，不做检索就绪校验。
+# 模板、派生洞察、项目收件箱、**原件与逐字稿、简报与周复盘**）只写不检索，不做检索就绪校验。
 #
-# 2026-09-19 与 vault 契约对齐：
+# 2026-09-19 与 vault 契约对齐（批次 A）：
 # - `source`：契约 §9/§9.1 把原件移出检索语料（"仅作可点开的证据文件"），
 #   因此不再做检索就绪校验；**但仍受 `validate_note` 的固定区块约束**（§4.3）。
 # - `meeting-transcript`：逐字稿本就不进检索语料（§9.1），此前 SWB 名单与 SK 不一致。
+# - `daily` / `weekly-review`：契约 §1/§3 已声明这两类**不在 vault 内**（简报/周报写在本机
+#   程序目录）；SK 已把它们纳入检索排除作为"防旧 App 回写"的保险，SWB 名单必须跟上，
+#   否则又出现"两侧名单对不上"。**不删 `NOTE_TYPES` 里的定义**（词表只做加法，
+#   简报文件本身仍带 `type: daily`）。
 NON_RETRIEVED_TYPES = frozenset(
     {
         "index",
@@ -173,6 +177,8 @@ NON_RETRIEVED_TYPES = frozenset(
         "project-inbox",
         "source",
         "meeting-transcript",
+        "daily",
+        "weekly-review",
     }
 )
 
