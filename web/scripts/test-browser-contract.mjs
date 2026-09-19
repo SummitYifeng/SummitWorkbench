@@ -86,6 +86,8 @@ const doesNotMatchNearby = (anchor, forbidden, description) =>
   });
 
 const reviewSource = fileFor('src/features/review/render.ts');
+const projectActionsSource = fileFor('src/features/projects/actions.ts');
+const reviewActionsSource = fileFor('src/features/review/actions.ts');
 const diagnosticsSource = fileFor('src/features/diagnostics.ts');
 const legacySource = fileFor('src/legacy-main.ts');
 // Settings is a feature directory (Step 8c): the placement guarantee is "inside the feature",
@@ -149,6 +151,12 @@ assert.match(diagnosticsSource, /export function createDiagnosticsActions/, 'dia
 assert.match(diagnosticsSource, /\/api\/diagnostics\/preview/, 'diagnostics preview uses the feature API');
 assert.match(diagnosticsSource, /\/api\/diagnostics\/export/, 'diagnostics export uses the feature API');
 assert.doesNotMatch(legacySource, /function (copy|preview|export)Diagnostics/, 'diagnostics implementation does not return to the composition root');
+assert.match(projectActionsSource, /export function submitProjectCreate/, 'project creation submit stays in the projects feature');
+assert.match(projectActionsSource, /\/api\/projects\/create/, 'project creation endpoint remains in the projects feature');
+assert.match(reviewActionsSource, /export function submitReviewEdit/, 'review editing submit stays in the review feature');
+assert.match(reviewActionsSource, /\/api\/review\/edit/, 'review editing endpoint remains in the review feature');
+assert.match(reviewActionsSource, /\/api\/review\/decide/, 'save-and-approve endpoint remains in the review feature');
+assert.doesNotMatch(legacySource, /\/api\/(projects\/create|review\/edit|review\/decide)/, 'form submission HTTP details do not return to the composition root');
 // G2: a workspace with no origin had no in-app path to bind one (only manual git commands);
 // the publish entry point and its dispatch must both exist.
 assert.match(

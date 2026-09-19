@@ -11,6 +11,67 @@ import type { ExternalAction, ReviewEntry } from './types';
 
 export const REVIEW_BATCH_LIMIT = 100;
 
+type ReviewActionApi = <T>(url: string, init?: RequestInit) => Promise<T>;
+type ReviewActionMutation = <T>(work: () => Promise<T>) => Promise<T>;
+
+export interface ReviewEditDeps {
+  api: ReviewActionApi;
+  mutation: ReviewActionMutation;
+  toast: (message: unknown, tone: 'ok' | 'err' | 'info') => void;
+  refreshReview: () => Promise<unknown>;
+  refreshState: () => Promise<unknown>;
+}
+
+/** 审批编辑表单提交；保存并批准继续复用原有两步 HTTP 顺序。 */
+export function submitReviewEdit(
+  form: HTMLFormElement,
+  submitter: HTMLElement | null,
+  deps: ReviewEditDeps,
+): void {
+  const data = new FormData(form);
+  const body: Record<string, string> = {};
+  data.forEach((value, key) => { body[key] = String(value); });
+  const saveAndApprove = submitter?.dataset?.action === 'save-approve';
+  void deps.mutation(async () => {
+    const r = await deps.api<{ ok: boolean; message: string }>('/api/review/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      deps.toast(r.message, 'err');
+      return;
+    }
+    if (!saveAndApprove) {
+      deps.toast(r.message, 'ok');
+      void deps.refreshReview();
+      return;
+    }
+    // 保存并批准：落点未定与后端 apply 的「缺少 route」守卫一致，禁止直接批准。
+    if (!body.route) {
+      deps.toast('已保存。落点未定无法批准——请选好落点后再批准', 'info');
+      void deps.refreshReview();
+      return;
+    }
+    try {
+      const decision = await deps.api<{ ok: boolean; message: string }>('/api/review/decide', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidate_id: String(body.candidate_id ?? ''), decision: 'approved' }),
+      });
+      if (decision.ok) {
+        deps.toast('✓ 已保存并批准 —— 仅标记，点「应用（写回）」才真正写回/建任务', 'ok');
+      } else {
+        deps.toast(decision.message, 'err');
+      }
+    } catch (err) {
+      deps.toast(err, 'err');
+    }
+    void deps.refreshReview();
+    void deps.refreshState();
+  }).catch((err: unknown) => deps.toast(err, 'err'));
+}
+
 /**
  * 批准时只纳入"有依据且已定落点"的条目：缺依据或落点未定的候选必须留在待确认，
  * 由人工逐条处理（原 batchSelectedReview 内联判断，抽成纯函数以便断言）。

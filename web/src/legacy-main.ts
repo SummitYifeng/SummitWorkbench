@@ -67,6 +67,7 @@ import {
   revealQueuedProjectFocus,
   setProjectState,
   showProjectView,
+  submitProjectCreate,
 } from './features/projects';
 import {
   batchSelectedReview,
@@ -82,6 +83,7 @@ import {
   resetReviewForWorkspace,
   retryExternalAction,
   selectAllReview,
+  submitReviewEdit,
 } from './features/review';
 import {
   applyGitRemoteNormalization,
@@ -674,74 +676,24 @@ document.addEventListener('submit', (ev) => {
   const form = ev.target as HTMLFormElement;
   if (form.classList.contains('thread-create-form')) {
     ev.preventDefault();
-    const data = new FormData(form);
-    const projectId = String(data.get('project_id') ?? '').trim();
-    if (!projectId) {
-      toast('请输入项目 ID', 'err');
-      return;
-    }
-    const aliases = String(data.get('aliases') ?? '')
-      .split(/[,，]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    void mutation(async () => {
-      const r = await api<{ ok: boolean; message: string }>('/api/projects/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, aliases }),
-      });
-      toast(r.message, r.ok ? 'ok' : 'err');
-      if (r.ok) form.reset();
-      void refreshAll();
-    }).catch((err: unknown) => toast(err, 'err'));
+    submitProjectCreate(form, {
+      api,
+      mutation,
+      toast,
+      refreshAll,
+    });
     return;
   }
   if (!form.classList.contains('edit-form')) return;
   ev.preventDefault();
-  const data = new FormData(form);
-  const body: Record<string, string> = {};
-  data.forEach((v, k) => { body[k] = String(v); });
-  const saveAndApprove = (ev.submitter as HTMLElement | null)?.dataset?.action === 'save-approve';
-  void mutation(async () => {
-    const r = await api<{ ok: boolean; message: string }>('/api/review/edit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      toast(r.message, 'err');
-      return;
-    }
-    if (!saveAndApprove) {
-      toast(r.message, 'ok');
-      void refreshReview();
-      return;
-    }
-    // 保存并批准：落点未定与后端 apply 的「缺少 route」守卫一致，禁止直接批准。
-    if (!body.route) {
-      toast('已保存。落点未定无法批准——请选好落点后再批准', 'info');
-      void refreshReview();
-      return;
-    }
-    try {
-      const d = await api<{ ok: boolean; message: string }>('/api/review/decide', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidate_id: String(body.candidate_id ?? ''), decision: 'approved' }),
-      });
-      if (d.ok) {
-        toast('✓ 已保存并批准 —— 仅标记，点「应用（写回）」才真正写回/建任务', 'ok');
-      } else {
-        toast(d.message, 'err');
-      }
-    } catch (err) {
-      toast(err, 'err');
-    }
-    void refreshReview();
-    void refreshState();
-  }).catch((err: unknown) => toast(err, 'err'));
+  submitReviewEdit(form, ev.submitter as HTMLElement | null, {
+    api,
+    mutation,
+    toast,
+    refreshReview,
+    refreshState,
+  });
 });
-
 
 
 // ---------- 数据 ----------

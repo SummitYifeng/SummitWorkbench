@@ -19,5 +19,7 @@ export {
   retryExternalAction,
   selectAllReview,
   selectedReviewEntries,
+  submitReviewEdit,
 } from './actions';
+export type { ReviewEditDeps } from './actions';
 export type { ReviewAssembleInput, ReviewDeps } from './deps';

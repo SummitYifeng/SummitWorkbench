@@ -8,5 +8,6 @@ export {
   revealQueuedProjectFocus,
   showProjectView,
 } from './detail';
-export { archiveProject, setProjectState } from './actions';
+export { archiveProject, setProjectState, submitProjectCreate } from './actions';
+export type { ProjectCreateDeps } from './actions';
 export type { ProjectDeps } from './deps';
