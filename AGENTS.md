@@ -15,6 +15,23 @@
   写与工作库相关的代码前，**先读它**。
 - **SK（SummitKnowledge）是唯一检索方**，只读工作库；不要在本仓库实现检索/向量化。
 
+## 写入 API（Web 面板 → vault）
+
+- 日常写入入口（2026-09-19 起，契约 §4.10）：
+  - **`POST /api/journal/log`** ——「日常手记」五区块形态。入参 `did` / `remaining` /
+    `reflection` / `blockers`（**至少填一段**）+ 可选 `projects`；落顶层 `logs/<日期>-<seq>.md`，
+    不绑项目写 `project: global`，`status: active`。某段为空不出区块；`## 关联` 恒在
+    （无项目写 `- （无）`）；**单块 > 1500 字符拒绝**（超长块会被 SK 切成共享同一锚点的子块）。
+  - **`POST /api/journal/thought`** ——`type: long-form-thought`，三段（`problem` / `thinking` /
+    `conclusion`）都必填；落 `thinking/<YYYYMMDD>-<slug>.md`（目录按需创建，不放 `.gitkeep`），
+    **落盘前**过 schema + 检索就绪 + §2.1 叠加必填；`id`/`title`/`summary`/`workstream`(默认 `cross`)
+    自动填，`project: global` 或不绑项目。
+- 两条都经 `MutationRuntime.run`（自动 commit；`WB_NO_AUTO_PUSH=1` 关自动推送），落盘复用
+  `repositories/thread_notes.append_work_log`——**不要另写一套落盘**。
+- **改 `web/` 之后必须 `npm --prefix web run build` 并把产物一起提交**（产物在
+  `src/summit_workbench/webapp/static/`，含 `build-meta.json` 的前端身份）；只改源码不重建，
+  面板上看到的还是旧界面。前端契约测试：`npm --prefix web run test:frontend`。
+
 ## ⚠️ 不要相信本仓库的历史文档
 
 - `docs/implementation/*` 里大量写的是**已被撤销**的旧结构

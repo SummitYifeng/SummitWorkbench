@@ -110,7 +110,7 @@ anchor    = heading 非空时为 source_id#heading，否则为 source_id
 
 1. 当前项目主页、主题结论、有效决策。
 2. 已应用内容、结构化会议笔记、周期复盘。
-3. 工作日志、thread-doc 和其他 `generated` 内容。
+3. `thread-doc`、纯机器生成的日志（`generated`）和其他 `generated` 内容。
 
 `source` 与 `meeting-transcript` 是**证据层**：**不进入工作库检索语料、不参与精排候选**
 （§5.2）；要核对原文口径时，由结论页里的出处链接点开原件。需要检索会议内容时，使用结构化的
@@ -171,7 +171,7 @@ SWB 侧对应三个纯逻辑入口（`src/summit_workbench/domain/`）：
 | 会议逐字稿（`meeting-transcript`） | 原件不可变；不套用规范化器；不进入检索与精排 |
 | 结构化会议笔记（`meeting-note`） | `validate_note` + `validate_retrieval_readiness`；生成态 `pending-review` |
 | 当日简报（`daily`） | 程序生成；落 `area: work` + `title: 晨间简报 <日期>`（否则总览不可见 / 只剩日期） |
-| 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**恒为 `generated`**（用户原始记录，低权威但可检索）——「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级；落 `area: work` + 与 H1 一致的 `title` |
+| 推进日志（`work-log`） | 确定性结构规范化 + 双重校验；**形态两套**（「日常手记」五区块 / 「推进日志」`## 原文`）与 **`status` 解耦**——按来源取 `active`（手写）/ `generated`（纯机器产物）；「模型未消化」由 `summary` 字段缺失表达，不用 `draft` 降级；落 `area: work` + 与 H1 一致的 `title`；单个 `##` 区块 ≤ ~1500 字符（超长会被切成共享同一锚点的子块） |
 | AI 产物（`thread-doc`） | 确定性结构规范化 + 双重校验；无 `summary` 为 `draft`，有 `summary` 为 `generated`；无论调用方是否给标题都落最终 heading 作为 `title` |
 | 审批写回（主档案 / inbox / 知识沉淀） | 目标页与区块必须存在且**唯一**；锚点无法解析即拒批；**知识沉淀写回必须带可解析的 `<会议笔记 source_id>#<区块>` 出处**（附证据锚点），不得只留裸时间戳 |
 | 原件（`source`） | 逐字保存，不由模型改写 |
