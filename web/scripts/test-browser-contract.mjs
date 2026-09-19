@@ -321,6 +321,24 @@ assert.match(fileFor('src/features/today/render.ts'), /multiple hidden/, 'the tr
 assert.match(fileFor('src/features/today/index.ts'), /let currentOpen = options\.importOpen/, 'import drawer open state is local and reversible');
 assert.match(fileFor('src/features/today/index.ts'), /setOpen\(!currentOpen\)/, 'import drawer can close and reopen without a stale closure');
 assert.match(fileFor('src/features/today/index.ts'), /if \(!open\) importButton\?\.focus\(\)/, 'closing the import drawer restores focus to its trigger');
+// 收件箱提升（契约 §10）：列表在「今日」页渲染，弹层放在 today feature 自己的模块里，
+// 两个动作都经全局 data-action 分派。
+assert.match(fileFor('src/features/today/render.ts'), /data-action="inbox-promote"/, '每个收件箱条目都有提升入口');
+assert.match(fileFor('src/features/today/render.ts'), /inboxBlock\(options\.inboxItems/, '收件箱块由今日页渲染');
+assert.match(source, /data-action === 'inbox-promote'|action === 'inbox-promote'/, 'inbox promote is dispatched from the global action handler');
+assert.match(source, /action === 'inbox-ai-suggest'/, 'the AI suggestion button has its own explicit dispatch');
+assert.match(fileFor('src/features/today/inbox.ts'), /syncTargetFields/, '提升弹层只显示当前目标相关的字段');
+// **成本放置守卫**：`/api/inbox/suggest` 只允许出现在提升弹层模块里。列表渲染（render.ts / 状态
+// 读取）一旦也去调模型，这里立刻红——「打开弹层扫一遍」是最容易被顺手写成的成本回归。
+assert.match(fileFor('src/features/today/inbox.ts'), /\/api\/inbox\/suggest/, 'the AI suggestion endpoint lives in the promote modal');
+for (const modulePath of ['src/features/today/render.ts', 'src/legacy-main.ts']) {
+  assert.doesNotMatch(
+    fileFor(modulePath),
+    /\/api\/inbox\/suggest/,
+    `list rendering must not call the model (found in ${modulePath})`,
+  );
+}
+assert.doesNotMatch(source, /api\/inbox\/suggest[\s\S]{0,400}forEach|forEach[\s\S]{0,400}api\/inbox\/suggest/, 'the AI suggestion is never run in a loop over the list');
 assertNearby(/@media \(max-width: 900px\)/, /[\s\S]{0,280}\.header-right \.version-status/, 'tablet header hides non-essential version text before it can overflow');
 assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}#btn-quit\s*\{\s*display: none/, 'very narrow header hides the non-essential quit control before it can overflow');
 assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,320}\.header-right #btn-refresh,[^\n]{0,120}\{\s*display: none/, 'very narrow header hides the refresh control before it can overflow');

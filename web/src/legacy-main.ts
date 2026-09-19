@@ -106,6 +106,7 @@ import {
   createTodayActions,
   mountToday,
   mountTodayActions,
+  openInboxPromoteModal,
   openJournalLogModal,
   openJournalThoughtModal,
   openRowEditModal,
@@ -114,7 +115,9 @@ import {
   runBrief,
   retryImport,
   todayUi,
+  requestInboxSuggestion,
   tsToDatetimeLocal,
+  type InboxItem,
   type ProjectChoice,
   type TodayActions,
 } from './features/today';
@@ -180,6 +183,10 @@ let tab: Tab = 'today';
 let draftStorageWarningShown = false;
 let todayActions: TodayActions | null = null;
 let stateLoadError: string | null = null;
+// 收件箱待处理条目：跟着 `refreshState()` 一起读（`GET /api/inbox`，**纯读、不调模型**），
+// 渲染时直接用缓存，避免列表渲染触发任何模型调用（成本约定，第九阶段）。
+let inboxItems: InboxItem[] = [];
+let inboxLoadError: string | null = null;
 let reviewLoadError: string | null = null;
 let externalActionsError: string | null = null;
 let lastStateReadAt: string | null = null;
@@ -416,6 +423,8 @@ function renderToday(view: HTMLElement): void {
     importResults: todayUi.importResults,
     readStatus: { lastSuccessfulAt: lastStateReadAt, error: stateLoadError },
     health: healthTone(),
+    inboxItems,
+    inboxError: inboxLoadError,
     actions: todayActions,
   });
   revealQueuedProjectFocus();
@@ -610,6 +619,21 @@ document.addEventListener('click', (ev) => {
     openJournalThoughtModal(todayProjectChoices());
     return;
   }
+  if (action === 'inbox-promote') {
+    const item = inboxItems.find((entry) => entry.id === (btn.dataset.id ?? ''));
+    if (!item) {
+      toast('这条已不在收件箱（可能刚被提升或手工删除）', 'err');
+      void refreshState();
+      return;
+    }
+    openInboxPromoteModal(item, todayProjectChoices());
+    return;
+  }
+  if (action === 'inbox-ai-suggest') {
+    // 只有这里的显式点击才调模型（见 features/today/inbox.ts 的成本约定）。
+    void requestInboxSuggestion(btn.dataset.id ?? '');
+    return;
+  }
   if (action === 'task-complete') {
     void completeTask(btn);
     return;
@@ -786,6 +810,8 @@ async function refreshState(): Promise<boolean> {
     if (tab === 'today') renderToday(document.getElementById('view-today') as HTMLElement);
     return false;
   }
+  await refreshInbox(requestId);
+  if (requestId !== latestStateRequest) return false;
   const dayPill = document.getElementById('day-pill');
   if (dayPill) dayPill.textContent = state.day;
   const badge = document.getElementById('tab-badge-review');
@@ -795,6 +821,26 @@ async function refreshState(): Promise<boolean> {
     renderProjects(document.getElementById('view-projects') as HTMLElement, state);
   }
   return true;
+}
+
+/**
+ * 读收件箱待处理条目（`GET /api/inbox`）。
+ *
+ * **纯读**：这个请求只做解析与本地启发式，绝不触发模型（成本约定）。读失败也不阻断今日页
+ * ——条目清空、把原因交给渲染层显示成一句提示，页面其余部分照常可用。
+ */
+async function refreshInbox(requestId: number): Promise<void> {
+  try {
+    const payload = await api<{ ok: boolean; items?: InboxItem[]; message?: string }>('/api/inbox');
+    if (requestId !== latestStateRequest) return;
+    inboxItems = payload.ok ? (payload.items ?? []) : [];
+    inboxLoadError = payload.ok ? null : (payload.message ?? '收件箱读取失败');
+  } catch (err) {
+    if (isStaleWorkspaceResponse(err)) return;
+    if (requestId !== latestStateRequest) return;
+    inboxItems = [];
+    inboxLoadError = String(err);
+  }
 }
 
 async function refreshReview(): Promise<boolean> {

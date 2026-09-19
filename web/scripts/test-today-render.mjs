@@ -30,8 +30,13 @@ const entry = [
   '};',
   "const emptyState = { ...state, brief: null, brief_md: '## 项目推进\\n这份旧版简报不应被整份展示' };",
   "const options = { state, importOpen: false, importing: false, health: { tone: 'ok', label: '正常' } };",
-  'export const full = todayHtml(options, "");',
-  'export const empty = todayHtml({ ...options, state: emptyState }, "");',
+  'const inbox = [',
+  "  { id: 'web-a', text: '把翻译流程定稿 #it-development', kind: null, due: null, project: 'it-development', projects: ['it-development'], candidate_id: 'web-a', suggested_target: 'project', suggested_reason: '有 #it-development ⇒ 归到该项目页（下一步 / 跟进事项）' },",
+  "  { id: 'web-b', text: '给 Coach 发邮件', kind: 'task', due: '2026-09-25', project: null, projects: [], candidate_id: 'web-b', suggested_target: 'feishu-task', suggested_reason: '有截止日期 2026-09-25 ⇒ 按待办处理（真源在飞书）' },",
+  '];',
+  'export const full = todayHtml({ ...options, inboxItems: inbox }, "");',
+  'export const empty = todayHtml({ ...options, state: emptyState, inboxItems: [] }, "");',
+  'export const broken = todayHtml({ ...options, inboxItems: [], inboxError: "重复区块" }, "");',
 ].join('\n');
 
 mkdirSync(tmpDir, { recursive: true });
@@ -47,11 +52,13 @@ try {
   });
   const outFile = join(tmpDir, 'bundle.mjs');
   writeFileSync(outFile, result.outputFiles[0].text);
-  const { full, empty } = await import(pathToFileURL(outFile).href + '?t=' + Date.now());
+  const { full, empty, broken } = await import(pathToFileURL(outFile).href + '?t=' + Date.now());
 
-  for (const html of [full, empty]) {
+  for (const html of [full, empty, broken]) {
+    // 收件箱是**第三块**、用独立类名：工具栏仍是 2 个、简报面板仍是 3 个（契约计数不变）。
     assert.equal((html.match(/class="today-tool /g) || []).length, 2);
     assert.equal((html.match(/class="today-panel/g) || []).length, 3);
+    assert.equal((html.match(/id="today-inbox"/g) || []).length, 1);
     assert.match(html, /记点什么/);
     assert.match(html, /导入会议纪要/);
     assert.match(html, /id="capture-form"/);
@@ -81,6 +88,21 @@ try {
   assert.match(full, /<strong>给项目甲发邮件<\/strong>/);
   assert.match(full, /<strong>明天前发送<\/strong>/);
   assert.doesNotMatch(empty, /这份旧版简报不应被整份展示/);
+  // 收件箱：有条目时每条一个「提升为…」按钮；空收件箱只一句轻提示（不占大块版面）
+  assert.match(full, /收件箱（2 条）/);
+  assert.equal((full.match(/data-action="inbox-promote"/g) || []).length, 2);
+  assert.match(full, /把翻译流程定稿/);
+  assert.match(full, /#it-development/);
+  assert.match(full, /截止 2026-09-25/);
+  assert.match(full, /承诺/);
+  assert.match(empty, /收件箱（0 条）/);
+  assert.doesNotMatch(empty, /data-action="inbox-promote"/);
+  assert.match(empty, /收件箱是空的/);
+  assert.match(broken, /收件箱读取失败：重复区块/);
+  // 列表渲染**不得**内置 AI 建议入口（成本约定：只有弹层里的显式按钮才调模型）
+  assert.doesNotMatch(full, /inbox-ai-suggest/);
+  assert.doesNotMatch(full, /\/api\/inbox\/suggest/);
+
   assert.match(empty, /今日无待办任务/);
   assert.match(empty, /今日无会议/);
   assert.match(empty, /当前没有任务清单之外的行动/);

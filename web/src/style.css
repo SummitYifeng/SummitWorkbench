@@ -754,3 +754,36 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   .conflict-path { align-items: stretch; flex-direction: column; gap: 5px; }
   .conflict-path-action { flex-basis: auto; }
 }
+
+/* ---- 【今日】页收件箱块（契约 §10 提升通路）---- */
+/* 独立类名（不叫 today-tool / today-panel）：它是第三种块，且浏览器契约测试
+   按 class 计数「两个工具栏 + 三个简报面板」，不该被这一块改写。 */
+.today-inbox {
+  min-width: 0; margin-top: 16px; padding: 14px 18px; background: var(--card);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.today-inbox-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.today-inbox-head .hint { margin: 0; }
+/* 空收件箱：只有一句话，不占大块版面 */
+.today-inbox-empty { padding: 12px 18px; }
+.today-inbox-empty .hint { margin: 6px 0 0; }
+.today-inbox-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.today-inbox-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+}
+.today-inbox-text { min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
+.today-inbox-side { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.today-inbox-side .hint { margin: 0; }
+/* 提升弹层：目标单选 + 只显示相关字段 */
+.inbox-source {
+  margin: 4px 0 8px; padding: 8px 10px; border-radius: 8px; background: var(--bg);
+  border: 1px solid var(--border); font-size: 13.5px; overflow-wrap: anywhere;
+}
+.inbox-targets { display: grid; gap: 6px; margin: 10px 0; }
+.inbox-target-option {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.inbox-target-option strong { display: block; font-size: 13.5px; }
+.inbox-target-option .hint { margin: 2px 0 0; }

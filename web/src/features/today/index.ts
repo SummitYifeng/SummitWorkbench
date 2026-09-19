@@ -13,6 +13,8 @@ export function mountToday(
     importResults?: TodayRenderOptions['importResults'];
     readStatus?: TodayRenderOptions['readStatus'];
     health: { tone: string; label: string };
+    inboxItems?: TodayRenderOptions['inboxItems'];
+    inboxError?: string | null;
     actions: TodayActions;
   },
 ): void {
@@ -82,10 +84,18 @@ export {
   retryImport,
   runBrief,
 } from './actions';
+export { openInboxPromoteModal, requestInboxSuggestion } from './inbox';
 export type { ProjectChoice } from './actions';
 export { mountTodayActions } from './mount';
 export { resetTodayForWorkspace, todayUi } from './state';
-export type { ImportReceipt, TodayActions, TodayRenderOptions, TodayState } from './types';
+export type {
+  ImportReceipt,
+  InboxItem,
+  InboxTarget,
+  TodayActions,
+  TodayRenderOptions,
+  TodayState,
+} from './types';
 export type { TodayDeps } from './deps';
 
 export { plusMinutesInput, tsToDatetimeLocal } from './time';

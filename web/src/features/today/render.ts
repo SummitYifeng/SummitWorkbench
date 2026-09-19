@@ -1,7 +1,42 @@
 import { briefCardHtml, emptyBriefCardHtml } from '../../brief-card';
 import { esc } from '../../md';
 import { projectDisplayName } from '../projects';
-import type { ImportReceipt, TodayRenderOptions } from './types';
+import type { ImportReceipt, InboxItem, TodayRenderOptions } from './types';
+
+/**
+ * 收件箱块（契约 §10）：待处理条目 + 每条一个「提升为…」按钮。
+ *
+ * **只读渲染**：这里绝不发请求、更不调模型——条目由 `refreshState()` 通过
+ * `GET /api/inbox` 一次性取回后传进来（成本约定：列表渲染不花钱）。
+ * 空收件箱只留一句轻提示，不占大块版面。
+ */
+function inboxBlock(items: InboxItem[], error?: string | null): string {
+  const head = '<div class="today-inbox-head"><span class="bf-sec-title">收件箱（' +
+    items.length + ' 条）</span><span class="hint">提升后移出收件箱；系统先建议、你逐条确认</span></div>';
+  if (error) {
+    return '<section class="today-inbox today-inbox-error" id="today-inbox">' + head +
+      '<p class="hint">收件箱读取失败：' + esc(error) + '</p></section>';
+  }
+  if (!items.length) {
+    return '<section class="today-inbox today-inbox-empty" id="today-inbox">' + head +
+      '<p class="hint">收件箱是空的——「记点什么」会先落到这里，再决定提升成什么。</p></section>';
+  }
+  const rows = items.map((item) => {
+    const meta: string[] = [];
+    if (item.project) meta.push('#' + esc(item.project));
+    if (item.due) meta.push('截止 ' + esc(item.due));
+    if (item.kind) meta.push(item.kind === 'task' ? '承诺' : '想法');
+    return '<li class="today-inbox-item">' +
+      '<div class="today-inbox-text">' + esc(item.text) + '</div>' +
+      '<div class="today-inbox-side">' +
+      (meta.length ? '<span class="hint">' + meta.join(' · ') + '</span>' : '') +
+      '<button class="ghost" type="button" data-action="inbox-promote" data-id="' + esc(item.id) +
+      '" title="把这条提升为项目页条目 / 飞书待办 / 工作思考">提升为…</button>' +
+      '</div></li>';
+  }).join('');
+  return '<section class="today-inbox" id="today-inbox">' + head +
+    '<ul class="today-inbox-list">' + rows + '</ul></section>';
+}
 
 function importDrawer(open: boolean, importing: boolean, results: ImportReceipt[] = []): string {
   const panel = importing
@@ -67,6 +102,7 @@ export function todayHtml(options: TodayRenderOptions, captureValue: string): st
     importDrawer(options.importOpen, options.importing, options.importResults) + '</div>';
   return '<section class="brief brief2 brief-today">' + header +
     '<div class="today-tools">' + capture + importTool + '</div>' +
+    inboxBlock(options.inboxItems ?? [], options.inboxError) +
     readStatus + briefNotice + '<div class="brief-body">' + briefBody + '</div>' +
     '</section>';
 }
