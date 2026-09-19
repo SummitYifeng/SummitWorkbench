@@ -25,15 +25,15 @@ from uuid import uuid4
 import yaml
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.knowledge_normalization import (
+    format_normalization_error,
+    normalize_generated_body,
+)
 from summit_workbench.domain.threaddoc import ArtifactKind, LogTag
 from summit_workbench.domain.time import business_date
 from summit_workbench.domain.vault import iter_headings
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import load_note
-from summit_workbench.workflows.knowledge_normalization import (
-    format_normalization_error,
-    normalize_generated_body,
-)
 
 if TYPE_CHECKING:
     from summit_workbench.workflows.thread_activity_migration import ThreadActivityMigration

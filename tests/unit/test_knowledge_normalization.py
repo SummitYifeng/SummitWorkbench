@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
+from summit_workbench.domain.knowledge_normalization import (
+    format_normalization_error as domain_format_normalization_error,
+)
+from summit_workbench.domain.knowledge_normalization import (
+    normalize_generated_body as domain_normalize_generated_body,
+)
 from summit_workbench.domain.retrieval_contract import validate_retrieval_readiness
 from summit_workbench.domain.vault import iter_headings
 from summit_workbench.workflows.knowledge_normalization import (
@@ -130,3 +139,45 @@ def test_normalized_thread_doc_is_retrieval_ready() -> None:
     )
     meta = {"date": "2026-09-14", "type": "thread-doc", "status": "generated", "project": "P1"}
     assert validate_retrieval_readiness(meta, out.body) == []
+
+
+def test_workflow_compatibility_module_reexports_domain_implementation() -> None:
+    assert normalize_generated_body is domain_normalize_generated_body
+    assert format_normalization_error is domain_format_normalization_error
+
+    kwargs = {
+        "note_type": "thread-doc",
+        "title": "固定样例",
+        "text": "# 重复标题\n\n## 结论\n\n保留原文。",
+        "project_links": ["p1"],
+    }
+    assert normalize_generated_body(**kwargs) == domain_normalize_generated_body(**kwargs)
+
+
+def test_repositories_do_not_runtime_import_workflows() -> None:
+    root = Path(__file__).parents[2] / "src" / "summit_workbench" / "repositories"
+    violations: list[str] = []
+
+    def visit(node: ast.AST, *, in_type_checking: bool = False) -> None:
+        if isinstance(node, ast.If):
+            is_type_checking = isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"
+            for child in node.body:
+                visit(child, in_type_checking=in_type_checking or is_type_checking)
+            for child in node.orelse:
+                visit(child, in_type_checking=in_type_checking)
+            return
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and not in_type_checking:
+            modules = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+            )
+            if any(module.startswith("summit_workbench.workflows") for module in modules):
+                violations.append(f"{node.lineno}: {modules}")
+        for child in ast.iter_child_nodes(node):
+            visit(child, in_type_checking=in_type_checking)
+
+    for path in sorted(root.glob("*.py")):
+        visit(ast.parse(path.read_text(encoding="utf-8")))
+
+    assert violations == []
