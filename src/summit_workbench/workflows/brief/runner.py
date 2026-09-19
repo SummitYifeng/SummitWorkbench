@@ -119,6 +119,9 @@ class BriefRun:
     result: BriefResult
     feishu_unavailable: str | None
     feishu_needs_reauthorize: bool = False
+    # 需要提交到 vault 的已持久化路径。**只含 vault 内文件**：简报正文自 2026-09-19 起
+    # 落在本机程序目录（不在 vault），不属于可提交内容；快照/用量/授权状态都在
+    # vault 的 ``_signals/``（机器状态，已 gitignore）。消费者按此语义使用。
     persisted_paths: tuple[Path, ...] = ()
 
 
@@ -132,6 +135,7 @@ def run_brief(
     notify: bool,
     config_file: Path | None = None,
     workspace_id: str | None = None,
+    home: Path | None = None,
 ) -> BriefRun:
     """装配默认输入并生成简报；记录排序模型用量与飞书授权健康度。"""
     # P0-06：Feishu refresh 的锁根来自单一解析入口（默认形态 = vault 容器 = work_root）。
@@ -154,12 +158,12 @@ def run_brief(
         pending_review_count=pending_review_count(vault_dir, config_file=config_file),
         write=write,
         notify=notify,
+        workspace_id=workspace_id,
+        home=home,
     )
     persisted_paths: list[Path] = []
     if result.snapshot_path is not None:
         persisted_paths.append(result.snapshot_path)
-    if result.note_path is not None:
-        persisted_paths.append(result.note_path)
     if result.ranking.usage is not None:
         usage_path = append_usage(vault_dir, result.ranking.usage)
         persisted_paths.append(usage_path)

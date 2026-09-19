@@ -34,8 +34,13 @@ def generate_weekly(
     today: date,
     pending_review_count: int = 0,
     write: bool = True,
+    workspace_id: str | None = None,
+    home: Path | None = None,
 ) -> WeeklyResult:
-    """为 ``today`` 所在周的**上一周**生成复盘（L27：周一 07:30 复盘上周）。"""
+    """为 ``today`` 所在周的**上一周**生成复盘（L27：周一 07:30 复盘上周）。
+
+    周复盘正文落在本机程序目录（``profile_dir(workspace_id)/weekly/``，不在 vault 内）。
+    """
     start, end = previous_week_bounds(today)
     start_iso, end_iso = start.isoformat(), end.isoformat()
     week = iso_week(start)
@@ -50,5 +55,11 @@ def generate_weekly(
     review = build_review(week, start_iso, end_iso, signals)
     markdown = render_weekly(review)
 
-    note_path = write_weekly(vault_dir, week, start_iso, end_iso, markdown) if write else None
+    note_path = (
+        write_weekly(
+            vault_dir, week, start_iso, end_iso, markdown, workspace_id=workspace_id, home=home
+        )
+        if write
+        else None
+    )
     return WeeklyResult(review=review, markdown=markdown, note_path=note_path)

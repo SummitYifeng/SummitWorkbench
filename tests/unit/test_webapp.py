@@ -137,8 +137,10 @@ def test_run_weekly_creates_note(tmp_path: Path, monkeypatch) -> None:
     client, vault = _client(tmp_path)
     resp = client.post("/run/weekly", follow_redirects=False)
     assert resp.status_code == 303
-    weekly_dir = vault / "reviews" / "weekly"
-    assert weekly_dir.is_dir() and any(weekly_dir.glob("*.md"))
+    # 周复盘不在知识库内（2026-09-19 起）：落本机程序目录，vault 里不再有 reviews/。
+    assert not (vault / "reviews").exists()
+    profiles = Path.home() / "Library" / "Application Support" / "SummitWorkbench" / "profiles"
+    assert any(profiles.glob("*/weekly/*.md"))
 
 
 def test_md_to_html_renders_subset() -> None:

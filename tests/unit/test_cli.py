@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -110,7 +111,8 @@ def test_brief_registered_help() -> None:
     assert "--commit" in text
 
 
-def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
+def test_brief_commit_is_explicit_noop_outside_vault(monkeypatch, tmp_path) -> None:
+    """简报已不在知识库内：--commit/--push 保留参数但显式无操作，库内不产生提交。"""
     import subprocess
 
     work = tmp_path / "work"
@@ -123,11 +125,19 @@ def test_brief_commit_publishes_to_vault_git(monkeypatch, tmp_path) -> None:
     result = runner.invoke(app, ["brief", "--date", "2026-09-01", "--commit", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
-    assert payload["publish"] == "committed"  # 无 upstream 下仅提交
-    log = subprocess.run(
-        ["git", "-C", str(vault), "log", "--oneline"], capture_output=True, text=True
+    assert payload["publish"] == "skipped(not-in-vault)"
+    # 简报写在本机程序目录（不是库内 daily/），库内没有任何新文件。
+    note_path = Path(str(payload["note_path"]))
+    assert note_path.is_file()
+    assert vault not in note_path.parents
+    assert not (vault / "daily").exists()
+    status = subprocess.run(
+        ["git", "-C", str(vault), "status", "--porcelain"], capture_output=True, text=True
     ).stdout
-    assert "晨间简报 2026-09-01" in log
+    # 唯一允许出现的库内新路径是 _signals/（机器状态；真实库由 .gitignore 忽略）。
+    dirty = [line for line in status.splitlines() if not line.endswith("_signals/")]
+    assert dirty == []
+    assert "daily" not in status
 
 
 def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
@@ -139,7 +149,11 @@ def test_weekly_registered_and_json(monkeypatch, tmp_path) -> None:
     payload = json.loads(result.stdout)
     assert payload["week"] == "2026-W35"  # 2026-09-01 的上一周
     assert payload["range"] == "2026-08-24~2026-08-30"
-    assert (tmp_path / "work" / "_vault" / "reviews" / "weekly" / "2026-W35.md").is_file()
+    # 周复盘不在知识库内（本机程序目录），库内不出现 reviews/weekly/。
+    note_path = Path(str(payload["note_path"]))
+    assert note_path.is_file()
+    assert note_path.name == "2026-W35.md"
+    assert not (tmp_path / "work" / "_vault" / "reviews").exists()
 
 
 def test_help_omits_retired_local_search_commands() -> None:

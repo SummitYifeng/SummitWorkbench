@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   周复盘定时（M2-10 / L27）。**模板**，占位符同 brief plist，由 install-launchd.sh 填充。
-  每周一 07:30（本机时区）复盘上一自然周，并在 08:00 晨间简报前提交到 vault。
+  每周一 07:30（本机时区）复盘上一自然周。周复盘**不在知识库内**（2026-09-19 起写在本机
+  程序目录），没有库内产物需要提交/推送，因此不再传 --commit/--push。
   主机休眠错过时，launchd 在下次唤醒补跑一次。
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -14,8 +15,6 @@
     <array>
         <string>__WB_BIN__</string>
         <string>weekly</string>
-        <string>--commit</string>
-        <string>--push</string>
     </array>
 
     <key>EnvironmentVariables</key>

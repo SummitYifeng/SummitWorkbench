@@ -25,7 +25,12 @@ from summit_workbench.domain.review import (
     RouteTarget,
 )
 from summit_workbench.repositories._jsonl import CorruptLogLine
-from summit_workbench.repositories.daily_note import BRIEF_END, BRIEF_START, write_brief
+from summit_workbench.repositories.daily_note import (
+    BRIEF_END,
+    BRIEF_START,
+    daily_note_path,
+    write_brief,
+)
 from summit_workbench.repositories.review_audit import (
     ExecutionRecord,
     append_execution,
@@ -348,8 +353,9 @@ def test_t5_brief_and_task_completion_files_intact(tmp_path: Path) -> None:
     t1 = threading.Thread(target=brief_writer)
     t2 = threading.Thread(target=completer)
     _run_threads([(t1, errors), (t2, errors)])
-    # 当日笔记：锚点区块完整（BRIEF:START/END 各出现一次 = 无交错半截）
-    note_text = (vault / "daily" / f"{day}.md").read_text(encoding="utf-8")
+    # 当日简报：锚点区块完整（BRIEF:START/END 各出现一次 = 无交错半截）；
+    # 简报自 2026-09-19 起写在本机程序目录（不在 vault 内）。
+    note_text = daily_note_path(vault, day).read_text(encoding="utf-8")
     assert note_text.count(BRIEF_START) == 1
     assert note_text.count(BRIEF_END) == 1
     assert "---" in note_text  # frontmatter 完整

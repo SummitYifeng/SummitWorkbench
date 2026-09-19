@@ -59,7 +59,7 @@ def register_state_routes(
             and claim.device_id != ctx.active_workspace.device_id
         )
         sync_state = runtime.snapshot().state.value
-        brief_md = read_brief_block(ctx.vault_dir, day)
+        brief_md = read_brief_block(ctx.vault_dir, day, workspace_id=ctx.workspace_id)
         inbox_path = ctx.vault_dir / "inbox.md"
         inbox_pending = (
             count_inbox_pending(inbox_path.read_text(encoding="utf-8"))

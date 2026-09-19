@@ -298,6 +298,7 @@ def _run_automation_job_unlocked(
                 notify=True,
                 config_file=context.config_file,
                 workspace_id=context.workspace_id,
+                home=context.home,
             )
             brief_result = run.result
             degraded = bool(run.feishu_unavailable) or brief_result.ranking.degraded
@@ -309,6 +310,8 @@ def _run_automation_job_unlocked(
                 day=day,
                 detail=run.feishu_unavailable,
             )
+            # 简报正文已不在 vault 内（落本机程序目录），可提交的只剩 _signals/ 机器状态；
+            # persisted_paths 本身只含 vault 内路径（见 BriefRun 注释）。
             commit_paths = list(run.persisted_paths)
             if heartbeat_path is not None:
                 commit_paths.append(heartbeat_path)
@@ -330,13 +333,14 @@ def _run_automation_job_unlocked(
                 today=local_now.date(),
                 pending_review_count=0,
                 write=True,
+                workspace_id=context.workspace_id,
+                home=context.home,
             )
             heartbeat_path = record_run_safely(
                 context.paths.vault_dir, job="weekly", status=RunStatus.SUCCESS, day=day
             )
-            weekly_paths = [weekly_result.note_path] if weekly_result.note_path else []
-            if heartbeat_path is not None:
-                weekly_paths.append(heartbeat_path)
+            # 周复盘正文已不在 vault 内：只有心跳（_signals/，已 gitignore）走发布。
+            weekly_paths = [heartbeat_path] if heartbeat_path else []
             published, publish_detail = _publish_generated(
                 context,
                 weekly_paths,

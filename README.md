@@ -45,7 +45,7 @@ Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文
 > 改动后必须重建前端产物并重启面板服务才生效（见
 > [WEB_WORKBENCH §8](docs/product/WEB_WORKBENCH.md) 与 [DESKTOP_APP](docs/DESKTOP_APP.md)）。
 
-每天 08:00 前，`wb brief`（由 launchd 定时触发）把 Obsidian 当日笔记写成晨间指挥台：显示会议、最近完成、项目状态和最多 5 个建议行动。每周一 `wb weekly` 生成跨项目复盘，帮助重新分配注意力。
+每天 08:00 前，`wb brief`（由 launchd 定时触发）把 Obsidian 的**晨间指挥台**写在本机程序目录（不在知识库内）：显示会议、最近完成、项目状态和最多 5 个建议行动。每周一 `wb weekly` 生成跨项目复盘，帮助重新分配注意力。
 
 ## 文档优先级
 
@@ -140,8 +140,8 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 - `wb project new | list`：在第二大脑侧为新项目建档（不碰 GitHub 仓库）并查看已建项目及别名。
 - `wb review refresh | apply`：幂等刷新集中审批页；`apply` 默认零写入预演，只有显式 `--apply` 才执行本地/飞书写回并归档审计；写回前把项目别名解析为规范 ID，未匹配项目的候选零摩擦落入全局 inbox。
 - `wb web [--host --port] [--open]`：启动本地 **Web 工作台**（SPA，Vite + 原生 TS 构建，产物随包分发）。CLI 默认使用 `127.0.0.1:8787`；桌面 App 使用自包含 bundle 管理动态 loopback 端口。工作台包含 **今日**、**审批**、**项目**、**设置** 四个页签；交互走 `/api/*` JSON 端点。（2026-09-16 起下线「第二大脑」与「指南」两个页签：语义问答归 SummitKnowledge，使用说明在 `docs/` 里——App 只留看板与源数据处理，越简洁用得越勤。）
-- `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入 `_vault/daily/YYYY-MM-DD.md`（锚点区块只替换不重复）；排序失败走确定性回退并在首行标注降级。网页端一键生成会显式提交本次生成的简报、快照、用量和授权状态文件，不会使用 `add -A` 带入用户其他改动。
-- `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入 `reviews/weekly/YYYY-Www.md`。
+- `wb brief [--date --dry-run --commit --push --json]`：生成今日晨间简报，幂等写入**本机程序目录** `~/Library/Application Support/SummitWorkbench/profiles/<workspace_id>/briefs/YYYY-MM-DD.md`（锚点区块只替换不重复；**不在知识库内**）；排序失败走确定性回退并在首行标注降级。`--commit` / `--push` 是显式无操作（库内已无简报文件可提交）；网页端一键生成只提交快照/用量/授权状态等 `_signals/` 机器状态（已 gitignore），不会使用 `add -A` 带入用户其他改动。
+- `wb weekly [--date --dry-run --commit --push --json]`：从 git 提交 + 会议决策 + inbox + 停滞项目重新汇总上周复盘，幂等写入**本机程序目录** `…/profiles/<workspace_id>/weekly/YYYY-Www.md`（**不在知识库内**）；`--commit` / `--push` 同样是显式无操作。
 - `wb status [--json --notify]`：汇总会议处理进度、当月 token 与估算费用、软预算、待确认积压、定时任务健康度与飞书授权健康度；`--notify` 按去重规则把新通知真正发到 macOS 通知中心（供 launchd 定时调用，积压/费用/任务失败会主动提醒你）。
 - `wb model smoke`：云端会议模型结构化冒烟，含 token 与费用记账。
 - `wb sync`：以 git remote 为唯一真源，非破坏性批量同步 `~/Documents/Work/` 下各仓库与 vault。

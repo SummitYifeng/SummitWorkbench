@@ -11,6 +11,7 @@ marker 绝不包含 device id、本机绝对路径或秘密（ADR 0029）。
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -46,6 +47,24 @@ def load_workspace_manifest(vault_dir: Path) -> WorkspaceManifest | None:
         return WorkspaceManifest.model_validate(raw)
     except (ValueError, ValidationError) as exc:
         raise WorkspaceManifestError(f"workspace marker 损坏：{path}") from exc
+
+
+def workspace_id_for_vault(vault_dir: Path) -> str:
+    """从 vault 派生不含秘密的工作区标识（本机 profile 目录的键）。
+
+    优先读 vault 内 marker 的 ``workspace_id``（随 Git 同步，跨设备稳定）；无 marker 的
+    旧 vault 沿用规范化 vault 容器路径的不可逆短摘要作为兼容标识。这是
+    ``workflows/external_actions.py`` 的同一实现下移——``repositories`` 层也需要它，
+    放在这里避免反向依赖 workflow。
+    """
+    try:
+        manifest = load_workspace_manifest(vault_dir)
+    except WorkspaceManifestError:
+        manifest = None
+    if manifest is not None:
+        return manifest.workspace_id
+    root = vault_dir.expanduser().resolve().parent
+    return "legacy-" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:24]
 
 
 def write_workspace_manifest(vault_dir: Path, manifest: WorkspaceManifest) -> Path:

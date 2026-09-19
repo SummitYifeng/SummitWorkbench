@@ -10,7 +10,9 @@
     ├── device.json                       # 本机 device_id（atomic, 0600）
     ├── profiles/<workspace_id>/
     │   ├── config.toml                   # 本机路径与非秘密配置（atomic, 0600）
-    │   └── runtime/                      # 端口/实例/会话等短期状态（P0-12 用）
+    │   ├── runtime/                      # 端口/实例/会话等短期状态（P0-12 用）
+    │   ├── briefs/                       # 晨间简报 YYYY-MM-DD.md（不在 vault 内）
+    │   └── weekly/                       # 每周复盘 YYYY-Www.md（不在 vault 内）
     └── backups/                          # 配置/迁移/升级前快照（P0-08 起，不同步）
 
     <home>/Library/Logs/SummitWorkbench/  # 本机滚动日志
@@ -73,6 +75,16 @@ def profile_config_file(workspace_id: str, home: Path | None = None) -> Path:
 def runtime_dir(workspace_id: str, home: Path | None = None) -> Path:
     """某 workspace 的短期运行时状态目录（端口/实例/会话，P0-12 用）。"""
     return profile_dir(workspace_id, home) / "runtime"
+
+
+def briefs_dir(workspace_id: str, home: Path | None = None) -> Path:
+    """某 workspace 的晨间简报落点（本机、不进 vault；2026-09-19 从 ``daily/`` 迁出）。"""
+    return profile_dir(workspace_id, home) / "briefs"
+
+
+def weekly_dir(workspace_id: str, home: Path | None = None) -> Path:
+    """某 workspace 的每周复盘落点（本机、不进 vault；2026-09-19 从 ``reviews/weekly/`` 迁出）。"""
+    return profile_dir(workspace_id, home) / "weekly"
 
 
 def meeting_import_jobs_file(workspace_id: str, home: Path | None = None) -> Path:

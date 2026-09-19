@@ -223,4 +223,7 @@ def test_run_brief_reports_written_note_and_snapshot_paths(tmp_path: Path, monke
         write=True,
         notify=False,
     )
-    assert run.persisted_paths == (run.result.snapshot_path, run.result.note_path)
+    assert run.result.note_path is not None and run.result.note_path.is_file()
+    # 简报正文不在 vault 内 → 不属于可提交路径；persisted_paths 只含库内（_signals/）文件。
+    assert run.persisted_paths == (run.result.snapshot_path,)
+    assert run.result.note_path not in run.persisted_paths

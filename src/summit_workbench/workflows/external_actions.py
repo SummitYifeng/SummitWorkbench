@@ -118,20 +118,15 @@ def workspace_id_for_vault(vault_dir: Path) -> str:
     P0-07 起优先读 vault 内 workspace marker（``.summit-workbench/workspace.json``，
     随 Git 同步，跨设备稳定）；无 marker 的旧 vault 沿用规范化 vault 容器路径的
     不可逆短摘要作为兼容标识。路径本身不写入 outbox，不同 vault 不会复用候选动作。
+
+    实现下移到了 ``repositories/workspace_manifest.py``（repositories 层也要用同一实现）；
+    这里保留同名再导出，既有调用方与测试不受影响。
     """
     from summit_workbench.repositories.workspace_manifest import (
-        WorkspaceManifestError,
-        load_workspace_manifest,
+        workspace_id_for_vault as _workspace_id_for_vault,
     )
 
-    try:
-        manifest = load_workspace_manifest(vault_dir)
-    except WorkspaceManifestError:
-        manifest = None
-    if manifest is not None:
-        return manifest.workspace_id
-    root = vault_dir.expanduser().resolve().parent
-    return "legacy-" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:24]
+    return _workspace_id_for_vault(vault_dir)
 
 
 def request_fingerprint(

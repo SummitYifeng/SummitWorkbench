@@ -60,7 +60,17 @@ def publish_brief(
     if not repo.is_git_repo():
         return PublishResult(PublishStatus.NOT_GIT, f"{vault_dir} 不是 git 仓库")
 
-    rel = [str(p.relative_to(vault_dir)) if p.is_absolute() else str(p) for p in paths]
+    # 简报/周报正文自 2026-09-19 起落在本机程序目录（不在 vault 内），不属于可提交内容。
+    # 只接受 vault 内路径，越界路径直接忽略（否则 ``relative_to`` 会抛 ValueError）。
+    rel: list[str] = []
+    for p in paths:
+        try:
+            rel.append(str(p.relative_to(vault_dir)) if p.is_absolute() else str(p))
+        except ValueError:
+            continue
+    if not rel:
+        return PublishResult(PublishStatus.NOTHING_TO_COMMIT, "没有可提交的库内文件")
+
     try:
         with workspace_lock(vault_dir.parent):
             try:

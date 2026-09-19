@@ -74,6 +74,7 @@ def register_brief_routes(dependencies: RouteDependencies, *, runtime: MutationR
                 ctx.vault_dir,
                 today=date.fromisoformat(ctx.today()),
                 write=True,
+                workspace_id=ctx.workspace_id,
             )
             return {"ok": True, "message": f"已生成周复盘 {result.review.week}"}
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
@@ -105,6 +106,8 @@ def register_brief_page_routes(
                 day=ctx.today(),
                 write=True,
                 notify=False,
+                config_file=ctx.provider_config_file(),
+                workspace_id=ctx.workspace_id,
             )
             msg = f"已生成今日简报（健康度 {run.result.brief.health.level}）"
         except Exception as exc:  # noqa: BLE001 - 面板需把失败可见化
@@ -127,6 +130,7 @@ def register_brief_page_routes(
                 ctx.vault_dir,
                 today=date.fromisoformat(ctx.today()),
                 write=True,
+                workspace_id=ctx.workspace_id,
             )
             msg = f"已生成周复盘 {result.review.week}"
         except Exception as exc:  # noqa: BLE001

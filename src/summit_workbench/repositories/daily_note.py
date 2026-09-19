@@ -1,31 +1,49 @@
-"""每日笔记（晨间指挥台）写入（M2-6）：``_vault/daily/YYYY-MM-DD.md``。
+"""晨间简报（晨间指挥台）写入：``profile_dir(workspace_id)/briefs/YYYY-MM-DD.md``。
 
-**幂等**：简报正文写在一对锚点之间（``BRIEF:START`` / ``BRIEF:END``）。同一天重跑只替换锚点区块，
-不重复追加，也不动用户在锚点之外手写的内容。文件不存在时按统一 frontmatter 新建
+**不在 vault 内**（2026-09-19 起，契约 §1/§3 明说简报不在库内）：由工作台写在本机
+程序目录，随 Git 同步的是"知识内容"而不是每日机器产物。落点统一由
+:mod:`summit_workbench.config.app_support` 的 ``briefs_dir`` 派生。
+
+**幂等**：简报正文写在一对锚点之间（``BRIEF:START`` / ``BRIEF:END``）。同一天重跑只替换锚点
+区块，不重复追加，也不动用户在锚点之外手写的内容。文件不存在时按统一 frontmatter 新建
 （``type: daily`` / ``project: global``，PRD 3.1.5）。
+
+``workspace_id`` 省略时按 vault marker 派生（``workspace_id_for_vault``）——这与 CLI 的
+``resolve_active_workspace()``、Web 的 ``WebContext.workspace_id`` 是同一个 workspace 身份；
+三者都指向 ``profile_dir(<同一 id>)``，不会读写分裂。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from summit_workbench.config.app_support import briefs_dir
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.repositories.workspace_manifest import workspace_id_for_vault
 
 BRIEF_START = "<!-- BRIEF:START 由 wb brief 生成，勿手改此区块 -->"
 BRIEF_END = "<!-- BRIEF:END -->"
 
 
-def daily_note_path(vault_dir: Path, day: str) -> Path:
-    return vault_dir / "daily" / f"{day}.md"
+def brief_workspace_key(vault_dir: Path, workspace_id: str | None) -> str:
+    """本机简报落点的 workspace 键：显式 workspace_id 优先，缺失时由 vault marker 派生。"""
+    return workspace_id or workspace_id_for_vault(vault_dir)
+
+
+def daily_note_path(
+    vault_dir: Path,
+    day: str,
+    *,
+    workspace_id: str | None = None,
+    home: Path | None = None,
+) -> Path:
+    return briefs_dir(brief_workspace_key(vault_dir, workspace_id), home) / f"{day}.md"
 
 
 def _frontmatter(day: str) -> str:
-    # `area: work` 是工作库的既有约定（16 个模板全都带它）。SK 侧的综合类问题按 `area`
-    # 过滤「笔记总览」，缺这一行会让当日简报从总览清单里静默消失（2026-09-15 实测：
-    # 全库 62 篇里只有当日简报与推进日志两篇没有 area，因而看不见）。
-    # `title` 同理：库规范 §5 要求中文标题进 frontmatter；缺它时 SK 回退成文件名
-    # （`2026-09-14`），总览里只剩日期。这里与简报渲染的 H1「# 晨间简报 <日期>」一致。
+    # `area: work` 是工作库的既有约定（16 个模板全都带它）。简报虽不在库内，但正文格式
+    # 与字段保持不变（契约要求：落点变，内容不变）。`title` 与渲染的 H1 一致。
     return (
         f"---\ndate: {day}\narea: work\ntitle: 晨间简报 {day}\n"
         f"type: daily\nstatus: active\nproject: global\nupdated: {day}\n---\n"
@@ -36,9 +54,15 @@ def _brief_block(brief_markdown: str) -> str:
     return f"{BRIEF_START}\n{brief_markdown.rstrip()}\n{BRIEF_END}\n"
 
 
-def read_brief_block(vault_dir: Path, day: str) -> str | None:
-    """读回当日笔记锚点区块内的简报正文；文件或区块不存在时返回 None。"""
-    path = daily_note_path(vault_dir, day)
+def read_brief_block(
+    vault_dir: Path,
+    day: str,
+    *,
+    workspace_id: str | None = None,
+    home: Path | None = None,
+) -> str | None:
+    """读回当日简报锚点区块内的正文；文件或区块不存在时返回 None。"""
+    path = daily_note_path(vault_dir, day, workspace_id=workspace_id, home=home)
     if not path.is_file():
         return None
     text = path.read_text(encoding="utf-8")
@@ -50,14 +74,21 @@ def read_brief_block(vault_dir: Path, day: str) -> str | None:
     return inner.strip() or None
 
 
-def write_brief(vault_dir: Path, day: str, brief_markdown: str) -> Path:
-    """把简报正文幂等写入当日笔记的锚点区块，返回文件路径。
+def write_brief(
+    vault_dir: Path,
+    day: str,
+    brief_markdown: str,
+    *,
+    workspace_id: str | None = None,
+    home: Path | None = None,
+) -> Path:
+    """把简报正文幂等写入当日简报的锚点区块，返回文件路径。
 
-    当日笔记可能含用户锚点外手写内容：整体 read -> 锚点替换 -> 原子落盘 放在
+    当日简报可能含用户锚点外手写内容：整体 read -> 锚点替换 -> 原子落盘 放在
     工作区锁内（launchd brief 与面板「生成简报」经同一把 .wb.lock 互斥），并
     全程用原子写，断电/被 kill 不留半截文件（P0-1 / P0-2）。
     """
-    path = daily_note_path(vault_dir, day)
+    path = daily_note_path(vault_dir, day, workspace_id=workspace_id, home=home)
     block = _brief_block(brief_markdown)
 
     with workspace_lock(vault_dir.parent):

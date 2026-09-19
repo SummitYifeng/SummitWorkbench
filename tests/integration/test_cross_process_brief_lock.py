@@ -14,7 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from summit_workbench.repositories.daily_note import BRIEF_END, BRIEF_START
+from summit_workbench.repositories.daily_note import BRIEF_END, BRIEF_START, daily_note_path
 
 _SRC = str(Path(__file__).resolve().parents[2] / "src")
 
@@ -47,8 +47,9 @@ def test_two_processes_write_brief_and_snapshot_without_interleaving(tmp_path: P
         _stdout, stderr = proc.communicate(timeout=90)
         assert proc.returncode == 0, stderr.decode("utf-8", errors="replace")
 
-    # 当日笔记：锚点只出现一对（任一写者的完整区块，无交错半截）
-    note = vault / "daily" / f"{day}.md"
+    # 当日简报：锚点只出现一对（任一写者的完整区块，无交错半截）。
+    # 简报写在本机程序目录（不在 vault 内）；两个子进程继承同一 HOME，落点一致。
+    note = daily_note_path(vault, day)
     text = note.read_text(encoding="utf-8")
     assert text.count(BRIEF_START) == 1
     assert text.count(BRIEF_END) == 1

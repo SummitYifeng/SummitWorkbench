@@ -44,7 +44,7 @@ def install_app_shell(app: FastAPI, ctx: WebContext, spa_dir: Path) -> AppShell:
     def _dashboard(msg: str | None = None) -> HTMLResponse:
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
-        brief_md = read_brief_block(ctx.vault_dir, day)
+        brief_md = read_brief_block(ctx.vault_dir, day, workspace_id=ctx.workspace_id)
         return HTMLResponse(render_dashboard(status, day, brief_md, message=msg))
 
     # ---- 首页：SPA（已构建）或 SSR 回退 ----

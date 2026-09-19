@@ -93,8 +93,14 @@ def generate_brief(
     notify: bool = False,
     notifier: Notifier = send_notification,
     now: datetime | None = None,
+    workspace_id: str | None = None,
+    home: Path | None = None,
 ) -> BriefResult:
-    """生成简报并（默认）幂等写入快照与当日笔记；``write=False`` 为 dry-run。"""
+    """生成简报并（默认）幂等写入快照与当日简报；``write=False`` 为 dry-run。
+
+    简报正文落在本机程序目录（``profile_dir(workspace_id)/briefs/``，不在 vault 内）；
+    信号快照仍写 vault 的 ``_signals/``（机器状态，已被 gitignore）。
+    """
     brief, ranking = assemble_brief(
         work_root,
         vault_dir,
@@ -110,7 +116,7 @@ def generate_brief(
     note_path: Path | None = None
     if write:
         snapshot_path = write_snapshot(vault_dir, day, brief.as_snapshot())
-        note_path = write_brief(vault_dir, day, markdown)
+        note_path = write_brief(vault_dir, day, markdown, workspace_id=workspace_id, home=home)
 
     notified = False
     if notify and not brief.health.ok:
