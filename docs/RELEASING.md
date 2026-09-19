@@ -40,7 +40,7 @@
 
 当前 v0.4.4 build 9 的本地内部包已经完成发布验证。它是 arm64、M2+、ad-hoc 的
 `INTERNAL-DEV` 包，不是 Developer ID/notarized 公网发行包。发布结论依据本地门禁和本机交互验收；
-远端 CI 质量门（`.github/workflows/ci.yml`）已在 `SummitYifeng/SummitWorkbench` 上全绿。
+日常远端质量门（`.github/workflows/ci.yml`）永久只接受 `workflow_dispatch` 手动触发；push 和 PR 不会自动运行。发布或合并前先运行 `scripts/pre-push-gate.sh`，需要远端复核时再使用 `gh workflow run ci.yml --ref main`。
 
 tag 触发的 `.github/workflows/release.yml` 曾在 `v0.4.3-rc.3`–`v0.4.3-rc.5` 上成功运行；随后账户
 用完免费 Actions 额度且没有有效支付方式，`v0.4.3` 与 `v0.4.4` 的 tag 运行被平台拒绝启动。仓库迁移到

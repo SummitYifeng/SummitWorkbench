@@ -1,13 +1,8 @@
 name: CI
 
-# 质量门（与本地 lint/format/type/test/build/secret/lock 检查一致）在每次推送 main 与 PR
-# 时自动跑，作为无人值守/定时任务上线后的回归护栏。
+# 质量门（与本地 lint/format/type/test/build/secret/lock 检查一致）仅在需要时手动触发，
+# 避免账单或额度异常时每次推送都产生一个没有 runner 的失败记录。
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  # 允许手动触发：无需空提交即可重跑 main 上的质量门。
   workflow_dispatch:
 
 # 最小权限：CI 只读取仓库内容（构建产物用运行时 token 上传）。

@@ -26,6 +26,9 @@ bash scripts/verify-workflows.sh
 step "action ref 预检（ref 是否真实存在）"
 bash scripts/check-action-refs.sh
 
+step "uv 锁文件"
+uv lock --check
+
 step "ruff lint"
 "$BIN/ruff" check .
 
@@ -49,6 +52,12 @@ else
   step "前端检查（已跳过）"
   echo "· WB_GATE_FAST=1 或未安装 web/node_modules"
 fi
+
+step "secret scan"
+"$BIN/python" scripts/secret_scan.py
+
+step "native update behavior tests"
+bash scripts/test-native-updates.sh
 
 step "git diff --check（空白错误）"
 git diff --check

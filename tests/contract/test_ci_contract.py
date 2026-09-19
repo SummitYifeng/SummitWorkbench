@@ -1,5 +1,6 @@
 """P1-06 CI、覆盖率与发布矩阵契约。"""
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +33,14 @@ def test_ci_has_reproducible_python_node_lock_and_secret_gates() -> None:
         "WB_PACKAGED_APP:",
     ):
         assert required in ci
+
+
+def test_daily_ci_is_manual_only() -> None:
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    trigger_block = ci.split("permissions:", 1)[0]
+
+    assert re.search(r"(?m)^\s+workflow_dispatch:\s*$", trigger_block)
+    assert not re.search(r"(?m)^\s+(?:push|pull_request):\s*$", trigger_block)
 
 
 def test_release_workflow_validates_tag_and_runs_packaged_integration() -> None:
@@ -94,12 +103,16 @@ def test_local_gate_script_mirrors_the_remote_quality_gate() -> None:
     for required in (
         "verify-workflows.sh",
         "check-action-refs.sh",
+        "uv lock --check",
         'ruff" check .',
         'ruff" format --check .',
         '"$BIN/mypy"',
         "-m pytest",
         "--cov-fail-under=80",
+        "tsc --noEmit",
         "test:frontend",
+        "scripts/secret_scan.py",
+        "scripts/test-native-updates.sh",
         "git diff --check",
     ):
         assert required in gate

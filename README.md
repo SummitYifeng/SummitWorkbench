@@ -140,9 +140,9 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 本机配置放 `~/.config/summit_workbench/config.toml`（模板见 [config.example.toml](config.example.toml)）；所有凭据只进 macOS Keychain，不进仓库。定时任务安装见 [deploy/launchd/README.md](deploy/launchd/README.md)，桌面 App 打包见 [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)。
 
-质量门：`uv run ruff check . && uv run ruff format --check . && uv run mypy && uv run pytest`；前端还需通过 route contract、`npm run test:frontend` 和生产构建。`v0.4.7` 的本地门禁已通过：**971 passed / 1 skipped、覆盖率 83.54%**，ruff、ruff format、mypy strict、`npm run build`（含 `verify-build.mjs` 与前端契约测试）、打包冒烟（`WB_PACKAGED_APP=…/SummitWorkbench.app`）全部通过，`scripts/release-macos.sh` 完整跑通并产出 build 34 DMG（内置飞书凭据）。远端 GitHub Actions 质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)，含 macOS arm64 构建矩阵与 packaged App smoke）在 `SummitYifeng/SummitWorkbench` 上全绿。
+质量门：`scripts/pre-push-gate.sh` 会在推送前执行 actionlint/ref、`uv lock --check`、ruff、mypy、pytest 覆盖率、前端 TypeScript/契约、secret scan、原生更新行为和空白检查；前端生产构建与打包 App 由发布门执行。远端日常质量门（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）永久只接受 `workflow_dispatch` 手动触发，push 和 PR 不会自动消耗 runner；需要时使用 `gh workflow run ci.yml --ref main`。
 
-建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在（防止引用不存在的 tag 直到 CI 才暴露）。
+建议运行 `scripts/install-git-hooks.sh` 安装 pre-push hook：`scripts/pre-push-gate.sh` 会执行与 CI 相同的本地质量检查，并在 push 前校验每个 `uses:` 的 action ref 是否真实存在。远端 CI 不会随 push/PR 自动运行，避免账单或额度异常时产生无意义的失败记录。
 
 尚未取得验证证据的项集中在 [`docs/acceptance/OPEN-VERIFICATION-ITEMS.md`](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)——那是该清单的单一真源，其他文档只链接过去。
 

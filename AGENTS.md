@@ -125,6 +125,10 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
    （`git_backend.py:207`），CLI 默认 system。改 git 语义时必须**两个后端都验**
    （已有跨后端参数化测试，保持它）。
 
+- **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
+  不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
+  `gh workflow run ci.yml --ref main`。release workflow 的 tag 触发策略不变。
+
 ## 提交纪律
 
 - 用 `type: 中文描述`（如 `fix: 同步门禁支持 SSH remote`）。**不要 push 本仓库**除非任务明确要求。
