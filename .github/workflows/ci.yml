@@ -130,6 +130,13 @@ jobs:
           ARCH: ${{ matrix.architecture }}
           BUILD_NUMBER: ${{ github.run_number }}
           OUTPUT_APP: dist/ci/${{ matrix.architecture }}/SummitWorkbench.app
+          # 本步只验证「打包链路 + packaged smoke」，产物不上传、不分发，故**不内置飞书默认凭据**：
+          # 凭据只存在于 release environment，而该 environment 的部署策略仅允许 `v*` 标签，
+          # main 上的手动 CI 取不到它（2026-09-19 之前这一步因此每次必红）。
+          # 脚本对「缺凭据的开发构建」要求**成对**给出下面两个开关（见 build-macos-app.sh:41），
+          # 缺一个会硬失败。内置真凭据的构建由 tag 发布（release.yml）与本机发布脚本覆盖。
+          REQUIRE_BUNDLED_FEISHU: "false"
+          ALLOW_INCOMPLETE_FEISHU_DEV: "true"
         run: scripts/build-macos-app.sh
 
       - name: Run packaged app smoke test

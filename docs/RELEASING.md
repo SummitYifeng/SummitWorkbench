@@ -236,6 +236,13 @@ scripts/release-macos.sh
 - 远端发布走 `.github/workflows/release.yml`：`WB_FEISHU_APP_ID` 取自仓库 **variable**
   `WB_FEISHU_APP_ID`（非秘密），`WB_FEISHU_APP_SECRET` 取自 **secret**
   `WB_FEISHU_APP_SECRET`（发布 environment 下），二者缺失会让构建步骤失败。
+- **CI 的 arm64 契约步故意不内置凭据**（`ci.yml` 的 `macos-build-matrix` 显式给
+  `REQUIRE_BUNDLED_FEISHU=false` + `ALLOW_INCOMPLETE_FEISHU_DEV=true`）：它只验证打包链路与
+  packaged smoke，产物**不上传、不分发**（守卫：`tests/contract/test_ci_contract.py` 里那条
+  「CI 不得上传该 job 的产物」）。原因是凭据只存在于 `release` environment，而它的部署策略
+  **只允许 `v*` 标签**，`main` 上的手动 CI 取不到——2026-09-19 账单恢复后第一次真跑就撞上，
+  该步此前每次必红（红线会淹没真失败）。**发出去的包必须有内置凭据，那条路径由本文件的
+  本机构建与 tag 发布覆盖。**
 - 密钥永不进版本库：`build/`、`dist/` 均在 `.gitignore` 中，仓库内不存在
   `feishu-defaults.json`；`scripts/secret_scan.py` 与 `verify-macos-release.sh` 的通用扫描
   覆盖其他所有包内文本文件，只有这一个文件被**显式**列为例外并改为结构化校验

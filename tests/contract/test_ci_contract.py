@@ -43,6 +43,29 @@ def test_daily_ci_is_manual_only() -> None:
     assert not re.search(r"(?m)^\s+(?:push|pull_request):\s*$", trigger_block)
 
 
+def test_arm64_ci_build_opts_out_of_credentials_and_cannot_distribute() -> None:
+    """CI 的 arm64 契约步必须显式 opt-in「无内置凭据构建」，且不得上传产物。
+
+    背景（2026-09-19）：`macOS arm64 contract` 一直红——该步默认要求内置飞书默认凭据，而凭据只在
+    `release` environment 里，且该 environment 的部署策略只允许 `v*` 标签，`main` 上的
+    `workflow_dispatch` 取不到（账单恢复后第一次真跑就暴露了）。修法是显式声明「无凭据开发构建」：
+    `build-macos-app.sh:41` 要求 `REQUIRE_BUNDLED_FEISHU=false` 与
+    `ALLOW_INCOMPLETE_FEISHU_DEV=true` **成对**给出，只给一个会硬失败。
+
+    这条守卫钉住两条不变量：
+    ① 两个开关都在（否则 CI 又变成必红，红线会淹没真失败）；
+    ② 该 job **不**上传产物 —— 于是"不含内置凭据的包"永远不会进入分发面；
+       内置真凭据的构建由 `release.yml`（tag 触发，release environment）与本机发布脚本覆盖。
+    """
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    # macos-build-matrix 是 ci.yml 的最后一个 job，取它之后的全部内容即可。
+    matrix_job = ci.split("macos-build-matrix:", 1)[1]
+    assert 'REQUIRE_BUNDLED_FEISHU: "false"' in matrix_job
+    assert 'ALLOW_INCOMPLETE_FEISHU_DEV: "true"' in matrix_job
+    assert "WB_FEISHU_APP_ID" not in matrix_job
+    assert "upload-artifact" not in matrix_job
+
+
 def test_release_workflow_validates_tag_and_runs_packaged_integration() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     for required in (
