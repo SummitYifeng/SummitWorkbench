@@ -234,15 +234,21 @@
   `kb-acceptance-installed-2026-09-14-build41.txt`、
   `kb-round-2026-09-14-verbatim-and-sources-read.txt`。
 - **DMG 文件名里没有 build 号**——认包请核 SHA-256，或看设置页的 build 号。
-- **2026-09-19 起 build 号改为 `yyyyMMddNN`**；本版最终交付 **build `2026091923`**
-  （`git_commit=0c9ff4f`、前端 `v2026.09.19-4a04d298`）已构建、安装到 `/Applications` 并通过打包
-  smoke；App SHA-256 `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`、
-  DMG SHA-256 `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c`。
+- **2026-09-19 起 build 号改为 `yyyyMMddNN`**；本版最终交付 **build `2026091925`**
+  （`git_commit=e62d3a3`、前端 `v2026.09.19-d1a8ace7`）已构建并通过 13 项发布检查
+  （`test-manifest.json` 状态 `passed`）；App SHA-256
+  `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`、
+  DMG SHA-256 `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`。
+  同提交上远端 CI 4/4 job 全绿（run `35444857578`）。
 - 本版内交付序列：`2d1cf3a` → `2026091917` · `a49bb42` → `2026091918` · `f710aca` → `2026091919` ·
   `7b7df74` → `2026091920` · `375ce98` → `2026091921` · `e1700e2` → `2026091922` ·
-  `0c9ff4f` → `2026091923`。
-- 该交付包之后 `main` 又落了一批**未打包**的代码简化重构（HEAD `c9b3fc5`）：本地门禁
-  `pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**。
+  `0c9ff4f` → `2026091923`（装机过）· `c9b3fc5` → `2026091924`（只进 dist，未装机、未入档）·
+  **`e62d3a3` → `2026091925`（本次交付）**。
+- **CI 的 `macOS arm64 contract` 之前每次必红**：账单停摆恢复后第一次真跑暴露——该步默认要求内置
+  飞书凭据，而凭据只在 `release` environment（部署策略仅允许 `v*` 标签），`main` 上的手动 CI 取不到。
+  修法：该步显式 opt-in 无凭据开发构建（两个开关成对）+ 守卫禁止该 job 上传产物；
+  详见 `docs/RELEASING.md` 与 `tests/contract/test_ci_contract.py`。
+- 本版末次全量门禁（`e62d3a3`）：`pytest -q` → **1396 passed / 1 skipped**、`--cov` → **84.54%**。
 
 ### 已知不足（未解决，透明记录）
 

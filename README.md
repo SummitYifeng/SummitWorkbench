@@ -2,16 +2,18 @@
 
 ## 2026-09-19 交付状态（本地 `main`）
 
-**已交付**：arm64 内部包 `0.4.9 / build 2026091923`，源码提交 **`0c9ff4f`**，本机
-`/Applications/SummitWorkbench.app` 已替换并 smoke 通过；前端身份 `v2026.09.19-4a04d298`。
-本版含两个用户可见修复：手工写进 `inbox.md` 的条目按正文 `#项目` 路由、写回项目页不再多出空行。
+**本次交付**：arm64 内部包 `0.4.9 / build **2026091925**`，源码提交 **`e62d3a3`**，前端身份
+`v2026.09.19-d1a8ace7`，包内已内置飞书默认凭据；13 项发布检查全过，DMG SHA-256
+`6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`。
+`main` 与 `origin/main` 同步，**远端 CI 在 `e62d3a3` 上 4/4 job 全绿**（run `35444857578`）。
 
-**当前 `main` 已领先交付包**：HEAD 为 **`c9b3fc5`**（`64e733b`…`c9b3fc5` 是一批**纯代码简化重构**，
-**尚未打包**：后端拆出 `settings_connections.py` / `sync_conflicts.py` / `feishu_authorization.py` /
-`thought_notes.py` / `domain/knowledge_normalization.py`，前端下沉 `features/diagnostics.ts` 等）。
-在 `c9b3fc5` 实测：`pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**（门槛 80%），
-ruff / format / mypy strict / 前端契约测试与生产构建全过；静态前端身份为 `v2026.09.19-d1a8ace7`。
-**装机包仍是 `2026091923`，只有重新构建才会带上这批重构。**
+本机 `/Applications/SummitWorkbench.app` 在替换前仍是上一份 build `2026091923`（源码 `0c9ff4f`，
+前端 `v2026.09.19-4a04d298`）；按 [从 0 装机核对清单](docs/acceptance/FRESH-INSTALL-STUDIO-AIR.md)
+重装后即为 `2026091925`。
+
+本版（相对 build `2026091923`）含 2026-09-15～09-19 的全部批次：收件箱提升通路（契约 §10）、
+「日常手记」「工作思考」两个写入入口、批次 A 语料边界、跨端闸门 8 步、写回双空行与 `inbox.md`
+手写条目路由两处用户可见修复，以及一批纯代码简化重构。
 
 剩余人工/跨端确认见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)，逐版变更见
 [CHANGELOG.md](CHANGELOG.md)，发布流程与内置凭据见 [docs/RELEASING.md](docs/RELEASING.md)。

@@ -2,15 +2,14 @@
 
 ## 当前交付状态（2026-09-19，本地 `main`）
 
-- **已交付**：arm64 内部包 `0.4.9 / build 2026091923`，源码提交 **`0c9ff4f`**，前端身份
-  `v2026.09.19-4a04d298`；App SHA-256 `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`、
-  DMG SHA-256 `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c`
-  （**以发布目录 `release-metadata.json` 为准**）。
-- **当前 `main` 已领先该交付包**：HEAD **`c9b3fc5`**（`64e733b`…`c9b3fc5` 是一批**纯代码简化重构**，
-  **未打包**；后端拆出 `settings_connections.py` / `sync_conflicts.py` / `feishu_authorization.py` /
-  `thought_notes.py` / `domain/knowledge_normalization.py`，前端下沉 `features/diagnostics.ts` 等）。
-  静态前端身份为 `v2026.09.19-d1a8ace7`。
-- **本地门禁**：`c9b3fc5` 实测 `pytest -q` → **1395 passed / 1 skipped**、`--cov` → **84.54%**
+- **已交付**：arm64 内部包 `0.4.9 / build **2026091925**`，源码提交 **`e62d3a3`**，前端身份
+  `v2026.09.19-d1a8ace7`；App SHA-256 `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`、
+  DMG SHA-256 `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`
+  （**以发布目录 `release-metadata.json` 为准**）。本机 `/Applications` 在替换前仍是上一份
+  build `2026091923`（`0c9ff4f`）——装机清单见 [`FRESH-INSTALL-STUDIO-AIR.md`](FRESH-INSTALL-STUDIO-AIR.md)。
+- **远端 CI**：`gh run 35444857578`（HEAD `e62d3a3`）**4/4 job success**（账单停摆已于 2026-09-19 恢复；
+  同次真跑暴露的 `macOS arm64 contract` 缺凭据问题已修，见 `docs/RELEASING.md`）。
+- **本地门禁**：`e62d3a3` 实测 `pytest -q` → **1396 passed / 1 skipped**、`--cov` → **84.54%**
   （门槛 80%）；交付提交 `0c9ff4f` 当时为 1375 / 84.46%。
 - **vault 只读门禁**（2026-09-19 实测）：`wb vault check` → **86 篇全部通过**——判据是"全部通过"，
   篇数随真实写入增长，不是契约判据。

@@ -100,6 +100,13 @@ Keychain 都不动。**
    且远端有 workspace marker（`git -C ~/Documents/Rehearsal/_vault ls-files | grep ".summit-workbench/workspace.json"`）。
 8. **Studio 就停在演练工作台上**，先别还原真实 profile（A6.1 需要它作为另一侧）。
 
+> **状态更正（2026-09-19）：D1 已修，下方第 4 步的手工 `git init` 不再需要。**
+> `workflows/onboarding.py` 现在在 create-new 时经 P0-09 backend 初始化仓库（分支 `main`，
+> 落 `wb: onboarding create` 初始提交，失败不阻断建工作台但同步会给稳定错误码而不是 500）。
+> **仍需手工的只剩「建空远端 + `git remote add` + 首次 push」**——那是未关闭的 **G2**
+> （界面没有把已有本地工作台首次发布到新远端的路径，见 `OPEN-VERIFICATION-ITEMS.md` §G）。
+> 以下保留当时原文，仅作历史记录。
+
 > **已知缺口 D1（2026-09-13 实测发现，待排期；完整清单见文末「附 · 本次复跑发现的产品缺陷」）**：「新建我的工作台」**不会 `git init`**
 > （`workflows/onboarding.py` 明确写着"全程不运行系统 git、不 `git init`"），而
 > `preview_remote_normalization()` 一上来就 `GitRepo(vault_dir)` 并要求已有

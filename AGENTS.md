@@ -2,11 +2,12 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前**已交付**源码提交 **`0c9ff4f`**（2026-09-19，即安装包 build `2026091923` 的来源；
-> 上一份是 `e1700e2` → build `2026091922`，再上份 `375ce98` → build `2026091921`）。
-> ⚠️ `main` 已在其之上落了一批**纯代码简化重构**（2026-09-19，`64e733b`…`c9b3fc5`，**尚未打包**；
-> 模块落点见 `docs/implementation/LEGACY-*-SPLIT-PLAN.md` 两份 stub 的「收口现状」）。
-> 引用路径/行号前先确认它在**交付提交**还是**当前 HEAD** 上成立。
+> 基线：当前**已交付**源码提交 **`e62d3a3`**（2026-09-19，即安装包 build `2026091925` 的来源；
+> 上一份是 `0c9ff4f` → build `2026091923`，再上份 `e1700e2` → build `2026091922`）。
+> `main` 与 `origin/main` 同步；**远端 CI 在 `e62d3a3` 上 4/4 job 全绿**（run `35444857578`）。
+> 本版已把 2026-09-19 的**代码简化重构**一并打包（模块落点见
+> `docs/implementation/LEGACY-*-SPLIT-PLAN.md` 两份 stub 的「收口现状」）；引用路径/行号前先确认
+> 它在**交付提交**还是**当前 HEAD** 上成立。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -102,11 +103,12 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` 为 `0.4.9 / build 2026091923`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `0c9ff4f` 构建（`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份
-  **`v2026.09.19-4a04d298`**（`assets/index-lNgDRgFe.js` / `index-DXsifFKj.css`；本版只改后端，
-  故前端身份与上一版相同——别把"身份没变"当成"产物没重建"）；包内**已内置飞书默认凭据**
-  （`build-manifest.json` 的 `feishu_credentials.complete=true`）。
+- **本次交付**：`0.4.9 / build **2026091925**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`e62d3a3`** 构建
+  （`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份 **`v2026.09.19-d1a8ace7`**；
+  包内**已内置飞书默认凭据**（`build-manifest.json` 的 `feishu_credentials.complete=true`），
+  `test-manifest.json` 的 13 项检查全过，SHA-256 见下一条。
+  本机 `/Applications/SummitWorkbench.app` **在被替换前仍是 build `2026091923`**（源码 `0c9ff4f`，
+  前端 `v2026.09.19-4a04d298`——该版只改后端，故身份与更早一版相同，别把"身份没变"当成"产物没重建"）。
   **本版含两个用户可见的修复**：① 手工写进 `inbox.md` 的条目现在也按正文 `#项目` 走默认目标
   （上一版会默认判成「一篇工作思考」，见待办 8）；② 写回项目页的条目与下一个区块之间不再多出
   一个空行（`_append_under_heading` / `set_project_status` 的双空行，见「踩过的技术坑」）。
@@ -124,12 +126,15 @@
   不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
   生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
   发布目录**（要重建同一版本须先移除旧目录）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091923` 的
-  **App SHA-256 为 `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`**，
-  **DMG SHA-256 为 `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c`**
+- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091925` 的
+  **App SHA-256 为 `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`**，
+  **DMG SHA-256 为 `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`**
   （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
-  上一版 build `2026091922` 的 App/DMG SHA-256 分别是 `21db9aa7…73fe246` / `a98de539…77e678663`
-  （旧发布目录已移到 `/tmp/swb-releases-0.4.9-2026091922`，`release-macos.sh` 拒绝覆盖同名目录）。
+  旧发布目录按惯例移到 `/tmp`（`release-macos.sh` 拒绝覆盖同名目录）：
+  `2026091923`（`0c9ff4f`，App `a7f35b32…` / DMG `78e39964…`）→ `/tmp/swb-releases-0.4.9-2026091923`；
+  `2026091924`（`c9b3fc5`，App `91ed6e8e…` / DMG `87f27884…`，只进过 dist、未装机也未入档）
+  → `/tmp/swb-releases-0.4.9-2026091924`；`2026091922`（App `21db9aa7…` / DMG `a98de539…`）
+  → `/tmp/swb-releases-0.4.9-2026091922`。
   装机包内**真实**依赖以发布目录的 `SBOM.json` 为准（本版依赖与前一版相同：
   `dulwich==1.2.15`、`uvicorn==0.53.0`、`pyinstaller==6.22.3`、`ruff==0.16.7`、`hypothesis==6.168.0`）。
 
@@ -143,10 +148,10 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `0c9ff4f`；下表数字在 HEAD `c9b3fc5` 重测）
+## 验证命令与基线（交付提交 `e62d3a3`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1395 passed, 1 skipped（c9b3fc5）
+./.venv/bin/python -m pytest -q                 # 实测 1396 passed, 1 skipped（e62d3a3）
 ./.venv/bin/python -m pytest -q --cov           # 实测 84.54%（门槛 80%，同一 commit）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
@@ -347,6 +352,13 @@ git 后端、检索策略、来源白名单或 SK 端点配置之后**跑它**�
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
   `gh workflow run ci.yml --ref main`。release workflow 的 tag 触发策略不变。
+  - 其 `macOS arm64 contract` 步**故意不内置飞书凭据**（`REQUIRE_BUNDLED_FEISHU=false` +
+    `ALLOW_INCOMPLETE_FEISHU_DEV=true`，**两者必须成对**：`build-macos-app.sh:41` 只给一个会硬失败）。
+    原因：凭据只存在于 `release` environment，而它的部署策略**只允许 `v*` 标签**，`main` 上的手动
+    CI 取不到——2026-09-19（账单恢复后第一次真跑）暴露该步**从引入起就没有通过的可能**，红线会淹没真失败。
+    守卫 `tests/contract/test_ci_contract.py::test_arm64_ci_build_opts_out_of_credentials_and_cannot_distribute`
+    同时钉住「该 job 不得 `upload-artifact`」，保证不含内置凭据的包永不进入分发面。
+    凭据已于 2026-09-19 恢复（run `35444857578` 起 4/4 全绿）。
 
 ## 提交纪律
 

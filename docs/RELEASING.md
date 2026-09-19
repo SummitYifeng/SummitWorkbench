@@ -4,26 +4,28 @@
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-本轮发布产物由提交 `0c9ff4f` 构建（`0.4.9 / build 2026091923`），完成收件箱提升通路（契约 §10）、
-`inbox.md` 手写条目的 `#项目` 路由与写回空行修复。`tests/integration/test_packaged_app.py` 已随发布
-脚本通过；前端身份为 `v2026.09.19-4a04d298`（本版只改后端，故与上一版相同——**身份没变不等于产物没重建**）。
-在**已交付提交 `0c9ff4f`** 上完整门禁为 **1375 passed / 1 skipped**、覆盖率 **84.46%**；
+本轮发布产物由提交 **`e62d3a3`** 构建（`0.4.9 / build **2026091925**`），在上一版（`0c9ff4f` →
+`2026091923`）之上并入 2026-09-19 的**代码简化重构**与端到端文档校正。`tests/integration/test_packaged_app.py`
+已随发布脚本通过；前端身份为 `v2026.09.19-d1a8ace7`。在**已交付提交 `e62d3a3`** 上完整门禁为
+**1396 passed / 1 skipped**、覆盖率 **84.54%**；`test-manifest.json` 的 13 项发布检查全过；
 vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确认一次临时写入与极小模型费用后运行。
 
-> ⚠️ **仓库当前 `main` 已领先该交付包**：HEAD 为 `c9b3fc5`（`64e733b`…`c9b3fc5` 是一批**纯代码
-> 简化重构**，未打包）。在 `c9b3fc5` 实测为 **1395 passed / 1 skipped、覆盖率 84.54%**，静态前端
-> 身份 `v2026.09.19-d1a8ace7`。**装机包仍是 `2026091923`；要把它带进包里必须重新构建。**
+> **远端 CI 已恢复并在本提交上全绿**：2026-09-19 账单停摆期间 run #308–#310 四个 job 均未启动；
+> 20:0x 起恢复，`gh run 35444857578`（HEAD `e62d3a3`）**4/4 job success**。同一次真跑暴露出
+> `macOS arm64 contract` 一直因缺 CI 侧凭据而必红，已在本版修掉（见下方「内置飞书凭据」一节）。
 > 以下历史发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
 
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091923`（源码 `0c9ff4f`，安装后 smoke 通过） |
+| 装机包 | `/Applications/SummitWorkbench.app` **仍为上一份** build `2026091923`（源码 `0c9ff4f`）——本次 `2026091925` 待装机 |
 | 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| App SHA-256 | `a7f35b32acb2802fb7cfca89bd527eb9eea5380953a104978948d8d769c7aed5`（见 metadata） |
-| DMG SHA-256 | `78e39964bb98181fbc1828399b820b80119f36b8af2227cdaf8dc5e5438e665c` |
-| 本机测试基线 | 交付提交 `0c9ff4f`：`pytest -q` → **1375 passed, 1 skipped**；`--cov` → **84.46%**；<br>当前 HEAD `c9b3fc5`：**1395 passed, 1 skipped** / **84.54%**（门槛 80%） |
+| App SHA-256 | `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`（见 metadata） |
+| DMG SHA-256 | `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243` |
+| 本机测试基线 | 交付提交 `e62d3a3`：`pytest -q` → **1396 passed, 1 skipped**；`--cov` → **84.54%**（门槛 80%） |
+
+装机与双机接入的自检清单见 [`docs/acceptance/FRESH-INSTALL-STUDIO-AIR.md`](acceptance/FRESH-INSTALL-STUDIO-AIR.md)。
 
 本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`；新增「日常手记」「工作思考」两个写入入口与收件箱提升通路（契约 §10）。
 本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
