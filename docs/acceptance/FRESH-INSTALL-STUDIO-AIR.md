@@ -1,24 +1,35 @@
-# 从 0 装机核对清单（Studio + Air · `0.4.9` / build `2026091925`）
+# 从 0 装机核对清单（Studio + Air · `0.4.9`）
 
-> 用途：拿到本次交付包后，在两台 Mac 上从零装到「能用 + 双机同步通」的自检清单。
+> 用途：拿到交付包后，在两台 Mac 上从零装到「能用 + 双机同步通」的自检清单。
 > 规格与背景见 [`docs/RELEASING.md`](../RELEASING.md)「用户安装与卸载」、
 > [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) §A7（第二台接入）与 §A6（双机闭环）。
 > 本清单只列动作与判据。**不要把「往真实 vault 里写测试内容」当成验证手段**——经 App 的写入会
 > 自动 commit + push（见 `AGENTS.md` 的自动推送纪律）。
 
-## 0 · 先核对包身份，再装机
+## 0 · 先选哪一份包，再核对身份
 
-| 项 | 值 |
+`0.4.9` 有**两个不同产物**，代码相同、编号与更新能力不同：
+
+| | **A. 已发布版（推荐）** | B. 本机构建 |
+| --- | --- | --- |
+| build | **`23`**（= CI run number） | `2026091925` |
+| 源码提交 | `5204abf`（tag `v0.4.9`） | `e62d3a3` |
+| 更新 feed | **内置**（带签名）→ 以后能自动更新 | 无（`update_feed` 为空） |
+| DMG SHA-256 | `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4` | `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243` |
+| 从哪拿 | `https://github.com/yifeng93/SummitWorkbench-Updates/releases/download/v0.4.9/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg` | 本机 `dist/releases/0.4.9/arm64/`（已存在，可直接 AirDrop） |
+
+> **建议装 A**：装它之后两台机器都能收到后续版本（feed 已内置且带签名）。B 只是本地构建，
+> 不接更新通道——它的存在是为了"离线/网络慢时也能立刻装机"（本次实测从 GitHub 拉 51 MB 只有
+> 几十 KB/s）。**两台机器请装同一份**，别一机 A、一机 B。
+> 下面表格里的 SHA 以你实际选的那份为准。
+
+| 核对项 | A（已发布 `build 23`） |
 | --- | --- |
-| 版本 / build | `0.4.9` / **`2026091925`** |
-| 源码提交 | **`e62d3a3`** |
-| 前端身份 | **`v2026.09.19-d1a8ace7`** |
-| DMG | `dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg` |
-| **DMG SHA-256** | `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243` |
-| **App SHA-256** | `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b` |
+| 版本 / build | `0.4.9` / **`23`** |
+| DMG SHA-256 | `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4` |
 
 ```bash
-shasum -a 256 <DMG 路径>     # 必须与上表 DMG SHA-256 完全一致
+shasum -a 256 <DMG 路径>     # 必须与你选的那份的 SHA-256 完全一致
 ```
 
 - [ ] 两台机器都是 **Apple Silicon（M2 及以上）**、macOS **13.0+**（产品只支持 arm64，Intel 会被拒绝）
@@ -34,7 +45,7 @@ shasum -a 256 <DMG 路径>     # 必须与上表 DMG SHA-256 完全一致
         **每次重新装机/换包都会再弹一次**
       - **没点之前的现象是界面一直转圈**（服务本身是活的：`/api/version` 秒回，但读 vault 的接口会等）
       - 误点「不允许」：系统设置 → 隐私与安全性 → 文件与文件夹 → 给 SummitWorkbench 打开后重试
-- [ ] Dock / 菜单栏图标出现；设置页版本状态条显示 `0.4.9 · build 2026091925`
+- [ ] Dock / 菜单栏图标出现；设置页版本状态条显示 `0.4.9 · build 23`（装 B 则是 `build 2026091925`）
 
 ## 2 · Studio（主设备）：接上工作台 + 两处凭据
 

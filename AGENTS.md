@@ -103,7 +103,17 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- **本次交付**：`0.4.9 / build **2026091925**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`e62d3a3`** 构建
+- **已发布（tag `v0.4.9`）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，由 CI
+  （`release.yml`、run `35446664234`）从 tag 提交 **`5204abf`** 构建；**build 号 = CI run number `23`**
+  ——`release.yml` 用 `github.run_number`，历史发布的 build 19/24/29/…/50 都是这个口径，
+  **与本机 INTERNAL-DEV 包的 `yyyyMMddNN` 是两套编号，别混**。DMG SHA-256
+  `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4`；`update-feed.json`
+  **带签名**（`signature` + `public_key`），该包因此**内置更新 feed**（`update_feed` 非空），可自动更新。
+  发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须等于**按 tag 算出的**期望值
+  （`.../releases/download/<tag>/SummitWorkbench-<version>-arm64-INTERNAL-DEV.dmg`），否则
+  `Prepare protected update configuration` 步直接 FAIL（本次已从 v0.4.8 同步到 v0.4.9）。
+- **本机 INTERNAL-DEV 构建（未发布；`update_feed` 为空 → 不接自动更新）**：
+  `0.4.9 / build **2026091925**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`e62d3a3`** 构建
   （`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份 **`v2026.09.19-d1a8ace7`**；
   包内**已内置飞书默认凭据**（`build-manifest.json` 的 `feishu_credentials.complete=true`），
   `test-manifest.json` 的 13 项检查全过，SHA-256 见下一条。

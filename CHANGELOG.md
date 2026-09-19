@@ -249,6 +249,15 @@
   修法：该步显式 opt-in 无凭据开发构建（两个开关成对）+ 守卫禁止该 job 上传产物；
   详见 `docs/RELEASING.md` 与 `tests/contract/test_ci_contract.py`。
 - 本版末次全量门禁（`e62d3a3`）：`pytest -q` → **1396 passed / 1 skipped**、`--cov` → **84.54%**。
+- **`v0.4.9` 已发布到更新通道**（2026-09-19）：tag `v0.4.9`（提交 `5204abf`）触发 `release.yml`
+  （run `35446664234`，`workflow-lint` + `release` 两 job 全绿）→ `yifeng93/SummitWorkbench-Updates`
+  的 **Latest** 发布：**build `23`**（= CI run number）、DMG SHA-256
+  `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4`、
+  `update-feed.json` **带签名**（含 `public_key`）、`test-manifest.json` 13 项 `passed`。
+  **发布前置（这次踩到了）**：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须等于按 tag 算出的
+  期望值，它原本钉在 v0.4.8，不同步会在 `Prepare protected update configuration` 步直接 FAIL。
+  **两套 build 编号**：tag 发布用 CI run number（本版 `23`；历史 19/24/29/…/50 同口径），
+  本机 INTERNAL-DEV 包用 `yyyyMMddNN`（本版 `2026091925`），别混。
 
 ### 已知不足（未解决，透明记录）
 

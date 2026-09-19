@@ -15,6 +15,16 @@ vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确�
 > `macOS arm64 contract` 一直因缺 CI 侧凭据而必红，已在本版修掉（见下方「内置飞书凭据」一节）。
 > 以下历史发布记录保留原结论；正式 DMG 的发布身份仍以对应 `release-metadata.json` 为准。
 
+> **已发布到更新通道（2026-09-19）**：tag **`v0.4.9`**（提交 `5204abf`）触发 `release.yml`
+> （run `35446664234`），在 `yifeng93/SummitWorkbench-Updates` 上发布 **Latest**：
+> **build `23`**（= CI run number，与历史发布的 19/24/29/… 同口径）、DMG SHA-256
+> `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4`、
+> `test-manifest.json` 13 项 `passed`、`update-feed.json` 带签名（`signature` + `public_key`）。
+> 该包**内置更新 feed**，装它的机器之后能自动更新。
+> 发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须等于按 tag 算出的期望值——
+> 本次已从 v0.4.8 同步到 v0.4.9，否则 `Prepare protected update configuration` 步会 FAIL。
+> 注意本机 `dist/` 里那份 `build 2026091925`（源码 `e62d3a3`）是**未发布**的本机构建，`update_feed` 为空。
+
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |
