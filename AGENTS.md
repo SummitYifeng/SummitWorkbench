@@ -2,9 +2,9 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前**已交付**源码提交 **`e62d3a3`**（2026-09-19，即安装包 build `2026091925` 的来源；
-> 上一份是 `0c9ff4f` → build `2026091923`，再上份 `e1700e2` → build `2026091922`）。
-> `main` 与 `origin/main` 同步；**远端 CI 在 `e62d3a3` 上 4/4 job 全绿**（run `35444857578`）。
+> 基线：当前**已发布**源码提交 **`4e91469`**（2026-09-19，即 `0.4.10` / CI build `24` 的来源；
+> 上一份已发布 `5204abf` → `0.4.9` / build `23`，**带 HTTPS 同步阻断、已作废**）。
+> `main` 与 `origin/main` 同步；发版走「打 tag → `release.yml`」（细节见「交付产物基线」）。
 > 本版已把 2026-09-19 的**代码简化重构**一并打包（模块落点见
 > `docs/implementation/LEGACY-*-SPLIT-PLAN.md` 两份 stub 的「收口现状」）；引用路径/行号前先确认
 > 它在**交付提交**还是**当前 HEAD** 上成立。
@@ -101,17 +101,41 @@
   抽取/摘要/分类类任务一律 `thinking="disabled"`；截断判定必须同时看 `output_tokens >= 上限`。
   能力清单以 `providers/llm/config.py:CAPABILITIES` 为准（含 `digest`），逐能力参数见 `config.example.toml`。
 
+- **dulwich 1.2 把 `pool_manager` 从 `porcelain.fetch` 的签名里删了**（2026-09-19 真机，用户可见）：
+  `fetch` / `push` / `clone` 三者**只有后两者**还有 `**kwargs`（`_filter_transport_kwargs` 会保留
+  并转发给 `get_transport_and_path`，而后者**接受** `pool_manager`），但 `dulwich_git.py` 的 fetch
+  仍按 0.22.x 的 API 把 `transport_kwargs()` 交给 `porcelain.fetch` ⇒
+  `TypeError: fetch() got an unexpected keyword argument 'pool_manager'`，被 `_classify_remote`
+  兜底成 **`unclassified`**，界面只说「未分类的同步失败」。
+  ⇒ **自 build `2026091917`（dulwich `1.2.15` 迁移）起，打包 App × HTTPS 远端一直无法同步**。
+  本地路径/SSH 远端不受影响（`transport_kwargs()` 对非 HTTPS 返回 `{}`），CLI 默认 system git
+  后端也不受影响——**这正是它藏了十几版的原因**。
+  修法：fetch 自己建 client —— `get_transport_and_path(url, config=repo.get_config_stack(),
+  operation="fetch", **transport_kwargs)` → `client.fetch(path.encode(), repo, progress=sink.write)`
+  → `cast(Any, porcelain)._import_remote_refs(...)` 落 `refs/remotes/<remote>/*`（复刻
+  `porcelain.fetch` 的语义）。守卫：`tests/contract/test_dulwich_api_contract.py`
+  （行为回归 + 参数面收敛 + 依赖前提三条，已变异验证：还原旧实现即红）。
+  **教训**：升级依赖后，`porcelain.*` 这类"转发型"API 的签名会漂移；测试里把 `transport_kwargs`
+  monkeypatch 成 `{}`、或只断言它的内容，就会让这条调用链**永远不被真实签名检阅**。
+  ⇒ **见到 `unclassified` 先怀疑调用点与依赖 API 漂移，别先查网络。**
+- **改 `pyproject.toml` 的 `version` 后必须跑 `uv lock`**：`uv.lock` 里记着项目版本，
+  不更新会被 `pre-push` 门禁的 `uv lock --check` 拦下（2026-09-19 发 0.4.10 时踩到）。
+
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- **已发布（tag `v0.4.9`）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，由 CI
-  （`release.yml`、run `35446664234`）从 tag 提交 **`5204abf`** 构建；**build 号 = CI run number `23`**
-  ——`release.yml` 用 `github.run_number`，历史发布的 build 19/24/29/…/50 都是这个口径，
-  **与本机 INTERNAL-DEV 包的 `yyyyMMddNN` 是两套编号，别混**。DMG SHA-256
-  `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4`；`update-feed.json`
-  **带签名**（`signature` + `public_key`），该包因此**内置更新 feed**（`update_feed` 非空），可自动更新。
+- **已发布（tag `v0.4.10`，**最新**）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，
+  由 CI（`release.yml`、run `35448306057`）从 tag 提交 **`4e91469`** 构建；**build `24`**（run number）。
+  DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）；
+  feed 带签名。**这一版修掉了 HTTPS 远端无法同步的阻断**（见「踩过的技术坑」），
+  `0.4.9`（build 23）装机的机器可在 App 内直接升级。
+- **已发布（tag `v0.4.9`，已被 0.4.10 取代）**：CI run `35446664234`、build `23`、提交 `5204abf`，
+  DMG SHA-256 `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4`。
+  ⚠️ 它带 HTTPS 同步阻断，**别再用它装新机器**。
+  **build 号口径**：`release.yml` 用 `github.run_number`（历史发布的 19/24/29/…/50 同口径），
+  **与本机 INTERNAL-DEV 包的 `yyyyMMddNN` 是两套编号，别混**。
   发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须等于**按 tag 算出的**期望值
   （`.../releases/download/<tag>/SummitWorkbench-<version>-arm64-INTERNAL-DEV.dmg`），否则
-  `Prepare protected update configuration` 步直接 FAIL（本次已从 v0.4.8 同步到 v0.4.9）。
+  `Prepare protected update configuration` 步直接 FAIL（每次发版都要先同步它）。
 - **本机 INTERNAL-DEV 构建（未发布；`update_feed` 为空 → 不接自动更新）**：
   `0.4.9 / build **2026091925**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`e62d3a3`** 构建
   （`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份 **`v2026.09.19-d1a8ace7`**；
@@ -158,11 +182,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `e62d3a3`）
+## 验证命令与基线（交付提交 `4e91469`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1396 passed, 1 skipped（e62d3a3）
-./.venv/bin/python -m pytest -q --cov           # 实测 84.54%（门槛 80%，同一 commit）
+./.venv/bin/python -m pytest -q                 # 实测 1399 passed, 1 skipped（4e91469）
+./.venv/bin/python -m pytest -q --cov           # 实测 84.55%（门槛 80%，同一 commit）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault

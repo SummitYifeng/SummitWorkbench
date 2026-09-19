@@ -1,4 +1,4 @@
-# 从 0 装机核对清单（Studio + Air · `0.4.9`）
+# 从 0 装机核对清单（Studio + Air · `0.4.10`）
 
 > 用途：拿到交付包后，在两台 Mac 上从零装到「能用 + 双机同步通」的自检清单。
 > 规格与背景见 [`docs/RELEASING.md`](../RELEASING.md)「用户安装与卸载」、
@@ -6,31 +6,26 @@
 > 本清单只列动作与判据。**不要把「往真实 vault 里写测试内容」当成验证手段**——经 App 的写入会
 > 自动 commit + push（见 `AGENTS.md` 的自动推送纪律）。
 
-## 0 · 先选哪一份包，再核对身份
+## 0 · 核对包身份
 
-`0.4.9` 有**两个不同产物**，代码相同、编号与更新能力不同：
+**装 `0.4.10`（已发布，build `24`）**——它修掉了一个**HTTPS 远端无法同步**的阻断
+（0.4.9 及更早的 `2026091917`+ 都有；详见 `CHANGELOG.md` 的 `[0.4.10]`）。
 
-| | **A. 已发布版（推荐）** | B. 本机构建 |
-| --- | --- | --- |
-| build | **`23`**（= CI run number） | `2026091925` |
-| 源码提交 | `5204abf`（tag `v0.4.9`） | `e62d3a3` |
-| 更新 feed | **内置**（带签名）→ 以后能自动更新 | 无（`update_feed` 为空） |
-| DMG SHA-256 | `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4` | `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243` |
-| 从哪拿 | `https://github.com/yifeng93/SummitWorkbench-Updates/releases/download/v0.4.9/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg` | 本机 `dist/releases/0.4.9/arm64/`（已存在，可直接 AirDrop） |
-
-> **建议装 A**：装它之后两台机器都能收到后续版本（feed 已内置且带签名）。B 只是本地构建，
-> 不接更新通道——它的存在是为了"离线/网络慢时也能立刻装机"（本次实测从 GitHub 拉 51 MB 只有
-> 几十 KB/s）。**两台机器请装同一份**，别一机 A、一机 B。
-> 下面表格里的 SHA 以你实际选的那份为准。
-
-| 核对项 | A（已发布 `build 23`） |
+| 核对项 | 值 |
 | --- | --- |
-| 版本 / build | `0.4.9` / **`23`** |
-| DMG SHA-256 | `f5c3b65f67b46641de2468cfcb5948558c1a7ce43bc31e3c31c53705d86676a4` |
+| 版本 / build | **`0.4.10`** / **`24`**（= CI run number） |
+| 源码提交 | `4e91469`（tag `v0.4.10`） |
+| 更新 feed | **内置且带签名** → 以后可在 App 内升级 |
+| DMG 下载 | `https://github.com/yifeng93/SummitWorkbench-Updates/releases/download/v0.4.10/SummitWorkbench-0.4.10-arm64-INTERNAL-DEV.dmg` |
+| **DMG SHA-256** | `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B） |
 
 ```bash
-shasum -a 256 <DMG 路径>     # 必须与你选的那份的 SHA-256 完全一致
+shasum -a 256 <DMG 路径>     # 必须与上表 DMG SHA-256 完全一致
 ```
+
+> **已装 0.4.9（build 23）的机器不用重新下载**：它内置了更新 feed，直接在
+> App「设置 → 自动化与更新」点检查更新即可升级到 `0.4.10 / build 24`（feed 带签名校验）。
+> 本机 `dist/releases/0.4.9/arm64/` 那份是**没有 feed 的旧本机构建**，别再用它装新机器。
 
 - [ ] 两台机器都是 **Apple Silicon（M2 及以上）**、macOS **13.0+**（产品只支持 arm64，Intel 会被拒绝）
 - [ ] DMG SHA-256 与上表一致——**认 SHA，不认文件名**（文件名里没有 build 号）
@@ -45,7 +40,7 @@ shasum -a 256 <DMG 路径>     # 必须与你选的那份的 SHA-256 完全一�
         **每次重新装机/换包都会再弹一次**
       - **没点之前的现象是界面一直转圈**（服务本身是活的：`/api/version` 秒回，但读 vault 的接口会等）
       - 误点「不允许」：系统设置 → 隐私与安全性 → 文件与文件夹 → 给 SummitWorkbench 打开后重试
-- [ ] Dock / 菜单栏图标出现；设置页版本状态条显示 `0.4.9 · build 23`（装 B 则是 `build 2026091925`）
+- [ ] Dock / 菜单栏图标出现；设置页版本状态条显示 **`0.4.10 · build 24`**
 
 ## 2 · Studio（主设备）：接上工作台 + 两处凭据
 

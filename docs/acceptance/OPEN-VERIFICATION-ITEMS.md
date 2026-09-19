@@ -2,15 +2,18 @@
 
 ## 当前交付状态（2026-09-19，本地 `main`）
 
-- **已交付**：arm64 内部包 `0.4.9 / build **2026091925**`，源码提交 **`e62d3a3`**，前端身份
-  `v2026.09.19-d1a8ace7`；App SHA-256 `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`、
-  DMG SHA-256 `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`
-  （**以发布目录 `release-metadata.json` 为准**）。本机 `/Applications` 在替换前仍是上一份
-  build `2026091923`（`0c9ff4f`）——装机清单见 [`FRESH-INSTALL-STUDIO-AIR.md`](FRESH-INSTALL-STUDIO-AIR.md)。
-- **远端 CI**：`gh run 35444857578`（HEAD `e62d3a3`）**4/4 job success**（账单停摆已于 2026-09-19 恢复；
-  同次真跑暴露的 `macOS arm64 contract` 缺凭据问题已修，见 `docs/RELEASING.md`）。
-- **本地门禁**：`e62d3a3` 实测 `pytest -q` → **1396 passed / 1 skipped**、`--cov` → **84.54%**
-  （门槛 80%）；交付提交 `0c9ff4f` 当时为 1375 / 84.46%。
+- **已发布（最新）**：**`0.4.10`**，tag `v0.4.10`（提交 `4e91469`）→ CI run `35448306057` →
+  `yifeng93/SummitWorkbench-Updates` 的 **Latest**，**build `24`**（= run number）；DMG SHA-256
+  `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）；
+  feed 带签名。**这一版修掉了 HTTPS 远端无法同步的阻断**（0.4.9/`2026091917`+ 都带它，见 `CHANGELOG.md`）。
+- **上一份（作废）**：本机构建 `0.4.9 / build 2026091925`（源码 `e62d3a3`，`update_feed` 为空）；
+  已发布的 `0.4.9 / build 23`（提交 `5204abf`）同样带那个同步阻断——**别再用它们装新机器**。
+- **本机 `/Applications`**：在升级前仍是 `0.4.9 / build 23`（源码 `5204abf`）；升级路径见
+  [`FRESH-INSTALL-STUDIO-AIR.md`](FRESH-INSTALL-STUDIO-AIR.md)（App 内「自动化与更新」直接升级）。
+- **远端 CI**：`release.yml` run `35448306057`（v0.4.10）两 job 全绿；`ci.yml` 在 `5204abf` 上
+  4/4 全绿（账单停摆已于 2026-09-19 恢复；同次真跑暴露的 arm64 契约步缺凭据问题已修）。
+- **本地门禁**：`4e91469` 实测 `pytest -q` → **1399 passed / 1 skipped**、`--cov` → **84.55%**
+  （门槛 80%）。
 - **vault 只读门禁**（2026-09-19 实测）：`wb vault check` → **86 篇全部通过**——判据是"全部通过"，
   篇数随真实写入增长，不是契约判据。
 - 下面各节是**各自日期当时**的验收与缺口记录：已关闭的条目保留原文，**仍未关闭的能力缺口（§G1/G2 等）

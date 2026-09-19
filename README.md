@@ -2,16 +2,21 @@
 
 ## 2026-09-19 交付状态（本地 `main`）
 
-**本次交付**：arm64 内部包 `0.4.9 / build **2026091925**`，源码提交 **`e62d3a3`**，前端身份
-`v2026.09.19-d1a8ace7`，包内已内置飞书默认凭据；13 项发布检查全过，DMG SHA-256
-`6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`。
-`main` 与 `origin/main` 同步，**远端 CI 在 `e62d3a3` 上 4/4 job 全绿**（run `35444857578`）。
+**本次交付**：**`0.4.10`**，已发布到更新通道（tag `v0.4.10`，提交 `4e91469`）——
+`yifeng93/SummitWorkbench-Updates` 的 **Latest**，CI **build `24`**（= run number）；
+DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`
+（51,770,064 B），`update-feed.json` 带签名 ⇒ **装在机器上的 0.4.9 会从 App 内直接升级**。
 
-本机 `/Applications/SummitWorkbench.app` 在替换前仍是上一份 build `2026091923`（源码 `0c9ff4f`，
-前端 `v2026.09.19-4a04d298`）；按 [从 0 装机核对清单](docs/acceptance/FRESH-INSTALL-STUDIO-AIR.md)
-重装后即为 `2026091925`。
+本版修一个**用户可见的同步阻断**：打包 App（固定 dulwich）× **HTTPS 远端一直无法同步**
+（`porcelain.fetch` 在 dulwich 1.2 不再接受 `pool_manager`，调用点未跟上 ⇒ `unclassified`
+「未分类的同步失败」）。详见 [CHANGELOG.md](CHANGELOG.md) 的 `[0.4.10]`。
+`main` 与 `origin/main` 同步；门禁在 `4e91469` 上实测 **1399 passed / 1 skipped、覆盖 84.55%**。
 
-本版（相对 build `2026091923`）含 2026-09-15～09-19 的全部批次：收件箱提升通路（契约 §10）、
+> 上一份交付 `0.4.9 / build 2026091925`（本机构建，无更新 feed）**不要再用**——它同样带这个
+> 同步 bug。装机与升级步骤见
+> [从 0 装机核对清单](docs/acceptance/FRESH-INSTALL-STUDIO-AIR.md)。
+
+本版（相对 `0.4.9`）还含 2026-09-15～09-19 的全部批次：收件箱提升通路（契约 §10）、
 「日常手记」「工作思考」两个写入入口、批次 A 语料边界、跨端闸门 8 步、写回双空行与 `inbox.md`
 手写条目路由两处用户可见修复，以及一批纯代码简化重构。
 

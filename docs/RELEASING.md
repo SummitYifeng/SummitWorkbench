@@ -25,6 +25,15 @@ vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确�
 > 本次已从 v0.4.8 同步到 v0.4.9，否则 `Prepare protected update configuration` 步会 FAIL。
 > 注意本机 `dist/` 里那份 `build 2026091925`（源码 `e62d3a3`）是**未发布**的本机构建，`update_feed` 为空。
 
+> **已发布 `v0.4.10`（最新，2026-09-19）**：tag `v0.4.10`（提交 `4e91469`）→ run `35448306057`
+> （两 job 全绿）→ Updates 仓库 **Latest**：**build `24`**、DMG SHA-256
+> `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）、
+> `test-manifest.json` 13 项 `passed`、feed 带签名。
+> **本版修掉一个 HTTPS 远端无法同步的阻断**（`porcelain.fetch` 在 dulwich 1.2 不再接受
+> `pool_manager`；`0.4.9` / `build 23` 及更早的 `2026091917`+ 都带它）。发布前置同上：
+> `UPDATE_DOWNLOAD_URL` 已从 v0.4.9 同步到 v0.4.10。
+> 装 `0.4.9` 的机器可在 App「设置 → 自动化与更新」直接升级（feed 带签名校验）。
+
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |

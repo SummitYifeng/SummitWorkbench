@@ -18,6 +18,17 @@
 - **守卫**：`tests/contract/test_dulwich_api_contract.py`（行为回归 + 参数面收敛 + 依赖前提
   三条），已做变异验证——把 fetch 还原成旧实现，行为回归那条立刻变红。
 
+### 交付（2026-09-19）
+
+- tag **`v0.4.10`**（提交 `4e91469`）触发 `release.yml`（run `35448306057`，两 job 全绿）→
+  `yifeng93/SummitWorkbench-Updates` 的 **Latest**：**build `24`**（= CI run number）、
+  DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）、
+  `update-feed.json` **带签名**、`test-manifest.json` 13 项 `passed`。
+- 发布前置仍是那条：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须先同步到本版本
+  （已从 v0.4.9 同步到 v0.4.10）。
+- 本版门禁：`pytest -q` → **1399 passed / 1 skipped**、`--cov` → **84.55%**。
+- **升级路径**：0.4.9（build 23，内置 feed）的机器可在 App「设置 → 自动化与更新」直接升级。
+
 ### 为什么没被门禁挡住（值得记住）
 
 1. 单测要么把 `transport_kwargs` monkeypatch 成 `{}`（本地路径远端走这个分支），要么只断言
