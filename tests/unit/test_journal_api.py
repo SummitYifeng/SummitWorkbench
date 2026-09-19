@@ -224,7 +224,8 @@ def test_thought_derives_title_and_summary_and_honours_overrides(tmp_path: Path)
     assert note.meta["projects"] == ["FinanceOps"]
     assert "project" not in note.meta
     # 摘要缺省时由「当前结论」首句派生
-    assert note.meta["summary"].startswith("手写日志按 active 处理")
+    summary = note.meta["summary"]
+    assert isinstance(summary, str) and summary.startswith("手写日志按 active 处理")
 
 
 def test_thought_rejects_invalid_workstream(tmp_path: Path) -> None:

@@ -415,6 +415,7 @@ def test_gate_journal_write_fails_when_changed_paths_loses_the_project_page(
 
 def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeypatch: Any) -> None:
     """500 时容错版返回 ``(status, body)``；`http_json` 仍保持"醒目 SystemExit"不变。"""
+    import email.message
     import io
     import urllib.error
     import urllib.request
@@ -425,7 +426,7 @@ def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeyp
                 "http://swb/api/journal/log",
                 500,
                 "Internal Server Error",
-                {},
+                email.message.Message(),
                 io.BytesIO(b'{"ok": false, "code": "mutation_invariant"}'),
             )
 

@@ -80,9 +80,12 @@ def test_auto_push_disabled_defaults_false(monkeypatch) -> None:
 def test_push_after_commit_pushes_by_default(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv(AUTO_PUSH_DISABLE_ENV, raising=False)
     calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        sync_coordinator, "push_after_commit", lambda *a, **k: calls.append(k) or (None, None)
-    )
+
+    def fake_push(*_args: object, **kwargs: object) -> tuple[None, None]:
+        calls.append(kwargs)
+        return (None, None)
+
+    monkeypatch.setattr(sync_coordinator, "push_after_commit", fake_push)
     note = mutation_runtime._push_after_commit(_ctx(tmp_path), where="test")
     assert note == ""
     assert len(calls) == 1
