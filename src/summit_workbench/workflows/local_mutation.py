@@ -38,6 +38,9 @@ class LocalMutationResult[T]:
     changed_paths: tuple[Path, ...]
     commit_result: CommitResult
     activity_report: Mapping[str, object] | None = None
+    # 后置推送的可见说明：正常推送为空；``WB_NO_AUTO_PUSH`` 跳过推送时写明"已跳过自动推送"。
+    # 绝不承载同步状态——跳过推送不是"同步成功"。
+    push_note: str = ""
 
 
 class MutationBlocked(RuntimeError):
@@ -137,14 +140,18 @@ def run_local_mutation[T](
                     commit_sha=commit_sha,
                     paths=new_dirty_paths,
                 )
-    result = LocalMutationResult(
+    push_note = ""
+    if push_after_commit is not None and commit_result.status.value == "committed":
+        # 网络调用明确位于 workspace 文件锁外。回调可以返回一句可见说明（例如
+        # "已跳过自动推送"）；非字符串（包括正常的同步状态 tuple）一律忽略，不塞进响应。
+        returned = push_after_commit()
+        if isinstance(returned, str):
+            push_note = returned
+    return LocalMutationResult(
         operation_id=operation_id,
         business_return=outcome.business_return,
         changed_paths=changed_paths,
         commit_result=commit_result,
         activity_report=outcome.activity_report,
+        push_note=push_note,
     )
-    if push_after_commit is not None and commit_result.status.value == "committed":
-        # 网络调用明确位于 workspace 文件锁外。
-        push_after_commit()
-    return result

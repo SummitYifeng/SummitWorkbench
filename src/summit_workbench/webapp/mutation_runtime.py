@@ -25,6 +25,11 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from summit_workbench.config.auto_push import (
+    auto_push_disabled,
+    auto_push_skip_note,
+    log_auto_push_skipped,
+)
 from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.domain.sync import AutomationOutcome, SyncSnapshot
 from summit_workbench.repositories.autocommit import CommitStatus, commit_paths
@@ -40,11 +45,38 @@ from summit_workbench.workflows.local_mutation import (
 )
 
 
+def _push_after_commit(ctx: WebContext, *, where: str) -> str:
+    """commit 之后的后置推送（**唯一的后置推送出口**）。
+
+    ``WB_NO_AUTO_PUSH`` 启用时**不推送**，改为写一行服务日志并返回可见说明——绝不留一个
+    看起来成功的同步状态（跳过发生在 push 之前，同步状态机不参与）。正常推送返回空串。
+
+    ``where`` 只用于日志定位是哪条写入路径，不含路径/正文。
+    """
+    if auto_push_disabled():
+        log_auto_push_skipped(
+            home=ctx.active_workspace.home if ctx.active_workspace else None,
+            where=where,
+        )
+        return auto_push_skip_note()
+    from summit_workbench.workflows import sync_coordinator
+
+    sync_coordinator.push_after_commit(
+        ctx.vault_dir,
+        home=ctx.active_workspace.home if ctx.active_workspace else None,
+        workspace_id=ctx.workspace_id,
+        backend_kind=ctx.git_backend_kind,
+        context=ctx.active_workspace,
+    )
+    return ""
+
+
 def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -> str:
     """系统写回成功后自动留痕（消息带 ``wb:`` 前缀，P0'）。
 
     返回需要追加进响应 ``message`` 的可见说明：非 git 仓库 / 内容未变是正常态（静默，
     撤销面板会提示 not-git）；commit 失败或锁忙返回说明，但绝不阻断业务写回。
+    跳过自动推送（``WB_NO_AUTO_PUSH``）时也会在返回串里写明。
     """
     result = commit_paths(
         ctx.vault_dir,
@@ -58,15 +90,7 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
         ),
     )
     if result.status is CommitStatus.COMMITTED and ctx.active_workspace is not None:
-        from summit_workbench.workflows import sync_coordinator
-
-        sync_coordinator.push_after_commit(
-            ctx.vault_dir,
-            home=ctx.active_workspace.home,
-            workspace_id=ctx.workspace_id,
-            backend_kind=ctx.git_backend_kind,
-            context=ctx.active_workspace,
-        )
+        return _commit_note(result) + _push_after_commit(ctx, where="commit_suffix")
     return _commit_note(result)
 
 
@@ -103,8 +127,6 @@ class MutationRuntime:
     def run[T](
         self, action: str, mutation: Callable[[str], LocalMutationOutcome[T]]
     ) -> LocalMutationResult[T]:
-        from summit_workbench.workflows import sync_coordinator
-
         ctx = self._ctx
         if self._profile_switch_in_progress:
             raise MutationBlocked("工作台正在切换，请等待本机服务重启后再修改")
@@ -119,16 +141,10 @@ class MutationRuntime:
             backend_kind=ctx.git_backend_kind,
             author=profile_identity(profile) if profile is not None else None,
             push_after_commit=(
-                lambda: sync_coordinator.push_after_commit(
-                    ctx.vault_dir,
-                    home=ctx.active_workspace.home if ctx.active_workspace else None,
-                    workspace_id=ctx.workspace_id,
-                    backend_kind=ctx.git_backend_kind,
-                    context=ctx.active_workspace,
-                )
-            )
-            if ctx.active_workspace
-            else None,
+                (lambda: _push_after_commit(ctx, where=f"mutation:{action}"))
+                if ctx.active_workspace
+                else None
+            ),
         )
 
     def sync_blocked(self, request: Request) -> JSONResponse | None:
