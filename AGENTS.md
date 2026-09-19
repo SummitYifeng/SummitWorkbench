@@ -107,13 +107,35 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
 被卸，`release-macos.sh` 一路跑到打包步才报 `No module named PyInstaller`）。
 **构建或跑门禁前统一用 `uv sync --extra dev --extra web --extra packaging`。**
 
+**⚠️ 任何经 App / Web 的写入都会自动 commit + push vault**（2026-09-19 真实事故）：
+`webapp/mutation_runtime.py` 的 `_push_after_commit` 把所有写路径（capture / 任务编辑 /
+审批写回……）在 commit 之后接到 `sync_coordinator.push_after_commit`。这是日常使用应有的
+行为，但**验证动作不该顺带推送**——当时闸门加了 `--no-push` 仍被运行中的 App 自动推送，
+验证件与本地未推提交一起进了 `origin/main`。三条纪律：
+
+1. **验证不要打运行中的 App**：App 构建新版本前没有下面这个开关，capture 必然推送。
+2. **用源码起一个带 `WB_NO_AUTO_PUSH=1` 的服务**，再用 `--swb-url` / `--swb-token` 指过去。
+3. **开关语义**：`WB_NO_AUTO_PUSH=1`（也接受 `true`/`yes`/`on`）→ commit 照常、**不自动 push**；
+   跳过会写服务日志 `auto_push_skipped`，并在响应里带 `auto_push: {skipped: true, note: "（已跳过自动推送…）"}`。
+   **绝不允许把它记成同步成功（`ready`）**——跳过发生在 push 之前，同步状态机不参与。
+   默认不设 = 行为完全不变。显式 `/api/sync/run`、`wb sync` 不受影响。
+
 **跨端回归闸门**（跨 SWB × `_vault` × SK，**会写 vault 并花一次极小模型费用**）：
 
 ```bash
-./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完自动清理验证件并推送清理提交
-./.venv/bin/python scripts/kb_three_end_gate.py --keep     # 保留验证件供人工查看
-./.venv/bin/python scripts/kb_three_end_gate.py --no-push  # 清理提交只留本地（推送与否由使用者决定）
+# 验证姿势（推荐）：源码服务 + 不自动推送 + 收尾不推
+WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
+    ./.venv/bin/python -m summit_workbench.cli.main web --host 127.0.0.1 --port 8791 &
+./.venv/bin/python scripts/kb_three_end_gate.py \
+    --swb-url http://127.0.0.1:8791 --swb-token ... --no-push-cleanup
+# 其它开关
+./.venv/bin/python scripts/kb_three_end_gate.py --keep        # 保留验证件供人工查看
+./.venv/bin/python scripts/kb_three_end_gate.py                # 默认：收尾清理提交会 push vault
 ```
+预检会**醒目打印**本次写入打的是哪个 SWB 端点、该端点是否启用了 `WB_NO_AUTO_PUSH`；
+收尾会打印 vault `origin/main` 前后取值，**未启用推送模式却发生变化时逐条告警**
+（绝不藏在裸 PASS 后面）。`--no-push` 是 `--no-push-cleanup` 的弃用别名（旧名容易被误读为
+"整个闸门不推送"，实际只关收尾那一推）。
 
 一句话验完六类曾经"测试全绿却发生"的不变量：① 真实写入后**工作树干净**（S-1(a)）；
 ② `_signals/` **未被回跟踪**（S-1(b)）；③ 逐字稿与 `inbox.md` **不进语料**（P1-4）；
@@ -121,7 +143,7 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
 ⑤ **原件（`<project>/sources/`）与 `daily` / `weekly-review` 不进语料**（批次 A 语料边界）；
 ⑥ **来源白名单覆盖真实库的全部主线项目**（`thinking` 在内；这条只在有真实库的环境成立，
 故放在闸门而不是只做单元测试）。改了 vault 写路径、git 后端、检索策略、来源白名单或
-SK 端点配置之后**跑它**。默认收尾会 `git push` vault；**只做验证不想推送时加 `--no-push`**。
+SK 端点配置之后**跑它**。
 
 ## 内容层面的硬规则（2026-09-18 使用者定规）
 
