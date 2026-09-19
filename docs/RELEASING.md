@@ -4,9 +4,9 @@
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-本轮发布产物由提交 `092e6f6` 构建。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091814`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
-`v2026.09.18-6550855f`；`tests/integration/test_packaged_app.py`
+本轮发布产物由提交 `d738d13` 构建。本机 `/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091815`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
+`v2026.09.19-6550855f`；`tests/integration/test_packaged_app.py`
 已使用该安装包通过（1 passed）。以下历史发布记录保留原结论；正式 DMG 的发布身份
 仍以对应 `release-metadata.json` 为准。
 
@@ -14,11 +14,11 @@
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091814` |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091815` |
 | 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| App SHA-256 | `da4c554f015995f97b8876045be38a7bbcd63718e7e7e0e8cced547a9f189ecd` |
-| DMG SHA-256 | `696884d4191d5faec1f19642294325e3c62041af0717d93b2d7c39afcf37c8f8` |
-| 本机测试基线 | `pytest -q` → **1261 passed, 1 skipped**；`--cov` → **84.04%**（门槛 80%） |
+| App SHA-256 | `131fc611c96bf5984454ecdb82fa12d942c2936a597848280e9a1335c5d6df25` |
+| DMG SHA-256 | `f50f9afd0122cdf0727e077ab518ab73a86ee45f9e433ca60234b9eb31cf12b4` |
+| 本机测试基线 | `pytest -q` → **1262 passed, 1 skipped**；`--cov` → **84.05%**（门槛 80%） |
 
 本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`。
 本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
@@ -67,7 +67,7 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091814）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091815）
 
 认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
 与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。

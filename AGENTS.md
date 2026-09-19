@@ -50,14 +50,15 @@
   抽取/摘要/分类类任务一律 `thinking="disabled"`；截断判定必须同时看 `output_tokens >= 上限`。
   能力清单以 `providers/llm/config.py:CAPABILITIES` 为准（含 `digest`），逐能力参数见 `config.example.toml`。
 
-## ⚠️ 交付产物基线（2026-09-18）
+## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091814`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `092e6f6` 构建（含飞书任务时效、同步远端诊断、审批页签刷新）；前端身份 `v2026.09.18-6550855f`；原生壳自该 build 起**保留 Dock 图标**（`LSUIElement=false` + `.regular`），
-  `WB_DOCK_ICON=0` 可退回菜单栏模式。
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091815`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `d738d13` 构建（含飞书任务时效、同步远端诊断、审批页签刷新、跨端回归闸门、clone 诊断对齐）；
+  前端身份 `v2026.09.19-6550855f`；原生壳自 build `2026091813` 起**保留 Dock 图标**
+  （`LSUIElement=false` + `.regular`），`WB_DOCK_ICON=0` 可退回菜单栏模式。
 - `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`（App + DMG + `SHA256SUMS` + `release-metadata.json`）；App SHA-256 为
-  `da4c554f015995f97b8876045be38a7bbcd63718e7e7e0e8cced547a9f189ecd`，DMG SHA-256 为
-  `696884d4191d5faec1f19642294325e3c62041af0717d93b2d7c39afcf37c8f8`。
+  `131fc611c96bf5984454ecdb82fa12d942c2936a597848280e9a1335c5d6df25`，DMG SHA-256 为
+  `f50f9afd0122cdf0727e077ab518ab73a86ee45f9e433ca60234b9eb31cf12b4`。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -72,8 +73,8 @@
 ## 验证命令与基线（源码提交 `8c24b7e`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 期望 1257 passed, 1 skipped
-./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈83.98%（门槛 80%）
+./.venv/bin/python -m pytest -q                 # 期望 1262 passed, 1 skipped
+./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.05%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 82 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
