@@ -203,7 +203,14 @@ class GitRepo:
         return self._backend.read_file_at(revision, path)
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
-        """grep 提交主题的最近提交，返回 ``(sha, ISO 时间, 主题)``（供 wb 撤销历史）。"""
+        """grep 提交**消息**的最近提交，返回 ``(sha, ISO 时间, 主题)``（供 wb 撤销历史）。
+
+        ``pattern`` 是**正则**（两个后端同语义，``^``/``$`` 按消息的**每一行**锚定）；
+        匹配目标是**整条提交消息**，返回的第三项才是**主题**（``git log --pretty=%s`` 的含义）。
+        这两件事不一样——2026-09-19 的缺陷正是一端按字面子串只匹配主题、另一端按正则匹配整条
+        消息（打包 App 固定 dulwich ⇒ 撤销历史面板空白），改实现时两个后端都要改并跑
+        ``tests/unit/test_git_backends.py::test_log_grep_semantics_agree_across_backends``。
+        """
         return self._backend.log_grep(pattern, limit)
 
     def show_patch(self, sha: str) -> str:
