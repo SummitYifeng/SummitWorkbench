@@ -12,11 +12,24 @@
 4. **精排静默失效** → 每次提问白跑一次失败请求再降级，界面不报警。
    （存量端点不会随代码默认值迁移。）
 
+2026-09-19 批次 A 追加两条**写入端改造**的不变量（都只在"有真实库"的环境里才有意义）：
+
+5. **原件（`<project>/sources/`）与简报/周复盘类型不进语料** → 契约 §9/§9.1 只把结论页
+   留在检索语料里；`source` 与 `daily` / `weekly-review` 只写不检索。
+6. **来源白名单覆盖真实库的全部主线项目** → 白名单是 SWB 里的"看得见的常量"，库里加了
+   项目目录而白名单没跟上时，`路径#区块` 引用点开会 400（2026-09-19 实测约 612 条引用落空）。
+   这条守卫必须放在闸门里：`tests/unit/test_knowledge_sources.py` 在 CI/异机会因拿不到
+   真实库而 skip，等于没守住。
+
 用法（**会写 vault、会花钱**：一次极小模型调用 + 检索时的嵌入/精排费用）：
 
     ./.venv/bin/python scripts/kb_three_end_gate.py            # 跑完整闸门并自动清理验证件
     ./.venv/bin/python scripts/kb_three_end_gate.py --keep     # 保留验证件供人工查看
     ./.venv/bin/python scripts/kb_three_end_gate.py --no-cleanup
+    ./.venv/bin/python scripts/kb_three_end_gate.py --no-push  # 清理提交只留本地，不推 vault
+
+默认行为不变（清理提交后推送）；`--no-push` 只把推送这一步显式关掉，并记为 WARN——
+推送与否是使用者的决定，不该由一次验证顺带执行。
 
 退出码：0 = 全部通过（允许 WARN）；1 = 有 FAIL。
 """
@@ -31,11 +44,24 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, cast
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from summit_workbench.repositories.vault import parse_frontmatter  # noqa: E402
+from summit_workbench.webapp.knowledge_sources import (  # noqa: E402
+    KNOWLEDGE_SOURCE_ROOTS,
+    _is_knowledge_source,
+)
+
 MARKER_PREFIX = "【回归闸门验证件】"
 DEFAULT_QUESTION = "奖学金折扣要不要收 royalty？"
+
+# 检索返回里**绝不允许出现**的类型：逐字稿、原件、简报/周复盘（契约 §5.2）。
+FORBIDDEN_CORPUS_TYPES = frozenset({"meeting-transcript", "source", "daily", "weekly-review"})
 
 
 # ────────────────────────── 输出 ──────────────────────────
@@ -182,12 +208,64 @@ def active_profile(health: dict[str, Any]) -> dict[str, Any] | None:
     return next((p for p in health.get("profiles", []) if p["id"] == active), None)
 
 
+# ──────────────── 语料边界与白名单的纯判定（便于脱机验证/变异） ────────────────
+def corpus_boundary_counts(con: sqlite3.Connection) -> dict[str, int]:
+    """语料边界的关键计数。纯查询，不依赖端点，可对合成库做脱机验证与变异。"""
+
+    def count(sql: str, params: tuple[object, ...] = ()) -> int:
+        return int(con.execute(sql, params).fetchone()[0])
+
+    return {
+        "transcripts": count(
+            "SELECT COUNT(*) FROM chunks WHERE source_file LIKE 'meetings/transcripts/%'"
+        ),
+        # 原件层：契约 §1.1 把逐字原件放在 `<project-id>/sources/`（含 sources/attachments/）。
+        "sources": count(
+            "SELECT COUNT(*) FROM chunks "
+            "WHERE source_file LIKE '%/sources/%' OR source_file LIKE 'sources/%'"
+        ),
+        # 简报/周复盘：按类型与按路径双查（旧 App 回写到 daily/ 或 reviews/weekly/ 也会命中）。
+        "daily_weekly": count(
+            "SELECT COUNT(*) FROM chunks "
+            "WHERE type IN ('daily','weekly-review') "
+            "OR source_file LIKE 'daily/%' OR source_file LIKE 'reviews/%'"
+        ),
+        "inbox": count("SELECT COUNT(*) FROM chunks WHERE source_file = 'inbox.md'"),
+    }
+
+
+def forbidden_types_in(sources: list[dict[str, Any]]) -> list[str]:
+    """检索结果里出现的**禁止类型**（空列表 = 通过）。"""
+    types = {s.get("type") for s in sources if isinstance(s, dict)}
+    return sorted(t for t in FORBIDDEN_CORPUS_TYPES if t in types)
+
+
+def whitelist_missing(project_ids: Iterable[str]) -> list[str]:
+    """这些项目 ID 里，哪些**不能**作为知识来源打开（空列表 = 白名单覆盖全部）。"""
+    return sorted(
+        pid for pid in project_ids if not _is_knowledge_source(Path(pid) / "notes" / "probe.md")
+    )
+
+
+def project_ids_of(vault: Path) -> list[str]:
+    """真实库 `projects/*.md` 的主线项目 ID（frontmatter `project`，回退文件名）。"""
+    projects_dir = vault / "projects"
+    if not projects_dir.is_dir():
+        return []
+    ids: list[str] = []
+    for path in sorted(projects_dir.glob("*.md")):
+        meta, _body, _error = parse_frontmatter(path.read_text(encoding="utf-8"))
+        value = meta.get("project")
+        ids.append(str(value).strip() if isinstance(value, str) and value.strip() else path.stem)
+    return ids
+
+
 # ────────────────────── 闸门各段 ──────────────────────
 def gate_preflight(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, sk_url: str, sk_tok: str
 ) -> int:
-    """返回起始 pending_index，供 [3/5] 判断"闸门自己的写入有没有让索引变脏"。"""
-    print("\n[1/5] 前置：三端可用 + 起始状态干净")
+    """返回起始 pending_index，供 [4/6] 判断"闸门自己的写入有没有让索引变脏"。"""
+    print("\n[1/6] 前置：三端可用 + 起始状态干净")
     rep.check(vault.is_dir(), f"vault 存在（{vault}）")
     rep.check(
         not worktree_dirty(vault),
@@ -227,7 +305,7 @@ def gate_mutation(
     rep: Report, vault: Path, swb_url: str, swb_tok: str, swb_origin: str, keep: bool
 ) -> str:
     """S-1(a)/S-1(b)：真实写入之后，工作树必须干净、`_signals` 必须没被回跟踪。"""
-    print("\n[2/5] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
+    print("\n[2/6] 写入路径：真实 capture 之后工作树是否干净、`_signals` 是否被回跟踪")
     marker = f"{MARKER_PREFIX}{uuid.uuid4().hex[:8]}"
     res = http_json(
         f"{swb_url}/api/capture",
@@ -256,6 +334,29 @@ def gate_mutation(
     return marker
 
 
+def gate_source_whitelist(rep: Report, vault: Path) -> None:
+    """来源白名单必须覆盖**真实库**的全部主线项目目录（含 `thinking`）。
+
+    这条守卫只在这里成立：单元测试里的同名断言在 CI/异机拿不到真实库只能 skip。
+    白名单是 SWB 的"看得见的常量"，故意不做运行时派生——代价就是必须有人（这里）
+    在真实库上守它。
+    """
+    print("\n[3/6] 来源白名单：真实库的全部主线项目都可达")
+    project_ids = project_ids_of(vault)
+    rep.check(bool(project_ids), "真实库有主线项目页", f"{len(project_ids)} 个")
+    missing = whitelist_missing(project_ids)
+    rep.check(
+        not missing,
+        "全部主线项目目录在来源白名单内（点『来源』不报 400）",
+        f"缺失 {missing}",
+    )
+    rep.check(
+        "thinking" in KNOWLEDGE_SOURCE_ROOTS,
+        "`thinking/` 在来源白名单内",
+        f"白名单 {len(KNOWLEDGE_SOURCE_ROOTS)} 项",
+    )
+
+
 def gate_corpus(
     rep: Report,
     vault: Path,
@@ -265,25 +366,34 @@ def gate_corpus(
     marker: str,
     pending_before: int,
 ) -> None:
-    """P1-4：原始逐字稿与 inbox 都不该进语料。"""
-    print("\n[3/5] 语料边界：逐字稿与 inbox 都不得进检索语料")
+    """P1-4 + 批次 A：语料边界——逐字稿 / inbox / 原件 / 简报周报都不该进语料。"""
+    print("\n[4/6] 语料边界：逐字稿、inbox、原件与简报周报都不得进检索语料")
     db = active_db(vector_work)
     # WAL 库用 mode=ro 打开会因缺 -shm 失败（实测），普通连接做 SELECT 是安全的
     con = sqlite3.connect(db, timeout=10)
     try:
-        tr = con.execute(
-            "SELECT COUNT(*) FROM chunks WHERE source_file LIKE 'meetings/transcripts/%'"
-        ).fetchone()[0]
-        inbox = con.execute(
-            "SELECT COUNT(*) FROM chunks WHERE source_file = 'inbox.md'"
-        ).fetchone()[0]
+        counts = corpus_boundary_counts(con)
         hit = con.execute(
             "SELECT COUNT(*) FROM chunks WHERE content LIKE ?", (f"%{marker}%",)
         ).fetchone()[0]
     finally:
         con.close()
-    rep.check(tr == 0, "语料中无 `meetings/transcripts/*`（逐字稿已排除）", f"命中 {tr}")
-    rep.check(inbox == 0, "语料中无 `inbox.md`", f"命中 {inbox}")
+    rep.check(
+        counts["transcripts"] == 0,
+        "语料中无 `meetings/transcripts/*`（逐字稿已排除）",
+        f"命中 {counts['transcripts']}",
+    )
+    rep.check(counts["inbox"] == 0, "语料中无 `inbox.md`", f"命中 {counts['inbox']}")
+    rep.check(
+        counts["sources"] == 0,
+        "语料中无 `<project>/sources/` 下片段（原件不进语料）",
+        f"命中 {counts['sources']}",
+    )
+    rep.check(
+        counts["daily_weekly"] == 0,
+        "语料中无 daily / weekly-review 片段（简报周报不在库内）",
+        f"命中 {counts['daily_weekly']}",
+    )
     rep.check(hit == 0, "本次 capture 未进语料（inbox 类型被排除）", f"命中 {hit}")
 
     health = http_json(f"{sk_url}/api/health", token=sk_tok, header="Authorization")
@@ -292,7 +402,7 @@ def gate_corpus(
         pending_after = int(prof.get("pending_index") or 0)
         # 真正要守的是「闸门自己的写入（inbox capture）不得让索引变脏」；
         # 起始就 >0 只是"索引落后于库"（新的一天简报 / 别人刚 capture / 审批写回），
-        # 与闸门要守的四类不变量无关，所以只告警不判失败。
+        # 与闸门要守的不变量无关，所以只告警不判失败。
         rep.check(
             pending_after <= pending_before,
             "闸门写入未让 pending_index 增长（inbox 不进语料）",
@@ -306,8 +416,8 @@ def gate_corpus(
 
 
 def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None:
-    """P0-4 + 语料边界：精排必须真的生效，且结果里不得出现逐字稿。"""
-    print("\n[4/5] 检索路径：精排是否真的生效、结果是否混入逐字稿")
+    """P0-4 + 语料边界：精排必须真的生效，且结果里不得出现非语料类型。"""
+    print("\n[5/6] 检索路径：精排是否真的生效、结果是否混入非语料类型")
     payload = {"query": question, "profile_id": "work"}
     req = urllib.request.Request(
         f"{sk_url}/api/chat/stream", data=json.dumps(payload).encode(), method="POST"
@@ -342,7 +452,12 @@ def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None
         f"applied={applied} reasons={reasons}",
     )
     types = {s.get("type") for s in sources if isinstance(s, dict)}
-    rep.check("meeting-transcript" not in types, "结果中无 meeting-transcript", f"types={types}")
+    bad_types = forbidden_types_in(sources)
+    rep.check(
+        not bad_types,
+        "结果中无 source / daily / weekly-review / meeting-transcript",
+        f"命中 {bad_types}；types={types}",
+    )
     health = http_json(f"{sk_url}/api/health", token=sk_tok, header="Authorization")
     prof = active_profile(health)
     if prof:
@@ -353,8 +468,8 @@ def gate_retrieval(rep: Report, sk_url: str, sk_tok: str, question: str) -> None
         )
 
 
-def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool) -> None:
-    print("\n[5/5] 收尾：清理验证件并恢复起始状态")
+def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool, *, push: bool) -> None:
+    print("\n[6/6] 收尾：清理验证件并恢复起始状态")
     if not do_cleanup:
         rep.warn("已跳过清理（--keep/--no-cleanup）", f"请人工删除含标记的行：{marker}")
         return
@@ -391,11 +506,14 @@ def gate_cleanup(rep: Report, vault: Path, marker: str, do_cleanup: bool) -> Non
     )
     dirty = worktree_dirty(vault)
     rep.check(not dirty, "收尾后工作树干净", "" if not dirty else str(dirty[:5]))
-    pushed, push_detail = push_vault(vault)
-    if pushed:
-        rep.ok("清理提交已推送", push_detail)
+    if not push:
+        rep.warn("清理提交未推送（--no-push；vault 本地仍自洽）", "由使用者决定何时 push")
     else:
-        rep.warn("清理提交未推送（网络问题；vault 本地仍自洽）", push_detail)
+        pushed, push_detail = push_vault(vault)
+        if pushed:
+            rep.ok("清理提交已推送", push_detail)
+        else:
+            rep.warn("清理提交未推送（网络问题；vault 本地仍自洽）", push_detail)
     pending = sum(
         1 for ln in inbox.read_text(encoding="utf-8").splitlines() if ln.startswith("- [ ] ")
     )
@@ -409,6 +527,11 @@ def main() -> int:
     ap.add_argument("--question", default=DEFAULT_QUESTION)
     ap.add_argument("--keep", action="store_true", help="保留验证件（不清理）")
     ap.add_argument("--no-cleanup", action="store_true", help="同 --keep")
+    ap.add_argument(
+        "--no-push",
+        action="store_true",
+        help="清理提交只留本地，不推送 vault（默认仍推送；推送与否由使用者决定）",
+    )
     args = ap.parse_args()
 
     vault = Path(args.vault).expanduser()
@@ -426,13 +549,15 @@ def main() -> int:
     print(f"  SWB        : {swb_url}")
     print(f"  SK         : {sk_url}")
     print(f"  向量库      : {vector_work}")
+    print(f"  收尾推送    : {'否（--no-push）' if args.no_push else '是（默认）'}")
     print("=" * 72)
 
     pending_before = gate_preflight(rep, vault, swb_url, swb_tok, swb_origin, sk_url, sk_tok)
     marker = gate_mutation(rep, vault, swb_url, swb_tok, swb_origin, args.keep)
+    gate_source_whitelist(rep, vault)
     gate_corpus(rep, vault, sk_url, sk_tok, vector_work, marker, pending_before)
     gate_retrieval(rep, sk_url, sk_tok, args.question)
-    gate_cleanup(rep, vault, marker, not (args.keep or args.no_cleanup))
+    gate_cleanup(rep, vault, marker, not (args.keep or args.no_cleanup), push=not args.no_push)
 
     print("\n" + "=" * 72)
     if rep.failures:
