@@ -19,6 +19,15 @@ from pathlib import Path
 
 # 允许作为「知识来源」只读打开的 vault 顶层目录；审批来源入口与来源查看器
 # 共用同一份白名单，避免出现一个更宽的旁路。
+#
+# ⚠️ 这是**看得见的常量**，不做运行时派生（派生会让"库里多一个目录"静默放行，也会让
+# 白名单与约定脱钩）。因此必须由 `tests/unit/test_knowledge_sources.py` 的机器守卫兜住
+# 一致性：conventions §3 的 8 个主线项目目录 + `thinking`，且不得残留死目录。
+#
+# 2026-09-19 修正：此前是「工作线主线」时代的旧根（`hii`/`it`/`community`/`hr`）加上
+# `daily`/`reviews`，8 个项目目录全部缺失 ⇒ 全库约 612 条落在项目目录里的 `路径#区块`
+# 引用点开会报 400「来源路径不在允许的知识范围内」。`daily`/`reviews` 自本阶段起也不再
+# 是库内目录（简报/周报已迁到本机程序目录）。
 KNOWLEDGE_SOURCE_ROOTS = frozenset(
     {
         "projects",
@@ -26,17 +35,20 @@ KNOWLEDGE_SOURCE_ROOTS = frozenset(
         "logs",
         "artifacts",
         "inboxes",
-        "daily",
-        "reviews",
         "insights",
-        # ---- 工作知识库（方案 A：工作线主线）新增根 ----
-        # 不加这些根，`路径#区块` 引用点开会 404（来源面板与审批只读入口共用本白名单）。
-        "hii",
-        "it",
-        "community",
-        "hr",
         "decisions",
         "index",
+        # ---- 主线项目目录（目录名＝项目 ID，conventions §1）----
+        "hii-royalty",
+        "hii-ip-license",
+        "hii-china-visit",
+        "it-development",
+        "finance-budget",
+        "huoman-community",
+        "huoman-logistics",
+        "course-material-production",
+        # ---- 工作思考（跨项目长文，conventions §1.1）----
+        "thinking",
     }
 )
 

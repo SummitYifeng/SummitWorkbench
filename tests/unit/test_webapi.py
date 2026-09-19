@@ -331,13 +331,26 @@ def test_api_review_source_is_read_only_and_vault_scoped(tmp_path: Path) -> None
 
 
 def test_api_sources_read_accepts_work_knowledge_roots(tmp_path: Path) -> None:
-    """方案 A（工作线主线）的新根必须能作为知识来源打开。
+    """主线项目目录 / thinking 等新根必须能作为知识来源打开。
 
-    否则 `路径#区块` 引用在来源面板点开会 400/404——引用可点开是本轮验收的硬要求。
-    负例护栏：未加入白名单的顶层目录（`notes/`）仍必须被拒（白名单不得被顺手放宽）。
+    否则 `路径#区块` 引用在来源面板点开会 400/404——引用可点开是验收的硬要求。
+    负例护栏：未加入白名单的顶层目录（`notes/`）与已撤销/已迁出的旧根
+    （`hii`/`it`/`community`/`hr`/`daily`/`reviews`）都必须被拒。
     """
     client, vault = _client(tmp_path, seed_review=False)
-    for root in ("hii", "it", "community", "hr", "decisions", "index"):
+    for root in (
+        "hii-royalty",
+        "hii-ip-license",
+        "hii-china-visit",
+        "it-development",
+        "finance-budget",
+        "huoman-community",
+        "huoman-logistics",
+        "course-material-production",
+        "thinking",
+        "decisions",
+        "index",
+    ):
         target = vault / root / "sample.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
@@ -346,6 +359,18 @@ def test_api_sources_read_accepts_work_knowledge_roots(tmp_path: Path) -> None:
         )
         response = client.get("/api/sources/read", params={"source_id": f"{root}/sample"})
         assert response.status_code == 200, (root, response.status_code)
+
+    for dead in ("hii", "it", "community", "hr", "daily", "reviews"):
+        target = vault / dead / "sample.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            f"---\ndate: 2026-09-13\ntype: note\nstatus: active\n---\n\n# {dead}\n",
+            encoding="utf-8",
+        )
+        assert (
+            client.get("/api/sources/read", params={"source_id": f"{dead}/sample"}).status_code
+            == 400
+        ), dead
 
     stray = vault / "notes" / "stray.md"
     stray.parent.mkdir(parents=True, exist_ok=True)
@@ -418,7 +443,7 @@ def test_api_sources_read_returns_structured_source_and_rejects_disallowed_paths
 def test_api_sources_read_returns_the_requested_block(tmp_path: Path) -> None:
     """`路径#区块` 引用必须只返回那一块，并回报区块标题；不存在的区块要 404。"""
     client, vault = _client(tmp_path, seed_review=False)
-    source = vault / "hii" / "notes" / "consensus.md"
+    source = vault / "hii-ip-license" / "notes" / "consensus.md"
     source.parent.mkdir(parents=True, exist_ok=True)
     source.write_text(
         "---\ntitle: 商标共识规范\ndate: 2026-09-12\ntype: note\n---\n\n"
@@ -428,16 +453,20 @@ def test_api_sources_read_returns_the_requested_block(tmp_path: Path) -> None:
     )
 
     response = client.get(
-        "/api/sources/read", params={"source_id": "hii/notes/consensus#逐项商标归属与状态"}
+        "/api/sources/read",
+        params={"source_id": "hii-ip-license/notes/consensus#逐项商标归属与状态"},
     )
     assert response.status_code == 200
     payload = response.json()
     assert payload["heading"] == "逐项商标归属与状态"
-    assert payload["anchor"] == "hii/notes/consensus#逐项商标归属与状态"
+    assert payload["anchor"] == "hii-ip-license/notes/consensus#逐项商标归属与状态"
     assert "活满归 HIC" in payload["body"]
     assert "登记在 HII 名下" not in payload["body"]
 
-    missing = client.get("/api/sources/read", params={"source_id": "hii/notes/consensus#不存在"})
+    missing = client.get(
+        "/api/sources/read",
+        params={"source_id": "hii-ip-license/notes/consensus#不存在"},
+    )
     assert missing.status_code == 404
 
 
