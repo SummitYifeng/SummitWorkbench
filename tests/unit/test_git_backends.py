@@ -644,6 +644,65 @@ def test_backends_produce_equal_semantics(tmp_path: Path) -> None:
     assert results["system"] == results["dulwich"]
 
 
+_LOGGREP_MESSAGES = (
+    "chore: seed",
+    "wb: journal/log [op-1]",
+    "chore: outer subject\n\nwb: inner body line",
+    "subject line one\nsubject line two\n\nbody para",
+    "first\n  indented second\n\nbody",
+    "wb: journal/log [op-2]",
+)
+
+# 生产常量 `autocommit._WB_PREFIX_GREP` 就是 `^wb:`（`^` 必须按行锚定，否则打包 App 的空面板）。
+_LOGGREP_PATTERNS = ("^wb:", "wb:", "^chore", "^subject line", "Revert", "body line", "^first")
+
+
+def test_log_grep_semantics_agree_across_backends(tmp_path: Path, monkeypatch) -> None:
+    """两个后端的 `log_grep` 必须**同语义**：整条消息、正则、`^`/`$` 按行锚定、返回 `%s` 主题。
+
+    2026-09-19 真实缺陷（用户可见）：dulwich 原来是「**字面子串** + 只匹配**主题**」，于是生产
+    常量 ``autocommit._WB_PREFIX_GREP = "^wb:"`` 在 dulwich（**打包 App 固定的后端**）上恒不
+    命中 ⇒ ``list_wb_commits()`` 恒返回 ``[]`` ⇒「撤销历史」面板空白。
+
+    写库用 system 后端（提交消息经 git 清理，两个后端读到的是同一份消息 ⇒ 差异只可能来自
+    **读取**语义）；读库两个后端各来一遍，逐模式比对。每个提交给不同的 author/committer 时间，
+    避免同一秒内的提交让遍历顺序出现并列歧义。
+
+    变异验证：把 ``dulwich_git.log_grep`` 改回 ``needle in subject`` ⇒ 本用例立刻红
+    （`^wb:` 与 `body line` 在两个后端上结果不同）。
+    """
+    repo_dir = tmp_path / "repo"
+    writer = _backend("system", repo_dir)
+    writer.init()
+    for index, message in enumerate(_LOGGREP_MESSAGES):
+        stamp = f"2026-09-19T10:{index:02d}:00+08:00"
+        monkeypatch.setenv("GIT_AUTHOR_DATE", stamp)
+        monkeypatch.setenv("GIT_COMMITTER_DATE", stamp)
+        (repo_dir / f"f{index}.txt").write_text(str(index), encoding="utf-8")
+        writer.add([f"f{index}.txt"])
+        writer.commit(message, author=ID)
+
+    by_kind = {
+        kind: {
+            pattern: [row[2] for row in _backend(kind, repo_dir).log_grep(pattern, 50)]
+            for pattern in _LOGGREP_PATTERNS
+        }
+        for kind in KINDS
+    }
+
+    assert by_kind["dulwich"] == by_kind["system"]
+    # 非空护栏：两个后端"一致地坏掉"（例如都返回空）不算通过。
+    assert by_kind["system"]["^wb:"] == [
+        "wb: journal/log [op-2]",
+        "chore: outer subject",  # 正文里以 `wb:` 开头的那一行：`^` 按行锚定才命中
+        "wb: journal/log [op-1]",
+    ]
+    # `%s` 折叠规则：多行首段折成一个空格；续行缩进保留。
+    assert by_kind["system"]["^subject line"] == ["subject line one subject line two"]
+    assert by_kind["system"]["^first"] == ["first   indented second"]
+    assert by_kind["system"]["Revert"] == []
+
+
 def test_dulwich_production_backend_works_with_empty_path(tmp_path: Path) -> None:
     """PATH 为空时 dulwich 后端完成 init/commit/fetch/ff/push（绝不调用系统 git）。"""
     script = """

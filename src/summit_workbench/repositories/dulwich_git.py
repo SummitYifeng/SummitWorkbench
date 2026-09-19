@@ -83,6 +83,28 @@ def _commit_message(commit: Commit) -> bytes:
     return cast(bytes, commit.message)
 
 
+def _git_subject(message: str) -> str:
+    """按 ``git log --pretty=%s`` 的规则取提交主题（**不调用系统 git**）。
+
+    规则（2026-09-19 用真实 git 实测确认）：
+
+    - 取**首个空行之前**的整段；段内换行折成**一个空格**（``first\\nsecond`` → ``first second``）；
+    - 续行的**缩进保留**（``first\\n  second`` → ``first   second``：折行那一个空格 + 原缩进两个）；
+    - 开头的空行跳过；两端去空白。
+
+    为什么不用 ``splitlines()[0]``：那只取第一行，多行首段会被截断，于是同一个库在两个后端上
+    会返回**不同的主题**（system 用 ``%s``，dulwich 用第一行）。
+    """
+    paragraph: list[str] = []
+    for line in message.splitlines():
+        if not line.strip():
+            if paragraph:
+                break
+            continue
+        paragraph.append(line)
+    return " ".join(paragraph).strip()
+
+
 def _identity_bytes(identity: CommitIdentity | None) -> bytes:
     chosen = identity if identity is not None else default_identity()
     return f"{chosen.name} <{chosen.email}>".encode()
@@ -1007,20 +1029,44 @@ class DulwichGitBackend:
         return _blob_object(repo, entry[1]).data
 
     def log_grep(self, pattern: str, limit: int) -> list[tuple[str, str, str]]:
+        """grep 提交消息的最近提交，返回 ``(sha, ISO 时间, 主题)``。
+
+        语义与 system 后端的 ``git log --grep=<pattern>`` 对齐——它是**正则**，且
+        ``^``/``$`` 锚定消息的**每一行**（实测：``--grep='^wb:'`` 能命中正文里以 ``wb:``
+        开头的那一行）。因此这里：
+
+        - 匹配目标是**整条提交消息**（不只是主题），``re.MULTILINE`` 复刻 git 的按行锚定；
+        - 返回的第三项仍是**主题**，按 ``git log --pretty=%s`` 的规则算（首个空行前的整段、
+          换行折成空格、两端去空白；续行的缩进**保留**——实测 ``first\\n  second`` 的 %s 是
+          ``first   second``）。
+
+        2026-09-19 真实缺陷（用户可见）：这里原来是 ``needle in subject`` —— **字面子串**、
+        且只匹配主题 ⇒ 生产常量 ``autocommit._WB_PREFIX_GREP = "^wb:"`` 在本后端（**打包 App
+        固定的后端**）下恒不命中，``list_wb_commits()`` 恒返回 ``[]`` ⇒「撤销历史」面板空白。
+
+        残留差异（已知，登记）：git 用 POSIX ERE，这里用 Python ``re``；``\\d`` / ``\\w`` /
+        lookaround 这类写法两者含义不同。生产上只用 ``^wb:``，两种 flavour 下一致。
+        """
         repo = self._open()
         head = self._head_sha(repo)
         rows: list[tuple[str, str, str]] = []
         if head is None:
             return rows
-        needle = pattern.encode("utf-8")
+        try:
+            matcher = re.compile(pattern, re.MULTILINE)
+        except re.error as exc:
+            # 与 system 后端对齐：非法正则是**类型化错误**，不是"静默零命中"
+            # （system 走 _classify 抛 GitError）。
+            raise GitError(f"log_grep 正则无效 {pattern!r}：{exc}") from None
         for entry in repo.get_walker(include=[head]):
             commit = entry.commit
-            subject = commit.message.decode("utf-8", "replace").strip().splitlines()[0]
-            if needle in subject.encode("utf-8"):
-                when = datetime.datetime.fromtimestamp(commit.commit_time, datetime.UTC).isoformat()
-                rows.append((commit.id.decode("ascii"), when, subject))
-                if len(rows) >= limit:
-                    break
+            message = commit.message.decode("utf-8", "replace")
+            if matcher.search(message) is None:
+                continue
+            when = datetime.datetime.fromtimestamp(commit.commit_time, datetime.UTC).isoformat()
+            rows.append((commit.id.decode("ascii"), when, _git_subject(message)))
+            if len(rows) >= limit:
+                break
         return rows
 
     def show_patch(self, sha: str) -> str:
