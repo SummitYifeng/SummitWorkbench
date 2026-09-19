@@ -21,6 +21,7 @@ from summit_workbench.providers.feishu.errors import FeishuAuthError
 from summit_workbench.webapp import feishu_authorization
 from summit_workbench.webapp.app import create_app
 from summit_workbench.webapp.routers import settings as settings_routes
+from summit_workbench.webapp.routers import settings_connections
 from summit_workbench.webapp.routers.settings import _AuthorizationStates
 
 CFG = FeishuConfig(app_id="cli_test", redirect_uri="http://localhost:8765/callback")
@@ -216,6 +217,13 @@ def test_settings_keeps_compatibility_exports_for_authorization_helpers() -> Non
     new_state_file = feishu_authorization.authorization_state_file
     assert old_state_file is new_state_file
     assert settings_routes._denied_reason is feishu_authorization.denied_reason
+
+
+def test_settings_keeps_connection_registration_compatibility_export() -> None:
+    assert (
+        settings_routes.register_settings_connection_routes
+        is settings_connections.register_settings_connection_routes
+    )
 
 
 def test_authorization_state_file_has_no_unexpected_fields(tmp_path: Path) -> None:
