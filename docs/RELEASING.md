@@ -1,23 +1,27 @@
 # SummitWorkbench macOS 发布
 
-## 当前 main 本机交付状态（2026-09-18，latest）
+## 当前 main 本机交付状态（2026-09-19，latest）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-本轮发布产物由提交 `d738d13` 构建。本机 `/Applications/SummitWorkbench.app` 已更新为
-`0.4.9 / build 2026091815`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
-`v2026.09.19-6550855f`；`tests/integration/test_packaged_app.py`
-已使用该安装包通过（1 passed）。以下历史发布记录保留原结论；正式 DMG 的发布身份
+本轮发布产物由提交 `17bfde8` 构建。相对上一版 `d738d13`（build `2026091815`）只有三类改动：
+4 个依赖升级（uvicorn `0.53.0` / pyinstaller `6.22.3` / ruff `0.16.7` / hypothesis `6.168.0`，
+均只动 `uv.lock`）、`0f37ac7` 刷新前端构建产物、文档；**`src/**/*.py` 一行未改**。本机
+`/Applications/SummitWorkbench.app` 已更新为
+`0.4.9 / build 2026091816`（`INTERNAL-DEV`、arm64、ad-hoc），前端身份为
+`v2026.09.19-6550855f`（未变）；`tests/integration/test_packaged_app.py`
+已使用该安装包通过（1 passed），跨端回归闸门 `kb_three_end_gate.py` 对该安装包 **22/22 PASS**。
+以下历史发布记录保留原结论；正式 DMG 的发布身份
 仍以对应 `release-metadata.json` 为准。
 
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091815` |
+| 装机包 | `/Applications/SummitWorkbench.app` = build `2026091816` |
 | 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| App SHA-256 | `131fc611c96bf5984454ecdb82fa12d942c2936a597848280e9a1335c5d6df25` |
-| DMG SHA-256 | `f50f9afd0122cdf0727e077ab518ab73a86ee45f9e433ca60234b9eb31cf12b4` |
+| App SHA-256 | `c5f51f657c214f15866488a79da00701fac31115ef5673b372c3ba5c0a585b18` |
+| DMG SHA-256 | `d6786ff234242bab9da4a7a55d2f205da81ebb458d31b1595fa5a3d9315c527e` |
 | 本机测试基线 | `pytest -q` → **1262 passed, 1 skipped**；`--cov` → **84.05%**（门槛 80%） |
 
 本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`。
@@ -44,6 +48,14 @@ tag 触发的 `.github/workflows/release.yml` 曾在 `v0.4.3-rc.3`–`v0.4.3-rc.
 SBOM、SHA256SUMS 全部产出，作为 **prerelease** 发布到公开 Updates 仓库，`latest` 保持 `v0.4.2`
 不变（rc 渠道不污染 stable）。自动发布链路因此可用；日常发布仍可继续使用本文件的本地脚本。
 
+> ⚠️ **2026-09-19 同一问题复发**：远端 CI 再次因账单停摆 —— `main` 最近 3 次推送
+> （run #308 / #309 / #310）的**四个 job 全部没有启动**，注解为
+> `The job was not started because recent account payments have failed or your spending
+> limit needs to be increased`。也就是说 **CI 的红不是代码问题，远端质量门当前完全失效**，
+> 唯一在守门的是本地门禁（`pytest` / `ruff` / `mypy` / `pre-push` 钩子）。
+> 恢复需在 GitHub → Settings → Billing & plans 处理支付方式/额度；在那之前
+> **不要用「CI 绿」当作合并依据**。
+
 ## 内部/个人自用包（仅 M2+ Apple Silicon）
 
 发布脚本要求显式 build number，只构建 arm64，并生成名字和 App 界面均标明
@@ -67,7 +79,7 @@ scripts/release-macos.sh
 
 最近一次产物位于：
 
-`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091815）
+`dist/releases/0.4.9/arm64/SummitWorkbench-0.4.9-arm64-INTERNAL-DEV.dmg`（build 2026091816）
 
 认包请以该目录下的 `release-metadata.json`（含 `git_commit` 与 `app`/`dmg` 的 SHA-256）
 与 `SHA256SUMS` 为准，或装完后看设置页的 build 号；**不要凭 DMG 文件名**（文件名不含 build 号）。
@@ -192,6 +204,28 @@ BUILD_NUMBER=456 ARCH=arm64 \
 scripts/release-macos.sh
 ```
 
+- **本机重建时凭据从哪来**：从**上一个含内置凭据的包**里取证，不要手抄、不要落进仓库。
+  已安装的 App 或上一次的发布目录都行：
+
+  ```bash
+  # 1) 旧发布目录要先移开（脚本拒绝覆盖已存在的同名发布目录）
+  mv dist/releases/0.4.9 /tmp/swb-releases-0.4.9-superseded
+  # 2) 从包内 feishu-defaults.json 生成 0600 临时 env 文件（值不落日志）
+  umask 077; python3 - <<'PY' > /tmp/wb-feishu.env
+  import json,shlex
+  d=json.load(open('/Applications/SummitWorkbench.app/Contents/Resources/feishu-defaults.json'))
+  for k,v in [("WB_FEISHU_APP_ID",d["app_id"]),("WB_FEISHU_APP_SECRET",d["app_secret"]),("WB_FEISHU_REDIRECT_URI",d.get("redirect_uri",""))]:
+      if v: print(f"{k}={shlex.quote(v)}")
+  PY
+  chmod 600 /tmp/wb-feishu.env
+  set -a; . /tmp/wb-feishu.env; set +a
+  ARCH=arm64 BUILD_NUMBER=<n> REQUIRE_BUNDLED_FEISHU=true scripts/release-macos.sh
+  rm -f /tmp/wb-feishu.env
+  ```
+
+  漏了这两步会在**打包阶段**才失败：`✗ REQUIRE_BUNDLED_FEISHU=true 但缺少 WB_FEISHU_APP_ID /
+  WB_FEISHU_APP_SECRET`（前面几十分钟的测试与 PyInstaller 全白跑）。
+  构建前还要 `uv sync --extra dev --extra web --extra packaging`，否则缺 PyInstaller。
 - `scripts/build-macos-app.sh` 在**签名之前**把这三个值写成
   `Contents/Resources/feishu-defaults.json`（0600）。写在签名之后会破坏 ad-hoc 签名。
 - 只给 `WB_FEISHU_APP_ID` 或只给 `WB_FEISHU_APP_SECRET` 会直接构建失败；`REQUIRE_BUNDLED_FEISHU=true`

@@ -2,7 +2,7 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：源码提交 **`8c24b7e`**（2026-09-18，即安装包 build `2026091810` 的来源）。
+> 基线：源码提交 **`17bfde8`**（2026-09-19，即安装包 build `2026091816` 的来源）。
 > 若 HEAD 更新，先确认下面的行号与数字是否漂移——**基线的锚是那个源码提交，不是 HEAD**
 > （否则「更新基线」这一动作本身会产生新提交，基线永远追不上，参见前端 build 身份的同类教训）。
 
@@ -52,13 +52,18 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091815`（`INTERNAL-DEV`、arm64、ad-hoc），
-  由 `d738d13` 构建（含飞书任务时效、同步远端诊断、审批页签刷新、跨端回归闸门、clone 诊断对齐）；
-  前端身份 `v2026.09.19-6550855f`；原生壳自 build `2026091813` 起**保留 Dock 图标**
+- 本机 `/Applications/SummitWorkbench.app` = `0.4.9 / build 2026091816`（`INTERNAL-DEV`、arm64、ad-hoc），
+  由 `17bfde8` 构建。相对上一版 `d738d13`（build `2026091815`）只有三类改动：
+  ① 4 个依赖升级（uvicorn `0.53.0`、pyinstaller `6.22.3`、ruff `0.16.7`、hypothesis `6.168.0`，均只动 `uv.lock`）；
+  ② `0f37ac7` 刷新前端构建产物（build id 日期滚到 09-19，6 行）；③ 文档。
+  **Python 源码（`src/`）一行未改** —— 所以两版行为等价，但**包内依赖版本不同**（这正是重建的理由）。
+  前端身份 `v2026.09.19-6550855f`（两版相同）；原生壳自 build `2026091813` 起**保留 Dock 图标**
   （`LSUIElement=false` + `.regular`），`WB_DOCK_ICON=0` 可退回菜单栏模式。
+  装机包内**真实**依赖以发布目录的 `SBOM.json` 为准
+  （build `2026091816` 实测 `uvicorn==0.53.0`、`pyinstaller==6.22.3`）。
 - `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`（App + DMG + `SHA256SUMS` + `release-metadata.json`）；App SHA-256 为
-  `131fc611c96bf5984454ecdb82fa12d942c2936a597848280e9a1335c5d6df25`，DMG SHA-256 为
-  `f50f9afd0122cdf0727e077ab518ab73a86ee45f9e433ca60234b9eb31cf12b4`。
+  `c5f51f657c214f15866488a79da00701fac31115ef5673b372c3ba5c0a585b18`，DMG SHA-256 为
+  `d6786ff234242bab9da4a7a55d2f205da81ebb458d31b1595fa5a3d9315c527e`。
 
 - **设置页布局是使用者的显式偏好**（2026-09-18）：主区只放 工作区 / AI 模型 / 飞书
   三张卡且**每张一行**（`.settings-grid-single`）；「自动化与更新」「模型参数（只读）」在
@@ -70,18 +75,25 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（源码提交 `8c24b7e`）
+## 验证命令与基线（源码提交 `17bfde8`）
 
 ```bash
 ./.venv/bin/python -m pytest -q                 # 期望 1262 passed, 1 skipped
 ./.venv/bin/python -m pytest -q --cov           # 覆盖率期望 ≈84.05%（门槛 80%）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
-./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 82 篇全过
+./.venv/bin/wb vault check ~/Documents/Work/_vault          # 期望 86 篇全过
 ./.venv/bin/python scripts/kb_verify_links.py ~/Documents/Work/_vault
 ./.venv/bin/python scripts/kb_check_templates.py --templates ~/Documents/Work/_vault/templates
 ./.venv/bin/python scripts/kb_check_decision_hygiene.py          # 期望：19 篇决策页无库机制描述
 ```
 数字会随开发变化：**报基线时务必带上你所测的 commit**，并说明如何重测。
+（`release-macos.sh` 内部另跑一份较窄的 pytest 子集，数量少于上表的 1262，别把两者当矛盾。）
+
+**`uv sync` 会按 extras 收窄依赖，裸跑会卸掉构建工具**：dev 工具在 `dev` extra、
+PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` 或
+`uv sync --extra dev` 会把 `.venv` 里其余 extra 的包**卸载掉**（2026-09-19 踩过：PyInstaller
+被卸，`release-macos.sh` 一路跑到打包步才报 `No module named PyInstaller`）。
+**构建或跑门禁前统一用 `uv sync --extra dev --extra web --extra packaging`。**
 
 **跨端回归闸门**（跨 SWB × `_vault` × SK，**会写 vault 并花一次极小模型费用**）：
 
