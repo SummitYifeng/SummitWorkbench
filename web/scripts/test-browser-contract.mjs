@@ -86,6 +86,8 @@ const doesNotMatchNearby = (anchor, forbidden, description) =>
   });
 
 const reviewSource = fileFor('src/features/review/render.ts');
+const diagnosticsSource = fileFor('src/features/diagnostics.ts');
+const legacySource = fileFor('src/legacy-main.ts');
 // Settings is a feature directory (Step 8c): the placement guarantee is "inside the feature",
 // not "inside one file", so the whole feature is read and the move keeps the guard enforced.
 const settingsSource = filesMatching(/^src\/features\/settings\/.*\.ts$/);
@@ -143,6 +145,10 @@ assert.match(
   'the toolbar exposes 立即同步, not only the banner retry',
 );
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
+assert.match(diagnosticsSource, /export function createDiagnosticsActions/, 'diagnostics actions stay in their feature module');
+assert.match(diagnosticsSource, /\/api\/diagnostics\/preview/, 'diagnostics preview uses the feature API');
+assert.match(diagnosticsSource, /\/api\/diagnostics\/export/, 'diagnostics export uses the feature API');
+assert.doesNotMatch(legacySource, /function (copy|preview|export)Diagnostics/, 'diagnostics implementation does not return to the composition root');
 // G2: a workspace with no origin had no in-app path to bind one (only manual git commands);
 // the publish entry point and its dispatch must both exist.
 assert.match(

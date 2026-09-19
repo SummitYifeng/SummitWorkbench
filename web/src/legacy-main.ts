@@ -28,6 +28,7 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
 import { type BriefData } from './brief-card';
+import { createDiagnosticsActions } from './features/diagnostics';
 import type { ProjectState } from './features/projects';
 import type { ExternalAction, ReviewPayload } from './features/review';
 import {
@@ -170,12 +171,6 @@ interface StatePayload {
   };
 }
 
-interface DiagnosticsPreviewPayload {
-  ok: boolean;
-  files: Array<{ name: string; description: string }>;
-  snapshot: Record<string, unknown>;
-}
-
 let state: StatePayload | null = null;
 let review: ReviewPayload | null = null;
 let externalActions: ExternalAction[] = [];
@@ -197,6 +192,14 @@ let latestReviewRequest = 0;
 let latestExternalActionsRequest = 0;
 
 let remoteVersion: VersionPayload | null = null;
+const diagnostics = createDiagnosticsActions({
+  api,
+  fetch,
+  toast,
+  clientBuild: CLIENT_BUILD,
+  getVersion: () => remoteVersion,
+  escapeHtml: esc,
+});
 let lastServerInstance: string | null = null;
 let versionCheckPromise: Promise<void> | null = null;
 let restoredDraft: DraftSnapshot | null = null;
@@ -282,59 +285,6 @@ function applyRestoredDraft(): void {
   clearDraftSnapshot(remoteVersion?.workspace_id);
   toast('已恢复更新前草稿（未自动提交）', 'info');
   restoredDraft = null;
-}
-
-async function copyDiagnostics(): Promise<void> {
-  const lines = [
-    'App frontend client build: ' + CLIENT_BUILD,
-    'Served frontend build: ' + (remoteVersion?.frontend_build ?? 'unknown'),
-    'Server version/instance: ' + (remoteVersion?.server_version ?? 'unknown') +
-      '/' + (remoteVersion?.server_instance ?? 'unknown'),
-    'Panel mode: ' + (remoteVersion?.mode ?? 'unknown'),
-    'API protocol: ' + (remoteVersion?.api_protocol ?? 'unknown'),
-  ];
-  try {
-    await navigator.clipboard.writeText(lines.join('\n'));
-    toast('诊断信息已复制', 'ok');
-  } catch {
-    toast(lines.join(' · '), 'info');
-  }
-}
-
-async function previewDiagnostics(): Promise<void> {
-  const target = document.getElementById('diagnostics-preview');
-  try {
-    const result = await api<DiagnosticsPreviewPayload>('/api/diagnostics/preview');
-    if (target) {
-      target.innerHTML = '<div class="success"><strong>导出内容预览</strong><ul>' +
-        result.files.map((file) => '<li><code>' + esc(file.name) + '</code>：' + esc(file.description) + '</li>').join('') +
-        '</ul></div>';
-    }
-    toast('诊断包预览已生成', 'ok');
-  } catch (err) {
-    toast(err, 'err');
-  }
-}
-
-async function exportDiagnostics(): Promise<void> {
-  try {
-    const response = await fetch('/api/diagnostics/export', { cache: 'no-store' });
-    if (!response.ok) throw new Error('诊断包导出失败（HTTP ' + response.status + '）');
-    const blob = await response.blob();
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'summitworkbench-diagnostics.zip';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => {
-      URL.revokeObjectURL(link.href);
-      link.remove();
-    }, 1000);
-    toast('诊断包已导出', 'ok');
-  } catch (err) {
-    toast(err, 'err');
-  }
 }
 
 async function doCheckVersion(_reason: string): Promise<void> {
@@ -460,15 +410,15 @@ document.addEventListener('click', (ev) => {
     return;
   }
   if (action === 'copy-diagnostics') {
-    void copyDiagnostics();
+    void diagnostics.copyDiagnostics();
     return;
   }
   if (action === 'diagnostics-preview') {
-    void previewDiagnostics();
+    void diagnostics.previewDiagnostics();
     return;
   }
   if (action === 'diagnostics-export') {
-    void exportDiagnostics();
+    void diagnostics.exportDiagnostics();
     return;
   }
   if (action === 'diagnostics-open-log') {
