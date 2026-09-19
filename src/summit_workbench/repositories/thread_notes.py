@@ -17,7 +17,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 import yaml
@@ -61,6 +61,15 @@ JOURNAL_FIELD_LABELS: dict[str, str] = {
     "reflection": "今天的一点感悟",
     "blockers": "卡点与需要谁",
 }
+
+# 日志**形态**（契约 §4.10）——由调用方**显式**声明，绝不靠"扫正文里有没有某个词"去猜。
+#
+# - ``"advance"``「推进日志」（机器写入形态）：正文没有 ``##`` 时包一层 ``## 原文``，
+#   并由规范化器补 ``## 关联项目`` 双链区块；
+# - ``"daily"``「日常手记」（App「写工作日志」的五区块形态）：正文自带五区块（含
+#   ``## 关联``），规范化器**不再**补 ``## 关联项目`` —— 两者标题不同名，光靠
+#   "正文里有没有同名区块"判断不出来，会写出两个"关联"区块（2026-09-19 真实事故）。
+WorkLogForm = Literal["advance", "daily"]
 
 
 def render_journal_body(*, sections: Mapping[str, str], projects: Sequence[str] = ()) -> str:
@@ -166,6 +175,7 @@ def append_work_log(
     *,
     projects: Sequence[str] = (),
     text: str,
+    form: WorkLogForm = "advance",
     summary: str = "",
     involved: Iterable[str] = (),
     tags: Iterable[LogTag] = (),
@@ -178,9 +188,14 @@ def append_work_log(
     """落一条推进日志（可关联 0..n 个线程）。``text`` 必填；``summary`` 空 = 模型未消化，原文照存。
 
     空项目 = 日常日志（不属于任何项目）：写 ``project: global``，且**不**刷新任何项目档案的
-    ``activity_at``（2026-09-19，契约 §1.1/§3）。正文若已自带 ``##`` 区块（例如照库内模板写的
-    五区块手写日志）则原样保留；否则包一层 ``## 原文``（机器写入形态）——契约 §4.10 的两套区块
-    并存，这里按"调用方给了什么就用什么"选形态。
+    ``activity_at``（2026-09-19，契约 §1.1/§3）。
+
+    正文形态由 :data:`WorkLogForm` **显式**声明（不靠正文内容猜）：
+
+    - ``form="advance"``（默认，「推进日志」）：正文若已自带 ``##`` 区块则原样保留，否则包一层
+      ``## 原文``；关联项目由规范化器补 ``## 关联项目``。
+    - ``form="daily"``（「日常手记」，App「写工作日志」走这条）：正文自带五区块（含 ``## 关联``），
+      不再包 ``## 原文``，也**不再**补 ``## 关联项目``。
     """
     body_text = _clean_text(text)
     if not body_text:
@@ -222,10 +237,12 @@ def append_work_log(
     if decision:
         meta["decision"] = decision
 
-    # 机器写入形态保留 ``## 原文``（+ 摘要时 ``## AI 摘要``）：project_view 的兜底片段
-    # 按 ``## 原文`` 读取日志首段、并发落盘测试也以该区块为契约。若调用方给的正文**已经**
-    # 带 ``##`` 区块（照模板写的手写日志），就原样用它，不再套一层空的 ``## 原文``。
-    if _has_top_level_h2(body_text):
+    # 形态决定正文骨架（契约 §4.10，见 `WorkLogForm`）：
+    # - `daily`：正文就是「日常手记」五区块本身（含 `## 关联`），既不包 `## 原文`，也不补
+    #   关联区块（下面 `project_links` 置空）——否则同一页会出现 `## 关联` + `## 关联项目` 两个。
+    # - `advance`：`## 原文`（+ 摘要时 `## AI 摘要`）是既有读者（project_view 兜底片段）与
+    #   并发落盘测试的契约；正文已自带 `##` 区块（照模板写的）则原样保留，不再套一层空的。
+    if form == "daily" or _has_top_level_h2(body_text):
         raw_body = f"# {heading}\n\n{body_text}\n"
     else:
         raw_body = f"# {heading}\n\n## 原文\n\n{body_text}\n"
@@ -235,7 +252,9 @@ def append_work_log(
         note_type="work-log",
         title=heading,
         text=raw_body,
-        project_links=projects_list,
+        # 规范化器只在正文没有**同名** `## 关联项目` 时才补它；`daily` 自带的是 `## 关联`
+        # （契约 §4.10 的区块名），标题不同名 ⇒ 必须由调用方显式声明形态来避免重复区块。
+        project_links=() if form == "daily" else projects_list,
     )
     if normalized.issues:
         raise ValueError("无法规范化日志正文：" + format_normalization_error(normalized.issues))

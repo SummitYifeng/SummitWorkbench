@@ -184,6 +184,7 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
                 ctx.vault_dir,
                 projects=projects,
                 text=body,
+                form="daily",
                 causation_operation_id=_operation_id,
                 activity_migration=activity_migration,
             )

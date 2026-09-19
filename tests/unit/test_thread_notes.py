@@ -132,7 +132,7 @@ def test_append_work_log_requires_text_and_allows_no_project(tmp_path: Path) -> 
 
 
 def test_append_work_log_keeps_handwritten_blocks(tmp_path: Path) -> None:
-    """正文自带 `##` 区块（照库内模板写的手写日志）时原样保留，不再套一层空的 `## 原文`。
+    """**推进日志形态**（`form="advance"`，默认）正文自带 `##` 区块时原样保留，不套 `## 原文`。
 
     变异验证：把 `_has_top_level_h2` 分支去掉（恒套 `## 原文`），本用例变红。
     """
@@ -156,7 +156,35 @@ def test_append_work_log_keeps_handwritten_blocks(tmp_path: Path) -> None:
     assert "## 今天 / 本周做了什么" in note.body
     assert "## 关联" in note.body
     assert "## 原文" not in note.body  # 没被套一层空的「原文」
-    assert "- [[projects/P1]]" in note.body  # 规范化仍补上关联项目回链
+    # advance 形态下规范化器仍补上 `## 关联项目` 回链（机器写入形态的既有契约）。
+    assert "- [[projects/P1]]" in note.body
+    assert "## 关联项目" in note.body
+
+
+def test_append_work_log_daily_form_has_exactly_one_related_block(tmp_path: Path) -> None:
+    """**日常手记形态**（`form="daily"`）落盘后只有一个「关联」区块。
+
+    真实事故（2026-09-19）：App「写工作日志」的正文自带契约 §4.10 的 `## 关联`，而规范化器
+    只认**同名**的 `## 关联项目` ⇒ 又追加了一个，同一页出现两个关联区块。
+
+    变异验证：把 `project_links=() if form == "daily" else projects_list` 改回
+    `project_links=projects_list`，本用例变红。
+    """
+    vault = tmp_path / "vault"
+    _mk_project(vault, "P1")
+    path = append_work_log(
+        vault,
+        projects=["P1"],
+        text="## 今天 / 本周做了什么\n\n测了 A。\n\n## 关联\n\n- [[projects/P1]]\n",
+        form="daily",
+        now=datetime(2026, 9, 3, 12, tzinfo=UTC),
+    )
+    note = load_note(path)
+    assert validate_note(note.meta, note.body) == []
+    assert "## 关联项目" not in note.body  # 旧机器形态的区块名不得再出现
+    assert note.body.count("## 关联") == 1
+    assert note.body.count("- [[projects/P1]]") == 1
+    assert "## 原文" not in note.body  # 日常手记自带区块，不套原文
 
 
 def test_save_thread_artifact_single_project_schema(tmp_path: Path) -> None:
