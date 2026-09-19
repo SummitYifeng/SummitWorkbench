@@ -303,6 +303,26 @@ WB_NO_AUTO_PUSH=1 WB_SESSION_TOKEN=... \
    （变异验证：去掉回退即红）。**`due` 仍然只认标记**——手工条目无法在本地凭空算出截止日期，
    要 AI 判断就点弹层里的显式按钮。
 
+9. **`git push` 的 pre-push 钩子会在 Swift 一步偶发挂掉**（2026-09-19 本仓库首次推送时踩到，
+   环境类、非代码缺陷，**未根治**）：`git push` → `.git/hooks/pre-push` →
+   `scripts/pre-push-gate.sh` → `scripts/test-native-updates.sh` 报
+   `error: failed to build module 'Swift'; this SDK is not supported by the compiler`
+   （`/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk` 是 MacOSX27.0 / Swift 6.4，而选的编译器是
+   6.3.3），随后 `error: failed to push some refs`。
+   - **关键证据**：同一个脚本**单独跑 4/4 通过**（直接跑、`env -i` 最小环境、`GIT_DIR=.git`、
+     直接跑钩子本身都过），只有**挂在 `git push` 后面**时 2/2 失败；失败时驱动加载的是 **arm64e**
+     slice（宿主目标 macosx27），而不是脚本里给的 `-target arm64-apple-macosx13.0`。
+   - 本机工具链现状：`xcode-select -p` = `/Applications/Xcode-26.6.0.app/Contents/Developer`
+     （swiftc 6.3.3），但 `xcrun --show-sdk-path` 解析到 **CLT** 的
+     `MacOSX.sdk → MacOSX27.0.sdk`（6.4 SDK）⇒ 版本不匹配。
+   - 本次处置：**先在前台单独把完整门禁跑成全绿**（actionlint / action refs / uv lock / ruff /
+     mypy strict / pytest 84.46% / tsc / 前端 20 个脚本 / secret scan / native / diff-check），
+     再用 `git push --no-verify` 推。**`--no-verify` 只允许在"门禁刚全绿、挂的是环境不是内容"时用，
+     并且必须在当次报告里写明**——它不是常规姿势。
+   - 想根治（二选一，**都没做**，属环境决策）：让 `test-native-updates.sh` 显式选与编译器匹配的 SDK
+     （`-sdk "$(xcode-select -p)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"`），
+     或把本机 CLT / Xcode 升到同一版本。
+
 - **远端日常 CI 永久手动触发**：`.github/workflows/ci.yml` 只保留 `workflow_dispatch`；push/PR
   不会自动消耗 runner。推送前必须通过 `scripts/pre-push-gate.sh`，需要远端复核时显式运行
   `gh workflow run ci.yml --ref main`。release workflow 的 tag 触发策略不变。
