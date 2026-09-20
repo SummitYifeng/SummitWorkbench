@@ -4,11 +4,14 @@
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
-本轮发布产物由提交 **`e62d3a3`** 构建（`0.4.9 / build **2026091925**`），在上一版（`0c9ff4f` →
-`2026091923`）之上并入 2026-09-19 的**代码简化重构**与端到端文档校正。`tests/integration/test_packaged_app.py`
-已随发布脚本通过；前端身份为 `v2026.09.19-d1a8ace7`。在**已交付提交 `e62d3a3`** 上完整门禁为
-**1396 passed / 1 skipped**、覆盖率 **84.54%**；`test-manifest.json` 的 13 项发布检查全过；
-vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确认一次临时写入与极小模型费用后运行。
+本轮本机交付产物由提交 **`10bec79`** 构建（`0.4.10 / build **2026092001**`，2026-09-20），
+修一个**用户可见**的缺陷：工作台「今日」点待办「✓」时，若该任务**已在飞书侧完成**（本地待办只是
+简报生成时的快照），旧代码会弹红警告 `Invalid Param 'task.completed_at', cannot set non-zero
+completed_at for a completed task`。`complete_task` 改为幂等：PATCH 被飞书拒后只读复核一次，
+确为完成态即按成功返回，其它失败原样上抛。`tests/integration/test_packaged_app.py`
+已随发布脚本通过；前端身份为 `v2026.09.20-d1a8ace7`。`test-manifest.json` 的 13 项发布检查全过；
+装机包内已内置飞书默认凭据；全量门禁（HEAD `10bec79`）为 **1403 passed / 1 skipped**；
+跨端回归闸门仍需用户明确确认一次临时写入与极小模型费用后运行。
 
 > **远端 CI 已恢复并在本提交上全绿**：2026-09-19 账单停摆期间 run #308–#310 四个 job 均未启动；
 > 20:0x 起恢复，`gh run 35444857578`（HEAD `e62d3a3`）**4/4 job success**。同一次真跑暴露出
@@ -38,21 +41,21 @@ vault 只读门禁 86 篇全部通过；跨端回归闸门仍需用户明确确�
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` **仍为上一份** build `2026091923`（源码 `0c9ff4f`）——本次 `2026091925` 待装机 |
-| 本次产物 | `dist/releases/0.4.9/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
-| App SHA-256 | `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`（见 metadata） |
-| DMG SHA-256 | `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243` |
-| 本机测试基线 | 交付提交 `e62d3a3`：`pytest -q` → **1396 passed, 1 skipped**；`--cov` → **84.54%**（门槛 80%） |
+| 装机包 | `/Applications/SummitWorkbench.app` 当前是已发布的 `0.4.10 / build 24`（CI，源码 `4e91469`）——本机包 `2026092001` 待装机替换 |
+| 本次产物 | `dist/releases/0.4.10/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
+| App SHA-256 | `b733d44ea94d66e3affd1b833c00a3e5c9b259ab2b4af98aff6ef8b19f8fa579`（见 metadata） |
+| DMG SHA-256 | `edde2100213ca1f2749d6705dd2e6c62fb9ad02d15519171cebc92165034bdfb`（52,099,332 B） |
+| 本机测试基线 | 全量 `pytest -q`（HEAD `10bec79`）→ **1403 passed, 1 skipped**；`release-macos.sh` 内的窄子集另计 |
 
 装机与双机接入的自检清单见 [`docs/acceptance/FRESH-INSTALL-STUDIO-AIR.md`](acceptance/FRESH-INSTALL-STUDIO-AIR.md)。
 
-本轮契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`；新增「日常手记」「工作思考」两个写入入口与收件箱提升通路（契约 §10）。
-本轮界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
+上一轮（`e62d3a3`）契约改动：`meeting-note` 由九区块减为八区块（不再生成 `## AI 建议`）；决策页新增「只记业务结论」硬规则与机器守卫 `scripts/kb_check_decision_hygiene.py`；新增「日常手记」「工作思考」两个写入入口与收件箱提升通路（契约 §10）。
+上一轮（`e62d3a3`）界面调整：设置页主区只留 工作区 / AI 模型 / 飞书 三张卡（每张一行），「自动化与更新」「模型参数（只读）」移入「高级与维护」折叠区（见 `docs/DESKTOP_APP.md`）。
 
 > 历史 `dist/releases/*`（17 套，约 1.9G）已按使用者要求整体清理；需要旧产物请从
 > 对应 `git_commit` 重新执行 `BUILD_NUMBER=<n> ARCH=arm64 scripts/release-macos.sh` 重建。
 
-本轮交付里与使用者直接相关的两处行为变化（改版时要一起维护）：
+上一轮交付里与使用者直接相关的两处行为变化（改版时要一起维护）：
 
 1. **原生壳恢复 Dock 图标**：`Info.plist` 的 `LSUIElement=false` + `AppDelegate` 用
    `.regular`；`WB_DOCK_ICON=0` 可退回旧的菜单栏模式（见 `docs/DESKTOP_APP.md`）。

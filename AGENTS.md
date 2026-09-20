@@ -136,13 +136,19 @@
   发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 必须等于**按 tag 算出的**期望值
   （`.../releases/download/<tag>/SummitWorkbench-<version>-arm64-INTERNAL-DEV.dmg`），否则
   `Prepare protected update configuration` 步直接 FAIL（每次发版都要先同步它）。
-- **本机 INTERNAL-DEV 构建（未发布；`update_feed` 为空 → 不接自动更新）**：
-  `0.4.9 / build **2026091925**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`e62d3a3`** 构建
-  （`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份 **`v2026.09.19-d1a8ace7`**；
+- **本机 INTERNAL-DEV 构建（2026-09-20，未发布；`update_feed` 为空 → 不接自动更新）**：
+  `0.4.10 / build **2026092001**`（`INTERNAL-DEV`、arm64、ad-hoc），由 **`10bec79`** 构建
+  （`release-metadata.json` 的 `git_commit` 即此值，可直接复核）；前端身份 **`v2026.09.20-d1a8ace7`**；
   包内**已内置飞书默认凭据**（`build-manifest.json` 的 `feishu_credentials.complete=true`），
   `test-manifest.json` 的 13 项检查全过，SHA-256 见下一条。
-  本机 `/Applications/SummitWorkbench.app` **在被替换前仍是 build `2026091923`**（源码 `0c9ff4f`，
-  前端 `v2026.09.19-4a04d298`——该版只改后端，故身份与更早一版相同，别把"身份没变"当成"产物没重建"）。
+  **本版含一个用户可见的修复**：工作台「今日」点待办「✓」不再对**飞书侧已完成**的任务弹红——
+  `complete_task` 改为幂等（PATCH 被拒后只读复核，确为完成态即按成功返回；真机报错
+  `Invalid Param 'task.completed_at', cannot set non-zero completed_at for a completed task`）。
+  本机 `/Applications/SummitWorkbench.app` 当前是**已发布的 `0.4.10 / build 24`**（CI，源码 `4e91469`），
+  本包待装机替换它——别把 CI 的 `run_number` 与本机 `yyyyMMddNN` 两套 build 编号混为一谈。
+- **上一版本机 INTERNAL-DEV 构建**：`0.4.9 / build **2026091925**`（`e62d3a3`，
+  前端 `v2026.09.19-d1a8ace7`；本机旧装机曾为 `2026091923`＝`0c9ff4f` / 前端 `v2026.09.19-4a04d298`，
+  该版只改后端，故身份与更早一版相同，别把"身份没变"当成"产物没重建"）。
   **本版含两个用户可见的修复**：① 手工写进 `inbox.md` 的条目现在也按正文 `#项目` 走默认目标
   （上一版会默认判成「一篇工作思考」，见待办 8）；② 写回项目页的条目与下一个区块之间不再多出
   一个空行（`_append_under_heading` / `set_project_status` 的双空行，见「踩过的技术坑」）。
@@ -160,11 +166,12 @@
   不手抄、不落仓库，步骤见 `docs/RELEASING.md`（本次即用它从装机版包内 `feishu-defaults.json`
   生成 0600 临时 env）。另外 `release-macos.sh` 要求**显式** `BUILD_NUMBER`，且**拒绝覆盖已存在的
   发布目录**（要重建同一版本须先移除旧目录）。
-- `dist/` **只保留最新一份**：`releases/0.4.9/arm64/`；build `2026091925` 的
-  **App SHA-256 为 `ca58c8466a7e195fe23a38d485fa1de0791771fa56610725815789619275557b`**，
-  **DMG SHA-256 为 `6c31855d4f42c82fc247755c2d955a0354dd5ea58d6066015ffd0d1f42506243`**
+- `dist/` **只保留最新一份**：`releases/0.4.10/arm64/`；build `2026092001` 的
+  **App SHA-256 为 `b733d44ea94d66e3affd1b833c00a3e5c9b259ab2b4af98aff6ef8b19f8fa579`**，
+  **DMG SHA-256 为 `edde2100213ca1f2749d6705dd2e6c62fb9ad02d15519171cebc92165034bdfb`**（52,099,332 B）
   （**以 `release-metadata.json` 的 `sha256` 为准**：`SHA256SUMS` 只覆盖 DMG 与元数据文件、不含 App）。
   旧发布目录按惯例移到 `/tmp`（`release-macos.sh` 拒绝覆盖同名目录）：
+  `2026091925`（`e62d3a3`，App `ca58c846…` / DMG `6c31855d…`）→ `/tmp/swb-releases-0.4.9-2026091925`；
   `2026091923`（`0c9ff4f`，App `a7f35b32…` / DMG `78e39964…`）→ `/tmp/swb-releases-0.4.9-2026091923`；
   `2026091924`（`c9b3fc5`，App `91ed6e8e…` / DMG `87f27884…`，只进过 dist、未装机也未入档）
   → `/tmp/swb-releases-0.4.9-2026091924`；`2026091922`（App `21db9aa7…` / DMG `a98de539…`）
