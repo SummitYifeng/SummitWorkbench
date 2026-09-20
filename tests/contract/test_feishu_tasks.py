@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
 from summit_workbench.providers.feishu import (
+    FeishuAPIError,
     FeishuClient,
     complete_task,
     create_task,
@@ -210,6 +212,90 @@ def test_complete_task_patches_completed_at_official_shape():
     completed_at = str(task.get("completed_at") or "")
     assert completed_at.isdigit() and len(completed_at) == 13
     assert body["update_fields"] == ["completed_at"]
+
+
+_ALREADY_COMPLETED_MSG = (
+    "Invalid Param 'task.completed_at', cannot set non-zero completed_at for a completed task. "
+    "To change task's completed_at, you can update task's 'completed_at' to 0, then update its "
+    "'completed'_at to new value."
+)
+
+
+def _complete_handlers(
+    patch_response: httpx.Response, get_response: httpx.Response
+) -> tuple[FeishuClient, list[tuple[str, str]]]:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path))
+        return patch_response if request.method == "PATCH" else get_response
+
+    client = FeishuClient(
+        CFG, SecretStr("token"), client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    return client, seen
+
+
+@pytest.mark.parametrize(
+    "task_payload",
+    [
+        {"guid": "task-1", "completed_at": "1756700000000"},
+        {"guid": "task-1", "completed_at": "0", "status": "done"},
+    ],
+)
+def test_complete_task_is_idempotent_when_feishu_says_already_completed(
+    task_payload: dict[str, object],
+) -> None:
+    """飞书拒绝对已完成任务再次完成（2026-09-19 真机）。
+
+    本地待办列表只是**简报生成时**的快照，任务可能已在飞书 App / 别处完成 ⇒ 再点「✓」
+    会 `PATCH` 一个非零 `completed_at`，飞书报
+    "cannot set non-zero completed_at for a completed task"（官方 PATCH 文档：
+    「不能对已经完成的任务再次完成」）。此时「完成」的目标本已达成 ⇒ 只读复核一次后
+    按成功返回，而不是把红色警告丢给用户。`completed_at` 与 `status` 任一表明完成即可。
+    """
+    client, seen = _complete_handlers(
+        httpx.Response(400, json={"code": 1470400, "msg": _ALREADY_COMPLETED_MSG}),
+        httpx.Response(200, json={"code": 0, "data": {"task": task_payload}}),
+    )
+
+    complete_task(client, "task-1")  # 不抛错 = 幂等成功
+
+    assert seen == [
+        ("PATCH", "/open-apis/task/v2/tasks/task-1"),
+        ("GET", "/open-apis/task/v2/tasks/task-1"),
+    ]
+
+
+def test_complete_task_reraises_when_recovery_read_says_still_pending() -> None:
+    """复核发现任务**确实未完成**时，原始 PATCH 失败必须原样上抛（不吞错，NFR-6）。"""
+    client, _seen = _complete_handlers(
+        httpx.Response(400, json={"code": 1470400, "msg": "PATCH 真因"}),
+        httpx.Response(
+            200,
+            json={"code": 0, "data": {"task": {"guid": "task-1", "completed_at": "0"}}},
+        ),
+    )
+
+    with pytest.raises(FeishuAPIError) as excinfo:
+        complete_task(client, "task-1")
+
+    assert "PATCH 真因" in str(excinfo.value)
+    assert excinfo.value.code == 1470400
+
+
+def test_complete_task_reraises_original_error_when_recovery_read_fails() -> None:
+    """复核本身失败（任务已删/网络）时不能让 GET 的错误顶替 PATCH 的错误，否则真因被掩盖。"""
+    client, _seen = _complete_handlers(
+        httpx.Response(400, json={"code": 1470400, "msg": "PATCH 真因"}),
+        httpx.Response(404, json={"code": 1470404, "msg": "任务不存在或已删除"}),
+    )
+
+    with pytest.raises(FeishuAPIError) as excinfo:
+        complete_task(client, "task-1")
+
+    assert "PATCH 真因" in str(excinfo.value)
+    assert "已删除" not in str(excinfo.value)
 
 
 def test_update_task_patches_only_given_fields():

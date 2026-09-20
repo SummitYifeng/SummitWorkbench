@@ -52,13 +52,24 @@ def _due_iso(due: dict[str, Any] | None, timezone: str) -> str | None:
     return moment.date().isoformat()
 
 
+def _is_completed(raw: dict[str, Any]) -> bool:
+    """按飞书语义判断任务完成态：``completed_at`` 非空/非 "0"，或 ``status == "done"``。
+
+    完成与恢复未完成都只改 ``completed_at``（PATCH 的 ``update_fields`` 白名单），
+    ``status`` 是同一状态的只读镜像；两者取或，避免只认一个字段时把已完成任务当未完成。
+    """
+    completed_at = raw.get("completed_at")
+    if bool(completed_at) and str(completed_at) not in ("", "0"):
+        return True
+    return str(raw.get("status") or "").strip().lower() == "done"
+
+
 def _parse_task(raw: dict[str, Any], timezone: str) -> TaskItem | None:
     guid = str(raw.get("guid") or raw.get("task_id") or "")
     if not guid:
         return None
     completed_at = raw.get("completed_at")
-    # 飞书以 completed_at 非空/非 "0" 表示已完成。
-    completed = bool(completed_at) and str(completed_at) not in ("", "0")
+    completed = _is_completed(raw)
     return TaskItem(
         guid=guid,
         summary=str(raw.get("summary", "") or "(无标题任务)"),
@@ -111,8 +122,23 @@ def _all_day_due(value: str, timezone: str) -> dict[str, object]:
     return {"timestamp": int(moment.timestamp() * 1000), "is_all_day": True}
 
 
+def _task_already_completed(client: FeishuClient, guid: str) -> bool:
+    """只读复核任务在飞书侧是否已是完成态（PATCH 的幂等恢复用，见 ``complete_task``）。
+
+    复核本身失败（任务已删 / 网络 / 授权）一律返回 False，让调用方上抛**原始** PATCH 错误
+    ——不能把「完成失败」替换成一次 GET 的失败原因，否则真因会被掩盖、界面看到的仍是
+    同一句红色警告却换了根因。
+    """
+    try:
+        data = client.get(f"{CREATE_TASK_PATH}/{guid}", retry_mode=RetryMode.SAFE)
+    except FeishuAPIError:
+        return False
+    raw = data.get("task")
+    return isinstance(raw, dict) and _is_completed(raw)
+
+
 def complete_task(client: FeishuClient, task_guid: str) -> None:
-    """把飞书任务标记为已完成（PATCH /task/v2/tasks/{guid}，幂等近似）。
+    """把飞书任务标记为已完成（PATCH /task/v2/tasks/{guid}，幂等）。
 
     Web 工作台「一键完成」的写回点：飞书是任务状态的唯一真源，本地只在
     调用成功后镜像到当日渲染快照（见 repositories.signal_snapshot.mark_task_completed）。
@@ -121,19 +147,33 @@ def complete_task(client: FeishuClient, task_guid: str) -> None:
     - ``POST .../tasks/{guid}/complete`` 在本租户返回 404（第三方文档所述端点不存在）；
     - 正解是 ``PATCH`` 设置 ``completed_at``（毫秒时间戳字符串）并列入
       ``update_fields``——飞书返回 ``agent_task_status=4`` 并落 ``completed_at``。
+
+    幂等（2026-09-19 真机）：飞书**拒绝对已完成的任务再次完成**——把非零
+    ``completed_at`` 再改成另一个非零值会报 ``Invalid Param 'task.completed_at',
+    cannot set non-zero completed_at for a completed task``（官方文档原文：
+    「不能对已经完成的任务再次完成，但可以将其恢复到未完成的状态(设置 completed_at 为 "0")」，
+    https://open.feishu.cn/document/task-v2/task/patch）。而本地待办列表只是**简报生成时**
+    的快照，任务完全可能已在飞书 App / 别处完成 ⇒ 「一键完成」必须幂等：PATCH 失败后只读
+    复核一次，确为完成态就当作目标已达成直接返回；其它失败（未授权 / 任务已删 / 网络）
+    原样上抛，保持失败可见（NFR-6）。
     """
     guid = str(task_guid).strip()
     if not guid:
         raise ValueError("缺少任务 guid")
     completed_at_ms = str(int(_time.time() * 1000))
-    client.patch(
-        f"{CREATE_TASK_PATH}/{guid}",
-        json={
-            "task": {"completed_at": completed_at_ms},
-            "update_fields": ["completed_at"],
-        },
-        retry_mode=RetryMode.NEVER,
-    )
+    try:
+        client.patch(
+            f"{CREATE_TASK_PATH}/{guid}",
+            json={
+                "task": {"completed_at": completed_at_ms},
+                "update_fields": ["completed_at"],
+            },
+            retry_mode=RetryMode.NEVER,
+        )
+    except FeishuAPIError:
+        if _task_already_completed(client, guid):
+            return
+        raise
 
 
 def update_task(
