@@ -2,8 +2,8 @@
 
 > 给进入本仓库的 agent。**只写你从代码/README 里猜不到、踩过坑才知道的约束**；
 > 架构与命令细节看 `README.md`。
-> 基线：当前**已发布**源码提交 **`4e91469`**（2026-09-19，即 `0.4.10` / CI build `24` 的来源；
-> 上一份已发布 `5204abf` → `0.4.9` / build `23`，**带 HTTPS 同步阻断、已作废**）。
+> 基线：当前**已发布**源码提交 **`6253d31`**（2026-09-20，即 `0.4.11` / CI build `25` 的来源；
+> 上一份已发布 `4e91469` → `0.4.10` / build `24`）。
 > `main` 与 `origin/main` 同步；发版走「打 tag → `release.yml`」（细节见「交付产物基线」）。
 > 本版已把 2026-09-19 的**代码简化重构**一并打包（模块落点见
 > `docs/implementation/LEGACY-*-SPLIT-PLAN.md` 两份 stub 的「收口现状」）；引用路径/行号前先确认
@@ -123,7 +123,16 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- **已发布（tag `v0.4.10`，**最新**）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，
+- **已发布（tag `v0.4.11`，**最新**）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，
+  由 CI（`release.yml`、run `35480773191`；**第 1 次跑在 `hdiutil create` 撞上 `Resource busy`，
+  直接 rerun 即全绿**——这是 macOS runner 的瞬时故障，不是代码问题）从 tag 提交 **`6253d31`** 构建；
+  **build `25`**（run number）。DMG SHA-256
+  `da20c6348e4b86c2010b111120f92d2ba6c794064074d334aeb1ef4fc4d5c549`（51,764,164 B）；
+  App SHA-256 `d372a0218324f8c83e329ebaf5305a664bebae50dde216d086c5ddf3f3becb5e`；
+  `update-feed.json` 带签名（`signature` + `public_key`）；`test-manifest.json` 13 项 `passed`。
+  **本版修掉用户可见的「点已完成任务的 ✓ 弹红」**（`complete_task` 幂等，见「踩过的技术坑」）。
+  发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 已同步到 v0.4.11（**每次发版都要先改**）。
+- **已发布（tag `v0.4.10`，已被 0.4.11 取代）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，
   由 CI（`release.yml`、run `35448306057`）从 tag 提交 **`4e91469`** 构建；**build `24`**（run number）。
   DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）；
   feed 带签名。**这一版修掉了 HTTPS 远端无法同步的阻断**（见「踩过的技术坑」），
@@ -144,8 +153,10 @@
   **本版含一个用户可见的修复**：工作台「今日」点待办「✓」不再对**飞书侧已完成**的任务弹红——
   `complete_task` 改为幂等（PATCH 被拒后只读复核，确为完成态即按成功返回；真机报错
   `Invalid Param 'task.completed_at', cannot set non-zero completed_at for a completed task`）。
-  本机 `/Applications/SummitWorkbench.app` 当前是**已发布的 `0.4.10 / build 24`**（CI，源码 `4e91469`），
-  本包待装机替换它——别把 CI 的 `run_number` 与本机 `yyyyMMddNN` 两套 build 编号混为一谈。
+  本机 `/Applications/SummitWorkbench.app` 当前**正是本包（`2026092001`，用户已装机并实测通过）**；
+  但它 `update_feed` 为空 ⇒ **不接自动更新**；要跟上已发布的 `0.4.11` 需手动装 v0.4.11 的 DMG
+  （装过一次带 feed 的发布包后，后续版本即可在 App 内升级）——别把 CI 的 `run_number` 与本机
+  `yyyyMMddNN` 两套 build 编号混为一谈。
 - **上一版本机 INTERNAL-DEV 构建**：`0.4.9 / build **2026091925**`（`e62d3a3`，
   前端 `v2026.09.19-d1a8ace7`；本机旧装机曾为 `2026091923`＝`0c9ff4f` / 前端 `v2026.09.19-4a04d298`，
   该版只改后端，故身份与更早一版相同，别把"身份没变"当成"产物没重建"）。
@@ -189,11 +200,11 @@
   **一次全量重嵌会真实调用云端嵌入接口花钱** —— 不要为了验证而触发。
 - 不要 `git push` 用户的 `_vault`，除非任务明确要求。
 
-## 验证命令与基线（交付提交 `4e91469`）
+## 验证命令与基线（交付提交 `6253d31`）
 
 ```bash
-./.venv/bin/python -m pytest -q                 # 实测 1399 passed, 1 skipped（4e91469）
-./.venv/bin/python -m pytest -q --cov           # 实测 84.55%（门槛 80%，同一 commit）
+./.venv/bin/python -m pytest -q                 # 实测 1403 passed, 1 skipped（6253d31）
+./.venv/bin/python -m pytest -q --cov           # 实测 84.56%（门槛 80%，同一 commit）
 ./.venv/bin/ruff check && ./.venv/bin/ruff format --check && ./.venv/bin/mypy src
 ./.venv/bin/wb vault check ~/Documents/Work/_vault   # 判据是"全部通过"，篇数随写入增长（当前 86）
 ./.venv/bin/python scripts/kb_check_contract.py --vault ~/Documents/Work/_vault

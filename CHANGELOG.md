@@ -1,3 +1,36 @@
+## [0.4.11] - 2026-09-20
+
+> 修一个**用户可见**的缺陷：工作台「今日」点待办「✓」时，若该任务**已在飞书侧完成**
+> （本地待办只是简报生成时的快照），会弹红警告。无破坏性变更、无新依赖。
+
+### 修复
+
+- **「一键完成」改为幂等**：飞书**拒绝对已完成的任务再次完成**——把非零 `completed_at` 再改成
+  另一个非零值会报 `Invalid Param 'task.completed_at', cannot set non-zero completed_at for a
+  completed task`（官方 PATCH 文档原文：「不能对已经完成的任务再次完成，但可以将其恢复到未完成
+  的状态(设置 completed_at 为 "0")」）。`providers/feishu/tasks.py::complete_task` 现在在 PATCH
+  失败后**只读复核一次**（`GET /open-apis/task/v2/tasks/{guid}`，认 `completed_at` 非零或
+  `status == "done"`）：确为完成态 ⇒ 按成功返回并照常镜像本地快照；复核失败或任务确实未完成 ⇒
+  原样上抛**原始** PATCH 错误，真因不被 GET 的错误顶替、失败仍然可见（NFR-6）。
+  完成判定收敛到 `_is_completed`，与列举解析共用同一语义。
+- **守卫**：`tests/contract/test_feishu_tasks.py` 三条（幂等成功 / 仍未完成必须上抛 / 复核失败保留
+  原始错误），已做变异验证——把恢复分支改成 `if False:` 即红，且报错正文与真机一致。
+
+### 交付（2026-09-20）
+
+- tag **`v0.4.11`**（提交 `6253d31`）触发 `release.yml`（run `35480773191`）→
+  `yifeng93/SummitWorkbench-Updates` 的 **Latest**：**build `25`**（= CI run number，与历史发布的
+  19/24/29/… 同口径）、DMG SHA-256
+  `da20c6348e4b86c2010b111120f92d2ba6c794064074d334aeb1ef4fc4d5c549`（51,764,164 B）、
+  App SHA-256 `d372a0218324f8c83e329ebaf5305a664bebae50dde216d086c5ddf3f3becb5e`、
+  `update-feed.json` 带签名（`signature` + `public_key`）、`test-manifest.json` 13 项 `passed`。
+- 本版门禁（提交 `6253d31`）：`pytest -q` → **1403 passed / 1 skipped**、`--cov` → **84.56%**（门槛 80%）。
+- 发布前置：`release` environment 的 `UPDATE_DOWNLOAD_URL` 已从 v0.4.10 同步到 v0.4.11。
+- ⚠️ 该 run 首次在 `hdiutil create` 报 `Resource busy`（前 12 步全过、draft 未创建），
+  `gh run rerun --failed` 后全绿——macOS runner 瞬时故障，不是代码问题。
+- 本机 `dist/` 里那份 `0.4.10 / build 2026092001`（源码 `10bec79`）是**未发布**的本机包，
+  `update_feed` 为空、不接自动更新；已被本版取代。
+
 ## [0.4.10] - 2026-09-19
 
 > 修一个**用户可见的同步阻断**：打包 App（固定 dulwich）× **HTTPS 远端永远同步失败**，

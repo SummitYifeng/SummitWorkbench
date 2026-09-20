@@ -1,6 +1,6 @@
 # SummitWorkbench macOS 发布
 
-## 当前本地交付状态（2026-09-19，本地 main）
+## 当前本地交付状态（2026-09-20，本地 main）
 
 > **2026-09-17 边界校正**：下方关于 `kb_acceptance*.py`、本地 SQLite/FTS/BM25 和第二大脑本地问答的内容属于历史发布证据；这些脚本与实现已退役，当前发布门禁不再执行它们。语义检索由 SummitKnowledge 负责。
 
@@ -28,7 +28,7 @@ completed_at for a completed task`。`complete_task` 改为幂等：PATCH 被飞
 > 本次已从 v0.4.8 同步到 v0.4.9，否则 `Prepare protected update configuration` 步会 FAIL。
 > 注意本机 `dist/` 里那份 `build 2026091925`（源码 `e62d3a3`）是**未发布**的本机构建，`update_feed` 为空。
 
-> **已发布 `v0.4.10`（最新，2026-09-19）**：tag `v0.4.10`（提交 `4e91469`）→ run `35448306057`
+> **已发布 `v0.4.10`（2026-09-19，已被 v0.4.11 取代）**：tag `v0.4.10`（提交 `4e91469`）→ run `35448306057`
 > （两 job 全绿）→ Updates 仓库 **Latest**：**build `24`**、DMG SHA-256
 > `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`（51,770,064 B）、
 > `test-manifest.json` 13 项 `passed`、feed 带签名。
@@ -37,11 +37,22 @@ completed_at for a completed task`。`complete_task` 改为幂等：PATCH 被飞
 > `UPDATE_DOWNLOAD_URL` 已从 v0.4.9 同步到 v0.4.10。
 > 装 `0.4.9` 的机器可在 App「设置 → 自动化与更新」直接升级（feed 带签名校验）。
 
+> **已发布 `v0.4.11`（最新，2026-09-20）**：tag `v0.4.11`（提交 **`6253d31`**，即 `pyproject` 版本号
+> `0.4.10 → 0.4.11` 的提交）→ run **`35480773191`** → Updates 仓库 **Latest**：**build `25`**（run number）、
+> DMG SHA-256 `da20c6348e4b86c2010b111120f92d2ba6c794064074d334aeb1ef4fc4d5c549`（51,764,164 B）、
+> App SHA-256 `d372a0218324f8c83e329ebaf5305a664bebae50dde216d086c5ddf3f3becb5e`、
+> `test-manifest.json` 13 项 `passed`、`update-feed.json` 带签名（`signature` + `public_key`）。
+> **本版修掉用户可见的「点已完成任务的 ✓ 弹红」**（`complete_task` 幂等，见
+> `providers/feishu/tasks.py` 与 `tests/contract/test_feishu_tasks.py` 三条守卫）。
+> 发布前置：`UPDATE_DOWNLOAD_URL` 已从 v0.4.10 同步到 v0.4.11。
+> ⚠️ **首次运行在 `hdiutil create` 报 `Resource busy` 失败**（前面 12 步全过、draft release 未创建），
+> **`gh run rerun --failed` 后全绿**——macOS runner 的瞬时故障，不是代码问题；下次遇到同样报错先 rerun。
+
 本机与 `dist/` 的对应关系（`dist/` 只保留最新一份）：
 
 | 项 | 值 |
 | --- | --- |
-| 装机包 | `/Applications/SummitWorkbench.app` 当前是已发布的 `0.4.10 / build 24`（CI，源码 `4e91469`）——本机包 `2026092001` 待装机替换 |
+| 装机包 | `/Applications/SummitWorkbench.app` 当前是**本机 INTERNAL-DEV `0.4.10 / build 2026092001`**（源码 `10bec79`，用户已装机实测通过）；它 `update_feed` 为空 ⇒ **不接自动更新**，要跟已发布的 `v0.4.11`（build `25`）需手动装其 DMG |
 | 本次产物 | `dist/releases/0.4.10/arm64/`（App + DMG + SHA256SUMS + release-metadata + SBOM + test-manifest） |
 | App SHA-256 | `b733d44ea94d66e3affd1b833c00a3e5c9b259ab2b4af98aff6ef8b19f8fa579`（见 metadata） |
 | DMG SHA-256 | `edde2100213ca1f2749d6705dd2e6c62fb9ad02d15519171cebc92165034bdfb`（52,099,332 B） |
