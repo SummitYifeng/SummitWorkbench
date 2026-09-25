@@ -32,7 +32,7 @@ jobs:
 
       - name: Install uv
         # setup-uv 自 v8 起不再发布滚动 major tag（@v8/@v9/@v10 均不存在），必须写完整版本号。
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.12"
           enable-cache: true
@@ -106,7 +106,7 @@ jobs:
 
       - name: Install uv
         # setup-uv 自 v8 起不再发布滚动 major tag（@v8/@v9/@v10 均不存在），必须写完整版本号。
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@v10.2.0
         with:
           python-version: "3.12"
           enable-cache: true
