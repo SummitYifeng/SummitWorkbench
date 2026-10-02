@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { computeSourceHash, makeBuildIdentity } from './build.mjs';
+import { computeSourceHash, makeBuildIdentity, verifiedGitRevision } from './build.mjs';
 
 const input = [
   { path: 'web/src/main.ts', content: Buffer.from('alpha') },
@@ -46,6 +46,10 @@ assert.equal(
   'abc1234',
   'git revision stays available as provenance metadata',
 );
+assert.equal(verifiedGitRevision('abc1234', ''), 'abc1234');
+assert.equal(verifiedGitRevision('abc1234', ' M src/file.py'), '');
+assert.equal(verifiedGitRevision('abc1234', null), '');
+assert.equal(verifiedGitRevision('nogit', ''), '');
 console.log('Build identity tests passed');
 
 const root = path.resolve(import.meta.dirname, '..');

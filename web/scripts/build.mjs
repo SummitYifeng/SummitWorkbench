@@ -34,6 +34,10 @@ export function makeBuildIdentity({ sourceHash, builtAt, gitRevision }) {
   };
 }
 
+export function verifiedGitRevision(gitRevision, porcelainStatus) {
+  return gitRevision !== 'nogit' && porcelainStatus === '' ? gitRevision : '';
+}
+
 function walkFiles(directory) {
   const result = [];
   for (const name of readdirSync(directory).sort()) {
@@ -75,6 +79,15 @@ function writeBuildMeta(identity) {
     assets[name] = createHash('sha256').update(readFileSync(path)).digest('hex');
   }
   const index = readFileSync(join(STATIC_DIR, 'index.html'));
+  let porcelainStatus = null;
+  try {
+    porcelainStatus = execFileSync('git', ['status', '--porcelain'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    }).trim();
+  } catch {
+    // Provenance is optional when Git is unavailable; never guess a revision.
+  }
   // 溯源字段同样确定化，否则已跟踪的 build-meta.json 每次构建都变（git_revision 随提交走、
   // built_at 随秒走），仓库内产物永远追不上 HEAD：
   //   - 工作树脏 → 这份产物不对应任何提交，revision 写空（消费方 assembly 已是「非空才追加」）；
@@ -83,11 +96,7 @@ function writeBuildMeta(identity) {
     schema_version: 1,
     product_id: 'com.summitworkbench.panel',
     frontend_build: identity.frontendBuild,
-    git_revision:
-      identity.gitRevision !== 'nogit' &&
-      !gitOutput(['status', '--porcelain'], 'unknown')
-        ? identity.gitRevision
-        : '',
+    git_revision: verifiedGitRevision(identity.gitRevision, porcelainStatus),
     source_hash: identity.sourceHash,
     built_at: `${identity.builtAt.slice(0, 10)}T00:00:00.000Z`,
     index_sha256: createHash('sha256').update(index).digest('hex'),
