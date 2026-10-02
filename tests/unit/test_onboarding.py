@@ -67,17 +67,10 @@ def test_default_templates_resolves_pyinstaller_internal_data(monkeypatch, tmp_p
     assert onboarding.default_vault_templates_dir() == bundled_templates
 
 
-def test_default_workspace_templates_resolves_resources_layout(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_default_workspace_templates_resolves_resources_layout(monkeypatch, tmp_path: Path) -> None:
     resources = tmp_path / "SummitWorkbench.app" / "Contents" / "Resources"
     module_path = (
-        resources
-        / "server"
-        / "_internal"
-        / "summit_workbench"
-        / "workflows"
-        / "onboarding.py"
+        resources / "server" / "_internal" / "summit_workbench" / "workflows" / "onboarding.py"
     )
     bundled_templates = resources / "templates" / "workspace"
     bundled_templates.mkdir(parents=True)
