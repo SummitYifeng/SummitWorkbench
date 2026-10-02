@@ -181,6 +181,16 @@ def default_vault_templates_dir() -> Path:
     return module_path.parents[3] / "templates" / "vault"
 
 
+def default_workspace_templates_dir() -> Path:
+    """Locate portable-workspace templates in source and PyInstaller layouts."""
+    module_path = Path(__file__).resolve()
+    for parent in module_path.parents:
+        candidate = parent / "templates" / "workspace"
+        if (candidate / "conventions.md").is_file():
+            return candidate
+    return module_path.parents[3] / "templates" / "workspace"
+
+
 # ---- 只读预检 ----
 
 
@@ -227,7 +237,7 @@ def preflight(
             reject("目标位置不可写")
         if not report.space_ok:
             reject("目标磁盘可用空间不足")
-        conventions = Path(__file__).parents[3] / "templates" / "workspace" / "conventions.md"
+        conventions = default_workspace_templates_dir() / "conventions.md"
         if not conventions.is_file():
             reject(f"工作区契约模板不可用：{conventions}")
 
