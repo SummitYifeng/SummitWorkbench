@@ -57,7 +57,8 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
     server = resources / "server" / "SummitWorkbenchServer"
     worker = app / "Contents" / "Helpers" / "SummitWorkbenchWorker"
     assert server.is_file() and server.stat().st_mode & 0o111
-    assert worker.is_file() and worker.stat().st_mode & 0o111
+    assert not worker.exists()
+    assert not (app / "Contents" / "Library" / "LoginItems").exists()
     assert static_dir.is_dir()
     static_meta = json.loads((static_dir / "build-meta.json").read_text(encoding="utf-8"))
     assert manifest["frontend_build"] == static_meta["frontend_build"]
@@ -65,9 +66,11 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
     port = _free_port()
     work_root = tmp_path / "work"
     work_root.mkdir()
+    empty_path = tmp_path / "empty-path"
+    empty_path.mkdir()
     environment = {
         "HOME": str(tmp_path / "home"),
-        "PATH": "/usr/bin:/bin",
+        "PATH": str(empty_path),
         "WORK_ROOT": str(work_root),
         "WB_RUNTIME_RECORD": str(tmp_path / "runtime.json"),
         "WB_PANEL_MODE": "production",
@@ -81,8 +84,6 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         "WB_PANEL_MODE": "production",
     }
     _run_tls_diagnostic(server, diagnostic_environment)
-    diagnostic_environment["WB_TLS_DIAGNOSTIC"] = "1"
-    _run_tls_diagnostic(worker, diagnostic_environment)
     process = subprocess.Popen(
         [
             str(server),
@@ -134,7 +135,10 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         with urlopen(create_request, timeout=5) as response:
             create_payload = json.load(response)
         assert create_payload["ok"] is True
-        assert (created_workspace / "_vault" / "inbox.md").is_file()
+        assert (created_workspace / "inbox.md").is_file()
+        assert (created_workspace / "conventions.md").is_file()
+        assert (created_workspace / ".summit-workbench" / "manifest.json").is_file()
+        assert not (created_workspace / ".git").exists()
     finally:
         process.terminate()
         process.wait(timeout=5)
