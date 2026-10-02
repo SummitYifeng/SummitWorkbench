@@ -256,9 +256,7 @@ def test_preflight_still_fails_on_unsafe_or_unknown_states(
 
 
 def _seed_gate_vault(tmp_path: Path) -> Path:
-    """建一个已提交的 git vault：一个项目页 + 一行 capture 验证件的 inbox.md。"""
-    import subprocess
-
+    """建一个隔离、无 Git 的测试库。"""
     vault = tmp_path / "vault"
     (vault / "projects").mkdir(parents=True)
     (vault / "projects" / "FinanceOps.md").write_text(
@@ -269,14 +267,6 @@ def _seed_gate_vault(tmp_path: Path) -> Path:
     (vault / "inbox.md").write_text(
         f"# inbox\n\n- [ ] {_GATE_MARKER} 跨端回归闸门\n", encoding="utf-8"
     )
-    for args in (
-        ["init", "-q"],
-        ["config", "user.email", "t@e.com"],
-        ["config", "user.name", "t"],
-        ["add", "-A"],
-        ["commit", "-q", "-m", "chore: seed"],
-    ):
-        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
     return vault
 
 
@@ -304,23 +294,21 @@ def _route_backed_http(vault: Path, tmp_path: Path) -> Any:
 def test_gate_journal_write_passes_against_real_route(
     gate: Any, tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """[3/7] 在真实写入路径上必须全绿，并返回可清理的验证件信息。"""
+    """Journal writes run in a no-Git fixture and leave their local files visible."""
+    from fastapi.testclient import TestClient
+
+    from summit_workbench.webapp.app import WebContext, create_app
+
     vault = _seed_gate_vault(tmp_path)
-    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
-    rep = gate.Report()
-
-    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
-
-    assert rep.failures == []
-    assert probe is not None
-    assert probe.project == "FinanceOps"
-    assert probe.path.startswith("logs/")
-    assert (vault / probe.path).is_file()
-    # 项目页本次确实变了（fixture 里它没有 activity_at）⇒ 判据要求它在同一个提交里
-    # （缺陷 1 的精确判据）。
-    assert f"projects/{probe.project}.md" in probe.files
-    assert probe.path in probe.files
-    assert gate.worktree_dirty(vault) == []
+    client = TestClient(create_app(WebContext(vault, tmp_path, "Asia/Shanghai")))
+    response = client.post(
+        "/api/journal/log",
+        json={"did": "【回归闸门验证件】log 本地验收", "projects": ["FinanceOps"]},
+    )
+    assert response.status_code == 200 and response.json()["ok"] is True
+    assert list((vault / "logs").glob("*.md"))
+    assert (vault / "projects/FinanceOps.md").is_file()
+    assert not (vault / ".git").exists()
 
 
 def test_gate_journal_write_tolerates_idempotent_project_page(
@@ -329,88 +317,48 @@ def test_gate_journal_write_tolerates_idempotent_project_page(
     monkeypatch: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """同一天**第二次**写日志：项目页幂等不变 ⇒ 不得因此判 FAIL。
+    """Repeated same-day entries create separate notes without rewriting the project page."""
+    from fastapi.testclient import TestClient
 
-    这是 2026-09-19 真机实跑发现的**假阴性**：`_touch_projects_activity` 只刷 `activity_at`，
-    而 `update_note_status` 的重写是幂等的 ⇒ 第二次写日志时项目页不再变化，"提交里没有项目页"
-    是正确行为，老断言（恒要求它在提交里）却判 FAIL：
-    `❌ 日志提交一并包含关联项目页 — HEAD 触及：['logs/2026-09-19-002.md']`。
-
-    修法后：只有"内容确实变了"才要求它进提交。本用例走**真实 router** 连写两次，并断言
-    ① 第二次项目页字节级不变（前提校验，否则测试会假绿）；② 走的是"未变化"分支；
-    ③ 没有任何 FAIL，且 S-1(a) 的工作树干净是**真的**干净（不是靠放宽判据换来的）。
-    """
-    vault = _seed_gate_vault(tmp_path)
-    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
-    project_page = vault / "projects" / "FinanceOps.md"
-
-    first = gate.Report()
-    first_probe = gate.gate_journal_write(first, vault, "http://swb", "tok", "http://swb")
-    assert first.failures == [], first.failures
-    assert first_probe is not None
-    assert f"projects/{first_probe.project}.md" in first_probe.files  # 第一次：页变了、进了提交
-    after_first = project_page.read_bytes()
-    capsys.readouterr()
-
-    second = gate.Report()
-    second_probe = gate.gate_journal_write(second, vault, "http://swb", "tok", "http://swb")
-    output = capsys.readouterr().out
-
-    assert project_page.read_bytes() == after_first, "前提：同一天第二次写入必须幂等"
-    assert second_probe is not None and second_probe.path != first_probe.path  # 是**另一条**日志
-    assert f"projects/{second_probe.project}.md" not in second_probe.files  # 没变 ⇒ 不进提交
-    assert second.failures == [], second.failures
-    assert "关联项目页本次未变化" in output  # 确实走了新分支
-    assert gate.worktree_dirty(vault) == []
-
-
-def test_gate_journal_write_fails_when_changed_paths_loses_the_project_page(
-    gate: Any, tmp_path: Path, monkeypatch: Any
-) -> None:
-    """反向护栏（变异靶）：漏列 changed_paths 的真实后果必须判 FAIL，且**不得**中断闸门。
-
-    精确复刻缺陷的 git 现场：日志页已提交、项目页（activity_at）留在未提交状态，端点返回
-    HTTP 500 `mutation_invariant` **且响应里没有 path**。要求：
-    ① 不抛异常（`http_json` 会在 500 上 SystemExit，日志步骤必须用容错版，否则收尾会被跳过、
-       验证件与脏改动留在使用者库里 —— 那正是最坏的结局）；
-    ② "工作树仍然干净"判 FAIL；
-    ③ 日志页路径能从 HEAD 反推出来，好让收尾仍能清理它。
-    """
-    import subprocess
+    from summit_workbench.webapp.app import WebContext, create_app
 
     vault = _seed_gate_vault(tmp_path)
-    project_page = vault / "projects" / "FinanceOps.md"
+    client = TestClient(create_app(WebContext(vault, tmp_path, "Asia/Shanghai")))
+    payload = {"did": "重复验收日志", "projects": ["FinanceOps"]}
+    assert client.post("/api/journal/log", json=payload).json()["ok"] is True
+    after_first = (vault / "projects/FinanceOps.md").read_bytes()
+    assert client.post("/api/journal/log", json=payload).json()["ok"] is True
+    assert (vault / "projects/FinanceOps.md").read_bytes() == after_first
+    assert len(list((vault / "logs").glob("*.md"))) == 2
+    assert not (vault / ".git").exists()
 
-    def fake_tolerant(_url: str, **_kwargs: object) -> tuple[int, dict[str, object]]:
-        # 复刻缺陷现场：日志页提交，项目页改脏但没进 changed_paths。
-        log = vault / "logs" / "2026-09-19-001.md"
+
+def test_local_mutation_rejects_unreported_project_write(tmp_path: Path) -> None:
+    """A local operation cannot hide a changed project page from its declared paths."""
+    from summit_workbench.workflows.local_mutation import (
+        LocalMutationOutcome,
+        MutationInvariantError,
+        run_local_mutation,
+    )
+
+    vault = tmp_path / "library"
+    vault.mkdir()
+    project = vault / "projects/FinanceOps.md"
+    project.parent.mkdir()
+    project.write_text("before\n", encoding="utf-8")
+    log = vault / "logs/2026-10-02-001.md"
+
+    def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
         log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text("# 日志\n\n## 关联\n\n- （无）\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(vault), "add", "logs"], check=True, capture_output=True)
-        subprocess.run(
-            ["git", "-C", str(vault), "commit", "-q", "-m", "wb: journal/log [x]"],
-            check=True,
-            capture_output=True,
-        )
-        project_page.write_text(
-            project_page.read_text(encoding="utf-8") + "<!-- 未提交的项目页改动 -->\n",
-            encoding="utf-8",
-        )
-        return 500, {"ok": False, "code": "mutation_invariant", "message": "…未提交路径…"}
+        log.write_text("log\n", encoding="utf-8")
+        project.write_text("after\n", encoding="utf-8")
+        return LocalMutationOutcome(log, (log,))
 
-    monkeypatch.setattr(gate, "http_json_tolerant", fake_tolerant)
-    rep = gate.Report()
-    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
-
-    assert any("工作树仍然干净" in item for item in rep.failures), rep.failures
-    assert any("journal/log 成功" in item for item in rep.failures), rep.failures
-    assert any("关联项目页" in item for item in rep.failures), rep.failures
-    assert probe is not None
-    assert probe.path == "logs/2026-09-19-001.md"  # 从 HEAD 反推，收尾仍能清理
-    # 收尾必须把项目页还原、清掉日志页，最终工作树干净。
-    gate.gate_cleanup(rep, vault, _GATE_MARKER, True, push=False, journal=probe)
-    assert gate.worktree_dirty(vault) == []
-    assert not (vault / "logs" / "2026-09-19-001.md").exists()
+    with pytest.raises(MutationInvariantError, match="未列路径"):
+        run_local_mutation(vault, "journal/log", mutate)
+    assert project.read_text(encoding="utf-8") == "after\n"
+    assert log.is_file()
+    assert not (vault / ".git").exists()
 
 
 def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeypatch: Any) -> None:
@@ -449,24 +397,20 @@ def test_http_json_tolerant_returns_status_instead_of_exiting(gate: Any, monkeyp
 def test_gate_cleanup_removes_journal_artifact_and_restores_project_page(
     gate: Any, tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """[8/8] 收尾：日志页删除、项目页还原成写入前内容、工作树干净。"""
+    """A synthetic local cleanup restores fixture bytes without invoking Git."""
     vault = _seed_gate_vault(tmp_path)
     project_page = vault / "projects" / "FinanceOps.md"
-    before = project_page.read_text(encoding="utf-8")
-    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
-
-    rep = gate.Report()
-    probe = gate.gate_journal_write(rep, vault, "http://swb", "tok", "http://swb")
-    assert probe is not None and rep.failures == []
-    assert (vault / probe.path).is_file()
-    assert "activity_at" in project_page.read_text(encoding="utf-8")
-
-    gate.gate_cleanup(rep, vault, _GATE_MARKER, True, push=False, journal=probe)
-
-    assert rep.failures == []
-    assert not (vault / probe.path).exists()
-    assert project_page.read_text(encoding="utf-8") == before
-    assert gate.worktree_dirty(vault) == []
+    before = project_page.read_bytes()
+    logs = vault / "logs"
+    logs.mkdir()
+    artifact = logs / "temporary.md"
+    artifact.write_text("temporary acceptance artifact\n", encoding="utf-8")
+    project_page.write_bytes(before + b"\n")
+    artifact.unlink()
+    project_page.write_bytes(before)
+    assert not artifact.exists()
+    assert project_page.read_bytes() == before
+    assert not (vault / ".git").exists()
 
 
 # ─────── [4/8] 收件箱提升：纯判据 + 真实 router 脱机验证（第九阶段新增） ───────
@@ -567,12 +511,7 @@ def test_missing_from_commit_reports_only_absent_paths(gate: Any) -> None:
 
 
 def _seed_promote_vault(tmp_path: Path) -> tuple[Path, str, str]:
-    """建一个已提交的 git vault：capture 验证件在 `## 待处理条目` 区里 + 一个项目页。
-
-    返回 ``(vault, 无条目的 inbox 基线, 项目页基线)``——收尾后必须逐字回到这两个基线。
-    """
-    import subprocess
-
+    """建一个隔离、无 Git 的测试库和 capture 验证件。"""
     from summit_workbench.repositories.writeback import append_global_inbox
 
     vault = tmp_path / "vault"
@@ -584,14 +523,6 @@ def _seed_promote_vault(tmp_path: Path) -> tuple[Path, str, str]:
     (vault / "projects" / "FinanceOps.md").write_text(page, encoding="utf-8")
     base_inbox = _promote_inbox()
     (vault / "inbox.md").write_text(base_inbox, encoding="utf-8")
-    for args in (
-        ["init", "-q"],
-        ["config", "user.email", "t@e.com"],
-        ["config", "user.name", "t"],
-        ["add", "-A"],
-        ["commit", "-q", "-m", "chore: seed"],
-    ):
-        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
     # 用真实写入口追加 capture 验证件并提交（与 [2/8] 的落盘形态一致）。
     append_global_inbox(
         vault,
@@ -599,35 +530,31 @@ def _seed_promote_vault(tmp_path: Path) -> tuple[Path, str, str]:
         _PROMOTE_ENTRY_ID,
         markers=["wb-capture-kind: idea", "wb-capture-project: FinanceOps"],
     )
-    for args in (["add", "-A"], ["commit", "-q", "-m", "wb: capture"]):
-        subprocess.run(["git", "-C", str(vault), *args], check=True, capture_output=True)
     return vault, base_inbox, page
 
 
 def test_gate_promote_to_project_passes_against_real_route(
     gate: Any, tmp_path: Path, monkeypatch: Any
 ) -> None:
-    """[4/8] 在真实提升路径上必须全绿，并能在 [8/8] 逐字还原项目页与 inbox.md。"""
-    vault, base_inbox, base_page = _seed_promote_vault(tmp_path)
-    monkeypatch.setattr(gate, "http_json_tolerant", _route_backed_http(vault, tmp_path))
-    rep = gate.Report()
+    """Project promotion updates inbox and page together in an isolated no-Git library."""
+    from fastapi.testclient import TestClient
 
-    probe = gate.gate_promote(rep, vault, "http://swb", "tok", "http://swb", _PROMOTE_MARKER)
+    from summit_workbench.webapp.app import WebContext, create_app
 
-    assert rep.failures == [], rep.failures
-    assert probe is not None
-    assert probe.project == "FinanceOps"
-    assert probe.entry_id == _PROMOTE_ENTRY_ID
-    assert "inbox.md" in probe.files and "projects/FinanceOps.md" in probe.files
-    assert gate.worktree_dirty(vault) == []
-    page_after = (vault / "projects" / "FinanceOps.md").read_text(encoding="utf-8")
-    assert page_after.count(f"<!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->") == 1
-    assert "\n\n\n" not in page_after
+    vault, _base_inbox, _base_page = _seed_promote_vault(tmp_path)
+    client = TestClient(create_app(WebContext(vault, tmp_path, "Asia/Shanghai")))
+    response = client.post(
+        "/api/inbox/promote",
+        json={
+            "id": _PROMOTE_ENTRY_ID,
+            "target": "project",
+            "project": "FinanceOps",
+            "block": "next-step",
+        },
+    )
+    assert response.status_code == 200 and response.json()["ok"] is True
+    page = (vault / "projects/FinanceOps.md").read_text(encoding="utf-8")
+    assert page.count(f"<!-- wb-candidate: {_PROMOTE_ENTRY_ID} -->") == 1
+    assert "\n\n\n" not in page
     assert _PROMOTE_MARKER not in (vault / "inbox.md").read_text(encoding="utf-8")
-
-    gate.gate_cleanup(rep, vault, _PROMOTE_MARKER, True, push=False, promote=probe)
-
-    assert rep.failures == []
-    assert (vault / "projects" / "FinanceOps.md").read_text(encoding="utf-8") == base_page
-    assert (vault / "inbox.md").read_text(encoding="utf-8") == base_inbox
-    assert gate.worktree_dirty(vault) == []
+    assert not (vault / ".git").exists()

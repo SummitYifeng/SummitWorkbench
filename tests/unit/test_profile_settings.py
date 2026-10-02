@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.config.secrets import CredentialError
-from summit_workbench.domain.automation import AutomationRunStatus
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile, WorkspaceManifest
 from summit_workbench.repositories.profile_registry import (
     active_profile_id,
@@ -20,7 +19,6 @@ from summit_workbench.repositories.profile_registry import (
 )
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.webapp.app import WebContext, create_app
-from summit_workbench.workflows.automation_worker import WorkerResult
 from summit_workbench.workflows.profile_settings import (
     commit_profile_switch,
     list_profile_summaries,
@@ -148,7 +146,7 @@ def test_settings_api_exposes_prepare_commit_and_safe_remove(tmp_path: Path, mon
     assert prepared.status_code == 200
     blocked = client.post("/api/capture", json={"text": "must wait for switch"})
     assert blocked.status_code == 409
-    assert blocked.json()["code"] == "sync_diverged"
+    assert blocked.json()["code"] == "workspace_switch_in_progress"
     committed = client.post(
         "/api/settings/profile/commit", json={"plan_id": prepared.json()["plan_id"]}
     )
@@ -161,110 +159,16 @@ def test_settings_api_exposes_prepare_commit_and_safe_remove(tmp_path: Path, mon
     assert preview.json()["code"] == "confirmation_required"
 
 
-def test_automation_settings_api_roundtrips_and_validates_schedule(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_retired_automation_settings_routes_are_not_registered(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    profile = _profile(tmp_path, "automation")
+    profile = _profile(tmp_path, "automation-retired")
     set_active_profile(profile.workspace_id, home=tmp_path)
     context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
     client = TestClient(create_app(WebContext.from_active_workspace(context)))
 
-    listed = client.get("/api/settings/automation")
-    assert listed.status_code == 200
-    assert listed.json()["workspace_id"] == profile.workspace_id
-    assert listed.json()["jobs"]["brief"]["enabled"] is False
-    assert listed.json()["jobs"]["meeting-sync"]["supported"] is False
-    assert listed.json()["jobs"]["meeting-sync"]["unavailable_reason"]
-
-    saved = client.put(
-        "/api/settings/automation",
-        json={
-            "job": "brief",
-            "enabled": True,
-            "hour": 9,
-            "minute": 15,
-            "weekdays": [0, 1, 2, 3, 4],
-        },
-    )
-    assert saved.status_code == 200
-    assert saved.json()["job"]["hour"] == 9
-    assert saved.json()["job"]["weekdays"] == [0, 1, 2, 3, 4]
-
-    reread = client.get("/api/settings/automation")
-    assert reread.json()["jobs"]["brief"]["enabled"] is True
-    assert reread.json()["jobs"]["brief"]["minute"] == 15
-
-    invalid = client.put(
-        "/api/settings/automation",
-        json={"job": "brief", "enabled": True, "hour": 24, "minute": 0, "weekdays": []},
-    )
-    assert invalid.status_code == 422
-    assert invalid.json()["code"] == "validation_error"
-
-
-def test_automation_manual_run_is_skipped_on_secondary(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
-    profile = _profile(tmp_path, "secondary-automation")
-    set_active_profile(profile.workspace_id, home=tmp_path)
-    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
-    client = TestClient(create_app(WebContext.from_active_workspace(context)))
-
-    # secondary 的「立即运行」是预期跳过，不是错误：200 + ok=true + status=not-primary。
-    response = client.post("/api/settings/automation/run", json={"job": "brief"})
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["status"] == "not-primary"
-
-
-def test_automation_manual_run_forces_execution_after_same_day_run(
-    tmp_path: Path, monkeypatch
-) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
-    profile = _profile(tmp_path, "manual-automation")
-    set_active_profile(profile.workspace_id, home=tmp_path)
-    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
-    client = TestClient(create_app(WebContext.from_active_workspace(context)))
-    calls: list[bool] = []
-
-    def fake_run(context, job, *, force=False, **_kwargs):
-        calls.append(force)
-        return WorkerResult(job, AutomationRunStatus.SUCCESS, published="committed")
-
-    monkeypatch.setattr("summit_workbench.workflows.automation_worker.run_automation_job", fake_run)
-    response = client.post("/api/settings/automation/run", json={"job": "brief"})
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert calls == [True]
-
-
-def test_unsupported_meeting_sync_cannot_enable_or_run(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
-    profile = _profile(tmp_path, "unsupported-meeting")
-    set_active_profile(profile.workspace_id, home=tmp_path)
-    context = resolve_active_workspace(home=tmp_path, allow_env_fallback=False)
-    client = TestClient(create_app(WebContext.from_active_workspace(context)))
-
-    saved = client.put(
-        "/api/settings/automation",
-        json={
-            "job": "meeting-sync",
-            "enabled": True,
-            "hour": 8,
-            "minute": 30,
-            "weekdays": list(range(7)),
-        },
-    )
-    assert saved.status_code == 409
-    assert saved.json()["code"] == "automation_not_supported"
-
-    run = client.post("/api/settings/automation/run", json={"job": "meeting-sync"})
-    assert run.status_code == 409
-    assert run.json()["code"] == "automation_not_supported"
+    assert client.get("/api/settings/automation").status_code == 404
+    assert client.put("/api/settings/automation", json={}).status_code == 404
+    assert client.post("/api/settings/automation/run", json={}).status_code == 404
 
 
 def test_provider_secret_is_scoped_and_never_written_to_profile(

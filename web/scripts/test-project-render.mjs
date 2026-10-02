@@ -118,7 +118,7 @@ try {
     '<section class="project-group active-group"><h4>在工作台</h4><div class="project-group-grid"><div class="card project-row"><div class="project-row-main"><div class="project-row-title"><button class="project-name project-link" data-action="open-view" data-name="Alpha" title="打开项目详情">Alpha</button><span class="badge is-home">在工作台</span></div></div><div class="project-row-actions"><button class="ghost" data-action="project-archive" data-name="Alpha">归档</button></div></div></div></section>',
   );
   assert.ok(mod.cases.homeCard.includes('<div class="card project">'));
-  assert.ok(mod.cases.homeCard.includes('class="project-clear-state">未发现同步提醒</span>'));
+  assert.ok(mod.cases.homeCard.includes('class="project-clear-state">暂无待处理输入</span>'));
   assert.ok(mod.cases.homeCard.includes('class="project-step"><span class="step-label">下一步</span>'));
   assert.ok(!mod.cases.stale14.includes('⚠'));
   assert.doesNotMatch(mod.cases.stale15, /⚠ 15 天未更新/);

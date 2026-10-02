@@ -277,9 +277,8 @@ def test_log_endpoint_falls_back_to_raw_when_model_offline(
     )
     body = r.json()
     assert r.status_code == 200 and body["ok"] is True
-    assert body["enriched"] is False
     assert body["summary"] == ""
-    assert "仅存原文" in body["message"]
+    assert "已追加推进日志" in body["message"]
     note_path = Path(body["path"])
     note = load_note(note_path)
     assert validate_note(note.meta, note.body) == []

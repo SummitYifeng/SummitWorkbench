@@ -93,7 +93,8 @@ def test_log_request_receipt_prevents_duplicate_and_is_queryable(tmp_path: Path)
     assert receipt.status_code == 200
     assert receipt.json()["status"] == "completed"
     assert receipt.json()["business_write"] == "succeeded"
-    assert receipt.json()["commit_status"] == "not-git"
+    assert receipt.json()["commit_status"] is None
+    assert receipt.json()["push_status"] is None
     assert receipt.json()["response"]["path"] == first.json()["path"]
 
 

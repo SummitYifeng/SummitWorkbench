@@ -11,10 +11,12 @@ import secrets
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 import yaml
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.approval import approval_record
 from summit_workbench.repositories._atomic import atomic_write_text
 from summit_workbench.repositories.vault import parse_frontmatter
 
@@ -129,6 +131,7 @@ def write_thought_note(
     workstream: str = "cross",
     title: str = "",
     summary: str = "",
+    operation_id: str | None = None,
 ) -> ThoughtNote:
     """落一篇工作思考 `thinking/<YYYYMMDD>-<slug>.md`；返回路径与最终标题/摘要。
 
@@ -162,6 +165,12 @@ def write_thought_note(
             thinking=thinking,
             conclusion=conclusion,
         )
+        meta, body, error = parse_frontmatter(text)
+        if error is not None:
+            raise ValueError(f"frontmatter 无法解析：{error}")
+        meta["approval"] = approval_record(meta, body, operation_id=operation_id or str(uuid4()))
+        frontmatter = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).strip()
+        text = f"---\n{frontmatter}\n---\n{body}"
         _validate_thought_text(text)
         atomic_write_text(path, text, ensure_parents=True)
     return ThoughtNote(path=path, title=resolved_title, summary=resolved_summary)

@@ -63,13 +63,13 @@ def test_empty_install_renders_recoverable_wizard_and_api(tmp_path: Path, monkey
     client = TestClient(app)
     page = client.get("/")
     assert page.status_code == 200
-    assert "新建我的工作台" in page.text
-    assert "连接已有工作台" in page.text
-    assert "升级这台 Mac 上的旧工作台" in page.text
+    assert "新建工作库" in page.text
+    assert "连接已有兼容工作库" in page.text
+    assert "upgrade-existing" not in page.text
     assert "api_key" not in page.text
     assert "/feishu/status?state=" in page.text
     assert "restartService" in page.text
-    assert "本机是辅助设备" in page.text
+    assert "本机是辅助设备" not in page.text
     assert "configured-keychain" in page.text
     assert client.get("/api/onboarding/draft").json()["draft"] is None
     saved = client.put(

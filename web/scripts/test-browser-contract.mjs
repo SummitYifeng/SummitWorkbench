@@ -96,21 +96,6 @@ const settingsSource = filesMatching(/^src\/features\/settings\/.*\.ts$/);
 const styleSource = filesMatching(/\.css$/);
 
 assert.match(source, /window\.location\.href = '\/onboarding'/, 'onboarding remains reachable from the workbench');
-assert.match(source, /data-action="sync-retry"/, 'sync retry remains wired');
-assert.match(source, /data-action="sync-conflict-details"/, 'protected sync opens conflict details');
-assert.match(source, /\/api\/sync\/conflict\/selection\/validate/, 'manual conflict choices are validated');
-assertNearby(
-  /\/api\/sync\/conflict\/selection\/validate/,
-  /[\s\S]{0,350}conflictSelectionRequest\(\)/,
-  'selection validation does not send the recovery confirmation field',
-);
-assert.match(source, /\/api\/sync\/conflict\/recover/, 'conflict recovery remains wired');
-assert.match(source, /\/api\/sync\/conflict\/export/, 'conflict package export remains wired');
-assert.match(source, /unknown-generated-view/, 'unknown generated views have a safe fallback label');
-assert.match(source, /preserve-both/, 'unknown generated views keep both copies');
-assert.match(source, /脱敏审计记录未完成/, 'audit failure remains visible after recovery commit');
-assert.match(source, /conflictRecoveryRequest\(false\)/, 'recovery preview is explicit and write-free');
-assert.match(source, /确认恢复并创建提交/, 'recovery requires an explicit confirmation action');
 assert.match(source, /\/api\/review\/apply/, 'review apply remains wired');
 assert.match(reviewSource, /data-action="source-open"/, 'review evidence links open the shared source panel');
 assert.match(source, /function openSource/, 'review evidence opens the shared read-only source panel');
@@ -138,14 +123,6 @@ assert.match(
   /data-action="profile-remove"/,
   'removing a local profile is reachable from the settings page, not only dispatched',
 );
-// D6: the toolbar must expose 立即同步. Before this, /api/sync/run was reachable only through the
-// banner's 立即重试, which is hidden whenever the state is ready — so a clean device had no way to
-// pull at all.
-assert.match(
-  fileFor('src/features/shell/shell.ts'),
-  /id="btn-sync"/,
-  'the toolbar exposes 立即同步, not only the banner retry',
-);
 assert.match(settingsSource, /data-action="diagnostics-preview"/, 'diagnostics preview remains wired');
 assert.match(diagnosticsSource, /export function createDiagnosticsActions/, 'diagnostics actions stay in their feature module');
 assert.match(diagnosticsSource, /\/api\/diagnostics\/preview/, 'diagnostics preview uses the feature API');
@@ -157,57 +134,6 @@ assert.match(reviewActionsSource, /export function submitReviewEdit/, 'review ed
 assert.match(reviewActionsSource, /\/api\/review\/edit/, 'review editing endpoint remains in the review feature');
 assert.match(reviewActionsSource, /\/api\/review\/decide/, 'save-and-approve endpoint remains in the review feature');
 assert.doesNotMatch(legacySource, /\/api\/(projects\/create|review\/edit|review\/decide)/, 'form submission HTTP details do not return to the composition root');
-// G2: a workspace with no origin had no in-app path to bind one (only manual git commands);
-// the publish entry point and its dispatch must both exist.
-assert.match(
-  settingsSource,
-  /data-action="git-remote-publish"/,
-  'the settings page exposes the first-publish entry point',
-);
-assert.match(source, /action === 'git-remote-publish'/, 'first-publish dispatch is wired');
-// G1: the automation-primary claim/takeover endpoint existed but nothing in the UI could reach it,
-// so a machine whose profile said `secondary` could never become primary (and never downgrade).
-assert.match(
-  settingsSource,
-  /data-action="primary-claim"/,
-  'the settings page exposes the automation-primary claim/takeover entry point',
-);
-assert.match(
-  settingsSource,
-  /data-action="primary-downgrade"/,
-  'the settings page exposes the downgrade-to-secondary entry point',
-);
-assert.match(
-  settingsSource,
-  /id="primary-takeover-ack"/,
-  'takeover requires an explicit acknowledgement in the rendered card',
-);
-// 设置页主区只留三张常用卡（工作区 / AI 模型 / 飞书），每张独占一行；
-// 「自动化与更新」「模型参数（只读）」收进「高级与维护」——2026-09-18 使用者要求。
-assert.match(
-  settingsSource,
-  /settings-grid settings-grid-single/,
-  'the settings main area renders one card per row',
-);
-assert.match(
-  settingsSource,
-  /高级与维护（自动化 · 模型参数 · 多工作台 · Git 同步 · 诊断）/,
-  'the advanced block advertises that automation and model parameters live inside it',
-);
-assert.match(
-  settingsSource,
-  /section-title">自动化与更新<\/h3>[\s\S]{0,400}automationCard/,
-  'the automation card is mounted inside the advanced block',
-);
-assert.match(
-  settingsSource,
-  /section-title">模型参数（只读）<\/h3>[\s\S]{0,200}modelParameters/,
-  'the read-only model-parameter card is mounted inside the advanced block',
-);
-// The dispatch branch must exist too: a rendered button without a handler is a dead entry point.
-assert.match(source, /action === 'primary-claim'/, 'primary claim dispatch is wired');
-assert.match(source, /action === 'primary-downgrade'/, 'primary downgrade dispatch is wired');
-assert.match(source, /\/api\/diagnostics\/export/, 'diagnostics export remains wired');
 assert.match(settingsSource, /verification-failed/, 'settings distinguishes provider verification failures');
 assert.match(settingsSource, /conn-badge failed/, 'settings exposes failed connection state');
 assert.match(settingsSource, /needs_reauthorize/, 'settings exposes Feishu reauthorization state');
@@ -225,21 +151,6 @@ assert.match(
   settingsSource,
   /if \(requestId !== settingsRenderSequence\) return;/,
   'stale settings responses do not overwrite newer settings content',
-);
-assertNearby(
-  /\/api\/settings\/git\/remote\/preview/,
-  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
-  'remote preview sends JSON content type',
-);
-assertNearby(
-  /\/api\/settings\/git\/remote\/apply/,
-  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
-  'remote apply sends JSON content type',
-);
-assertNearby(
-  /\/api\/settings\/acceptance-preflight/,
-  /[\s\S]{0,250}headers: \{ 'Content-Type': 'application\/json' \}/,
-  'acceptance preflight sends JSON content type',
 );
 assert.match(fileFor('src/lifecycle/native-bridge.ts'), /openLogDirectory/, 'log directory action remains wired');
 assert.match(fileFor('src/api/client.ts'), /dispose\(\): void/, 'requests have a disposal boundary');
@@ -275,44 +186,12 @@ assert.match(
 assert.match(source, /reviewUi\.applyBusy/, 'review apply has a single in-flight guard');
 assert.match(source, /if \(exec && reviewUi\.applyBusy\) return/, 'repeat apply clicks cannot fire a second writeback request');
 assert.match(source, /reviewUi\.planReady = false;\s*\n\s*void getReviewDeps\(\)\?\.refreshReview\(\)/, 'changing decisions invalidates the previous dry-run plan');
-// 撤销弹层必须复用统一 dialog 激活（初始焦点、dialog 语义、关闭按钮、返回焦点）。
-assertNearby(
-  /async function openUndoModal/,
-  /[\s\S]{0,500}openModal\(/,
-  'undo dialog uses the shared modal activation',
-);
-// 后台轮询只在可见页运行；回到前台时同时刷新同步状态。
-assertNearby(
-  /document\.visibilityState !== 'visible'\) return;/,
-  /[\s\S]{0,80}checkVersion\('interval'\)/,
-  'the 60s version poll pauses while the page is hidden',
-);
-// D6 之后 60s 同步轮询走的是 autoSyncIfIdle()（先读状态，仅 ready 时才真正同步一次）；
-// "隐藏页不跑" 的守卫必须还在。
-assertNearby(
-  /document\.visibilityState !== 'visible'\) return;/,
-  /[\s\S]{0,80}autoSyncIfIdle\(\)/,
-  'the 60s sync poll pauses while the page is hidden',
-);
-// 同步状态读取失败时不能把已显示的保护态横幅静默隐藏。
-assert.match(source, /同步状态读取失败/, 'sync banner read failures stay visible instead of hiding protection state');
-doesNotMatchNearby(
-  /async function refreshSyncBanner/,
-  /[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/,
-  'sync banner read failure does not silently hide the protection banner',
-);
 // 服务端省略 workspace_id 时，workspace 切换检测仍必须成立（否则跨工作区状态不会重置）。
 assert.match(
   source,
   /let loadedWorkspaceId: string \| null = null/,
   'workspace switch guard still works when the server omits workspace_id',
 );
-assert.match(source, /function activateConflictModal/, 'sync conflict uses the shared modal activation path');
-assert.match(source, /activateConflictModal\(/, 'sync conflict modal content gets initial focus and return-focus handling');
-assert.match(source, /const returnFocus = document\.querySelector<HTMLElement>\('\[data-action="sync-conflict-details"\]'\)/, 'sync conflict captures a stable return-focus trigger before async loading');
-assert.match(source, /if \(returnFocus\) modalReturnFocus = returnFocus/, 'sync conflict restores focus to its banner trigger after async modal activation');
-assert.match(source, /persistEntityDraft\('sync-conflict'/, 'sync conflict choices have a recoverable entity draft');
-assert.match(source, /requestModalClose\(\)/, 'sync conflict close uses the unsaved-draft guard');
 // Anchored on the artifact-specific confirmation call, not on `window.confirm` itself (the split
 // places confirms in several domain modules) and not on the确认 copy (that now lives in the pure
 // `artifactStateConfirmText`, asserted in test-threads-render.mjs). What this guard is about is
@@ -367,11 +246,11 @@ assertNearby(/@media \(max-width: 380px\)/, /[\s\S]{0,420}\.automation-enabled\s
 // ---------------------------------------------------------------------------------------------
 const probeName = 'src/__contract-probe__.ts';
 const probePath = path.join(root, probeName);
-const probeAnchor = /async function refreshSyncBanner/;
+const probeAnchor = /function movedContractProbe/;
 const probeForbidden = /[\s\S]{0,1800}\} catch \{\s*\n\s*el\.hidden = true;/;
 const probeBody = [
   '/* temporary probe: stands in for a guard that moved into a newly created module */',
-  'async function refreshSyncBanner(): Promise<void> {',
+  'function movedContractProbe(): void {',
   '  try {',
   '    await fetch("/api/state");',
   '  } catch {',
@@ -399,7 +278,7 @@ try {
   assert.equal(perFile.length, 1, 'per-file windows match the moved module once, and never span files');
 
   // 3. A deleted or renamed anchor fails loudly rather than leaving the guard unenforced.
-  const absent = /async function refreshSyncBannerAbsentSentinel/;
+  const absent = /function movedContractProbeAbsentSentinel/;
   assert.equal(
     [...withProbe.values()].some((text) => absent.test(text)),
     false,

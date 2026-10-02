@@ -18,7 +18,6 @@ export function projectDisplayName(p: ProjectState): string {
 function projectChips(p: ProjectState, today: string): string[] {
   const chips: string[] = [];
   if (p.is_thread) {
-    chips.push('知识线程');
     // P1 语义拆分：展示「最近活跃」用 activity_at（日志/产物等机器活动痕迹）；
     // 「>14 天未更新」停滞提示仍读 updated（实质更新），避免被高频机器活动刷失明。
     const recent = p.activity_at || p.updated;
@@ -29,11 +28,7 @@ function projectChips(p: ProjectState, today: string): string[] {
     }
     return chips;
   }
-  if (p.dirty) chips.push('未提交改动');
-  if (p.behind > 0) chips.push('落后 ' + p.behind + ' 提交');
-  if (p.ahead > 0) chips.push('领先 ' + p.ahead + ' 提交');
   if (p.inbox_pending > 0) chips.push(p.inbox_pending + ' 条 inbox');
-  if (p.git_error) chips.push('git 异常');
   return chips;
 }
 
@@ -60,12 +55,12 @@ function projectCard(p: ProjectState, today: string): string {
   const chips = projectChips(p, today);
   const chipsHtml = chips.length
     ? projectChipsHtml(chips)
-    : '<span class="project-clear-state">未发现同步提醒</span>';
+    : '<span class="project-clear-state">暂无待处理输入</span>';
   const step = projectNextStepHtml(p.next_step) ||
     '<div class="project-step muted-step"><span class="step-label">下一步</span><span class="step-text">主笔记还没写下一步</span></div>';
   const quick = p.registered ? projectQuickActions(p.name, 'card-quick') : '';
   return (
-    '<div class="card project' + (p.dirty || p.behind > 0 || p.inbox_pending > 0 ? ' attention' : '') + '">' +
+    '<div class="card project' + (p.inbox_pending > 0 ? ' attention' : '') + '">' +
     '<div class="card-head"><button class="project-name project-link" data-action="open-view" data-name="' + esc(p.name) + '" title="打开线视图">' + esc(projectDisplayName(p)) + '</button>' + chipsHtml + '</div>' +
     step +
     '<div class="card-foot">' + quick +

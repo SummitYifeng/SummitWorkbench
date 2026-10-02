@@ -1,7 +1,7 @@
 """受限 app 工厂：首次使用向导（onboarding）用的最小应用（LEGACY-APP-SPLIT-PLAN Step 5 / C1–C4）。
 
 从 ``legacy_app`` 抽出的第二个 app 工厂。受限 app 只在**还没有可用工作区**时使用：它没有
-compatibility 写门、没有完整 app 的路由，只承载 onboarding / 远程引导相关的接口，边界由
+compatibility 写门、没有完整 app 的路由，只承载 onboarding 与账户连接接口，边界由
 :func:`~summit_workbench.webapp.request_boundary.install_restricted_boundary` 与
 :func:`~summit_workbench.webapp.request_boundary.install_validation_handler` 安装。
 

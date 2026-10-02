@@ -129,11 +129,10 @@ def test_apply_resolves_meeting_note_to_target_projects(tmp_path: Path) -> None:
         ],
     )
     report = apply_meeting_review(vault, work, apply=True, now=datetime(2026, 9, 2, tzinfo=UTC))
-    assert report.applied == 3  # T1 跟进事项 + T2 主笔记 + 全局 inbox
-    assert report.rejected == 1
-    assert report.failed == 0
-    # unresolved 被解析为实际写回项目；被拒绝与无项目落点不并入。
-    assert _meeting_meta(vault)["projects"] == ["T1", "T2"]
+    assert report.applied == 1  # 只有更新 T2 主笔记仍是允许的去处
+    assert report.failed == 2  # 跟进和全局 inbox 已退役
+    assert "final-m:n#action-item-0" not in (vault / "projects" / "T1.md").read_text()
+    assert not (vault / "inbox.md").exists()
 
 
 def test_apply_backfills_resolution_for_already_completed(tmp_path: Path) -> None:

@@ -117,7 +117,7 @@ def _project_signals(project: ProjectState) -> list[ActionSignal]:
             )
         )
 
-    # 防止停摆：每项目至多一条，取最紧要者（未提交 > 未推送 > inbox 积压）。
+    # 防止停摆只依据工作库中明确记录的待处理输入。
     stall = _anti_stall_signal(project)
     if stall is not None:
         signals.append(stall)
@@ -126,26 +126,6 @@ def _project_signals(project: ProjectState) -> list[ActionSignal]:
 
 def _anti_stall_signal(project: ProjectState) -> ActionSignal | None:
     name = project.name
-    if project.dirty:
-        return ActionSignal(
-            signal_id=f"stall-{name}-dirty",
-            title=f"提交 {name} 的未提交改动",
-            category=ActionCategory.ANTI_STALL,
-            evidence=EvidenceLevel.E2,  # 未提交改动是可验证的推进痕迹
-            source_ref=str(project.path),
-            project=name,
-            detail="工作树有未提交改动",
-        )
-    if project.has_upstream and project.ahead > 0:
-        return ActionSignal(
-            signal_id=f"stall-{name}-unpushed",
-            title=f"推送 {name} 领先的 {project.ahead} 个提交",
-            category=ActionCategory.ANTI_STALL,
-            evidence=EvidenceLevel.E2,
-            source_ref=str(project.path),
-            project=name,
-            detail=f"本地领先 upstream {project.ahead} 个提交",
-        )
     if project.inbox_pending > 0:
         return ActionSignal(
             signal_id=f"stall-{name}-inbox",

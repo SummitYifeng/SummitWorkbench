@@ -12,12 +12,7 @@ from typing import Literal
 
 from fastapi import FastAPI
 
-from summit_workbench.domain.workspace import DeviceRole
 from summit_workbench.observability.status import build_status
-from summit_workbench.repositories.automation_primary import (
-    AutomationPrimaryError,
-    load_automation_primary,
-)
 from summit_workbench.repositories.daily_note import read_brief_block
 from summit_workbench.repositories.project_scan import count_inbox_pending, scan_all_projects
 from summit_workbench.repositories.signal_snapshot import read_snapshot
@@ -39,6 +34,7 @@ def register_state_routes(
     """注册看板状态路由。"""
     app: FastAPI = dependencies.app
     ctx = dependencies.context
+    del runtime
 
     @app.get("/api/state")
     def api_state() -> dict[str, object]:
@@ -46,19 +42,6 @@ def register_state_routes(
         day = ctx.today()
         status = build_status(ctx.vault_dir, config_file=ctx.provider_config_file())
         status_payload = status.as_dict()
-        try:
-            claim = load_automation_primary(ctx.vault_dir)
-        except AutomationPrimaryError:
-            claim = None
-        status_payload["automation_not_primary"] = bool(
-            ctx.active_workspace
-            and ctx.active_workspace.profile is not None
-            and ctx.active_workspace.profile.device_role is DeviceRole.SECONDARY
-            and claim is not None
-            and claim.workspace_id == ctx.workspace_id
-            and claim.device_id != ctx.active_workspace.device_id
-        )
-        sync_state = runtime.snapshot().state.value
         brief_md = read_brief_block(ctx.vault_dir, day, workspace_id=ctx.workspace_id)
         inbox_path = ctx.vault_dir / "inbox.md"
         inbox_pending = (
@@ -69,13 +52,8 @@ def register_state_routes(
         projects = [
             {
                 "name": p.name,
-                "dirty": p.dirty,
-                "ahead": p.ahead,
-                "behind": p.behind,
-                "has_upstream": p.has_upstream,
                 "inbox_pending": p.inbox_pending,
                 "next_step": p.next_step,
-                "git_error": p.git_error,
                 "registered": p.registered,
                 "status": p.status,
                 "is_thread": p.is_thread,
@@ -93,7 +71,6 @@ def register_state_routes(
             "brief": brief_payload(read_snapshot(ctx.vault_dir, day)),
             "inbox_pending": inbox_pending,
             "projects": projects,
-            "sync_state": sync_state,
         }
         try:
             info = build_info()

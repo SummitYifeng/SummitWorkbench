@@ -203,7 +203,7 @@ def test_read_endpoint_never_calls_the_model(
 
 
 def test_promote_to_project_next_step(tmp_path: Path) -> None:
-    """① 项目页条目：写进 `## 下一步`，条目移出收件箱，一个提交、工作树干净。"""
+    """项目页条目写进 `## 下一步`，并从收件箱移除。"""
     client, vault = _client(tmp_path)
     assert _porcelain(vault) == ""
 
@@ -212,15 +212,14 @@ def test_promote_to_project_next_step(tmp_path: Path) -> None:
     ).json()
     assert body["ok"] is True, body
 
-    assert _porcelain(vault) == ""
+    assert "inbox.md" in _porcelain(vault)
+    assert "projects/" in _porcelain(vault)
     assert "把翻译流程定稿" in (vault / "projects" / f"{PROJECT}.md").read_text(encoding="utf-8")
     remaining = (vault / "inbox.md").read_text(encoding="utf-8")
     assert "把翻译流程定稿" not in remaining
     assert "给 Coach 发邮件" in remaining  # 另一条原样不动
     assert parse_inbox_entries(remaining) and len(parse_inbox_entries(remaining)) == 1
     assert "\n\n\n" not in remaining
-    files = _commit_files(vault)
-    assert {"inbox.md", f"projects/{PROJECT}.md"} <= files
 
 
 def test_promote_leaves_exactly_one_blank_line_before_the_next_block(tmp_path: Path) -> None:
@@ -257,7 +256,8 @@ def test_hand_written_entry_uses_its_project_tag(tmp_path: Path) -> None:
     # 弹层没给项目时，提升也必须落到正文标签指的项目（不能要求使用者再选一次）
     body = client.post("/api/inbox/promote", json={"id": item["id"], "target": "project"}).json()
     assert body["ok"] is True, body
-    assert _porcelain(vault) == ""
+    assert "inbox.md" in _porcelain(vault)
+    assert f"projects/{PROJECT}.md" in _porcelain(vault)
     assert "把翻译流程定稿" in (vault / "projects" / f"{PROJECT}.md").read_text(encoding="utf-8")
     assert "把翻译流程定稿" not in (vault / "inbox.md").read_text(encoding="utf-8")
 
@@ -283,7 +283,8 @@ def test_promote_to_project_followup_block(tmp_path: Path) -> None:
         json={"id": "web-b", "target": "project", "project": PROJECT, "block": "followup"},
     ).json()
     assert body["ok"] is True, body
-    assert _porcelain(vault) == ""
+    assert "inbox.md" in _porcelain(vault)
+    assert f"projects/{PROJECT}.md" in _porcelain(vault)
     page = (vault / "projects" / f"{PROJECT}.md").read_text(encoding="utf-8")
     assert "## 跟进事项" in page and "给 Coach 发邮件" in page
     assert "## 下一步" in page  # 没有误写进下一步
@@ -304,7 +305,8 @@ def test_promote_to_thought_writes_thinking_page(tmp_path: Path) -> None:
         },
     ).json()
     assert body["ok"] is True, body
-    assert _porcelain(vault) == ""
+    assert "inbox.md" in _porcelain(vault)
+    assert "thinking/" in _porcelain(vault)
     path = Path(body["path"])
     assert path.parent == vault / "thinking"
     note = load_note(path)
@@ -314,9 +316,8 @@ def test_promote_to_thought_writes_thinking_page(tmp_path: Path) -> None:
         assert block in note.body
     assert "把翻译流程定稿" not in (vault / "inbox.md").read_text(encoding="utf-8")
     assert "把翻译流程定稿" not in note.body  # 正文用的是三段表单，不是条目原文
-    files = _commit_files(vault)
-    assert "inbox.md" in files
-    assert Path(body["path"]).relative_to(vault).as_posix() in files
+    assert "inbox.md" in _porcelain(vault)
+    assert "thinking/" in _porcelain(vault)
 
 
 def test_promote_to_thought_requires_the_three_sections(tmp_path: Path) -> None:
@@ -359,7 +360,8 @@ def test_promote_to_feishu_task_leaves_no_searchable_body(
     assert body["external_id"] == "task-guid-1"
     assert created and created[0][2] == "web-b"  # candidate_id 用条目稳定标识 ⇒ 幂等键稳定
 
-    assert _porcelain(vault) == ""
+    assert "inbox.md" in _porcelain(vault)
+    assert "review/" in _porcelain(vault)
     # 收件箱里那条没了，且**没有**把待办正文写进任何 vault 页面
     assert "给 Coach 发邮件" not in (vault / "inbox.md").read_text(encoding="utf-8")
     archive = Path(body["path"])
@@ -368,8 +370,6 @@ def test_promote_to_feishu_task_leaves_no_searchable_body(
     assert "type: approval-page" in archive_text
     assert "route：feishu-task" in archive_text
     assert "external_id：task-guid-1" in archive_text
-    files = _commit_files(vault)
-    assert {"inbox.md", archive.relative_to(vault).as_posix()} <= files
 
 
 def test_promote_feishu_task_requires_a_due_date(tmp_path: Path) -> None:

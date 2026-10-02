@@ -1,9 +1,8 @@
-"""新建 / 升级 / 连接工作区服务（P0-08，服务层，供 CLI 与 Web API 共用）。
+"""新建 / 升级 / 连接工作区服务（供受限首启控制面与兼容维护调用）。
 
 三条流程：
-- **create-new**：选 Work Root → staging 目录 → 原子改名到 ``<work_root>/_vault``；
-  只从 allowlist 模板拷贝种子文件（inbox/conventions，``{{date}}`` 填充），写
-  workspace marker，建本机 profile 并设为 active。目标 ``_vault`` 已存在/非空即拒绝。
+- **create-new**：在用户选定的库根目录旁准备 staging，再原子改名到该目录；创建通用
+  ``inbox.md``、契约 manifest 与 conventions，建本机 profile 并设为 active。
 - **upgrade-existing**：旧 vault（无 marker）→ 只读预检 → Application Support 下
   timestamped 备份（只备份将被修改的 marker/config 快照，不复制整个 vault）→
   写 marker + profile。**不改动任何既有业务文件**（内容哈希不变）。
@@ -11,10 +10,7 @@
   拒绝，提示升级 App）→ 建本机 profile。
 
 硬边界（P0-08）：
-- 全程**不运行系统 git**、不 ``git init``（新 vault 的 git 只经 P0-09 backend）；
-  仅探测目录是否含 ``.git`` 作为预检信息。
-- 目标位于网盘同步路径（iCloud Drive/Dropbox/OneDrive/Google Drive 等）一律拒绝：
-  网盘会同步含 ``.git`` 的工作区导致仓库损坏（验收禁止）。
+- 初始化、连接和写入均不要求工作库 Git；OneDrive 等文件同步目录由用户选择并由同步客户端管理。
 - 模板复制前做**个人化卫生扫描**：绝对用户路径、本机 home、仓库路径、
   ``WB_BLOCKED_ACCOUNTS`` 中的账号命中即拒绝拷贝（命中即拒绝）。
 - 失败必须回滚本次创建的 marker/profile/registry；绝不删除用户原有目录。
@@ -34,7 +30,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from summit_workbench.config.app_support import PROFILE_DIR_MODE, backups_dir
-from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.domain.onboarding import (
     OnboardingFlow,
     OnboardingResult,
@@ -49,8 +44,7 @@ from summit_workbench.domain.workspace import (
     WorkspaceManifest,
     evaluate_manifest_compatibility,
 )
-from summit_workbench.repositories.autocommit import commit_paths
-from summit_workbench.repositories.git import GitRepo
+from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
 from summit_workbench.repositories.profile_registry import (
     drop_profile,
     ensure_device_identity,
@@ -58,6 +52,7 @@ from summit_workbench.repositories.profile_registry import (
     save_profile,
     set_active_profile,
 )
+from summit_workbench.repositories.workspace_contract import write_workspace_contract
 from summit_workbench.repositories.workspace_manifest import (
     WorkspaceManifestError,
     load_workspace_manifest,
@@ -225,42 +220,16 @@ def preflight(
     reject = report.rejections.append
 
     if flow is OnboardingFlow.CREATE_NEW:
-        vault_target = target / "_vault"
-        report.vault_target_exists = vault_target.exists()
+        report.vault_target_exists = exists and not report.empty
         if report.vault_target_exists:
-            reject(f"目标 {vault_target} 已存在，绝不覆盖（create-new 需要全新目录）")
+            reject("所选工作库文件夹已有内容，SWB 不会覆盖；请选择空文件夹或使用选择性导入")
         if not report.writable:
             reject("目标位置不可写")
         if not report.space_ok:
             reject("目标磁盘可用空间不足")
-        if report.cloud_storage:
-            reject(
-                "目标位于网盘同步目录（iCloud/Dropbox/OneDrive 等）：网盘同步含 .git 的"
-                "工作区会损坏 Git 仓库，请换本地目录"
-            )
-        tpl_dir = templates_dir if templates_dir is not None else default_vault_templates_dir()
-        if not tpl_dir.is_dir():
-            reject(f"vault 模板目录不可用：{tpl_dir}")
-        else:
-            issues = scan_template_hygiene(tpl_dir, home=home)
-            report.template_issues = issues
-            for issue in issues:
-                reject(f"模板含个人化内容（{issue}），已拒绝本次创建")
-
-    elif flow is OnboardingFlow.CONNECT_REMOTE:
-        # 私有 HTTPS remote clone 的目标目录：必须尚不存在或为空；marker/git 由
-        # stage_remote_clone 在 clone 后校验，此处只做路径/权限/网盘/空间预检。
-        if exists and not report.empty:
-            reject("目标 vault 已存在且非空，绝不覆盖（connect-remote 需要全新目录）")
-        if not report.writable:
-            reject("目标位置不可写")
-        if not report.space_ok:
-            reject("目标磁盘可用空间不足")
-        if report.cloud_storage:
-            reject(
-                "目标位于网盘同步目录（iCloud/Dropbox/OneDrive 等）：网盘同步含 .git 的"
-                "工作区会损坏 Git 仓库，请换本地目录"
-            )
+        conventions = Path(__file__).parents[3] / "templates" / "workspace" / "conventions.md"
+        if not conventions.is_file():
+            reject(f"工作区契约模板不可用：{conventions}")
 
     elif flow in {OnboardingFlow.UPGRADE_EXISTING, OnboardingFlow.CONNECT_LOCAL}:
         if not exists or not target.is_dir():
@@ -268,17 +237,28 @@ def preflight(
             return report
         if not report.writable:
             reject("vault 目录不可写")
-        if report.cloud_storage:
-            reject(
-                "vault 位于网盘同步目录（iCloud/Dropbox/OneDrive 等）：网盘同步含 .git 的"
-                "工作区会损坏 Git 仓库，请换本地目录"
-            )
         # 仅探测 .git 目录存在，绝不运行 git（P0-09 backend 前）
         report.has_git_dir = (target / ".git").exists()
         try:
             manifest = load_workspace_manifest(target)
         except WorkspaceManifestError:
             manifest = None
+            if (target / ".summit-workbench" / "workspace.json").exists():
+                reject("旧版工作区身份文件损坏；为保护数据，拒绝连接")
+        contract_manifest_path = target / ".summit-workbench" / "manifest.json"
+        try:
+            from summit_workbench.repositories.workspace_contract import load_contract_manifest
+
+            portable = load_contract_manifest(target)
+        except ValueError as exc:
+            portable = None
+            if contract_manifest_path.exists():
+                reject(f"工作区契约损坏或不兼容：{exc}")
+        if portable is not None:
+            report.has_marker = True
+            report.marker_workspace_id = portable.workspace_id
+            if manifest is not None and manifest.workspace_id != portable.workspace_id:
+                reject("工作区身份标记不一致；为保护数据，拒绝连接")
         if manifest is not None:
             report.has_marker = True
             report.marker_workspace_id = manifest.workspace_id
@@ -290,8 +270,8 @@ def preflight(
                     "请用 connect-local 连接"
                 )
         else:  # CONNECT_LOCAL
-            if manifest is None:
-                reject("该 vault 没有 workspace marker：请先用 upgrade-existing 升级")
+            if manifest is None and portable is None:
+                reject("所选文件夹没有可识别的 SWB 工作区契约；请新建工作库或选择兼容工作库")
             elif report.compatibility is Compatibility.CANNOT_OPEN:
                 reject(
                     "workspace 要求更高的 App 版本（cannot-open）：请升级 SummitWorkbench 后重试"
@@ -434,39 +414,6 @@ def _rollback_created_vault(
             pass
 
 
-def _init_vault_repository(vault_dir: Path, *, workspace_id: str, home: Path | None) -> None:
-    """把新建的 vault 纳入版本管理（D1；best-effort，绝不因此让"建工作台"失败）。
-
-    此前 create-new **从不**初始化仓库，于是两个承诺都落空：
-    ``commit_paths()`` 返回 ``NOT_GIT``，"系统写回自动 git 留痕"静默失效；
-    「设置 → Git 同步 → 预览 HTTPS 转换」直接 500（``GitError: 不是 git 仓库``）。
-
-    初始化只经 P0-09 backend（不调用系统 git），与 create-new 既有约定一致；分支固定为
-    ``main``（产品约定，同步横幅/克隆对端/验收记录都按 main 写）。
-    失败只影响版本管理本身：工作台照常可用，之后点同步会得到稳定错误码而不是 500。
-    """
-    try:
-        repo = GitRepo(vault_dir, backend_kind="dulwich", workspace_id=workspace_id)
-        if repo.is_git_repo():
-            return
-        repo.backend.init()
-        profile = load_profile(workspace_id, home=home)
-        files = [
-            path
-            for path in vault_dir.rglob("*")
-            if path.is_file() and ".git" not in path.relative_to(vault_dir).parts
-        ]
-        commit_paths(
-            vault_dir,
-            files,
-            "wb: onboarding create",
-            backend_kind="dulwich",
-            author=profile_identity(profile) if profile is not None else None,
-        )
-    except Exception:  # noqa: BLE001 - 版本管理初始化失败不阻断建工作台
-        pass
-
-
 def create_workspace(
     work_root: Path,
     *,
@@ -478,7 +425,8 @@ def create_workspace(
     app_version: str | None = None,
     device_role: DeviceRole = DeviceRole.AUTOMATION_PRIMARY,
 ) -> OnboardingResult:
-    """create-new：全新 workspace（staging + 原子改名），失败回滚全部产物。"""
+    """Create a portable workspace directly at the user-selected folder."""
+    work_root = work_root.expanduser().resolve()
     report = preflight(
         OnboardingFlow.CREATE_NEW,
         work_root,
@@ -489,17 +437,17 @@ def create_workspace(
     if not report.ok:
         raise OnboardingError("创建被拒绝", reasons=report.rejections)
 
-    templates = templates_dir if templates_dir is not None else default_vault_templates_dir()
     version = app_version or current_app_version()
     workspace_id = str(uuid4())
     display = display_name or work_root.name or "Workbench"
-    vault_target = work_root / "_vault"
+    vault_target = work_root
     staging: Path | None = None
     created_dirs: list[Path] = []
+    installed_workspace = False
 
     try:
         # 准备父目录（记录本次新建的空父目录供回滚清理）
-        cursor = work_root
+        cursor = work_root.parent
         to_create: list[Path] = []
         while not cursor.exists():
             to_create.append(cursor)
@@ -511,27 +459,39 @@ def create_workspace(
         staging = Path(
             tempfile.mkdtemp(
                 prefix=".summit-workbench-onboarding-",
-                dir=work_root if work_root.is_dir() else cursor,
+                dir=work_root.parent,
             )
         )
-        _copy_seed_templates(staging, templates, day)
+        stamp = day or business_date(datetime.now(UTC))
+        (staging / "inbox.md").write_text(
+            "---\ndate: " + stamp + "\ntype: inbox\nstatus: active\nproject: global\n---\n\n"
+            "# 收件箱\n\n## 待处理条目\n",
+            encoding="utf-8",
+        )
         manifest = _new_manifest(workspace_id, display, version)
         write_workspace_manifest(staging, manifest)  # marker 先落在 staging 内
+        write_workspace_contract(
+            staging,
+            WorkspaceContractManifest(workspace_id=workspace_id),
+            replace_conventions=True,
+        )
+        if work_root.exists():
+            if any(work_root.iterdir()):
+                raise OnboardingError("所选文件夹在初始化期间出现了新内容；未覆盖")
+            work_root.rmdir()
         os.replace(staging, vault_target)  # 原子改名到最终 _vault
         staging = None
+        installed_workspace = True
 
         device = ensure_device_identity(home, device_name=device_name)
-        profile = _ensure_profile(workspace_id, display, work_root, vault_target, home, device_role)
-        if device_role is DeviceRole.AUTOMATION_PRIMARY:
-            from summit_workbench.repositories.automation_primary import claim_automation_primary
-
-            claim_automation_primary(vault_target, workspace_id, device.device_id)
+        profile = _ensure_profile(
+            workspace_id, display, vault_target.parent, vault_target, home, DeviceRole.SECONDARY
+        )
         set_active_profile(workspace_id, home=home)
-        _init_vault_repository(vault_target, workspace_id=workspace_id, home=home)
         return _make_result(
             OnboardingFlow.CREATE_NEW,
             workspace_id=workspace_id,
-            work_root=work_root,
+            work_root=vault_target.parent,
             vault_dir=vault_target,
             device_id=device.device_id,
             display_name=display,
@@ -541,7 +501,14 @@ def create_workspace(
     except BaseException as exc:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
-        _rollback_created_vault(vault_target, workspace_id, home, created_dirs)
+        if installed_workspace:
+            _rollback_created_vault(vault_target, workspace_id, home, created_dirs)
+        else:
+            for directory in reversed(created_dirs):
+                try:
+                    directory.rmdir()
+                except OSError:
+                    pass
         if isinstance(exc, OnboardingError):
             raise
         raise OnboardingError(
@@ -657,20 +624,54 @@ def connect_workspace(
     if not report.ok:
         raise OnboardingError("连接被拒绝", reasons=report.rejections)
 
-    manifest = load_workspace_manifest(vault_dir)
-    assert manifest is not None  # preflight 已保证 marker 存在且可读
-    workspace_id = manifest.workspace_id
-    display = display_name or manifest.display_name
+    try:
+        manifest = load_workspace_manifest(vault_dir)
+    except WorkspaceManifestError as exc:
+        raise OnboardingError("连接被拒绝", reasons=[str(exc)]) from exc
+    added_workspace_manifest = False
+    added_contract_manifest = False
+    if manifest is None:
+        from summit_workbench.repositories.workspace_contract import load_contract_manifest
+
+        portable = load_contract_manifest(vault_dir)
+        workspace_id = portable.workspace_id
+        display = display_name or vault_dir.name
+        write_workspace_manifest(
+            vault_dir,
+            _new_manifest(workspace_id, display, app_version or current_app_version()),
+        )
+        added_workspace_manifest = True
+    else:
+        workspace_id = manifest.workspace_id
+        display = display_name or manifest.display_name
+        from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
+        from summit_workbench.repositories.workspace_contract import load_contract_manifest
+
+        contract_manifest_path = vault_dir / ".summit-workbench" / "manifest.json"
+        try:
+            portable = load_contract_manifest(vault_dir)
+            if portable.workspace_id != workspace_id:
+                raise ValueError("工作区身份标记不一致；为保护数据，拒绝连接")
+        except ValueError as exc:
+            if contract_manifest_path.exists():
+                raise OnboardingError("连接被拒绝", reasons=[str(exc)]) from exc
+            # Explicit connection is the migration boundary for an existing SWB-marked folder.
+            from summit_workbench.repositories._atomic import atomic_write_text
+
+            atomic_write_text(
+                vault_dir / ".summit-workbench" / "manifest.json",
+                json.dumps(
+                    WorkspaceContractManifest(workspace_id=workspace_id).model_dump(), indent=2
+                )
+                + "\n",
+                ensure_parents=True,
+            )
+            added_contract_manifest = True
 
     try:
         device = ensure_device_identity(home, device_name=device_name)
-        # D10：角色由 vault 内的 automation-primary 声明决定，不再一律写 secondary
-        # （否则 marker 指定的主设备上定时自动化永远不放行，且界面没有改角色的入口）。
-        from summit_workbench.repositories.automation_primary import connect_device_role
-
-        device_role = connect_device_role(vault_dir, workspace_id, device.device_id)
         profile = _ensure_profile(
-            workspace_id, display, vault_dir.parent, vault_dir, home, device_role
+            workspace_id, display, vault_dir.parent, vault_dir, home, DeviceRole.SECONDARY
         )
         set_active_profile(workspace_id, home=home)
         return _make_result(
@@ -680,14 +681,17 @@ def connect_workspace(
             vault_dir=vault_dir,
             device_id=device.device_id,
             display_name=display,
-            device_role=device_role,
+            device_role=DeviceRole.SECONDARY,
             provider_status=_provider_status(profile),
-            automation_not_primary=_automation_not_primary(
-                vault_dir, workspace_id, device.device_id
-            ),
         )
     except BaseException as exc:
         drop_profile(workspace_id, home=home)
+        if added_workspace_manifest:
+            from summit_workbench.repositories.workspace_manifest import manifest_path
+
+            manifest_path(vault_dir).unlink(missing_ok=True)
+        if added_contract_manifest:
+            (vault_dir / ".summit-workbench" / "manifest.json").unlink(missing_ok=True)
         if isinstance(exc, OnboardingError):
             raise
         raise OnboardingError(

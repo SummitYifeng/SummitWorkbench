@@ -7,8 +7,6 @@ final class LifecycleCoordinator {
     private var logger: StructuredLogger?
     private var supervisor: ServiceSupervisor?
     private var panel: PanelWindowController?
-    private var automationService: AutomationServiceManager?
-    private var updateCoordinator: UpdateCoordinator?
     private var currentClientBuild: String?
     private var currentClientServerInstance: String?
     private var startInFlight = false
@@ -30,17 +28,8 @@ final class LifecycleCoordinator {
                 if let unfinished = UnfinishedOperationRecord.load() {
                     log.log("unfinished_operation_detected", fields: ["kind": unfinished.kind])
                 }
-                automationService = AutomationServiceManager(logger: log)
-                updateCoordinator = UpdateCoordinator(
-                    logger: log,
-                    feedURL: config.updateFeedURL,
-                    publicKeyBase64: config.updatePublicKey,
-                    currentVersion: config.manifest.version ?? "0.0.0",
-                    currentBuild: config.manifest.build ?? "0",
-                    architecture: config.manifest.architecture ?? "arm64",
-                    workspaceCompatibility: config.updateWorkspaceCompatibility,
-                    statusHandler: { [weak self] status in self?.handleUpdateStatus(status) }
-                )
+                AutomationServiceManager(logger: log).setEnabled(false)
+                LegacyAutomationRetirement.retire()
                 log.log("app_started", fields: ["reason": reason, "mode": config.mode.rawValue])
                 log.log("manifest_loaded", fields: ["frontend_build": config.manifest.frontendBuild])
                 let window = PanelWindowController(logger: log)
@@ -149,7 +138,6 @@ final class LifecycleCoordinator {
             panel?.hideStatus()
             logger?.log("client_ready", fields: ["server_instance": serverInstance])
             logger?.log("version_match")
-            updateCoordinator?.checkIfDue()
         case .quit:
             logger?.log("user_quit_requested")
             panel?.showStatus("正在退出…")
@@ -175,30 +163,8 @@ final class LifecycleCoordinator {
             NSWorkspace.shared.open(url)
         case .saveTextFile(let filename, let content):
             saveTextFile(filename: filename, content: content)
-        case .automationSettingsChanged(let enabled):
-            automationService?.setEnabled(enabled)
-        case .updateAutoCheckChanged(let enabled):
-            updateCoordinator?.setAutomaticChecksEnabled(enabled)
-        case .checkForUpdates:
-            updateCoordinator?.check(manual: true)
         case .chooseWorkspaceFolder:
             break // PanelWindowController handles the folder picker locally.
-        }
-    }
-
-    private func handleUpdateStatus(_ status: UpdateStatus) {
-        let message: String
-        switch status {
-        case .checking: message = UICopy.updateChecking
-        case .unavailable: message = UICopy.updateUnavailable
-        case .current: message = UICopy.updateCurrent
-        case .available(let version): message = UICopy.updateAvailable(version: version)
-        case .failed: message = UICopy.updateFailed
-        case .downloadFailed: message = UICopy.updateDownloadFailed
-        }
-        panel?.showStatus(message)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            self?.panel?.hideStatus()
         }
     }
 

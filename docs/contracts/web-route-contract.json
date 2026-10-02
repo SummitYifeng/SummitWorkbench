@@ -292,18 +292,6 @@
   },
   {
     "method": [
-      "POST"
-    ],
-    "path": "/api/onboarding/upgrade",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "OnboardingVaultPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
       "GET"
     ],
     "path": "/api/operations/{request_id}",
@@ -490,55 +478,6 @@
     "method": [
       "POST"
     ],
-    "path": "/api/settings/acceptance-preflight",
-    "request_fields": [
-      "_payload"
-    ],
-    "request_model": "AcceptancePreflightPayload",
-    "response_status": 200,
-    "error_codes": [
-      "acceptance_preflight_failed",
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/settings/automation",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "PUT"
-    ],
-    "path": "/api/settings/automation",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "AutomationSettingsPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/settings/automation/run",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "AutomationRunPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
     "path": "/api/settings/doctor",
     "request_fields": [
       "payload"
@@ -589,63 +528,6 @@
     "response_status": 200,
     "error_codes": [
       "feishu_state_expired"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/settings/git/remote/apply",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "GitRemoteNormalizationPlanPayload",
-    "response_status": 200,
-    "error_codes": [
-      "normalization_plan_missing",
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/settings/git/remote/preview",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "GitRemoteNormalizationPayload",
-    "response_status": 200,
-    "error_codes": [
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/settings/git/remote/publish",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "GitRemoteNormalizationPayload",
-    "response_status": 200,
-    "error_codes": [
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/settings/git/remote/rollback",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "GitRemoteRollbackPayload",
-    "response_status": 200,
-    "error_codes": [
-      "confirmation_required"
     ]
   },
   {
@@ -764,145 +646,6 @@
   },
   {
     "method": [
-      "GET"
-    ],
-    "path": "/api/sync/conflict/details",
-    "request_fields": [
-      "paths"
-    ],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/conflict/explain",
-    "request_fields": [
-      "paths"
-    ],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/conflict/export",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/conflict/plan",
-    "request_fields": [
-      "paths"
-    ],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/sync/conflict/recover",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "SyncConflictRecoveryPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/sync/conflict/selection/validate",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "SyncConflictSelectionPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/conflict/validate",
-    "request_fields": [
-      "paths"
-    ],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/export",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/sync/primary/claim",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "AutomationPrimaryPayload",
-    "response_status": 200,
-    "error_codes": [
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/sync/primary/downgrade",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": [
-      "profile_missing",
-      "workspace_not_configured"
-    ]
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/sync/run",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/sync/status",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
       "POST"
     ],
     "path": "/api/tasks/complete",
@@ -975,40 +718,6 @@
     "method": [
       "GET"
     ],
-    "path": "/api/undo/diff",
-    "request_fields": [
-      "sha"
-    ],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
-    "path": "/api/undo/history",
-    "request_fields": [],
-    "request_model": null,
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "POST"
-    ],
-    "path": "/api/undo/revert",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "UndoRevertPayload",
-    "response_status": 200,
-    "error_codes": []
-  },
-  {
-    "method": [
-      "GET"
-    ],
     "path": "/api/version",
     "request_fields": [],
     "request_model": null,
@@ -1019,17 +728,13 @@
   },
   {
     "method": [
-      "POST"
+      "GET"
     ],
-    "path": "/api/workspace/migration",
-    "request_fields": [
-      "payload"
-    ],
-    "request_model": "WorkspaceMigrationPayload",
+    "path": "/api/workspace/operations",
+    "request_fields": [],
+    "request_model": null,
     "response_status": 200,
-    "error_codes": [
-      "workspace_not_configured"
-    ]
+    "error_codes": []
   },
   {
     "method": [

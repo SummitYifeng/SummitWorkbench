@@ -21,7 +21,6 @@ from summit_workbench.webapp.api import (
 )
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.feishu_pool import (
-    _build_meeting_creator,
     _build_task_creator,
     _FeishuClientPool,
 )
@@ -118,7 +117,6 @@ def register_review_apply_routes(
                 ctx.work_root,
                 apply=True,
                 task_creator=_build_task_creator(ctx, feishu_clients),
-                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             return {"ok": False, "message": f"应用失败：{type(exc).__name__}: {exc}"}
@@ -160,7 +158,6 @@ def register_review_apply_page_routes(
                 ctx.work_root,
                 apply=True,
                 task_creator=_build_task_creator(ctx, feishu_clients),
-                meeting_creator=_build_meeting_creator(ctx, feishu_clients),
             )
         except Exception as exc:  # noqa: BLE001 - 面板需把任何失败可见化
             detail = f"应用失败：{type(exc).__name__}: {exc}"

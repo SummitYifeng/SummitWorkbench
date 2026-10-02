@@ -4,16 +4,13 @@ export interface NativeClientReady {
   serverInstance: string;
 }
 
-export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'restartService' } | { type: 'copyDiagnostics' } | { type: 'openLogDirectory' } | { type: 'checkForUpdates' } | { type: 'updateAutoCheckChanged'; enabled: boolean } | {
+export type NativeMessage = NativeClientReady | { type: 'quit' } | { type: 'restartService' } | { type: 'copyDiagnostics' } | { type: 'openLogDirectory' } | {
   type: 'openExternal';
   url: string;
 } | {
   type: 'saveTextFile';
   filename: string;
   content: string;
-} | {
-  type: 'automationSettingsChanged';
-  enabled: boolean;
 };
 
 interface NativeHandler {

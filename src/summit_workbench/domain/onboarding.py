@@ -16,10 +16,9 @@ from summit_workbench.domain.workspace import Compatibility, DeviceRole
 class OnboardingFlow(StrEnum):
     """三条 onboarding 流程（P0-08）。"""
 
-    CREATE_NEW = "create-new"  # 新建：选 Work Root → staging → _vault + marker + profile
+    CREATE_NEW = "create-new"  # 在用户选定的工作库根目录创建契约与通用文件
     UPGRADE_EXISTING = "upgrade-existing"  # 升级旧 vault：备份 → 写 marker/profile，不动内容
     CONNECT_LOCAL = "connect-local"  # 连接已 clone/拷贝的带 marker vault → 建档
-    CONNECT_REMOTE = "connect-remote"  # 私有 HTTPS remote clone 的目标目录（尚未存在）
 
 
 class PreflightReport(BaseModel):
@@ -31,8 +30,8 @@ class PreflightReport(BaseModel):
     is_dir: bool = False
     writable: bool = False
     empty: bool = False
-    vault_target_exists: bool = False  # create-new：work_root/_vault 是否已存在
-    has_git_dir: bool = False  # 仅探测 .git 目录存在，不运行任何 git 命令（P0-09 前）
+    vault_target_exists: bool = False  # create-new：所选文件夹已有内容
+    has_git_dir: bool = False  # legacy upgrade diagnostics only
     has_marker: bool = False
     marker_workspace_id: str | None = None
     compatibility: Compatibility | None = None  # connect/upgrade 读到的 marker 兼容结论

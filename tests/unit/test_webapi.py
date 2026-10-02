@@ -621,7 +621,8 @@ def test_api_capture_appends_inbox(tmp_path: Path) -> None:
     assert data["ok"] is True
     assert "已记入收件箱" in data["message"]
     assert data["operation_id"]
-    assert data["commit"]["status"] == "not-git"
+    assert "commit" not in data
+    assert "push" not in data
     text = (vault / "inbox.md").read_text(encoding="utf-8")
     assert "- [ ] 给老王回邮件 #网课" in text
 
@@ -782,16 +783,10 @@ def test_spa_served_when_static_built(tmp_path: Path) -> None:
 # ---------- capture 智能分类 ----------
 
 
-def test_api_capture_classifies_task(monkeypatch, tmp_path: Path) -> None:
-    """模型可用：识别为承诺 + 截止日期 + #项目 关联，分类标记写回 inbox。"""
-    from pydantic import SecretStr
-
-    from summit_workbench.domain.capture import CaptureClassification, CaptureKind
-
-    class FakeCfg:
-        api_key_ref = "fake"
-
-    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+def test_api_capture_saves_without_model_and_resolves_project_tag(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """录入只保存原文，项目 hashtag 使用本地注册表解析且不调用模型。"""
     client, vault = _client(tmp_path)
     # 建一个已知项目，让 #排版 能解析
     (vault / "projects").mkdir(parents=True, exist_ok=True)
@@ -800,29 +795,18 @@ def test_api_capture_classifies_task(monkeypatch, tmp_path: Path) -> None:
         "status: active\nupdated: 2026-08-27\naliases: [排版]\n---\n\n# HIC_SWB_LaTEX\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("summit_workbench.providers.llm.load_model_config", lambda _name: FakeCfg())
-    monkeypatch.setattr(
-        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
-    )
-    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
-    monkeypatch.setattr(
-        "summit_workbench.workflows.capture.classify_capture",
-        lambda *_a, **_k: CaptureClassification(
-            kind=CaptureKind.TASK, due_date="2026-09-10", involves_others=True
-        ),
-    )
-
     resp = client.post("/api/capture", json={"text": "周三前给老王样章 #排版"})
     data = resp.json()
     assert data["ok"] is True
-    assert data["kind"] == "task"
-    assert data["due_date"] == "2026-09-10"
+    assert data["kind"] == "idea"
+    assert data["model_used"] is False
+    assert data["due_date"] is None
     assert data["project"] == "HIC_SWB_LaTEX"
-    assert "承诺" in data["message"]
+    assert "想法" in data["message"]
     text = (vault / "inbox.md").read_text(encoding="utf-8")
     assert "- [ ] 周三前给老王样章 #排版" in text
-    assert "<!-- wb-capture-kind: task -->" in text
-    assert "<!-- wb-capture-due: 2026-09-10 -->" in text
+    assert "<!-- wb-capture-kind: idea -->" in text
+    assert "wb-capture-due" not in text
     assert "<!-- wb-capture-project: HIC_SWB_LaTEX -->" in text
 
 
@@ -844,28 +828,6 @@ def test_api_capture_falls_back_when_model_unavailable(tmp_path: Path, monkeypat
 def test_capture_request_receipt_prevents_model_and_write_replay(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from summit_workbench.domain.capture import CaptureClassification, CaptureKind
-
-    class FakeCfg:
-        api_key_ref = "fake"
-
-    calls = 0
-    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
-    monkeypatch.setattr(
-        "summit_workbench.webapp.routers.capture._load_model_config_for_context",
-        lambda *_: FakeCfg(),
-    )
-    monkeypatch.setattr(
-        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
-    )
-    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
-
-    def classify(*_args, **_kwargs):
-        nonlocal calls
-        calls += 1
-        return CaptureClassification(kind=CaptureKind.IDEA, due_date=None, involves_others=False)
-
-    monkeypatch.setattr("summit_workbench.workflows.capture.classify_capture", classify)
     client, vault = _client(tmp_path)
     headers = {"X-WB-Request-Id": "capture-once-001"}
     payload = {"text": "同一条只记一次"}
@@ -875,7 +837,7 @@ def test_capture_request_receipt_prevents_model_and_write_replay(
 
     assert first.json()["ok"] is True
     assert second.json() == first.json()
-    assert calls == 1
+    assert first.json()["model_used"] is False
     assert (vault / "inbox.md").read_text(encoding="utf-8").count("同一条只记一次") == 1
 
 
@@ -899,9 +861,9 @@ def test_api_state_includes_projects(tmp_path: Path, monkeypatch) -> None:
     data = client.get("/api/state").json()
     assert data["projects"] != []
     proj = next(p for p in data["projects"] if p["name"] == "HIC_Demo")
-    assert proj["inbox_pending"] == 1
+    assert proj["inbox_pending"] == 0
     assert proj["next_step"] == "推进样章"
-    assert proj["dirty"] is False
+    assert "dirty" not in proj
     # ADR 0023：/api/state 暴露建档状态
     assert proj["registered"] is True
     assert proj["status"] == "active"
@@ -919,7 +881,7 @@ def _mk_project_dir(work_root: Path, name: str) -> Path:
 def test_api_project_activate_creates_registration(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
     client, vault = _client(tmp_path, seed_review=False)
-    _mk_project_dir(tmp_path, "BrandNew")
+    assert client.post("/api/projects/create", json={"project_id": "BrandNew"}).json()["ok"]
     resp = client.post("/api/projects/activate", json={"name": "BrandNew"})
     assert resp.json()["ok"] is True
     note = load_note(vault / "projects" / "BrandNew.md")
@@ -939,7 +901,8 @@ def test_api_project_activate_creates_registration(tmp_path: Path, monkeypatch) 
 def test_api_project_archive_unregistered_creates_archived(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
     client, vault = _client(tmp_path, seed_review=False)
-    _mk_project_dir(tmp_path, "FreshFolder")
+    assert client.post("/api/projects/create", json={"project_id": "FreshFolder"}).json()["ok"]
+    assert client.post("/api/projects/activate", json={"name": "FreshFolder"}).json()["ok"]
     resp = client.post("/api/projects/archive", json={"name": "FreshFolder"})
     assert resp.json()["ok"] is True
     note = load_note(vault / "projects" / "FreshFolder.md")
@@ -1305,7 +1268,7 @@ def test_api_meeting_update_requires_fields(tmp_path: Path, monkeypatch) -> None
     assert "没有需要更新" in data["message"]
 
 
-def test_api_review_edit_saves_meeting_time_fields(tmp_path: Path, monkeypatch) -> None:
+def test_api_review_edit_rejects_retired_meeting_route(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
     client, vault = _client(tmp_path)
     data = client.get("/api/review").json()
@@ -1319,11 +1282,11 @@ def test_api_review_edit_saves_meeting_time_fields(tmp_path: Path, monkeypatch) 
             "end_at": "2026-09-10T15:00",
         },
     )
-    assert resp.json()["ok"] is True
+    assert resp.json()["ok"] is False
     parsed = parse_review_page((vault / "review" / "meetings.md").read_text(encoding="utf-8"))
     assert parsed.errors == []
     entry = next(e for e in parsed.entries if e.candidate.candidate_id == candidate_id)
     assert entry.candidate.route is not None
-    assert entry.candidate.route.value == "feishu-meeting"
-    assert entry.candidate.start_at == "2026-09-10T14:00"
-    assert entry.candidate.end_at == "2026-09-10T15:00"
+    assert entry.candidate.route.value == "project-main"
+    assert entry.candidate.start_at is None
+    assert entry.candidate.end_at is None

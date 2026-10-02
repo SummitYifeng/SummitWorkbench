@@ -359,7 +359,7 @@ class AutomationRunPayload(BaseModel):
 
 
 class OnboardingPreflightPayload(BaseModel):
-    flow: Literal["create-new", "upgrade-existing", "connect-local", "connect-remote"]
+    flow: Literal["create-new", "connect-local"]
     path: str = Field(min_length=1, max_length=2_048)
 
 
@@ -367,7 +367,6 @@ class OnboardingCreatePayload(BaseModel):
     work_root: str = Field(min_length=1, max_length=2_048)
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
-    device_role: Literal["automation-primary", "secondary"] = "automation-primary"
 
 
 class OnboardingVaultPayload(BaseModel):
@@ -376,7 +375,6 @@ class OnboardingVaultPayload(BaseModel):
     vault_dir: str = Field(min_length=1, max_length=2_048)
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     device_name: str | None = Field(default=None, min_length=1, max_length=200)
-    device_role: Literal["automation-primary", "secondary"] = "automation-primary"
 
 
 class OnboardingDraftPayload(BaseModel):
@@ -392,10 +390,6 @@ class OnboardingDraftPayload(BaseModel):
     vault_dir: str | None = Field(default=None, max_length=2_048)
     display_name: str | None = Field(default=None, max_length=200)
     device_name: str | None = Field(default=None, max_length=200)
-    git_mode: Literal["local", "remote", "skipped"] | None = None
-    remote_url: str | None = Field(default=None, max_length=2_048)
-    expected_workspace_id: str | None = Field(default=None, max_length=200)
-    git_username: str | None = Field(default=None, max_length=200)
     model_provider: str | None = Field(default=None, max_length=100)
     model_id: str | None = Field(default=None, max_length=200)
     model_base_url: str | None = Field(default=None, max_length=2_048)
@@ -404,22 +398,6 @@ class OnboardingDraftPayload(BaseModel):
     feishu_redirect_uri: str | None = Field(default=None, max_length=2_048)
     provider_status: Literal["pending", "skipped", "ready"] = "pending"
     automation_role: Literal["primary", "secondary"] = "secondary"
-
-
-class OnboardingRemoteStagePayload(BaseModel):
-    remote_url: str = Field(min_length=1, max_length=2_048)
-    target_vault: str = Field(min_length=1, max_length=2_048)
-    expected_workspace_id: str | None = Field(default=None, max_length=200)
-    git_username: str = Field(min_length=1, max_length=200)
-    pat: str | None = Field(default=None, max_length=100_000)
-
-
-class OnboardingRemoteConfirmPayload(BaseModel):
-    stage_id: str = Field(min_length=1, max_length=100)
-    display_name: str | None = Field(default=None, min_length=1, max_length=200)
-    device_name: str | None = Field(default=None, min_length=1, max_length=200)
-    user_email: str | None = Field(default=None, max_length=320)
-    pat: str | None = Field(default=None, max_length=100_000)
 
 
 class AutomationPrimaryPayload(BaseModel):

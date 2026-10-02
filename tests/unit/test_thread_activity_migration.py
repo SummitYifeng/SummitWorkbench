@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from summit_workbench.domain.thread_activity import ThreadActivityEvent, project_thread_activity
-from summit_workbench.repositories.autocommit import CommitStatus
 from summit_workbench.repositories.thread_activity_events import ThreadActivityEventStore
 from summit_workbench.repositories.thread_notes import append_work_log, save_thread_artifact
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome, run_local_mutation
@@ -174,22 +173,9 @@ def test_projection_failure_is_reported_without_exposing_paths(tmp_path: Path) -
     assert str(vault) not in str(report.as_dict())
 
 
-def test_dual_write_event_is_in_the_same_git_commit_as_legacy_note(tmp_path: Path) -> None:
+def test_dual_write_event_and_note_are_declared_local_files(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()
-    import subprocess
-
-    def git(*args: str) -> str:
-        return subprocess.run(
-            ["git", "-C", str(vault), *args], check=True, capture_output=True, text=True
-        ).stdout
-
-    git("init", "-q")
-    git("config", "user.email", "test@example.com")
-    git("config", "user.name", "Test")
-    (vault / "seed.md").write_text("seed", encoding="utf-8")
-    git("add", "--", "seed.md")
-    git("commit", "-q", "-m", "seed")
     migration = _migration(vault)
 
     def mutate(operation_id: str) -> LocalMutationOutcome[Path]:
@@ -204,30 +190,20 @@ def test_dual_write_event_is_in_the_same_git_commit_as_legacy_note(tmp_path: Pat
         return LocalMutationOutcome(path, (path, *migration.last_write_paths))
 
     result = run_local_mutation(vault, "threads/logs", mutate)
-    assert result.commit_result.status is CommitStatus.COMMITTED
-    changed = git("show", "--format=", "--name-only", "HEAD").splitlines()
-    assert "logs/2026-01-02-001.md" in changed
-    assert any(path.startswith("_events/device-a/") for path in changed)
+    assert "logs/2026-01-02-001.md" in {
+        p.relative_to(vault).as_posix() for p in result.changed_paths
+    }
+    assert any(
+        p.relative_to(vault).as_posix().startswith("_events/device-a/")
+        for p in result.changed_paths
+    )
+    assert not (vault / ".git").exists()
 
 
-def test_local_mutation_defensively_commits_path_business_return(tmp_path: Path) -> None:
-    """A projection-only changed_paths report must not orphan the source note."""
+def test_local_mutation_includes_path_business_return(tmp_path: Path) -> None:
+    """Business return paths are included even when the caller lists only projections."""
     vault = tmp_path / "vault"
     vault.mkdir()
-    import subprocess
-
-    def git(*args: str) -> str:
-        return subprocess.run(
-            ["git", "-C", str(vault), *args], check=True, capture_output=True, text=True
-        ).stdout
-
-    git("init", "-q")
-    git("config", "user.email", "test@example.com")
-    git("config", "user.name", "Test")
-    (vault / "seed.md").write_text("seed", encoding="utf-8")
-    git("add", "--", "seed.md")
-    git("commit", "-q", "-m", "seed")
-
     migration = _migration(vault)
 
     def mutate(operation_id: str) -> LocalMutationOutcome[Path]:
@@ -242,8 +218,6 @@ def test_local_mutation_defensively_commits_path_business_return(tmp_path: Path)
         # Simulate a caller that reports only the projection path.
         return LocalMutationOutcome(path, migration.last_write_paths)
 
-    result = run_local_mutation(vault, "threads/logs", mutate, backend_kind="dulwich")
-    assert result.commit_result.status is CommitStatus.COMMITTED
-    changed = git("show", "--format=", "--name-only", "HEAD").splitlines()
-    assert "logs/2026-01-03-001.md" in changed
-    assert any(path.startswith("_events/device-a/") for path in changed)
+    result = run_local_mutation(vault, "threads/logs", mutate)
+    assert vault / "logs/2026-01-03-001.md" in result.changed_paths
+    assert any("_events/device-a" in str(path) for path in result.changed_paths)

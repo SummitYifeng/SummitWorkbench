@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date
 from functools import lru_cache
 
 import typer
@@ -13,11 +13,9 @@ from summit_workbench.providers.feishu import (
     FeishuClient,
     FeishuError,
     FeishuSession,
-    create_event,
     create_task,
     load_feishu_config,
 )
-from summit_workbench.providers.feishu.calendar import primary_calendar_id
 from summit_workbench.providers.feishu.meetings import verify_identity
 from summit_workbench.repositories.review_edit import ReviewEditError
 from summit_workbench.workflows.review import refresh_meeting_review
@@ -97,47 +95,12 @@ def apply_review(
             assignee_open_id=current_open_id(),
         ).guid
 
-    def create_meeting(
-        summary: str,
-        start_at: str | None,
-        end_at: str | None,
-        candidate_id: str,
-        *,
-        operation_id: str | None = None,
-    ) -> str:
-        """审批「新建会议」写回器；行为与 webapp 一致（缺省结束 = 开始 + 60 分钟）。
-
-        此前 CLI 只注入了 task_creator，导致 `feishu-meeting` 落点必然失败并报
-        「缺少飞书日历会议创建器」——该落点只能从面板应用。这里补齐，使 CLI 与
-        面板具备同等能力。
-        """
-        if start_at is None:
-            raise ValueError("新建会议需要开始时间")
-        start = datetime.fromisoformat(start_at).replace(tzinfo=None)
-        end_iso = (
-            end_at
-            if end_at is not None
-            else (start + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M")
-        )
-        client = task_client()
-        return create_event(
-            client,
-            primary_calendar_id(client),
-            summary,
-            start_at,
-            end_iso,
-            timezone=settings.timezone,
-            candidate_id=candidate_id,
-            operation_id=operation_id,
-        )
-
     try:
         report = apply_meeting_review(
             paths.vault_dir,
             paths.work_root,
             apply=execute,
             task_creator=create if execute else None,
-            meeting_creator=create_meeting if execute else None,
         )
     except LockBusy as exc:
         typer.echo(f"✗ 工作区忙，稍后重试：{exc}")
@@ -187,20 +150,6 @@ def sweep_review(
     except (ValueError, ReviewEditError) as exc:
         typer.echo(f"✗ 清扫失败：{exc}")
         raise typer.Exit(code=1) from exc
-    if execute and report.notes:
-        # 顺带收口（P0'）：清扫成功后自动留痕（笔记状态 + 审批页），失败可见不阻断。
-        from summit_workbench.repositories.autocommit import commit_paths
-        from summit_workbench.repositories.review_page import review_path
-
-        commit_result = commit_paths(
-            paths.vault_dir,
-            [*report.notes, review_path(paths.vault_dir)],
-            message=f"wb: review sweep 退役 {len(report.notes)} 篇笔记",
-        )
-        if commit_result.status.value.startswith(("committed", "reverted")):
-            typer.echo(f"✓ git：已自动留痕（{commit_result.status.value}）")
-        elif commit_result.status.value not in ("not-git", "nothing-to-commit"):
-            typer.echo(f"⚠ git 留痕失败：{commit_result.detail or commit_result.status.value}")
     typer.echo("DRY-RUN（零写入）" if report.dry_run else "已清扫（正文原文保留）")
     for path in report.notes:
         typer.echo(f"  {path.name}")

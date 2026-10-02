@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from summit_workbench.domain.threaddoc import ArtifactIndex, ArtifactKind, LogDigest
+from summit_workbench.domain.threaddoc import ArtifactKind
 from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.thread_notes import append_work_log, save_thread_artifact
 from summit_workbench.webapp.api import (
@@ -24,7 +24,6 @@ from summit_workbench.webapp.api import (
     ProjectStatePayload,
 )
 from summit_workbench.webapp.dependencies import RouteDependencies
-from summit_workbench.webapp.model_config import _load_model_config_for_context
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
 from summit_workbench.webapp.services.work_log import (
@@ -60,6 +59,9 @@ def register_thread_routes(dependencies: RouteDependencies, *, runtime: Mutation
             from summit_workbench.repositories.writeback import set_project_status
 
             path, _written = set_project_status(ctx.vault_dir, project, text)
+            from summit_workbench.repositories.approval import approve_markdown
+
+            approve_markdown(path, operation_id=_operation_id)
             note = _load_note(path)
             status = note.meta.get("status")
             if isinstance(status, str):
@@ -101,7 +103,7 @@ def register_thread_document_routes(
 
     @app.post("/api/threads/logs")
     def api_append_log(payload: LogAppendPayload) -> dict[str, object]:
-        """追加推进日志（可关联多线程）；AI 消化是加分项，任何失败只存原文。"""
+        """追加推进日志（可关联多线程）；只保存原文，不隐式调用模型。"""
         text = payload.text.strip()
         if not text:
             return {"ok": False, "message": "日志内容为空"}
@@ -114,27 +116,7 @@ def register_thread_document_routes(
         if not resolved:
             return {"ok": False, "message": "没有可关联的项目/线程（先在「项目」页建档）"}
 
-        digest: LogDigest | None = None
-        enriched = False
-        try:
-            from summit_workbench.config.secrets import CredentialError, resolve_credential
-            from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError
-            from summit_workbench.workflows.threadnotes import digest_log
-
-            # 线程日志/产物是**长文档**摘要，与「记点什么」的短分类不是一类负载：
-            # 用独立的 digest 能力，避免两条链路共用同一套超时/输出预算（2026-09-18）。
-            cfg = _load_model_config_for_context(ctx, "digest")
-            api_key = resolve_credential(cfg.api_key_ref)
-            prompt = load_prompt("log-digest")
-            digest = digest_log(cfg, api_key, prompt, text, project_hints=resolved)
-            enriched = True
-        except (LLMError, CredentialError, FileNotFoundError, ValueError):
-            digest = None
-
-        summary = digest.summary if digest else ""
-        involved = digest.involved if digest else []
-        tags = digest.tags if digest else []
+        summary = ""
 
         activity_migration = thread_activity_migration(ctx)
 
@@ -144,10 +126,6 @@ def register_thread_document_routes(
                 projects=resolved,
                 text=text,
                 summary=summary,
-                involved=involved,
-                tags=tags,
-                next_step=digest.next_step if digest else None,
-                decision=digest.decision if digest else None,
                 causation_operation_id=_operation_id,
                 activity_migration=activity_migration,
             )
@@ -163,14 +141,11 @@ def register_thread_document_routes(
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
-        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
-            "message": f"已追加推进日志 → {len(resolved)} 个线程 · {tail}{git_note}",
+            "message": f"已追加推进日志 → {len(resolved)} 个线程",
             "path": str(path),
             "summary": summary,
-            "enriched": enriched,
             **_mutation_fields(result),
         }
 
@@ -188,25 +163,9 @@ def register_thread_document_routes(
                 "message": f"项目未建档：{payload.project.strip()}（先在「项目」页建档再存产物）",
             }
         title_hint = (payload.title or "").strip()
-        index: ArtifactIndex | None = None
-        enriched = False
-        try:
-            from summit_workbench.config.secrets import CredentialError, resolve_credential
-            from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError
-            from summit_workbench.workflows.threadnotes import index_artifact
-
-            cfg = _load_model_config_for_context(ctx, "digest")
-            api_key = resolve_credential(cfg.api_key_ref)
-            prompt = load_prompt("artifact-index")
-            index = index_artifact(cfg, api_key, prompt, text, title_hint=title_hint)
-            enriched = True
-        except (LLMError, CredentialError, FileNotFoundError, ValueError):
-            index = None
-
-        title = (index.title if index and index.title else title_hint) or ""
-        summary = index.summary if index else ""
-        kind = index.kind if index else ArtifactKind.OTHER
+        title = title_hint
+        summary = ""
+        kind = ArtifactKind.OTHER
         activity_migration = thread_activity_migration(ctx)
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
@@ -232,15 +191,12 @@ def register_thread_document_routes(
         except ValueError as exc:
             return {"ok": False, "message": f"保存失败：{exc}"}
         path = result.business_return
-        tail = f" · 摘要：{summary}" if summary else "（模型不可用，仅存原文）"
-        git_note = _commit_note(result.commit_result)
         return {
             "ok": True,
-            "message": f"已存入 {project} 档案 · {tail}{git_note}",
+            "message": f"已存入 {project} 档案（保留全文）",
             "path": str(path),
             "title": title,
             "summary": summary,
-            "enriched": enriched,
             **_mutation_fields(result),
         }
 

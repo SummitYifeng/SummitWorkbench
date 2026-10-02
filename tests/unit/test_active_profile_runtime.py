@@ -193,8 +193,7 @@ def test_remote_normalization_is_allowed_before_schema_upgrade(
         json={"plan_id": "missing-plan", "git_username": "user", "pat": "pat"},
     )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "normalization_plan_missing"
+    assert response.status_code == 404
 
 
 def test_cannot_open_profile_gets_restricted_control_plane(tmp_path: Path) -> None:

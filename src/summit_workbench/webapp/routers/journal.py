@@ -10,8 +10,8 @@
   不合格拒绝落盘。落点 `thinking/<YYYYMMDD>-<slug>.md`；目录**按需创建**（不放 `.gitkeep`：
   空目录例外只给"程序写入目标"与"项目骨架"，契约 §1）。
 
-两条都经 ``MutationRuntime.run`` 走统一事务边界（自动 commit；设 ``WB_NO_AUTO_PUSH=1``
-则不自动推送）。**本模块不调用模型**：日志不再依赖 AI 摘要，思考是纯人工产物。
+两条都经 ``MutationRuntime.run`` 走统一本地事务边界。**本模块不调用模型**：日志不再依赖
+AI 摘要，思考是纯人工产物。
 """
 
 from __future__ import annotations
@@ -183,6 +183,7 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
                 workstream=workstream,
                 title=payload.title or "",
                 summary=payload.summary or "",
+                operation_id=_operation_id,
             )
             return LocalMutationOutcome(note, (note.path,))
 

@@ -315,6 +315,7 @@ def register_inbox_routes(
                 conclusion=conclusion,
                 projects=projects,
                 summary=payload.summary,
+                operation_id=_operation_id,
             )
             _remove_from_inbox(inbox, entry.id)
             return LocalMutationOutcome(note, (inbox, note.path))

@@ -81,12 +81,10 @@ from summit_workbench.webapp.routers.review_apply import (
 )
 from summit_workbench.webapp.routers.settings import register_settings_routes
 from summit_workbench.webapp.routers.state import register_state_routes
-from summit_workbench.webapp.routers.sync import register_sync_routes
 from summit_workbench.webapp.routers.threads import (
     register_thread_document_routes,
     register_thread_routes,
 )
-from summit_workbench.webapp.routers.undo import register_undo_routes
 from summit_workbench.webapp.security import (
     allowed_hosts,
     validate_bind_host,
@@ -219,7 +217,6 @@ def create_app(
     register_draft_routes(app, ctx)
     register_brief_routes(dependencies, runtime=runtime)
     register_meetings_routes(dependencies, runtime=runtime, importer=meeting_importer)
-    register_undo_routes(dependencies, runtime=runtime)
     register_shutdown_route(dependencies)
 
     # ---- SSR 兼容路由（旧入口与既有测试继续可用） ----
@@ -232,7 +229,6 @@ def create_app(
     # ---- workspace schema migration（P1-02；P1-03 router 接线）----
 
     from summit_workbench.webapp.routers.projects import register_project_write_routes
-    from summit_workbench.webapp.routers.workspace import register_workspace_routes
 
     register_state_routes(
         dependencies,
@@ -247,10 +243,5 @@ def create_app(
         run_mutation=lambda action, mutation: runtime.run(action, mutation),
     )
     register_settings_routes(dependencies, runtime=runtime, build_info=shell.build_info)
-    register_workspace_routes(dependencies)
-
-    # ---- 多设备同步（P0-10）----
-
-    register_sync_routes(dependencies, runtime=runtime)
 
     return app

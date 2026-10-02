@@ -15,7 +15,6 @@ from typer.testing import CliRunner
 
 from summit_workbench.cli.main import app
 from summit_workbench.config.locking import LockBusy
-from summit_workbench.workflows.sync import RepoSyncResult, SyncStatus
 
 runner = CliRunner()
 
@@ -28,64 +27,13 @@ def _env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     return work
 
 
-# --------------------------------------------------------------------------- sync
+# --------------------------------------------------------------------------- retired Git command
 
 
-def test_sync_missing_work_root_is_a_usage_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    _env(monkeypatch, tmp_path)
-    result = runner.invoke(app, ["sync"])
-    assert result.exit_code == 2
-    assert "工作根目录不存在" in result.stdout
-
-
-def test_sync_without_repos_succeeds_quietly(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    work = _env(monkeypatch, tmp_path)
-    work.mkdir()
-    result = runner.invoke(app, ["sync"])
-    assert result.exit_code == 0
-    assert "没有 git 仓库" in result.stdout
-
-
-def test_sync_surfaces_problem_repos_and_exits_1(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    work = _env(monkeypatch, tmp_path)
-    work.mkdir()
-    monkeypatch.setattr(
-        "summit_workbench.cli.sync.discover_repos", lambda _root: [work / "a", work / "b"]
-    )
-    monkeypatch.setattr(
-        "summit_workbench.cli.sync.sync_work_root",
-        lambda _root: [
-            RepoSyncResult("a", SyncStatus.UP_TO_DATE),
-            RepoSyncResult("b", SyncStatus.DIVERGED, "分叉需人工处理", ["未 force 任何分支"]),
-        ],
-    )
-    result = runner.invoke(app, ["sync"])
-    assert result.exit_code == 1
-    assert "a：up-to-date" in result.stdout
-    assert "b：diverged" in result.stdout
-    assert "分叉需人工处理" in result.stdout
-    assert "未 force 任何分支" in result.stdout
-    assert "共 2 个仓库，1 个需人工处理" in result.stdout
-
-
-def test_sync_all_clean_exits_0(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    work = _env(monkeypatch, tmp_path)
-    work.mkdir()
-    monkeypatch.setattr("summit_workbench.cli.sync.discover_repos", lambda _root: [work / "a"])
-    monkeypatch.setattr(
-        "summit_workbench.cli.sync.sync_work_root",
-        lambda _root: [RepoSyncResult("a", SyncStatus.PUSHED, "", ["已推送 2 个提交"])],
-    )
-    result = runner.invoke(app, ["sync"])
-    assert result.exit_code == 0
-    assert "已推送 2 个提交" in result.stdout
-    assert "共 1 个仓库，0 个需人工处理" in result.stdout
+def test_sync_command_is_retired() -> None:
+    result = runner.invoke(app, ["sync", "--help"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 # ------------------------------------------------------------------------- review
@@ -181,14 +129,10 @@ def test_review_apply_busy_workspace_exits_1(
     assert "工作区忙" in result.stdout
 
 
-def test_review_apply_injects_both_task_and_meeting_creators(
+def test_review_apply_injects_only_feishu_task_creator(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CLI 必须像面板一样注入 meeting_creator。
-
-    此前 CLI 只注入 task_creator，导致 `feishu-meeting` 落点在 CLI 下必然失败并报
-    「缺少飞书日历会议创建器」——同一份审批页只能在面板里应用。这条测试锁住两者对等。
-    """
+    """The only external approval writer is Feishu task creation."""
     from summit_workbench.cli import review as review_cli
 
     _env(monkeypatch, tmp_path)
@@ -200,9 +144,8 @@ def test_review_apply_injects_both_task_and_meeting_creators(
         *,
         apply: bool,
         task_creator: Any = None,
-        meeting_creator: Any = None,
     ) -> Any:
-        captured.update(apply=apply, task_creator=task_creator, meeting_creator=meeting_creator)
+        captured.update(apply=apply, task_creator=task_creator)
         return SimpleNamespace(
             dry_run=not apply,
             actions=[],
@@ -218,12 +161,10 @@ def test_review_apply_injects_both_task_and_meeting_creators(
     assert dry.exit_code == 0
     # 预演不得注入任何写回器（零写入）。
     assert captured["task_creator"] is None
-    assert captured["meeting_creator"] is None
 
     real = runner.invoke(app, ["review", "apply", "--apply"])
     assert real.exit_code == 0
     assert callable(captured["task_creator"])
-    assert callable(captured["meeting_creator"])
 
 
 def test_review_sweep_rejects_malformed_before_date(

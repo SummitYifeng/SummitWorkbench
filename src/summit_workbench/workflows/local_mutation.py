@@ -1,23 +1,25 @@
-"""本地业务写入与 ``wb`` 自动提交的单一事务入口（P0-02）。
+"""本地业务写入的单一事务入口。
 
 调用方把纯本地 mutation 作为回调传入；回调返回业务结果和本次实际可能触碰的路径。
-工作区锁覆盖 mutation、路径收集与自动提交，底层 repository 自己的同线程锁可以安全重入。
+工作区锁覆盖 mutation 与路径收集；中断时保留可检查的文件清单，不自动覆盖文件。
 网络、LLM 和外部副作用必须在调用本 helper 之前完成。
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
 from summit_workbench.config.locking import workspace_lock
-from summit_workbench.domain.sync import SyncSnapshot, SyncState
 from summit_workbench.domain.workspace import Compatibility
-from summit_workbench.repositories.autocommit import CommitResult, commit_paths
-from summit_workbench.repositories.git import GitRepo
-from summit_workbench.repositories.git_backend import CommitIdentity
+from summit_workbench.repositories.local_mutation_journal import (
+    finish_mutation_record,
+    interrupted_mutations,
+    start_mutation_record,
+)
 
 
 @dataclass(frozen=True)
@@ -31,26 +33,21 @@ class LocalMutationOutcome[T]:
 
 @dataclass(frozen=True)
 class LocalMutationResult[T]:
-    """一次本地业务操作的稳定 operation id、结果和自动提交结果。"""
+    """一次本地业务操作的稳定 operation id 与结果。"""
 
     operation_id: str
     business_return: T
     changed_paths: tuple[Path, ...]
-    commit_result: CommitResult
+    commit_result: None = None
     activity_report: Mapping[str, object] | None = None
-    # 后置推送的可见说明：正常推送为空；``WB_NO_AUTO_PUSH`` 跳过推送时写明"已跳过自动推送"。
-    # 绝不承载同步状态——跳过推送不是"同步成功"。
-    push_note: str = ""
-    # 自动推送的真实状态（ready/offline-local-ahead/auth-required/...）；跳过为 skipped。
-    push_status: str | None = None
 
 
 class MutationBlocked(RuntimeError):
-    """共享 vault 写入被统一的 compatibility/sync 保护门拒绝。"""
+    """Workspace compatibility or profile switching blocks a local write."""
 
 
 class MutationInvariantError(RuntimeError):
-    """本地 mutation 声称成功，但仍留下未提交的非忽略 vault 改动。"""
+    """A local mutation violated its declared write contract."""
 
     def __init__(
         self,
@@ -71,96 +68,107 @@ def run_local_mutation[T](
     action: str,
     mutation: Callable[[str], LocalMutationOutcome[T]],
     *,
-    sync_snapshot: SyncSnapshot | None = None,
-    sync_snapshot_provider: Callable[[], SyncSnapshot | None] | None = None,
     compatibility: Compatibility | None = None,
-    backend_kind: str | None = None,
-    author: CommitIdentity | None = None,
-    push_after_commit: Callable[[], object] | None = None,
+    lock_root: Path | None = None,
     lock_timeout: float | None = 2.0,
 ) -> LocalMutationResult[T]:
-    """在同一工作区临界区完成本地 mutation 与自动提交。
+    """Run a local mutation under the per-workspace process lock.
 
-    ``mutation`` 接收本次操作的稳定 id；若 mutation 抛错，异常原样向上传递且不会调用
-    ``commit_paths``。Git 非仓库或无变化等提交状态不会回滚已经成功的本地业务写入。
+    ``mutation`` receives a stable operation ID. It writes through the repository's atomic
+    primitives; no work-library Git operation is part of this transaction.
     """
     if compatibility in {Compatibility.READ_ONLY_UPGRADE_REQUIRED, Compatibility.CANNOT_OPEN}:
         raise MutationBlocked("workspace compatibility gate 拒绝共享 vault 写入")
-    if sync_snapshot is not None and sync_snapshot.state in {
-        SyncState.DIVERGED_PROTECTED,
-        SyncState.DIRTY_PROTECTED,
-    }:
-        raise MutationBlocked(
-            f"workspace 处于 {sync_snapshot.state.value}，修改共享 vault 的操作已被阻止"
-        )
     operation_id = str(uuid4())
     # Web/manual mutations fail visibly after a short wait and leave the
     # caller's draft intact; background workers can pass their existing longer
     # policy explicitly.
-    with workspace_lock(vault_dir.parent, timeout=lock_timeout):
-        # The snapshot supplied by a web request can become stale while this
-        # mutation waits for the workspace lock. Re-read it inside the same
-        # critical section immediately before touching the vault.
-        locked_snapshot = sync_snapshot_provider() if sync_snapshot_provider else sync_snapshot
-        if locked_snapshot is not None and locked_snapshot.state in {
-            SyncState.DIVERGED_PROTECTED,
-            SyncState.DIRTY_PROTECTED,
-        }:
-            raise MutationBlocked(
-                f"workspace 处于 {locked_snapshot.state.value}，修改共享 vault 的操作已被阻止"
+    with workspace_lock(lock_root or vault_dir.parent, timeout=lock_timeout):
+        before = _file_snapshot(vault_dir)
+        interrupted_mutations(vault_dir, before)
+        journal_path = start_mutation_record(vault_dir, operation_id, action, before)
+        try:
+            outcome = mutation(operation_id)
+        except BaseException:
+            after_failed = _file_snapshot(vault_dir)
+            changed_failed = sorted(
+                path
+                for path in before.keys() | after_failed.keys()
+                if before.get(path) != after_failed.get(path)
             )
-        repo = GitRepo(vault_dir, backend_kind=backend_kind)
-        before_dirty_paths = set(repo.dirty_paths()) if repo.is_git_repo() else set()
-        outcome = mutation(operation_id)
-        # The primary business result is often the newly-created legacy file.  Keep it
-        # in the explicit commit set even if a caller only reports auxiliary paths
-        # (for example, a dual-write event path).  This preserves the transaction
-        # invariant that the user-visible source and its projections share one commit.
+            finish_mutation_record(
+                vault_dir,
+                operation_id,
+                journal_path,
+                state="interrupted" if changed_failed else "failed",
+                changed_paths=changed_failed,
+                after=after_failed,
+            )
+            raise
         candidate_paths = list(outcome.changed_paths)
-        if isinstance(outcome.business_return, (Path, str)):
+        if isinstance(outcome.business_return, Path):
             candidate_paths.insert(0, outcome.business_return)
         changed_paths = tuple(dict.fromkeys(Path(path) for path in candidate_paths))
-        commit_result = commit_paths(
-            vault_dir,
-            list(changed_paths),
-            message=f"wb: {action} [{operation_id}]",
-            backend_kind=backend_kind,
-            author=author,
-        )
-        if commit_result.status.value in {"committed", "nothing-to-commit"}:
-            if repo.is_git_repo():
-                new_dirty_paths = sorted(set(repo.dirty_paths()) - before_dirty_paths)
-            else:
-                new_dirty_paths = []
-            if new_dirty_paths:
-                committed = commit_result.status.value == "committed"
-                commit_sha = repo.head_revision() if committed else None
-                detail = ", ".join(new_dirty_paths)
+        after = _file_snapshot(vault_dir)
+        actual = {
+            path for path in before.keys() | after.keys() if before.get(path) != after.get(path)
+        }
+        declared: set[str] = set()
+        for path in changed_paths:
+            try:
+                declared.add(path.resolve().relative_to(vault_dir.resolve()).as_posix())
+            except ValueError:
                 raise MutationInvariantError(
-                    f"本地 mutation 未提交全部写入：{action}；新增未提交路径：{detail}",
-                    committed=committed,
-                    commit_sha=commit_sha,
-                    paths=new_dirty_paths,
-                )
-    push_note = ""
-    push_status: str | None = None
-    if push_after_commit is not None and commit_result.status.value == "committed":
-        # 网络调用明确位于 workspace 文件锁外。回调可以返回一句可见说明（例如
-        # "已跳过自动推送"）；非字符串（包括正常的同步状态 tuple）一律忽略，不塞进响应。
-        returned = push_after_commit()
-        if isinstance(returned, str):
-            push_note = returned
-            push_status = "skipped"
-        elif isinstance(returned, tuple) and returned:
-            state = getattr(returned[0], "value", returned[0])
-            if isinstance(state, str):
-                push_status = state
+                    f"本地 mutation 写入工作库之外的路径：{path}", paths=(str(path),)
+                ) from None
+        missing = sorted(actual - declared)
+        if missing:
+            finish_mutation_record(
+                vault_dir,
+                operation_id,
+                journal_path,
+                state="interrupted",
+                changed_paths=sorted(actual),
+                after=after,
+            )
+            raise MutationInvariantError(
+                f"本地 mutation 未报告全部写入：{action}；未列路径：{', '.join(missing)}",
+                paths=missing,
+            )
+        finish_mutation_record(
+            vault_dir,
+            operation_id,
+            journal_path,
+            state="completed",
+            changed_paths=sorted(actual),
+            after=after,
+        )
     return LocalMutationResult(
         operation_id=operation_id,
         business_return=outcome.business_return,
         changed_paths=changed_paths,
-        commit_result=commit_result,
         activity_report=outcome.activity_report,
-        push_note=push_note,
-        push_status=push_status,
     )
+
+
+def _file_snapshot(root: Path) -> dict[str, str]:
+    """Hash portable regular files without inspecting Git metadata."""
+    if not root.exists():
+        return {}
+    result: dict[str, str] = {}
+    for path in root.rglob("*"):
+        relative = path.relative_to(root)
+        if (
+            ".git" in relative.parts
+            or (
+                len(relative.parts) >= 2
+                and relative.parts[:2] == (".summit-workbench", "operations")
+            )
+            or not path.is_file()
+        ):
+            continue
+        try:
+            result[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            result[relative.as_posix()] = "<unreadable>"
+    return result

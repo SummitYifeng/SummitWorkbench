@@ -114,21 +114,16 @@ def test_release_requires_bundled_feishu_and_manifest_records_credential_mode() 
     assert 'REQUIRE_BUNDLED_FEISHU="${REQUIRE_BUNDLED_FEISHU:-true}"' in verify
 
 
-def test_p101_packages_a_self_contained_worker_and_native_helper() -> None:
+def test_background_worker_is_not_packaged() -> None:
     build = (_ROOT / "scripts" / "build-macos-app.sh").read_text(encoding="utf-8")
-    spec = (_ROOT / "packaging" / "SummitWorkbenchWorker.spec").read_text(encoding="utf-8")
-    helper = (_ROOT / "native" / "SummitWorkbench" / "AutomationHelperMain.swift").read_text(
+    lifecycle = (_ROOT / "native" / "SummitWorkbench" / "LifecycleCoordinator.swift").read_text(
         encoding="utf-8"
     )
-    manager = (_ROOT / "native" / "SummitWorkbench" / "AutomationServiceManager.swift").read_text(
-        encoding="utf-8"
-    )
-    policy = (_ROOT / "native" / "SummitWorkbench" / "AutomationServicePolicy.swift").read_text(
-        encoding="utf-8"
-    )
-    assert "SummitWorkbenchWorker.spec" in build
-    assert "Contents/Helpers/SummitWorkbenchWorker" in build
-    assert "worker_entry.py" in spec
-    assert "Process()" in helper
-    assert "SMAppService.loginItem" in (manager + "\n" + policy)
-    assert "launchctl" not in manager
+    retirement = (
+        _ROOT / "native" / "SummitWorkbench" / "LegacyAutomationRetirement.swift"
+    ).read_text(encoding="utf-8")
+    assert "SummitWorkbenchWorker.spec" not in build
+    assert "Contents/Helpers/SummitWorkbenchWorker" not in build
+    assert "AutomationServiceManager(logger: log).setEnabled(false)" in lifecycle
+    assert "LegacyAutomationRetirement.retire()" in lifecycle
+    assert "launchctl" in retirement

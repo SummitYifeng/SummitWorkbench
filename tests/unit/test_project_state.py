@@ -110,6 +110,28 @@ def test_rename_endpoint_sets_title_and_state_exposes_it(tmp_path: Path) -> None
     assert r2.json()["ok"] is False
 
 
+def test_renaming_approved_project_rebinds_proof_to_confirmed_title(tmp_path: Path) -> None:
+    from summit_workbench.domain.approval import has_valid_approval
+    from summit_workbench.repositories.approval import approve_markdown
+
+    vault = tmp_path / "Work" / "_vault"
+    path = _archive(vault)
+    approve_markdown(path, operation_id="user-approved-project")
+    approved = load_note(path)
+    assert has_valid_approval(approved.meta, approved.body)
+    ctx = WebContext(vault_dir=vault, work_root=vault.parent, timezone="Asia/Shanghai")
+    client = TestClient(create_app(ctx))
+
+    response = client.post(
+        "/api/projects/rename",
+        json={"name": "FinanceOps", "title": "财务运营体系建设"},
+    )
+
+    assert response.json()["ok"] is True
+    updated = load_note(path)
+    assert has_valid_approval(updated.meta, updated.body)
+
+
 def test_state_payload_carries_activity_at(tmp_path: Path) -> None:
     """/api/state 项目载荷带 activity_at（P1 读侧）；日志活动只刷新活动痕迹。"""
     vault = tmp_path / "Work" / "_vault"

@@ -23,6 +23,7 @@ from uuid import uuid4
 import yaml
 
 from summit_workbench.config.locking import workspace_lock
+from summit_workbench.domain.approval import approval_record
 from summit_workbench.domain.knowledge_normalization import (
     format_normalization_error,
     normalize_generated_body,
@@ -244,6 +245,7 @@ def append_work_log(
         meta["next_step"] = next_step
     if decision:
         meta["decision"] = decision
+    approval_id = causation_operation_id or str(uuid4())
 
     # 形态决定正文骨架（契约 §4.10，见 `WorkLogForm`）：
     # - `daily`：正文就是「日常手记」五区块本身（含 `## 关联`），既不包 `## 原文`，也不补
@@ -267,6 +269,7 @@ def append_work_log(
     if normalized.issues:
         raise ValueError("无法规范化日志正文：" + format_normalization_error(normalized.issues))
     body = normalized.body
+    meta["approval"] = approval_record(meta, body, operation_id=approval_id)
     # 序号分配 + 落盘 + 关联档案 touch 整体持锁（P0-4）：两个并发写入不会算出同一
     # 序号互相静默覆盖；写前若目标已被占（如人工预占名）则重取序号，绝不覆盖既有文件。
     with workspace_lock(vault_dir.parent):
@@ -285,7 +288,7 @@ def append_work_log(
                 path,
                 projects=projects_list,
                 activity_date=day,
-                causation_operation_id=causation_operation_id or str(uuid4()),
+                causation_operation_id=approval_id,
                 occurred_at=occurred_at,
             )
     return path
@@ -315,7 +318,7 @@ def save_thread_artifact(
         # 同 append_work_log：`area: work` 保证产物能进 SK 的笔记总览清单。
         "area": "work",
         "type": "thread-doc",
-        "status": "generated" if summary else "draft",
+        "status": "active",
         "project": project,
         "kind": kind.value,
     }
@@ -343,6 +346,9 @@ def save_thread_artifact(
         )
         if normalized.issues:
             raise ValueError("无法规范化产物正文：" + format_normalization_error(normalized.issues))
+        meta["approval"] = approval_record(
+            meta, normalized.body, operation_id=causation_operation_id or str(uuid4())
+        )
         _write_note(path, meta, normalized.body)
         _check(path)
         _touch_projects_activity(vault_dir, [project], day)

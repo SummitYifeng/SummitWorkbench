@@ -11,13 +11,12 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+from summit_workbench.domain.approval import has_valid_approval
 from summit_workbench.domain.brief import EvidenceLevel
 from summit_workbench.domain.weekly import WeeklyItem, WeeklySignals
-from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.project_scan import (
     count_inbox_pending,
     scan_projects,
-    thread_projects,
 )
 from summit_workbench.repositories.project_view import project_archive_state
 from summit_workbench.repositories.vault import load_note
@@ -59,40 +58,35 @@ def _in_week(day_value: object, start_iso: str, end_iso: str) -> bool:
     return start_iso <= day_iso <= end_iso
 
 
-def _collect_commits(
+def _collect_approved_logs(
     signals: WeeklySignals, work_root: Path, vault_dir: Path, start_iso: str, end_iso: str
 ) -> list[str]:
-    """各项目本周 git 提交 → 完成项；返回本周有提交的项目名（用于判定停滞）。"""
+    """本周已批准的工作日志 → 完成项；不读取工作源码仓库。"""
     active: list[str] = []
     for project in scan_projects(work_root, vault_dir):
-        if not project.is_git:
-            continue
-        try:
-            commits = GitRepo(project.path).commits_between(start_iso, end_iso)
-        except GitError as exc:
-            signals.source_notes.append(f"{project.name} git log 失败（{exc.stderr or exc}）")
-            continue
-        if commits:
+        active_logs: list[tuple[Path, str]] = []
+        logs_dir = vault_dir / "logs"
+        if logs_dir.is_dir():
+            for path in sorted(logs_dir.glob("*.md")):
+                note = load_note(path)
+                if note.parse_error is not None or not has_valid_approval(note.meta, note.body):
+                    continue
+                if not _in_week(note.meta.get("date"), start_iso, end_iso):
+                    continue
+                projects = note.meta.get("projects", [])
+                if isinstance(projects, list) and project.name in projects:
+                    active_logs.append((path, str(note.meta.get("title") or path.stem)))
+        if active_logs:
             active.append(project.name)
-        for sha, subject in commits:
-            signals.completed.append(
-                WeeklyItem(
-                    text=subject,
-                    source_ref=f"{project.name}@{sha}",
-                    evidence=EvidenceLevel.E2,
-                    project=project.name,
+            for path, title in active_logs:
+                signals.completed.append(
+                    WeeklyItem(
+                        text=title,
+                        source_ref=path.relative_to(vault_dir).as_posix(),
+                        evidence=EvidenceLevel.E2,
+                        project=project.name,
+                    )
                 )
-            )
-        # 停滞：git 项目本周零提交。
-        if not commits:
-            signals.stalled.append(
-                WeeklyItem(
-                    text=f"{project.name}（本周无提交）",
-                    source_ref=str(project.path),
-                    evidence=EvidenceLevel.E2,
-                    project=project.name,
-                )
-            )
         if project.inbox_pending > 0:
             signals.unclosed.append(
                 WeeklyItem(
@@ -115,6 +109,8 @@ def _collect_meeting_decisions(
     for path in sorted(notes_dir.glob("*.md")):
         note = load_note(path)
         if note.parse_error is not None:
+            continue
+        if not has_valid_approval(note.meta, note.body):
             continue
         if not _in_week(note.meta.get("date"), start_iso, end_iso):
             continue
@@ -164,7 +160,7 @@ def _collect_thread_stalls(
     archived 已退出工作台、不点名。
     """
     end = date.fromisoformat(end_iso)
-    for project in thread_projects(vault_dir, work_root):
+    for project in scan_projects(work_root, vault_dir):
         if project.status != "active" or not project.updated:
             continue
         try:
@@ -200,7 +196,7 @@ def collect_weekly(
     """采集上一自然周的全部复盘信号（去重与分区交给 domain.build_review）。"""
     signals = WeeklySignals()
 
-    _collect_commits(signals, work_root, vault_dir, start_iso, end_iso)
+    _collect_approved_logs(signals, work_root, vault_dir, start_iso, end_iso)
     _collect_thread_stalls(signals, vault_dir, work_root, end_iso)
     _collect_meeting_decisions(signals, vault_dir, start_iso, end_iso)
     _collect_global_inbox(signals, vault_dir)

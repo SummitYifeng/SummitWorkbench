@@ -36,20 +36,16 @@ const FILTER_LABELS: Record<ReviewFilter, string> = {
   rejected: '已拒绝',
 };
 
-function routeOptions(current: string | null): string {
+function routeOptions(): string {
   const keys = [
     '',
-    'feishu-task',
-    'feishu-meeting',
-    'project-main',
-    'project-followup',
-    'project-inbox',
-    'global-inbox',
     'knowledge-note',
+    'project-main',
+    'feishu-task',
   ];
   return keys.map((k) => {
     const label = k === '' ? '（未定）' : ROUTE_LABELS[k] ?? k;
-    return '<option value="' + k + '"' + (k === current ? ' selected' : '') + '>' + label + '</option>';
+    return '<option value="' + k + '">' + label + '</option>';
   }).join('');
 }
 
@@ -131,7 +127,7 @@ function entryCard(
     '<label>正文</label><textarea name="description" rows="2">' + esc(e.description) + '</textarea>' +
     '<div class="grid2">' +
       '<div><label>目标项目</label><input name="target_project" list="wb-project-options" placeholder="填项目 ID 或别名（如 finance-ops）；留空 = 全局 inbox" value="' + esc(e.target_project === 'unresolved' ? '' : e.target_project ?? '') + '"></div>' +
-    '<div><label>落点</label><select name="route">' + routeOptions(e.route) + '</select></div>' +
+    '<div><label>去处</label><select name="route">' + routeOptions() + '</select></div>' +
       '<div><label>沉淀目标</label><input name="sink_target" placeholder="仅「知识沉淀」用：填「页面路径#区块」" title="例如 hii/clusters/ip-trademark#关键结论（vault 相对路径 + 区块标题）" value="' + esc(e.sink_target ?? '') + '"></div>' +
     '<div><label>截止日期</label><input name="due_date" type="date" value="' + esc(e.due_date ?? '') + '"></div>' +
     '<div><label data-review-field-label="start">' + (e.route === 'feishu-task' ? '任务开始时间' : e.route === 'feishu-meeting' ? '会议开始时间' : '开始时间（新建会议）') +

@@ -43,6 +43,11 @@ class RouteTarget(StrEnum):
     KNOWLEDGE_NOTE = "knowledge-note"
 
 
+APPROVAL_ROUTES = frozenset(
+    {RouteTarget.KNOWLEDGE_NOTE, RouteTarget.PROJECT_MAIN, RouteTarget.FEISHU_TASK}
+)
+
+
 class CandidateDecision(StrEnum):
     """用户在待确认页对一条候选的裁决（L21 的 ``- [ ]`` / ``- [x]`` / ``#ignore``）。"""
 

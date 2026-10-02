@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
+import yaml
+
+from summit_workbench.domain.approval import approval_record
 from summit_workbench.domain.brief import EvidenceLevel
 from summit_workbench.domain.weekly import (
     WeeklyItem,
@@ -25,21 +27,11 @@ from summit_workbench.workflows.weekly.render import render_weekly
 from summit_workbench.workflows.weekly.weekly import generate_weekly
 
 
-def _git(path: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
-
-
-def _commit_at(path: Path, message: str, when_iso: str) -> None:
-    """在指定提交日期（committer date，git log --since/--until 据此过滤）落一条提交。"""
-    import os
-
-    env = {**os.environ, "GIT_COMMITTER_DATE": when_iso, "GIT_AUTHOR_DATE": when_iso}
-    subprocess.run(
-        ["git", "-C", str(path), "commit", "-q", "-m", message],
-        check=True,
-        capture_output=True,
-        env=env,
-    )
+def _approved_note(path: Path, metadata: dict[str, object], body: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    metadata["approval"] = approval_record(metadata, body, operation_id="weekly-test")
+    frontmatter = yaml.safe_dump(metadata, allow_unicode=True, sort_keys=False).strip()
+    path.write_text(f"---\n{frontmatter}\n---\n\n{body}", encoding="utf-8")
 
 
 def _thread_archive(
@@ -118,49 +110,48 @@ def test_extract_section_bullets() -> None:
     assert extract_section_bullets(body, "已形成决策") == ["采用方案 A", "冻结范围"]
 
 
-def test_collect_weekly_from_git_and_meeting_notes(tmp_path: Path) -> None:
+def test_collect_weekly_from_approved_work_logs_and_meeting_notes(tmp_path: Path) -> None:
     work = tmp_path / "Work"
     vault = work / "_vault"
-    (vault / "meetings" / "notes").mkdir(parents=True)
-    # 本周内的会议笔记（含决策）
-    (vault / "meetings" / "notes" / "2026-08-26-周会.md").write_text(
-        "---\ndate: 2026-08-26\ntype: meeting-note\nstatus: active\nprojects: [P]\n---\n"
-        "## 已形成决策\n- 决定发布 v2\n## 明确行动项\n- x\n",
-        encoding="utf-8",
+    _thread_archive(vault, "P", updated="2026-08-26", followup="- [ ] 待办")
+    meeting = vault / "meetings" / "notes" / "2026-08-26-周会.md"
+    _approved_note(
+        meeting,
+        {"date": "2026-08-26", "title": "周会", "type": "meeting-note", "status": "active"},
+        "## 已形成决策\n- 决定发布 v2\n",
     )
-    # 一个本周有提交的 git 项目
-    proj = work / "P"
-    proj.mkdir(parents=True)
-    _git(proj, "init", "-q")
-    _git(proj, "config", "user.email", "t@e.com")
-    _git(proj, "config", "user.name", "t")
-    (proj / "f.txt").write_text("x", encoding="utf-8")
-    _git(proj, "add", "f.txt")
-    _commit_at(proj, "feat: 完成登录", "2026-08-26T10:00:00")
+    log = vault / "logs" / "2026-08-26-001.md"
+    _approved_note(
+        log,
+        {
+            "date": "2026-08-26",
+            "title": "完成登录",
+            "type": "work-log",
+            "status": "active",
+            "projects": ["P"],
+        },
+        "## 今天 / 本周做了什么\n\n完成登录\n",
+    )
 
     signals = collect_weekly(
         work, vault, start_iso="2026-08-24", end_iso="2026-08-30", pending_review_count=2
     )
-    assert any("完成登录" in c.text for c in signals.completed)
-    assert any("发布 v2" in d.text for d in signals.decisions)
-    assert any("待确认 2 条" in u.text for u in signals.unclosed)
+    assert any("完成登录" in item.text for item in signals.completed)
+    assert any(item.source_ref == "logs/2026-08-26-001.md" for item in signals.completed)
+    assert any("发布 v2" in item.text for item in signals.decisions)
+    assert any("待确认 2 条" in item.text for item in signals.unclosed)
 
 
-def test_collect_weekly_flags_stalled_project(tmp_path: Path) -> None:
+def test_collect_weekly_flags_stalled_project_from_registry_not_git(tmp_path: Path) -> None:
     work = tmp_path / "Work"
     vault = work / "_vault"
-    vault.mkdir(parents=True)
-    proj = work / "Idle"
-    proj.mkdir(parents=True)
-    _git(proj, "init", "-q")
-    _git(proj, "config", "user.email", "t@e.com")
-    _git(proj, "config", "user.name", "t")
-    (proj / "f.txt").write_text("x", encoding="utf-8")
-    _git(proj, "add", "f.txt")
-    _commit_at(proj, "old", "2026-01-01T10:00:00")
+    _thread_archive(vault, "Idle", updated="2026-01-01", followup="- [ ] 未闭环")
+    (work / "Idle").mkdir(parents=True)
+    (work / "UnregisteredSourceRepo").mkdir()
 
     signals = collect_weekly(work, vault, start_iso="2026-08-24", end_iso="2026-08-30")
-    assert any(s.project == "Idle" for s in signals.stalled)
+    assert any(item.project == "Idle" for item in signals.stalled)
+    assert all(item.project != "UnregisteredSourceRepo" for item in signals.stalled)
 
 
 # —— 线程内容停滞（P3）：N 天无更新 + 有未决/未闭环跟进 → 停滞点名 ——

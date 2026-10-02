@@ -162,7 +162,7 @@ def test_p101_uses_smappservice_and_preserves_native_bridge_controls() -> None:
     bridge = (_ROOT / "web" / "src" / "lifecycle" / "native-bridge.ts").read_text(encoding="utf-8")
     assert "import ServiceManagement" in all_native
     assert "SMAppService.loginItem" in all_native
-    assert "automationSettingsChanged" in all_native
-    assert "automationSettingsChanged" in bridge
-    assert "Contents/Library/LoginItems" in build
+    assert "automationSettingsChanged" not in all_native
+    assert "automationSettingsChanged" not in bridge
+    assert "Contents/Library/LoginItems" not in build
     assert "codesign" in build

@@ -192,7 +192,7 @@ Path(path).write_text(json.dumps({
         "frontend feature/render/browser contracts",
         "frontend build and verify-build",
         "Python packaged server build",
-        "Swift arm64 app and automation helper compile",
+        "Swift arm64 app compile",
         "bundle strict codesign verification",
         "offline dynamic-port server smoke",
         "packaged server integration smoke",

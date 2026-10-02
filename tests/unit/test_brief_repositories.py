@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
 from summit_workbench.repositories.daily_note import (
@@ -22,18 +21,6 @@ from summit_workbench.repositories.signal_snapshot import (
     read_snapshot,
     write_snapshot,
 )
-
-
-def _git(path: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
-
-
-def _init_repo(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    _git(path, "init", "-q")
-    _git(path, "config", "user.email", "t@example.com")
-    _git(path, "config", "user.name", "t")
-
 
 # —— 纯解析 ——
 
@@ -65,7 +52,7 @@ def test_extract_next_step_skips_html_comment_placeholder() -> None:
 # —— 项目扫描（真实临时 git 仓库）——
 
 
-def test_scan_projects_reports_dirty_and_inbox_and_next_step(tmp_path: Path) -> None:
+def test_scan_projects_reads_registered_library_content_without_git(tmp_path: Path) -> None:
     work_root = tmp_path / "Work"
     vault = work_root / "_vault"
     (vault / "projects").mkdir(parents=True)
@@ -76,16 +63,16 @@ def test_scan_projects_reports_dirty_and_inbox_and_next_step(tmp_path: Path) -> 
         encoding="utf-8",
     )
     proj = work_root / "ProjA"
-    _init_repo(proj)
-    (proj / "README.md").write_text("hello", encoding="utf-8")  # dirty: 未提交
+    proj.mkdir(parents=True)
+    (proj / "README.md").write_text("source repository is ignored", encoding="utf-8")
     (proj / "input").mkdir()
     (proj / "input" / "inbox.md").write_text("- [ ] 想法一\n- [ ] 想法二\n", encoding="utf-8")
 
     states = scan_projects(work_root, vault)
     assert [s.name for s in states] == ["ProjA"]  # _vault 被跳过
     s = states[0]
-    assert s.is_git and s.dirty
-    assert s.inbox_pending == 2
+    assert not s.is_git and not s.dirty
+    assert s.inbox_pending == 0
     assert s.next_step == "发布 v2"
     assert s.next_step_ref == "projects/ProjA.md#下一步"
     assert s.git_error is None
@@ -94,7 +81,7 @@ def test_scan_projects_reports_dirty_and_inbox_and_next_step(tmp_path: Path) -> 
     assert s.status == "active"
 
 
-def test_scan_projects_classifies_new_and_archived_folders(tmp_path: Path) -> None:
+def test_scan_projects_ignores_unregistered_folders_and_lists_archives(tmp_path: Path) -> None:
     work_root = tmp_path / "Work"
     vault = work_root / "_vault"
     (vault / "projects").mkdir(parents=True)
@@ -107,18 +94,16 @@ def test_scan_projects_classifies_new_and_archived_folders(tmp_path: Path) -> No
         encoding="utf-8",
     )
     states = {s.name: s for s in scan_projects(work_root, vault)}
-    assert states["BrandNew"].registered is False
-    assert states["BrandNew"].status is None
+    assert "BrandNew" not in states
     assert states["Done"].registered is True
     assert states["Done"].status == "archived"
 
 
-def test_scan_projects_handles_non_git_dir(tmp_path: Path) -> None:
+def test_scan_projects_returns_empty_without_registry(tmp_path: Path) -> None:
     work_root = tmp_path / "Work"
     (work_root / "PlainDir").mkdir(parents=True)
     states = scan_projects(work_root, work_root / "_vault")
-    assert states[0].is_git is False
-    assert states[0].dirty is False
+    assert states == []
 
 
 # —— 信号快照往返 ——

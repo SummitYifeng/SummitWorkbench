@@ -176,7 +176,7 @@ def _launchd_check() -> Check:
         return Check(
             "launchd 定时任务",
             CheckStatus.WARN,
-            "未安装（用 scripts/install-launchd.sh 安装，或手动运行 wb brief/weekly）",
+            "后台定时写入已退役；可在工作台内手动生成简报或周复盘",
         )
     return Check("launchd 定时任务", CheckStatus.WARN, f"仅安装了 {', '.join(installed)}")
 

@@ -21,12 +21,11 @@ from __future__ import annotations
 
 import inspect
 import threading
-from datetime import datetime, timedelta
 from pathlib import Path
 
 from summit_workbench.config.settings import default_config_file
 from summit_workbench.webapp.context import WebContext
-from summit_workbench.workflows.review_apply import MeetingCreator, TaskCreator
+from summit_workbench.workflows.review_apply import TaskCreator
 
 
 class _FeishuClientPool:
@@ -143,50 +142,5 @@ def _build_task_creator(ctx: WebContext, clients: _FeishuClientPool) -> TaskCrea
             operation_id=operation_id,
             assignee_open_id=assignee_open_id(),
         ).guid
-
-    return create
-
-
-def _build_meeting_creator(ctx: WebContext, clients: _FeishuClientPool) -> MeetingCreator:
-    """审批「新建会议」写回器：解析主日历后创建定时日程事件，返回 event_id。
-
-    缺省结束时间 = 开始 + 60 分钟；失败（含日历写 scope 未授权）抛错由
-    apply 面板层可见化。
-    """
-    from summit_workbench.providers.feishu import (
-        create_event,
-    )
-    from summit_workbench.providers.feishu.calendar import primary_calendar_id
-
-    def create(
-        summary: str,
-        start_at: str | None,
-        end_at: str | None,
-        candidate_id: str,
-        *,
-        operation_id: str | None = None,
-    ) -> str:
-        if start_at is None:
-            raise ValueError("新建会议需要开始时间")
-        start = datetime.fromisoformat(start_at)
-        if start.tzinfo is not None:
-            start = start.replace(tzinfo=None)  # 统一按 ctx 时区解释（前端传本地 naive）
-        end_iso = (
-            end_at
-            if end_at is not None
-            else (start + timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M")
-        )
-        client = clients.user_client()
-        calendar_id = primary_calendar_id(client)  # type: ignore[arg-type]
-        return create_event(
-            client,  # type: ignore[arg-type]
-            calendar_id,
-            summary,
-            start_at,
-            end_iso,
-            timezone=ctx.timezone,
-            candidate_id=candidate_id,
-            operation_id=operation_id,
-        )
 
     return create

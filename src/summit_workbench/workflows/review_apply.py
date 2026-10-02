@@ -13,6 +13,7 @@ from summit_workbench.config.locking import workspace_lock
 from summit_workbench.domain.external_action import ExternalActionKind, ExternalActionState
 from summit_workbench.domain.pipeline import ProcessingState
 from summit_workbench.domain.review import (
+    APPROVAL_ROUTES,
     UNRESOLVED,
     ApprovalCandidate,
     CandidateDecision,
@@ -68,7 +69,6 @@ from summit_workbench.workflows.external_actions import (
 
 TaskCreator = Callable[..., str]
 # 日历会议创建器：(summary, start_at, end_at, candidate_id) -> event_id
-MeetingCreator = Callable[..., str]
 
 
 @dataclass(frozen=True)
@@ -147,6 +147,8 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
             reason = "缺少已解析 target_project 或有效 evidence"
         elif item.route is None:
             reason = "缺少 route"
+        elif item.route not in APPROVAL_ROUTES:
+            reason = "此审批去处已退役，请选择沉淀知识、更新项目或创建飞书任务"
         elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
             reason = "新建会议需要开始时间（在「修改」里填开始时间）"
         elif item.route is RouteTarget.KNOWLEDGE_NOTE and not Path(destination).is_file():
@@ -184,6 +186,8 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
     item = entry.candidate
     assert item.route is not None
     if item.route is RouteTarget.PROJECT_MAIN:
+        from summit_workbench.repositories.approval import approve_markdown
+
         path, _written = append_project_main(
             vault_dir,
             str(item.target_project),
@@ -191,14 +195,18 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
             item.candidate_id,
             item.kind,
         )
+        approve_markdown(path, operation_id=item.candidate_id)
         return str(path), None
     if item.route is RouteTarget.PROJECT_FOLLOWUP:
+        from summit_workbench.repositories.approval import approve_markdown
+
         path, _written = append_project_followup(
             vault_dir,
             str(item.target_project),
             item.description,
             item.candidate_id,
         )
+        approve_markdown(path, operation_id=item.candidate_id)
         return str(path), None
     if item.route is RouteTarget.PROJECT_INBOX:
         if _project_has_folder(work_root, str(item.target_project)):
@@ -220,6 +228,8 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
         path, _written = append_global_inbox(vault_dir, item.description, item.candidate_id)
         return str(path), None
     if item.route is RouteTarget.KNOWLEDGE_NOTE:
+        from summit_workbench.repositories.approval import approve_markdown
+
         path, _written = append_knowledge_note(
             vault_dir,
             str(item.sink_target or ""),
@@ -227,6 +237,7 @@ def _write_local(entry: ReviewEntry, vault_dir: Path, work_root: Path) -> tuple[
             item.candidate_id,
             source_ref=_knowledge_source_ref(vault_dir, entry),
         )
+        approve_markdown(path, operation_id=item.candidate_id)
         return str(path), None
     raise ValueError(f"非本地 route：{item.route.value}")
 
@@ -273,9 +284,9 @@ def _creator_call(
 
 
 def _external_kind(entry: ReviewEntry) -> ExternalActionKind:
-    if entry.candidate.route is RouteTarget.FEISHU_TASK:
-        return ExternalActionKind.FEISHU_TASK
-    return ExternalActionKind.FEISHU_MEETING
+    if entry.candidate.route is not RouteTarget.FEISHU_TASK:
+        raise ValueError("only Feishu task is an active external approval destination")
+    return ExternalActionKind.FEISHU_TASK
 
 
 def _external_request(entry: ReviewEntry) -> dict[str, object]:
@@ -289,12 +300,7 @@ def _external_request(entry: ReviewEntry) -> dict[str, object]:
         if item.start_at is not None:
             request["start_at"] = item.start_at
         return request
-    return {
-        "description": item.description,
-        "target_project": item.target_project,
-        "start_at": item.start_at,
-        "end_at": item.end_at,
-    }
+    raise ValueError("only Feishu task is an active external approval destination")
 
 
 def _run_external(
@@ -302,26 +308,15 @@ def _run_external(
     vault_dir: Path,
     *,
     task_creator: TaskCreator | None,
-    meeting_creator: MeetingCreator | None,
 ) -> tuple[str, str, str]:
     """准备并执行一个外部动作；未知结果永远停在 outbox，不允许隐式重 POST。"""
     item = entry.candidate
     kind = _external_kind(entry)
-    creator: Callable[..., str]
-    args: tuple[object, ...]
-    destination: str
-    if kind is ExternalActionKind.FEISHU_TASK:
-        if task_creator is None:
-            raise ValueError("缺少飞书任务创建器")
-        creator = task_creator
-        args = (item.description, item.due_date, item.candidate_id)
-        destination = "feishu-task"
-    else:
-        if meeting_creator is None:
-            raise ValueError("缺少飞书日历会议创建器")
-        creator = meeting_creator
-        args = (item.description, item.start_at, item.end_at, item.candidate_id)
-        destination = "feishu-meeting"
+    if task_creator is None:
+        raise ValueError("缺少飞书任务创建器")
+    creator: Callable[..., str] = task_creator
+    args: tuple[object, ...] = (item.description, item.due_date, item.candidate_id)
+    destination = "feishu-task"
 
     workspace_id = workspace_id_for_vault(vault_dir)
     fingerprint = request_fingerprint(
@@ -448,7 +443,7 @@ def create_task_through_outbox(
         transcript_link="",
     )
     _destination, remote_id, operation_id = _run_external(
-        entry, vault_dir, task_creator=task_creator, meeting_creator=None
+        entry, vault_dir, task_creator=task_creator
     )
     return remote_id, operation_id
 
@@ -577,7 +572,6 @@ def apply_meeting_review(
     *,
     apply: bool = False,
     task_creator: TaskCreator | None = None,
-    meeting_creator: MeetingCreator | None = None,
     now: datetime | None = None,
 ) -> ApplyReport:
     """默认仅返回计划；``apply=True`` 才产生业务写回与审计。"""
@@ -637,15 +631,6 @@ def apply_meeting_review(
                         entry,
                         vault_dir,
                         task_creator=task_creator,
-                        meeting_creator=meeting_creator,
-                    )
-                elif entry.candidate.route is RouteTarget.FEISHU_MEETING:
-                    touched_paths.append(outbox_path(vault_dir))
-                    destination, external_id, operation_id = _run_external(
-                        entry,
-                        vault_dir,
-                        task_creator=task_creator,
-                        meeting_creator=meeting_creator,
                     )
                 else:
                     destination, external_id = _write_local(entry, vault_dir, work_root)

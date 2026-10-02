@@ -114,7 +114,11 @@ def test_p107c_has_real_workflow_and_native_behavior_gates() -> None:
     assert "UpdateDefaults" in update_source
     assert "UpdateAppOpener" in update_source
     assert "workspaceIsCompatible" in update_source
-    assert "updateAutoCheckChanged" in bridge + main
+    assert "updateAutoCheckChanged" not in bridge + main
+    lifecycle = (ROOT / "native/SummitWorkbench/LifecycleCoordinator.swift").read_text(
+        encoding="utf-8"
+    )
+    assert "UpdateCoordinator(" not in lifecycle
     assert "UpdateCoordinatorTests.swift" in swift_test
 
 

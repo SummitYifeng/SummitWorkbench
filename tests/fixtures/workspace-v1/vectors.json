@@ -1,0 +1,61 @@
+{
+  "contract_version": 1,
+  "approval_vectors": [
+    {
+      "id": "approved-meeting",
+      "metadata": {"date":"2026-10-01","project":"global","status":"applied","title":"会议决策记录","type":"meeting-note"},
+      "body": "# 会议决策记录\n\n## 结论\n由用户提供的事实。\n",
+      "content_sha256": "b529f893d41d071d5b1d8e2a41025318c8f8679b687db21355e6949bd23dcc4c",
+      "eligible": true
+    },
+    {
+      "id": "approved-archived-decision",
+      "metadata": {"decision_status":"approved","project":"proj-example","status":"archived","superseded_by":null,"title":"历史业务决策","type":"decision"},
+      "body": "# 历史业务决策\n\n## 决定\n按原决定执行。\n",
+      "content_sha256": "083d46dbe2b41d38c8d48ebd581c568b207e0c3e36d830411b2aa231cd716921",
+      "eligible": true
+    },
+    {
+      "id": "changed-artifact",
+      "metadata": {"project":"proj-example","source":"sources/brief.md","status":"active","summary":"经确认的摘要","title":"方案全文","type":"note"},
+      "body": "# 方案全文\n\n## 正文\n完整产物正文。\n",
+      "content_sha256": "271a304f55da39666e222fedc695b903b55e454eff267c76e689b04346bdf7a7",
+      "approval_content_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "eligible": false,
+      "exclusion": "semantic content changed after the recorded approval",
+      "mutation_checks": ["body", "title", "summary", "type", "project", "date", "status", "decision_status", "superseded_by"]
+    },
+    {
+      "id": "unapproved-journal",
+      "metadata": {"date":"2026-10-02","project":"global","status":"pending-review","title":"随手记","type":"long-form-thought"},
+      "body": "# 随手记\n\n## 想法\n尚未确认。\n",
+      "content_sha256": "54fecd8364f1ecd9734d2ad7f7439523b2ea7c78112bc17eae05d4f8055e8ea1",
+      "eligible": false,
+      "exclusion": "pending-review has no accepted approval proof"
+    },
+    {
+      "id": "approved-original",
+      "metadata": {"project":"global","status":"active","title":"原始材料","type":"source"},
+      "body": "# 原始材料\n\n原文。\n",
+      "content_sha256": "727baf8d2bee06dce6bb548d1287f157844b16861b83109032c62eaab5b981f5",
+      "eligible": false,
+      "exclusion": "source is always excluded even with a matching approval proof"
+    }
+  ],
+  "negative_cases": [
+    "missing-manifest",
+    "malformed-workspace-id",
+    "unknown-contract-version",
+    "reader-below-min-reader-version",
+    "approval-digest-mismatch",
+    "approval-operation-id-empty",
+    "unknown-content-type",
+    "meeting-transcript-with-approval",
+    "auxiliary-state-under-summit-workbench",
+    "utf8-bom"
+  ],
+  "normalization_case": {
+    "input_body": "# Note\r\n\r\nText  \r\n\r\n",
+    "normalized_body": "# Note\n\nText\n"
+  }
+}

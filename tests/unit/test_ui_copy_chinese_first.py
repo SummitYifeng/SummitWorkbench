@@ -51,8 +51,8 @@ def test_update_prompt_interpolates_the_version() -> None:
         "更新提示必须插值实际版本号"
     )
     lifecycle = _swift("LifecycleCoordinator.swift")
-    assert "UICopy.updateAvailable(version: version)" in lifecycle, "协调器必须调用带版本号的纯函数"
-    assert "UICopy.updateChecking" in lifecycle, "其余更新文案也要走纯函数"
+    assert "UICopy.updateAvailable(version: version)" not in lifecycle
+    assert "checkIfDue" not in lifecycle
 
 
 def _function_body(text: str, signature: str) -> str:
@@ -121,17 +121,13 @@ def test_localized_error_messages_are_chinese_first() -> None:
     assert checked >= 10, f"只扫到 {checked} 条错误文案，守卫可能失效"
 
 
-def test_onboarding_wizard_maps_internal_enums_to_chinese() -> None:
-    """向导确认页不得显示 `read-write` / `cannot-open` 这类后端枚举。"""
+def test_onboarding_wizard_exposes_only_local_workspace_flows() -> None:
+    """首启只提供本地新建和契约连接，不出现 Git clone 或旧库升级。"""
     page = ONBOARDING.read_text(encoding="utf-8")
-    assert "escapeHtml(state.compatibility)" not in page, "兼容性又直接贴枚举了"
-    assert "compatibilityText(state.compatibility)" in page
-    # 三个枚举值都要有中文映射（新增取值时这里会红，提示补映射）
-    for value in ("read-write", "read-only-upgrade-required", "cannot-open"):
-        assert f"'{value}':" in page, f"兼容性映射缺少 {value}"
-    # 工作区 UUID 只显示短标识（完整值进 title）
-    assert "shortId(state.workspace_id)" in page
-    assert "title=\"'+escapeHtml(state.workspace_id)+'\"" in page
+    assert "新建工作库" in page
+    assert "连接已有兼容工作库" in page
+    assert "connect-remote" not in page
+    assert "升级这台 Mac" not in page
 
 
 def test_onboarding_wizard_escapes_error_messages() -> None:

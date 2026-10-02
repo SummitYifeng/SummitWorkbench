@@ -194,9 +194,6 @@ enum NativeMessage {
     case openLogDirectory
     case openExternal(URL)
     case saveTextFile(filename: String, content: String)
-    case automationSettingsChanged(enabled: Bool)
-    case updateAutoCheckChanged(enabled: Bool)
-    case checkForUpdates
     case chooseWorkspaceFolder
 
     init?(body: Any) {
@@ -223,13 +220,6 @@ enum NativeMessage {
                   !filename.contains("/"), !filename.contains("\\"),
                   content.count <= 2_000_000 else { return nil }
             self = .saveTextFile(filename: filename, content: content)
-        case "automationSettingsChanged":
-            guard let enabled = dictionary["enabled"] as? Bool else { return nil }
-            self = .automationSettingsChanged(enabled: enabled)
-        case "updateAutoCheckChanged":
-            guard let enabled = dictionary["enabled"] as? Bool else { return nil }
-            self = .updateAutoCheckChanged(enabled: enabled)
-        case "checkForUpdates": self = .checkForUpdates
         case "chooseWorkspaceFolder": self = .chooseWorkspaceFolder
         default: return nil
         }

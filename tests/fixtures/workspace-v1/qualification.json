@@ -1,0 +1,30 @@
+{
+  "contract_version": 1,
+  "cases": [
+    {
+      "fixture": "approved-meeting.md",
+      "eligible": true,
+      "reason": null
+    },
+    {
+      "fixture": "approved-archived-decision.md",
+      "eligible": true,
+      "reason": null
+    },
+    {
+      "fixture": "changed-artifact.md",
+      "eligible": false,
+      "reason": "semantic content changed after the recorded approval"
+    },
+    {
+      "fixture": "unapproved-journal.md",
+      "eligible": false,
+      "reason": "pending-review has no accepted approval proof"
+    },
+    {
+      "fixture": "approved-original.md",
+      "eligible": false,
+      "reason": "source is always excluded even with a matching approval proof"
+    }
+  ]
+}

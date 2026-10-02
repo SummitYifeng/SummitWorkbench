@@ -16,9 +16,7 @@ from summit_workbench.domain.review import (
     ReviewEntry,
     RouteTarget,
 )
-from summit_workbench.domain.vault import validate_note
 from summit_workbench.repositories.review_page import parse_review_page, refresh_review_page
-from summit_workbench.repositories.vault import load_note
 from summit_workbench.workflows.review_apply import apply_meeting_review
 
 
@@ -70,7 +68,7 @@ def _folder_project(work_root, project: str = "P1") -> None:
     path.write_text("# inbox\n\n## 待处理条目\n", encoding="utf-8")
 
 
-def test_followup_writes_to_thread_archive_section(tmp_path) -> None:
+def test_retired_followup_route_does_not_write_to_thread(tmp_path) -> None:
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     _thread_main(vault)
@@ -85,17 +83,15 @@ def test_followup_writes_to_thread_archive_section(tmp_path) -> None:
         ],
     )
     report = apply_meeting_review(vault, work, apply=True, now=datetime(2026, 9, 2, tzinfo=UTC))
-    assert report.applied == 1
-    assert report.failed == 0
+    assert report.applied == 0
+    assert report.failed == 1
+    assert "已退役" in (report.actions[0].reason or "")
     body = (vault / "projects" / "T1.md").read_text(encoding="utf-8")
-    assert "## 跟进事项" in body
-    assert "- [ ] final-m:n#action-item-0" in body
-    # 不进入「下一步」
-    assert "final-m:n#action-item-0" not in body.split("## 下一步")[1].split("## 阻塞")[0]
+    assert "## 跟进事项" not in body
+    assert "final-m:n#action-item-0" not in body
 
 
-def test_followup_ensures_section_on_old_archive(tmp_path) -> None:
-    """老档案没有「跟进事项」区块时，首次写回自动补区块，不拒写。"""
+def test_retired_followup_route_does_not_change_old_archive(tmp_path) -> None:
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     _thread_main(vault, with_followup=False)
@@ -110,14 +106,15 @@ def test_followup_ensures_section_on_old_archive(tmp_path) -> None:
         ],
     )
     report = apply_meeting_review(vault, work, apply=True)
-    assert report.applied == 1
+    assert report.applied == 0
+    assert report.failed == 1
+    assert "已退役" in (report.actions[0].reason or "")
     body = (vault / "projects" / "T1.md").read_text(encoding="utf-8")
-    assert "## 跟进事项" in body
-    assert "- [ ] final-m:n#action-item-1" in body
+    assert "## 跟进事项" not in body
+    assert "final-m:n#action-item-1" not in body
 
 
-def test_thread_inbox_writes_vault_inboxes_file(tmp_path) -> None:
-    """知识线程（无 Work 文件夹）的 inbox 落 vault/inboxes/<id>.md，schema 可过。"""
+def test_retired_thread_inbox_route_does_not_write(tmp_path) -> None:
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     _thread_main(vault)
@@ -132,24 +129,19 @@ def test_thread_inbox_writes_vault_inboxes_file(tmp_path) -> None:
         ],
     )
     report = apply_meeting_review(vault, work, apply=True)
-    assert report.applied == 1
-    inbox_path = vault / "inboxes" / "T1.md"
-    assert inbox_path.is_file()
-    text = inbox_path.read_text(encoding="utf-8")
-    assert "- [ ] final-m:n#action-item-2" in text
-    note = load_note(inbox_path)
-    assert note.parse_error is None
-    assert validate_note(note.meta, note.body) == []
-    assert note.meta.get("type") == "project-inbox"
-    assert note.meta.get("project") == "T1"
+    assert report.applied == 0
+    assert report.failed == 1
+    assert "已退役" in (report.actions[0].reason or "")
+    assert not (vault / "inboxes" / "T1.md").exists()
 
 
-def test_folder_project_inbox_still_uses_folder_inbox(tmp_path) -> None:
-    """仓库项目（有文件夹）的 inbox 仍写文件夹内 input/inbox.md，不回退 vault。"""
+def test_retired_folder_project_inbox_route_does_not_write(tmp_path) -> None:
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     _thread_main(vault, project="P1")  # 档案存在（有文件夹时按文件夹走）
     _folder_project(work, "P1")
+    folder_inbox = work / "P1" / "input" / "inbox.md"
+    before = folder_inbox.read_bytes()
     refresh_review_page(
         vault,
         [
@@ -162,9 +154,10 @@ def test_folder_project_inbox_still_uses_folder_inbox(tmp_path) -> None:
         ],
     )
     report = apply_meeting_review(vault, work, apply=True)
-    assert report.applied == 1
-    folder_inbox = work / "P1" / "input" / "inbox.md"
-    assert "- [ ] final-m:n#action-item-3" in folder_inbox.read_text(encoding="utf-8")
+    assert report.applied == 0
+    assert report.failed == 1
+    assert "已退役" in (report.actions[0].reason or "")
+    assert folder_inbox.read_bytes() == before
     assert not (vault / "inboxes" / "P1.md").exists()
 
 
@@ -186,7 +179,7 @@ def test_thread_inbox_requires_registered_archive(tmp_path) -> None:
     report = apply_meeting_review(vault, work, apply=True)
     assert report.applied == 0
     assert report.failed == 1
-    assert "未建档" in (report.actions[0].reason or "")
+    assert "已退役" in (report.actions[0].reason or "")
     assert not (vault / "inboxes" / "Ghost.md").exists()
 
 

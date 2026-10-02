@@ -15,7 +15,6 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from summit_workbench.domain.time import business_date
 from summit_workbench.repositories.signal_snapshot import (
     mark_meeting_edited,
     mark_task_completed,
@@ -30,7 +29,6 @@ from summit_workbench.webapp.api import (
 )
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.feishu_pool import _FeishuClientPool
-from summit_workbench.webapp.model_config import _load_model_config_for_context
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
 from summit_workbench.webapp.operation_receipts import run_with_receipt
@@ -49,45 +47,21 @@ def register_capture_routes(
 
     @app.post("/api/capture", response_model=None)
     def api_capture(request: Request, payload: CapturePayload) -> dict[str, object] | JSONResponse:
-        """快速捕捉：AI 分类（承诺/想法 + 截止 + #项目）后记入全局 inbox。
-
-        模型不可用/超时/输出非法时按「想法」兜底，绝不丢数据；#项目 标签本地解析，
-        不经模型，避免臆造项目名。分类以稳定标记写回 inbox，供 M4 wb task 承接路由。
-        """
+        """快速捕捉：原样记入全局收件箱，不在保存时调用模型。"""
         text = payload.text.strip()
         if not text:
             return {"ok": False, "message": "输入为空"}
 
         def perform() -> dict[str, object]:
-            from summit_workbench.config.secrets import CredentialError, resolve_credential
             from summit_workbench.domain.capture import CaptureKind
-            from summit_workbench.prompts import load_prompt
-            from summit_workbench.providers.llm import LLMError
             from summit_workbench.repositories.project_registry import load_project_registry
             from summit_workbench.repositories.writeback import append_global_inbox
-            from summit_workbench.workflows.capture import classify_capture, extract_project_tags
+            from summit_workbench.workflows.capture import extract_project_tags
 
             candidate_id = f"web-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
             kind: CaptureKind = CaptureKind.IDEA
             due_date: str | None = None
-            model_used = False
-            try:
-                cfg = _load_model_config_for_context(ctx, "capture")
-                api_key = resolve_credential(cfg.api_key_ref)
-                prompt = load_prompt("capture-classifier")
-                cls = classify_capture(
-                    cfg,
-                    api_key,
-                    prompt,
-                    text,
-                    today=business_date(datetime.now(UTC)),
-                )
-                kind = cls.kind
-                due_date = cls.due_date
-                model_used = True
-            except (LLMError, CredentialError, FileNotFoundError, ValueError):
-                # 分类不可用 → 按想法归档（不丢数据，录入永不阻塞）
-                kind = CaptureKind.IDEA
+            kind = CaptureKind.IDEA
 
             tags = extract_project_tags(text, load_project_registry(ctx.vault_dir))
             project = tags[0] if tags else None
@@ -106,17 +80,15 @@ def register_capture_routes(
             result = runtime.run("capture", mutate)
             path, _written = result.business_return
             label = "承诺" if kind is CaptureKind.TASK else "想法"
-            tail = f"（截止 {due_date}）" if due_date else ""
             project_tail = f" · 关联 {project}" if project else ""
-            git_note = _commit_note(result.commit_result)
             return {
                 "ok": True,
-                "message": f"已记入收件箱 · {label}{tail}{project_tail}{git_note}",
+                "message": f"已记入收件箱 · {label}{project_tail}",
                 "path": str(path),
                 "kind": kind.value,
                 "due_date": due_date,
                 "project": project,
-                "model_used": model_used,
+                "model_used": False,
                 **_mutation_fields(result),
             }
 

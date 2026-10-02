@@ -1,4 +1,4 @@
-"""P0-02 本地 mutation 与自动提交事务边界。"""
+"""Local mutation lock and no-workspace-Git contract."""
 
 from __future__ import annotations
 
@@ -10,7 +10,10 @@ from pathlib import Path
 import pytest
 
 from summit_workbench.config.locking import workspace_lock
-from summit_workbench.repositories.autocommit import CommitStatus
+from summit_workbench.repositories.local_mutation_journal import (
+    list_mutation_records,
+    start_mutation_record,
+)
 from summit_workbench.workflows.local_mutation import (
     LocalMutationOutcome,
     MutationInvariantError,
@@ -36,8 +39,9 @@ def _git_repo(tmp_path: Path) -> Path:
     return vault
 
 
-def test_concurrent_mutations_get_distinct_operations_and_commits(tmp_path: Path) -> None:
+def test_concurrent_mutations_get_distinct_operations_without_git_writes(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
+    head_before = _git(vault, "rev-parse", "HEAD").strip()
 
     def mutate(operation_id: str) -> LocalMutationOutcome[str]:
         path = vault / f"operations-{operation_id}.md"
@@ -48,37 +52,35 @@ def test_concurrent_mutations_get_distinct_operations_and_commits(tmp_path: Path
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: run_local_mutation(vault, "capture", mutate), range(2)))
 
-    operation_ids = {result.operation_id for result in results}
-    assert len(operation_ids) == 2
-    assert all(result.commit_result.status is CommitStatus.COMMITTED for result in results)
-    subjects = _git(vault, "log", "--pretty=%s", "-2").splitlines()
-    assert len(subjects) == 2
-    assert all(subject.startswith("wb: capture [") for subject in subjects)
-    for operation_id in operation_ids:
-        assert operation_id in subjects[0] or operation_id in subjects[1]
+    assert len({result.operation_id for result in results}) == 2
+    assert all(result.commit_result is None for result in results)
+    assert _git(vault, "rev-parse", "HEAD").strip() == head_before
+    assert (
+        len(
+            [
+                line
+                for line in _git(vault, "status", "--porcelain").splitlines()
+                if "operations-" in line
+            ]
+        )
+        == 2
+    )
 
 
-def test_failed_mutation_does_not_call_commit(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_failed_mutation_writes_nothing_and_propagates_error(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
-    called: list[str] = []
-
-    def fake_commit(*_args: object, **_kwargs: object) -> object:
-        called.append("commit")
-        return object()
-
-    monkeypatch.setattr("summit_workbench.workflows.local_mutation.commit_paths", fake_commit)
 
     def mutate(_operation_id: str) -> LocalMutationOutcome[str]:
         raise ValueError("mutation failed")
 
     with pytest.raises(ValueError, match="mutation failed"):
         run_local_mutation(vault, "capture", mutate)
-    assert called == []
+    assert not any(
+        "omitted.md" in line for line in _git(vault, "status", "--porcelain").splitlines()
+    )
 
 
-def test_failed_mutation_does_not_prevent_concurrent_success_commit(tmp_path: Path) -> None:
+def test_failed_mutation_does_not_prevent_concurrent_success(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
 
     def fail(_operation_id: str) -> LocalMutationOutcome[str]:
@@ -100,14 +102,11 @@ def test_failed_mutation_does_not_prevent_concurrent_success_commit(tmp_path: Pa
 
     assert failed is None
     assert succeeded is not None
-    assert succeeded.commit_result.status is CommitStatus.COMMITTED
-    assert _git(vault, "log", "--pretty=%s", "-2").splitlines() == [
-        f"wb: test [{succeeded.operation_id}]",
-        "seed",
-    ]
+    assert succeeded.commit_result is None
+    assert (vault / "success.md").read_text(encoding="utf-8") == succeeded.operation_id
 
 
-def test_non_git_mutation_succeeds_and_exposes_not_git_status(tmp_path: Path) -> None:
+def test_plain_directory_mutation_succeeds_without_git(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()
 
@@ -117,9 +116,8 @@ def test_non_git_mutation_succeeds_and_exposes_not_git_status(tmp_path: Path) ->
         return LocalMutationOutcome("saved", (path,))
 
     result = run_local_mutation(vault, "capture", mutate)
-
     assert result.business_return == "saved"
-    assert result.commit_result.status is CommitStatus.NOT_GIT
+    assert result.commit_result is None
     assert (vault / "inbox.md").read_text(encoding="utf-8") == result.operation_id
 
 
@@ -133,15 +131,13 @@ def test_repository_lock_reentry_does_not_deadlock(tmp_path: Path) -> None:
         return LocalMutationOutcome("nested", (path,))
 
     result = run_local_mutation(vault, "nested", mutate)
-
-    assert result.commit_result.status is CommitStatus.COMMITTED
+    assert result.commit_result is None
     assert (vault / "nested.md").read_text(encoding="utf-8") == "nested"
 
 
-def test_business_return_and_changed_paths_are_preserved(tmp_path: Path) -> None:
+def test_business_result_and_declared_paths_are_preserved(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
     path = vault / "result.md"
-
     result = run_local_mutation(
         vault,
         "capture",
@@ -150,14 +146,12 @@ def test_business_return_and_changed_paths_are_preserved(tmp_path: Path) -> None
             (path,),
         ),
     )
-
     assert result.business_return == {"operation_id": result.operation_id, "ok": True}
     assert result.changed_paths == (path,)
-    assert result.commit_result.status is CommitStatus.NOTHING_TO_COMMIT
+    assert result.commit_result is None
 
 
-def test_unreported_non_ignored_write_fails_the_mutation_invariant(tmp_path: Path) -> None:
-    """漏报的 vault 写入不能被包装成成功的本地 mutation。"""
+def test_unreported_file_write_fails_without_committing_anything(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
     declared = vault / "declared.md"
     omitted = vault / "omitted.md"
@@ -169,21 +163,42 @@ def test_unreported_non_ignored_write_fails_the_mutation_invariant(tmp_path: Pat
 
     with pytest.raises(MutationInvariantError, match="omitted.md") as exc_info:
         run_local_mutation(vault, "test", mutate)
-    assert exc_info.value.committed is True
-    assert exc_info.value.commit_sha == _git(vault, "rev-parse", "HEAD").strip()
+    assert exc_info.value.committed is False
+    status = _git(vault, "status", "--porcelain").splitlines()
+    assert any("declared.md" in line for line in status)
+    assert any("omitted.md" in line for line in status)
 
 
-def test_unrelated_preexisting_dirty_file_does_not_trigger_invariant(tmp_path: Path) -> None:
+def test_mutation_cannot_report_a_path_outside_workspace(tmp_path: Path) -> None:
     vault = _git_repo(tmp_path)
-    unrelated = vault / "unrelated.md"
-    declared = vault / "declared.md"
-    unrelated.write_text("manual edit", encoding="utf-8")
+    outside = tmp_path / "outside.md"
 
     def mutate(_operation_id: str) -> LocalMutationOutcome[str]:
-        declared.write_text("declared", encoding="utf-8")
-        return LocalMutationOutcome("ok", (declared,))
+        outside.write_text("outside", encoding="utf-8")
+        return LocalMutationOutcome("ok", (outside,))
 
-    result = run_local_mutation(vault, "test", mutate)
+    with pytest.raises(MutationInvariantError, match="工作库之外"):
+        run_local_mutation(vault, "test", mutate)
 
-    assert result.commit_result.status is CommitStatus.COMMITTED
-    assert unrelated.read_text(encoding="utf-8") == "manual edit"
+
+def test_interrupted_mutation_is_reported_without_overwriting_files(tmp_path: Path) -> None:
+    vault = tmp_path / "workspace"
+    vault.mkdir()
+    path = vault / "inbox.md"
+    path.write_text("before\n", encoding="utf-8")
+    before = {"inbox.md": __import__("hashlib").sha256(path.read_bytes()).hexdigest()}
+    start_mutation_record(vault, "op-crashed", "capture", before)
+    path.write_text("after\n", encoding="utf-8")
+
+    run_local_mutation(
+        vault,
+        "next-action",
+        lambda op: LocalMutationOutcome("ok", (path,)),
+    )
+
+    pending = [
+        record for record in list_mutation_records(vault) if record["operation_id"] == "op-crashed"
+    ]
+    assert pending[0]["state"] == "interrupted"
+    assert pending[0]["changed_paths"] == ["inbox.md"]
+    assert path.read_text(encoding="utf-8") == "after\n"

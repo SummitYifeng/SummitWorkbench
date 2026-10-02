@@ -10,7 +10,6 @@ from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from summit_workbench.config.git_credentials import profile_identity
 from summit_workbench.config.locking import LockBusy
 from summit_workbench.config.profiles import ActiveWorkspaceContext
 from summit_workbench.domain.automation import (
@@ -24,14 +23,11 @@ from summit_workbench.domain.automation import (
 from summit_workbench.domain.run_health import RunStatus
 from summit_workbench.observability.heartbeat import record_run_safely
 from summit_workbench.providers.llm import LLMError
-from summit_workbench.repositories.automation_primary import load_automation_primary
 from summit_workbench.repositories.automation_settings import (
     automation_job_lock,
     load_automation_settings,
     save_automation_settings,
 )
-from summit_workbench.workflows import sync_coordinator
-from summit_workbench.workflows.brief.publish import publish_brief
 from summit_workbench.workflows.brief.runner import run_brief, today_iso
 from summit_workbench.workflows.weekly.weekly import generate_weekly
 
@@ -86,27 +82,9 @@ def _publish_generated(
     *,
     message: str,
 ) -> tuple[str | None, str]:
-    """只负责发布已生成产物；发布失败不回滚也不重新生成。"""
-    if not paths:
-        return None, ""
-    assert context.paths is not None and context.profile is not None
-    try:
-        result = publish_brief(
-            context.paths.vault_dir,
-            paths,
-            message=message,
-            push=True,
-            backend_kind="dulwich",
-            workspace_id=context.workspace_id,
-            username=context.profile.git_username,
-            author=profile_identity(context.profile),
-        )
-        published = result.status.value
-        if published in {"push-failed", "busy(locked)"} or published.startswith("committed("):
-            return published, f"本机已生成，待同步：{result.detail or published}"
-        return published, result.detail
-    except Exception as exc:  # 生成成功后，发布异常只影响同步状态
-        return "push-failed", f"本机已生成，待同步：{type(exc).__name__}"
+    """Deprecated publication hook. Generated display files are local-only."""
+    del context, paths, message
+    return "local-only", ""
 
 
 def _record_settings(
@@ -228,7 +206,7 @@ def _run_automation_job_unlocked(
     now: datetime | None = None,
     force: bool = False,
 ) -> WorkerResult:
-    """按 workspace/profile/主设备门控执行一次自动化任务。"""
+    """Run a one-shot report job for the selected local workspace."""
     if context.paths is None or context.profile is None or context.workspace_id is None:
         return WorkerResult(job, AutomationRunStatus.SKIPPED, "尚未选择工作区")
     if not automation_is_supported(job):
@@ -238,17 +216,6 @@ def _run_automation_job_unlocked(
             AUTOMATION_UNAVAILABLE_REASON,
             error_code="automation_not_supported",
         )
-    claim = load_automation_primary(context.paths.vault_dir)
-    gate = sync_coordinator.automation_gate(
-        context.profile,
-        claim=claim,
-        device_id=context.device_id,
-        require_claim=True,
-    )
-    if gate.value != "primary-ok":
-        # 关键安全约束：secondary 不写 vault，也不更新本机任务结果账本。
-        return WorkerResult(job, AutomationRunStatus.NOT_PRIMARY, "本机不是该 workspace 的主设备")
-
     settings = load_automation_settings(context.workspace_id, home=context.home)
     schedule = settings.for_job(job)
     if not schedule.enabled:
@@ -270,23 +237,6 @@ def _run_automation_job_unlocked(
         return result
 
     day = local_now.date().isoformat()
-    snapshot = sync_coordinator.current_snapshot(
-        context.paths.vault_dir,
-        home=context.home,
-        workspace_id=context.workspace_id,
-        backend_kind="dulwich",
-        context=context,
-    )
-    mutation_allowed, mutation_reason = sync_coordinator.mutation_guard(snapshot)
-    if not mutation_allowed:
-        result = WorkerResult(
-            job,
-            AutomationRunStatus.FAILED,
-            mutation_reason,
-            error_code="sync_protected",
-        )
-        _record_settings(context, settings, job, result, now=current)
-        return result
     try:
         if job is AutomationJob.BRIEF:
             run = run_brief(
@@ -310,14 +260,13 @@ def _run_automation_job_unlocked(
                 day=day,
                 detail=run.feishu_unavailable,
             )
-            # 简报正文已不在 vault 内（落本机程序目录），可提交的只剩 _signals/ 机器状态；
-            # persisted_paths 本身只含 vault 内路径（见 BriefRun 注释）。
-            commit_paths = list(run.persisted_paths)
+            # Brief text and heartbeat are local workspace/app state; no Git publication occurs.
+            written_paths = list(run.persisted_paths)
             if heartbeat_path is not None:
-                commit_paths.append(heartbeat_path)
+                written_paths.append(heartbeat_path)
             published, publish_detail = _publish_generated(
                 context,
-                commit_paths,
+                written_paths,
                 message=f"chore(brief): 晨间简报 {day}",
             )
             outcome = WorkerResult(

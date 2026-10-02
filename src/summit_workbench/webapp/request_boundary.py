@@ -142,7 +142,7 @@ def install_exception_handlers(app: FastAPI, *, operation_id: Callable[[Request]
         return JSONResponse(
             status_code=409,
             content=error_payload(
-                code="sync_diverged",
+                code="workspace_switch_in_progress",
                 message=str(exc),
                 operation_id=operation_id(request),
             ),

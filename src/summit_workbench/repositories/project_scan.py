@@ -12,7 +12,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from summit_workbench.repositories.git import GitError, GitRepo
 from summit_workbench.repositories.ignore import is_internal_dirname
 from summit_workbench.repositories.project_registry import load_project_registry
 from summit_workbench.repositories.vault import load_note, meta_date_iso
@@ -139,19 +138,9 @@ def _project_registry_state(
 
 
 def _git_state(path: Path) -> tuple[bool, bool, int, int, bool, str | None]:
-    """返回 (is_git, dirty, ahead, behind, has_upstream, git_error)，纯本地、不联网。"""
-    repo = GitRepo(path)
-    if not repo.is_git_repo():
-        return False, False, 0, 0, False, None
-    try:
-        dirty = repo.is_dirty()
-        has_upstream = repo.has_upstream()
-        if has_upstream:
-            ab = repo.ahead_behind()
-            return True, dirty, ab.ahead, ab.behind, True, None
-        return True, dirty, 0, 0, False, None
-    except GitError as exc:
-        return True, False, 0, 0, False, exc.stderr or str(exc)
+    """兼容旧响应形状；新版项目状态不读取工作源码仓库。"""
+    del path
+    return False, False, 0, 0, False, None
 
 
 def scan_project(path: Path, vault_dir: Path) -> ProjectState:
@@ -189,14 +178,39 @@ def scan_project(path: Path, vault_dir: Path) -> ProjectState:
 
 
 def scan_projects(work_root: Path, vault_dir: Path) -> list[ProjectState]:
-    """扫描 ``work_root`` 下的直接子目录项目（跳过内部目录），按名排序。"""
-    if not work_root.is_dir():
-        return []
-    projects = sorted(
-        (p for p in work_root.iterdir() if p.is_dir() and not is_internal_dirname(p.name)),
-        key=lambda p: p.name,
-    )
-    return [scan_project(p, vault_dir) for p in projects]
+    """从工作库的项目建档清单读取项目，不扫描用户的源码目录。"""
+    del work_root
+    registry = load_project_registry(vault_dir)
+    states: list[ProjectState] = []
+    for project_id in sorted(registry.canonical):
+        if is_internal_dirname(project_id):
+            continue
+        registered, status, next_step, ref, updated, title, activity_at = _project_registry_state(
+            vault_dir, project_id
+        )
+        if not registered:
+            continue
+        states.append(
+            ProjectState(
+                name=project_id,
+                path=vault_dir / "projects" / f"{project_id}.md",
+                is_git=False,
+                dirty=False,
+                ahead=0,
+                behind=0,
+                has_upstream=False,
+                inbox_pending=0,
+                next_step=next_step,
+                next_step_ref=ref,
+                registered=True,
+                status=status,
+                is_thread=True,
+                updated=updated,
+                title=title,
+                activity_at=activity_at,
+            )
+        )
+    return states
 
 
 def thread_projects(vault_dir: Path, work_root: Path) -> list[ProjectState]:
@@ -206,15 +220,11 @@ def thread_projects(vault_dir: Path, work_root: Path) -> list[ProjectState]:
     文件夹与 git 仓库；数据源即 ``_vault/projects/*.md`` 中的有效 project-main 档案全集减去
     已由文件夹扫描覆盖的名字。
     """
+    del work_root
     registry = load_project_registry(vault_dir)
-    folder_names = (
-        {p.name for p in work_root.iterdir() if p.is_dir() and not is_internal_dirname(p.name)}
-        if work_root.is_dir()
-        else set()
-    )
     threads: list[ProjectState] = []
     for project_id in sorted(registry.canonical):
-        if project_id in folder_names or is_internal_dirname(project_id):
+        if is_internal_dirname(project_id):
             continue
         (
             registered,
@@ -251,10 +261,5 @@ def thread_projects(vault_dir: Path, work_root: Path) -> list[ProjectState]:
 
 
 def scan_all_projects(work_root: Path, vault_dir: Path) -> list[ProjectState]:
-    """工作台项目全集：仓库项目（文件夹扫描）+ 知识线程项目（vault 档案），按名排序。"""
-    if not work_root.is_dir():
-        return thread_projects(vault_dir, work_root)
-    merged = {p.name: p for p in scan_projects(work_root, vault_dir)}
-    for thread in thread_projects(vault_dir, work_root):
-        merged.setdefault(thread.name, thread)
-    return [merged[name] for name in sorted(merged)]
+    """工作台项目全集来自工作库建档；保留参数形状以兼容调用方。"""
+    return scan_projects(work_root, vault_dir)

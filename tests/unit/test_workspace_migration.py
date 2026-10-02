@@ -356,7 +356,7 @@ def test_unknown_future_schema_is_rejected_without_writing(tmp_path: Path) -> No
     assert backend.commits == []
 
 
-def test_migration_endpoint_is_available_while_old_workspace_is_read_only(
+def test_legacy_git_workspace_migration_endpoint_is_retired(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """旧 schema 的只读保护不能把唯一的迁移入口一起挡住。"""
@@ -405,5 +405,4 @@ def test_migration_endpoint_is_available_while_old_workspace_is_read_only(
         json={"confirmed_device_id": context.device_id},
     )
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "migrated"
+    assert response.status_code == 404

@@ -1002,7 +1002,7 @@ wheels = [
 
 [[package]]
 name = "summit-workbench"
-version = "0.4.11"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "dulwich" },

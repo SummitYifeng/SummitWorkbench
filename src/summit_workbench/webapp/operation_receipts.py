@@ -48,6 +48,18 @@ def run_with_receipt(
 
 
 def register_operation_receipt_routes(app: FastAPI, context: WebContext) -> None:
+    @app.get("/api/workspace/operations", response_model=None)
+    def api_workspace_operations() -> dict[str, object]:
+        from summit_workbench.repositories.local_mutation_journal import list_mutation_records
+
+        records = list_mutation_records(context.vault_dir)
+        pending = [
+            record
+            for record in records
+            if record.get("state") in {"running", "interrupted", "corrupt"}
+        ]
+        return {"ok": True, "operations": pending}
+
     @app.get("/api/operations/{request_id}", response_model=None)
     def api_operation_receipt(request_id: str) -> dict[str, object] | JSONResponse:
         try:

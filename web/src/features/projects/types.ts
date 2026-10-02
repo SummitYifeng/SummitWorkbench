@@ -1,12 +1,7 @@
 export interface ProjectState {
   name: string;
-  dirty: boolean;
-  ahead: number;
-  behind: number;
-  has_upstream: boolean;
   inbox_pending: number;
   next_step: string | null;
-  git_error: string | null;
   /** ADR 0023：已建档（有效 project-main 档案）与否及其 status */
   registered: boolean;
   status: string | null;

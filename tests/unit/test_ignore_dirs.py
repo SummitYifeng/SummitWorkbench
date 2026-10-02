@@ -53,7 +53,7 @@ def test_is_internal_dirname_covers_hidden_machine_and_underscore() -> None:
 
 
 def test_scan_projects_skips_obsidian_and_machine_dirs(tmp_path: Path) -> None:
-    """App【项目】列表：`Work/.obsidian` 与机器目录都不出现，真项目照旧出现。"""
+    """Project listing comes from registered library pages, never source folders."""
     work_root = tmp_path / "Work"
     vault = work_root / "_vault"
     (vault / "projects").mkdir(parents=True)
@@ -64,7 +64,7 @@ def test_scan_projects_skips_obsidian_and_machine_dirs(tmp_path: Path) -> None:
         (work_root / name).mkdir(parents=True, exist_ok=True)
 
     names = [state.name for state in scan_projects(work_root, vault)]
-    assert names == ["HIC_Logistics", "ProjA"]
+    assert names == []
 
     # 项目全集同样不把 .obsidian 当成「文件夹已覆盖」，vault 档案线程照旧可见
     (vault / "projects" / "hr.md").write_text(
@@ -74,7 +74,7 @@ def test_scan_projects_skips_obsidian_and_machine_dirs(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     all_names = [state.name for state in scan_all_projects(work_root, vault)]
-    assert all_names == ["HIC_Logistics", "ProjA", "hr"]
+    assert all_names == ["hr"]
     assert [state.name for state in thread_projects(vault, work_root)] == ["hr"]
 
 

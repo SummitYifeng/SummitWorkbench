@@ -203,7 +203,7 @@ def test_apply_resolves_natural_language_project_alias_to_canonical(tmp_path):
     assert "final-m:n#decision-0" in project.read_text(encoding="utf-8")
 
 
-def test_unresolved_project_applies_to_autocreated_global_inbox(tmp_path):
+def test_unresolved_project_global_inbox_route_is_retired(tmp_path):
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     # 未匹配项目：目标 unresolved、route 全局 inbox，vault 尚无 inbox.md。
@@ -214,13 +214,11 @@ def test_unresolved_project_applies_to_autocreated_global_inbox(tmp_path):
         project=UNRESOLVED,
     )
     refresh_review_page(vault, [entry])
-    _pending(vault)
     report = apply_meeting_review(vault, work, apply=True)
-    assert report.applied == 1
-    assert report.failed == 0
-    inbox = vault / "inbox.md"
-    assert inbox.is_file()  # 兜底落点按需自建
-    assert "final-m:n#action-item-0" in inbox.read_text(encoding="utf-8")
+    assert report.applied == 0
+    assert report.failed == 1
+    assert "已退役" in (report.actions[0].reason or "")
+    assert not (vault / "inbox.md").exists()
 
 
 def test_missing_project_target_stays_with_actionable_hint(tmp_path):
@@ -265,53 +263,14 @@ def _meeting_entry(start_at: str | None = None, end_at: str | None = None) -> Re
     return replace(entry, candidate=replace(entry.candidate, start_at=start_at, end_at=end_at))
 
 
-def test_meeting_route_plan_requires_start_time(tmp_path):
-    vault = tmp_path / "vault"
-    work = tmp_path / "work"
-    refresh_review_page(vault, [_meeting_entry(start_at=None)])
-    report = apply_meeting_review(vault, work)
-    assert report.actions[0].executable is False
-    assert "开始时间" in (report.actions[0].reason or "")
-
-
-def test_meeting_route_apply_creates_event_via_creator(tmp_path):
-    vault = tmp_path / "vault"
-    work = tmp_path / "work"
-    created: dict[str, object] = {}
-
-    def fake_meeting_creator(
-        summary: str, start_at: str | None, end_at: str | None, candidate_id: str
-    ) -> str:
-        created["summary"] = summary
-        created["start_at"] = start_at
-        created["end_at"] = end_at
-        created["candidate_id"] = candidate_id
-        return "ev-1"
-
-    refresh_review_page(
-        vault, [_meeting_entry(start_at="2026-09-10T14:00", end_at="2026-09-10T15:00")]
-    )
-    report = apply_meeting_review(vault, work, apply=True, meeting_creator=fake_meeting_creator)
-    assert report.applied == 1
-    assert created["summary"] == "final-m:n#action-item-0"
-    assert created["start_at"] == "2026-09-10T14:00"
-    assert created["end_at"] == "2026-09-10T15:00"
-    assert created["candidate_id"] == "m:n#action-item-0"
-    # 幂等：审计已完成的 candidate 不再重复创建
-    refresh_review_page(vault, [_meeting_entry(start_at="2026-09-10T14:00")])
-    report = apply_meeting_review(vault, work, apply=True, meeting_creator=fake_meeting_creator)
-    assert report.applied == 0
-    assert len(created) == 4  # 未再调用创建器
-
-
-def test_meeting_route_without_creator_reports_failure(tmp_path):
+def test_retired_meeting_creation_route_is_blocked_without_external_call(tmp_path):
     vault = tmp_path / "vault"
     work = tmp_path / "work"
     refresh_review_page(vault, [_meeting_entry(start_at="2026-09-10T14:00")])
     report = apply_meeting_review(vault, work, apply=True)
-    # 缺少会议创建器 → 条目留在审批页并记失败（与任务创建器同款安全行为）
+    assert report.actions[0].executable is False
+    assert "已退役" in (report.actions[0].reason or "")
     assert report.applied == 0
-    assert report.failed == 1
 
 
 def test_feishu_timeout_is_unknown_and_second_apply_does_not_post_again(tmp_path):

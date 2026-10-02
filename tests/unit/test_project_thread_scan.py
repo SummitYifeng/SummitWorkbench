@@ -59,13 +59,16 @@ def test_scan_projects_skips_all_internal_dirs(tmp_path: Path) -> None:
     (work_root / "_transcripts-inbox").mkdir(parents=True)
     (work_root / "_other-internal").mkdir(parents=True)
 
+    _write_project_main(vault, "ProjA")
     names = [s.name for s in scan_projects(work_root, vault)]
     assert names == ["ProjA"]
     # scan_all 也不包含内部目录
     assert [s.name for s in scan_all_projects(work_root, vault)] == ["ProjA"]
 
 
-def test_thread_projects_lists_folderless_registered_archives(tmp_path: Path) -> None:
+def test_thread_projects_lists_registered_projects_without_scanning_source_folders(
+    tmp_path: Path,
+) -> None:
     work_root = tmp_path / "Work"
     vault = work_root / "_vault"
     # 仓库项目：文件夹 + 同名档案
@@ -75,8 +78,8 @@ def test_thread_projects_lists_folderless_registered_archives(tmp_path: Path) ->
     _write_project_main(vault, "finance_ops", status="active", updated="2026-09-03")
 
     threads = thread_projects(vault, work_root)
-    assert [t.name for t in threads] == ["finance_ops"]
-    t = threads[0]
+    assert [t.name for t in threads] == ["ProjA", "finance_ops"]
+    t = threads[1]
     assert t.is_thread is True
     assert t.registered is True
     assert t.status == "active"
@@ -86,7 +89,7 @@ def test_thread_projects_lists_folderless_registered_archives(tmp_path: Path) ->
 
     all_projects = {s.name: s for s in scan_all_projects(work_root, vault)}
     assert set(all_projects) == {"ProjA", "finance_ops"}
-    assert all_projects["ProjA"].is_thread is False
+    assert all_projects["ProjA"].is_thread is True
     assert all_projects["finance_ops"].is_thread is True
     # 知识线程档案路径 = vault 档案本身（无 Work 文件夹）
     assert all_projects["finance_ops"].path == vault / "projects" / "finance_ops.md"

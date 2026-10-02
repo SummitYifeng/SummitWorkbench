@@ -82,7 +82,6 @@ def diagnostic_snapshot(
             "compatibility": str(context.compatibility),
         },
         "status_summary": _status_summary(context),
-        "sync_counters": _sync_counters(context),
         "thread_activity_consistency": _thread_activity_consistency(context),
         "config_keys": _config_keys(context.provider_config_file()),
         "signature": {"mode": "internal-ad-hoc", "notarized": False},
@@ -113,27 +112,6 @@ def _status_summary(context: Any) -> dict[str, object]:
             "failed": status.count(ProcessingState.FAILED),
             "pending_review": status.backlog.count,
             "budget_over_soft_limit": status.budget.over_soft_limit,
-        }
-    except Exception:
-        return {"state": "unavailable"}
-
-
-def _sync_counters(context: Any) -> dict[str, object]:
-    try:
-        from summit_workbench.workflows import sync_coordinator
-
-        snapshot = sync_coordinator.current_snapshot(
-            context.vault_dir,
-            home=context.active_workspace.home if context.active_workspace else None,
-            workspace_id=context.workspace_id,
-            backend_kind=context.git_backend_kind,
-            context=context.active_workspace,
-        )
-        return {
-            "state": snapshot.state,
-            "ahead": snapshot.ahead,
-            "behind": snapshot.behind,
-            "pending_commits": snapshot.pending_commits,
         }
     except Exception:
         return {"state": "unavailable"}

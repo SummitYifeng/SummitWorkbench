@@ -31,13 +31,19 @@ def _project_target(dependencies: RouteDependencies, name: str) -> tuple[bool, s
         return False, f"非法项目名：{name}"
     if is_internal_dirname(name):
         return False, f"{name} 是系统内部目录，不能作为项目操作"
-    folder = context.work_root / name
-    if folder.is_dir():
-        return True, ""
     registry = load_project_registry(context.vault_dir)
     if name in registry.canonical:
         return True, ""
     return False, f"work_root 下没有该项目文件夹，vault 中也没有 {name} 的档案"
+
+
+def _project_write_paths(vault_dir: Path, name: str) -> tuple[Path, ...]:
+    """Include the project page and its scaffold in the local mutation contract."""
+    return (
+        vault_dir / "projects" / f"{name}.md",
+        vault_dir / name / "notes" / ".gitkeep",
+        vault_dir / name / "sources" / ".gitkeep",
+    )
 
 
 def register_project_read_routes(dependencies: RouteDependencies) -> None:
@@ -82,6 +88,7 @@ def register_project_write_routes(
         path = context.vault_dir / "projects" / f"{project}.md"
 
         def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
+            from summit_workbench.domain.approval import has_valid_approval
             from summit_workbench.repositories.note_status import update_note_status
             from summit_workbench.repositories.vault import load_note as _load_note
 
@@ -89,9 +96,14 @@ def register_project_write_routes(
             status = note.meta.get("status")
             if not isinstance(status, str):
                 raise ValueError(f"项目档案无效：{project}")
+            was_approved = has_valid_approval(note.meta, note.body)
             update_note_status(
                 context.vault_dir, path, status, extra={"title": title, "updated": context.today()}
             )
+            if was_approved:
+                from summit_workbench.repositories.approval import approve_markdown
+
+                approve_markdown(path, operation_id=_operation_id)
             return LocalMutationOutcome(path, (path,))
 
         try:
@@ -116,7 +128,8 @@ def register_project_write_routes(
             result = run_mutation(
                 "projects/activate",
                 lambda _operation_id: LocalMutationOutcome(
-                    (path := ensure_project_active(context.vault_dir, name)), (path,)
+                    ensure_project_active(context.vault_dir, name),
+                    _project_write_paths(context.vault_dir, name),
                 ),
             )
         except (ValueError, FileExistsError) as exc:
@@ -141,7 +154,8 @@ def register_project_write_routes(
             result = run_mutation(
                 "projects/archive",
                 lambda _operation_id: LocalMutationOutcome(
-                    (path := archive_project(context.vault_dir, name)), (path,)
+                    archive_project(context.vault_dir, name),
+                    _project_write_paths(context.vault_dir, name),
                 ),
             )
         except (ValueError, FileExistsError) as exc:
@@ -163,22 +177,13 @@ def register_project_write_routes(
             return {"ok": False, "message": "请输入项目 ID"}
         if is_internal_dirname(project_id):
             return {"ok": False, "message": "项目 ID 不能以下划线开头（保留给系统内部目录）"}
-        if (context.work_root / project_id).is_dir():
-            return {
-                "ok": False,
-                "message": f"Work 下已有同名文件夹 {project_id}，请用「加入工作台」建档",
-            }
         aliases = [alias.strip() for alias in payload.aliases if alias.strip()]
         try:
             result = run_mutation(
                 "projects/create",
                 lambda _operation_id: LocalMutationOutcome(
-                    (
-                        path := create_project_note(
-                            context.vault_dir, project_id, aliases=aliases or None
-                        )
-                    ),
-                    (path,),
+                    (create_project_note(context.vault_dir, project_id, aliases=aliases or None)),
+                    _project_write_paths(context.vault_dir, project_id),
                 ),
             )
         except (ValueError, FileExistsError) as exc:

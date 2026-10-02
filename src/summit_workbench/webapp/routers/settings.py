@@ -9,39 +9,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 
-from summit_workbench import __version__
-from summit_workbench.domain.automation import (
-    AUTOMATION_UNAVAILABLE_REASON,
-    AutomationJob,
-    automation_is_supported,
-)
 from summit_workbench.webapp import feishu_authorization as _feishu_authorization
 from summit_workbench.webapp.api import (
-    AcceptancePreflightPayload,
-    AutomationRunPayload,
-    AutomationSettingsPayload,
     DoctorPayload,
-    GitRemoteNormalizationPayload,
-    GitRemoteNormalizationPlanPayload,
-    GitRemoteRollbackPayload,
     ProfileRemovePayload,
     ProfileSwitchCommitPayload,
     ProfileSwitchPayload,
     ProviderSettingsPayload,
 )
-from summit_workbench.webapp.build_info import BuildInfoError, WebBuildInfo, discover_build_number
+from summit_workbench.webapp.build_info import WebBuildInfo
 from summit_workbench.webapp.dependencies import RouteDependencies
-from summit_workbench.webapp.errors import error_payload
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
 from summit_workbench.webapp.routers import settings_connections as _settings_connections
 from summit_workbench.webapp.routers.settings_connections import (
     register_restricted_connection_routes,
     register_settings_connection_routes,
 )
-from summit_workbench.workflows.acceptance_preflight import acceptance_preflight
 from summit_workbench.workflows.profile_settings import (
     ProfileSettingsError,
     ProfileSwitchPlan,
@@ -50,13 +35,6 @@ from summit_workbench.workflows.profile_settings import (
     prepare_profile_switch,
     remove_local_profile,
     update_provider_settings,
-)
-from summit_workbench.workflows.remote_normalization import (
-    RemoteNormalizationError,
-    RemoteNormalizationPlan,
-    apply_remote_normalization,
-    preview_remote_normalization,
-    rollback_remote_normalization,
 )
 
 _AuthorizationStates = _feishu_authorization.AuthorizationStates
@@ -85,7 +63,6 @@ def register_settings_routes(
     app = dependencies.app
     ctx = dependencies.context
     switch_plans: dict[str, object] = {}
-    remote_normalization_plans: dict[str, RemoteNormalizationPlan] = {}
 
     def _settings_home() -> Path:
         return ctx.active_workspace.home if ctx.active_workspace else Path.home()
@@ -102,236 +79,6 @@ def register_settings_routes(
                 ctx.active_workspace.device_id if ctx.active_workspace is not None else None
             ),
             "profiles": [item.as_dict() for item in summaries],
-        }
-
-    @app.post("/api/settings/acceptance-preflight", response_model=None)
-    def settings_acceptance_preflight(
-        request: Request, _payload: AcceptancePreflightPayload
-    ) -> dict[str, object] | JSONResponse:
-        """Run the read-only P1-07D gate and return a copyable redacted report."""
-        if ctx.active_workspace is None or ctx.workspace_id is None:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="workspace_not_configured",
-                    message="只有 active workspace 可以运行验收预检",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        try:
-            try:
-                web_info = build_info()
-                frontend_build = web_info.frontend_build
-                git_revision = web_info.git_revision
-            except BuildInfoError:
-                frontend_build = None
-                git_revision = None
-            report = acceptance_preflight(
-                ctx.vault_dir,
-                home=ctx.active_workspace.home,
-                workspace_id=ctx.workspace_id,
-                app_version=__version__,
-                backend_kind=ctx.git_backend_kind or "dulwich",
-                build_number=discover_build_number(),
-                frontend_build=frontend_build,
-                git_revision=git_revision,
-            )
-        except Exception:  # noqa: BLE001 - report boundary must stay redacted
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="acceptance_preflight_failed",
-                    message="验收预检无法完成；请查看本机诊断，不会显示凭据或远端密钥",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        return {
-            "ok": report.ok,
-            "workspace_id": report.workspace_id,
-            "app_version": report.app_version,
-            "checks": [item.__dict__ for item in report.checks],
-            "report": report.text,
-        }
-
-    @app.post("/api/settings/git/remote/preview", response_model=None)
-    def settings_git_remote_preview(
-        request: Request, payload: GitRemoteNormalizationPayload
-    ) -> dict[str, object] | JSONResponse:
-        """Validate a candidate HTTPS origin in a temporary clone; no local mutation."""
-        if ctx.active_workspace is None or ctx.workspace_id is None:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="workspace_not_configured",
-                    message="只有 active workspace 可以规范化 Git remote",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        try:
-            from pydantic import SecretStr
-
-            plan = preview_remote_normalization(
-                ctx.vault_dir,
-                workspace_id=ctx.workspace_id,
-                username=payload.git_username,
-                pat=SecretStr(payload.pat),
-                candidate_url=payload.candidate_url,
-                home=ctx.active_workspace.home,
-                backend_kind=ctx.git_backend_kind or "dulwich",
-            )
-        except RemoteNormalizationError as exc:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
-                ),
-            )
-        remote_normalization_plans[plan.plan_id] = plan
-        return {
-            "ok": True,
-            "plan_id": plan.plan_id,
-            "workspace_id": plan.workspace_id,
-            "old_url": plan.old_url,
-            "candidate_url": plan.candidate_url,
-            "branch": plan.branch,
-            "candidate_fetched": plan.candidate.fetched,
-            "candidate_ahead": plan.candidate.ahead,
-            "candidate_behind": plan.candidate.behind,
-            "note": "预览未修改 origin、profile、vault、提交、推送或 Keychain",
-        }
-
-    @app.post("/api/settings/git/remote/apply", response_model=None)
-    def settings_git_remote_apply(
-        request: Request, payload: GitRemoteNormalizationPlanPayload
-    ) -> dict[str, object] | JSONResponse:
-        """Revalidate a preview then atomically apply origin/profile/keychain."""
-        if ctx.active_workspace is None or ctx.workspace_id is None:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="workspace_not_configured",
-                    message="只有 active workspace 可以规范化 Git remote",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        plan = remote_normalization_plans.get(payload.plan_id)
-        if plan is None or plan.workspace_id != ctx.workspace_id:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="normalization_plan_missing",
-                    message="转换预览已失效，请重新预览",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        try:
-            from pydantic import SecretStr
-
-            transaction = apply_remote_normalization(
-                ctx.vault_dir,
-                plan,
-                username=payload.git_username,
-                pat=SecretStr(payload.pat),
-                home=ctx.active_workspace.home,
-                backend_kind=ctx.git_backend_kind or "dulwich",
-            )
-        except RemoteNormalizationError as exc:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
-                ),
-            )
-        remote_normalization_plans.pop(payload.plan_id, None)
-        return {
-            "ok": True,
-            "transaction_id": transaction.transaction_id,
-            "old_url": transaction.old_url,
-            "new_url": transaction.new_url,
-            "note": "origin/profile/Keychain 已更新；未提交、未推送、未修改 vault 内容",
-        }
-
-    @app.post("/api/settings/git/remote/rollback", response_model=None)
-    def settings_git_remote_rollback(
-        request: Request, payload: GitRemoteRollbackPayload
-    ) -> dict[str, object] | JSONResponse:
-        """Rollback the last applied remote normalization transaction."""
-        if not payload.confirmed or ctx.active_workspace is None or ctx.workspace_id is None:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="confirmation_required",
-                    message="请明确确认回滚当前 remote 转换",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        try:
-            transaction = rollback_remote_normalization(
-                ctx.vault_dir,
-                workspace_id=ctx.workspace_id,
-                home=ctx.active_workspace.home,
-                backend_kind=ctx.git_backend_kind or "dulwich",
-            )
-        except RemoteNormalizationError as exc:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
-                ),
-            )
-        return {
-            "ok": True,
-            "transaction_id": transaction.transaction_id,
-            "restored_url": transaction.old_url,
-            "note": "origin/profile 已恢复；未提交、未推送、未修改 vault 内容",
-        }
-
-    @app.post("/api/settings/git/remote/publish", response_model=None)
-    def settings_git_remote_publish(
-        request: Request, payload: GitRemoteNormalizationPayload
-    ) -> dict[str, object] | JSONResponse:
-        """G2：把还没有 origin 的本地工作台首次发布到一个空的 HTTPS 远端。
-
-        与「预览 HTTPS 转换」互补：那条路径要求工作台**已有** origin+upstream；
-        这条路径用于"本地已存在、远端尚未创建"的工作台。校验远端为空且可推送后，
-        add origin → 首次 push → 写 profile/Keychain；push 之前失败会移除 origin。
-        """
-        if ctx.active_workspace is None or ctx.workspace_id is None:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code="workspace_not_configured",
-                    message="只有 active workspace 可以首次发布到远端",
-                    operation_id=dependencies.operation_id(request),
-                ),
-            )
-        try:
-            from pydantic import SecretStr
-
-            from summit_workbench.workflows.remote_publish import publish_workspace_to_remote
-
-            result = publish_workspace_to_remote(
-                ctx.vault_dir,
-                workspace_id=ctx.workspace_id,
-                username=payload.git_username,
-                pat=SecretStr(payload.pat),
-                candidate_url=payload.candidate_url,
-                home=ctx.active_workspace.home,
-                backend_kind=ctx.git_backend_kind or "dulwich",
-            )
-        except RemoteNormalizationError as exc:
-            return JSONResponse(
-                status_code=409,
-                content=error_payload(
-                    code=exc.code, message=str(exc), operation_id=dependencies.operation_id(request)
-                ),
-            )
-        return {
-            "ok": True,
-            "remote_url": result.remote_url,
-            "branch": result.branch,
-            "head": result.head,
-            "note": "origin 与 upstream 已绑定并完成首次推送；未修改 vault 内容",
         }
 
     @app.post("/api/settings/profile/prepare", response_model=None)
@@ -411,43 +158,12 @@ def register_settings_routes(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc
 
-    def _automation_settings_payload() -> dict[str, object]:
-        from summit_workbench.repositories.automation_settings import load_automation_settings
-
-        if ctx.workspace_id is None:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
-            )
-        try:
-            settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
-            ) from exc
-        jobs: dict[str, object] = {}
-        for job in AutomationJob:
-            schedule = settings.for_job(job)
-            item = schedule.model_dump(mode="json")
-            supported = automation_is_supported(job)
-            item["supported"] = supported
-            item["unavailable_reason"] = None if supported else AUTOMATION_UNAVAILABLE_REASON
-            jobs[job.value] = item
-        return {
-            "ok": True,
-            "workspace_id": settings.workspace_id,
-            "jobs": jobs,
-        }
-
-    # 只读：把「每个任务实际用的模型参数」摊开给用户看。
-    # 动机（2026-09-18）：长逐字稿结构化失败的真因藏在 max_output_tokens / thinking 里，
-    # 而设置页只让填 model/base_url —— 用户没有任何地方能看到生效值，只能翻代码。
     _CAPABILITY_PURPOSE: dict[str, str] = {
         "meeting": "上传逐字稿 → 结构化笔记",
         "ranking": "晨间简报 / 每周复盘的行动排序",
-        "capture": "「记点什么」一句话分类",
-        "digest": "线程推进日志摘要 / AI 产物索引",
-        "review": "预留（当前无模型调用）",
+        "capture": "显式整理输入",
+        "digest": "显式整理日志 / 产物",
+        "review": "审批内容整理",
     }
 
     @app.get("/api/settings/model-parameters", response_model=None)
@@ -468,7 +184,7 @@ def register_settings_routes(
                     config_file=ctx.provider_config_file(),
                     workspace_id=ctx.workspace_id,
                 )
-            except Exception:  # noqa: BLE001 - 读不到就标注，不让设置页整页失败
+            except Exception:  # noqa: BLE001 - keep the settings page available.
                 items.append(
                     {
                         "capability": capability,
@@ -495,87 +211,9 @@ def register_settings_routes(
         return {
             "ok": True,
             "workspace_id": ctx.workspace_id,
-            # 「同一个输出预算被思考和答案共用」这条口径必须显示给用户，否则改大
-            # max_output_tokens 的动机看不出来。
             "note": "思考模式的推理 token 与最终答案共用 max_output_tokens；"
             "抽取/摘要/分类类任务建议 thinking=disabled。",
             "items": items,
-        }
-
-    @app.get("/api/settings/automation", response_model=None)
-    def settings_automation() -> dict[str, object]:
-        return _automation_settings_payload()
-
-    @app.put("/api/settings/automation", response_model=None)
-    def update_settings_automation(payload: AutomationSettingsPayload) -> dict[str, object]:
-        from summit_workbench.repositories.automation_settings import (
-            automation_job_lock,
-            load_automation_settings,
-            save_automation_settings,
-        )
-
-        if ctx.workspace_id is None:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
-            )
-        job = AutomationJob(payload.job)
-        if not automation_is_supported(job) and payload.enabled:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "automation_not_supported",
-                    "message": AUTOMATION_UNAVAILABLE_REASON,
-                },
-            )
-        try:
-            with automation_job_lock(ctx.workspace_id, job, home=_settings_home(), timeout=2.0):
-                settings = load_automation_settings(ctx.workspace_id, home=_settings_home())
-                current = settings.for_job(job)
-                settings.jobs[job] = current.model_copy(
-                    update={
-                        "enabled": payload.enabled,
-                        "hour": payload.hour,
-                        "minute": payload.minute,
-                        "weekdays": sorted(set(payload.weekdays)),
-                        "next_run_at": None,
-                    }
-                )
-                save_automation_settings(settings, home=_settings_home())
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=409, detail={"code": "automation_settings_invalid", "message": str(exc)}
-            ) from exc
-        return {"ok": True, "job": settings.jobs[job].model_dump(mode="json")}
-
-    @app.post("/api/settings/automation/run", response_model=None)
-    def run_settings_automation(
-        request: Request, payload: AutomationRunPayload
-    ) -> dict[str, object] | JSONResponse:
-        from summit_workbench.workflows.automation_worker import run_automation_job
-
-        if ctx.active_workspace is None:
-            raise HTTPException(
-                status_code=409,
-                detail={"code": "workspace_not_found", "message": "当前没有 active workspace"},
-            )
-        job = AutomationJob(payload.job)
-        if not automation_is_supported(job):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "automation_not_supported",
-                    "message": AUTOMATION_UNAVAILABLE_REASON,
-                },
-            )
-        # 「立即运行」是人工触发，不应被当天已执行过的调度记录拦截；
-        # 定时 worker 仍使用默认的 schedule due 门控。
-        result = run_automation_job(ctx.active_workspace, job, force=True)
-        # secondary/未启用的「跳过」是预期结果，不是错误：返回 ok=true 让前端以提示而非
-        # 报错呈现（P1-07D 要求 Air 自动化安全跳过，绝不运行定时 writer）。
-        return {
-            "ok": result.status.value in {"success", "degraded", "skipped", "not-primary"},
-            **result.as_dict(),
         }
 
     @app.post("/api/settings/doctor", response_model=None)

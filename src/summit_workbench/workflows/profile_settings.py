@@ -10,7 +10,6 @@ from pydantic import SecretStr
 
 from summit_workbench import __version__
 from summit_workbench.config.app_support import app_support_dir, runtime_dir
-from summit_workbench.config.git_credentials import normalize_git_username, strip_credentials
 from summit_workbench.config.locking import workspace_lock
 from summit_workbench.config.paths import resolve_work_paths
 from summit_workbench.config.secrets import (
@@ -25,8 +24,6 @@ from summit_workbench.domain.workspace import (
     LocalProfile,
     evaluate_manifest_compatibility,
 )
-from summit_workbench.repositories.git import GitRepo
-from summit_workbench.repositories.local_sync_state import load_sync_state
 from summit_workbench.repositories.onboarding_draft import clear_onboarding_draft
 from summit_workbench.repositories.profile_registry import (
     active_profile_id,
@@ -54,11 +51,8 @@ class ProfileSummary:
     workspace_short_code: str
     path: str
     compatibility: Compatibility
-    device_role: str
     active: bool
     provider_status: dict[str, str]
-    sync_summary: dict[str, object]
-    remote_url: str | None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -67,11 +61,8 @@ class ProfileSummary:
             "display_name": self.display_name,
             "path": self.path,
             "compatibility": self.compatibility.value,
-            "device_role": self.device_role,
             "active": self.active,
             "provider_status": self.provider_status,
-            "sync_summary": self.sync_summary,
-            "remote_url": self.remote_url,
         }
 
 
@@ -99,23 +90,11 @@ def list_profile_summaries(*, home: Path) -> list[ProfileSummary]:
                 # Other profiles never expose their absolute local path to the UI.
                 path=str(profile.vault_dir) if is_active else profile.vault_dir.name,
                 compatibility=compatibility,
-                device_role=profile.device_role.value,
                 active=is_active,
                 provider_status=_provider_status(profile),
-                sync_summary=_sync_summary(workspace_id, home=home),
-                remote_url=_remote_url(profile),
             )
         )
     return summaries
-
-
-def _remote_url(profile: LocalProfile) -> str | None:
-    """Read the origin URL without network access or userinfo leakage."""
-    try:
-        url = GitRepo(profile.vault_dir, backend_kind="dulwich").remote_url("origin")
-    except Exception:
-        return profile.git_remote_url
-    return strip_credentials(url) if url else profile.git_remote_url
 
 
 def prepare_profile_switch(*, home: Path, target_workspace_id: str) -> ProfileSwitchPlan:
@@ -230,20 +209,11 @@ def _apply_provider_settings(
             "pricing",
         },
         "feishu": {"app_id", "redirect_uri", "scopes", "secret_kind"},
-        "git": {"host", "git_username", "secret_kind"},
     }.get(provider)
     if allowed is None or set(settings) - allowed:
         raise ProfileSettingsError("invalid_provider_settings", "provider 设置包含不支持或秘密字段")
 
     extras = dict(profile.model_extra or {})
-    if provider == "git" and "git_username" in settings:
-        try:
-            settings = {
-                **settings,
-                "git_username": normalize_git_username(str(settings["git_username"])),
-            }
-        except ValueError as exc:
-            raise ProfileSettingsError("invalid_provider_settings", str(exc)) from exc
     section_name = "models" if provider == "model" else provider
     section = (
         dict(extras.get(section_name, {})) if isinstance(extras.get(section_name), dict) else {}
@@ -261,8 +231,6 @@ def _apply_provider_settings(
         section.update({k: v for k, v in settings.items() if k != "secret_kind"})
 
     update: dict[str, object] = {section_name: section}
-    if provider == "git" and "git_username" in settings:
-        update["git_username"] = settings["git_username"]
 
     account: str | None = None
     previous_secret: SecretStr | None = None
@@ -282,10 +250,8 @@ def _apply_provider_settings(
                 str(settings.get("app_id", "")),
                 str(settings.get("secret_kind", "app_secret")),
             )
-        else:
-            account = workspace_account(
-                "git", str(settings.get("host", "")), str(settings.get("git_username", ""))
-            )
+        else:  # provider allowlist above makes this unreachable.
+            raise ProfileSettingsError("invalid_provider_settings", "不支持该 provider 凭据")
         if not account or account.endswith(":"):
             raise ProfileSettingsError(
                 "invalid_provider_settings", "secret 需要完整的 provider 标识"
@@ -340,17 +306,12 @@ def provider_status_for_profile(profile: LocalProfile) -> dict[str, str]:
     status = {
         "model": "configured" if isinstance(extras.get("models"), dict) else "not-configured",
         "feishu": "configured" if isinstance(extras.get("feishu"), dict) else "not-configured",
-        "git": "configured" if profile.git_username else "not-configured",
     }
     if status["model"] == "not-configured" and _keychain_has(
         profile.workspace_id,
         workspace_account("llm", "shared", "shared"),
     ):
         status["model"] = "configured-keychain"
-    if status["git"] == "not-configured":
-        remote = _remote_url(profile)
-        if remote and _git_remote_has_keychain(profile, remote):
-            status["git"] = "configured-keychain"
     return status
 
 
@@ -360,44 +321,3 @@ def _keychain_has(workspace_id: str, account: str) -> bool:
     except CredentialError:
         return False
     return True
-
-
-def _git_remote_has_keychain(profile: LocalProfile, remote: str) -> bool:
-    parsed = _parse_git_remote(remote)
-    if parsed is None:
-        return False
-    host, username = parsed
-    return _keychain_has(profile.workspace_id, workspace_account("git", host, username))
-
-
-def _parse_git_remote(remote: str) -> tuple[str, str] | None:
-    import re
-    from urllib.parse import urlsplit
-
-    match = re.match(r"^[^@/:]+@([^:]+):([^/]+)/.+$", remote.strip())
-    if match:
-        return match.group(1).casefold(), match.group(2).casefold()
-    parsed = urlsplit(remote)
-    if not parsed.hostname:
-        return None
-    parts = parsed.path.strip("/").split("/")
-    if not parts or not parts[0]:
-        return None
-    return parsed.hostname.casefold(), parts[0].casefold()
-
-
-def _sync_summary(workspace_id: str, *, home: Path) -> dict[str, object]:
-    """Return only the short, local sync facts needed by the settings list."""
-    try:
-        snapshot = load_sync_state(workspace_id, home=home)
-    except ValueError:
-        return {"state": "error", "pending_commits": None}
-    if snapshot is None:
-        return {"state": "not-checked", "pending_commits": None}
-    return {
-        "state": snapshot.state.value,
-        "pending_commits": snapshot.pending_commits,
-        "last_sync_at": snapshot.last_sync_at,
-        "remote_checked_at": snapshot.remote_checked_at,
-        "remote_check_status": snapshot.remote_check_status.value,
-    }

@@ -96,7 +96,7 @@ def backend(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> 
     return kind
 
 
-# ───────────── ① 带关联项目：工作树干净 + 提交含项目页 + 关联区块唯一 ─────────────
+# ───────────── ① 带关联项目：写入本地文件 + 关联区块唯一 ─────────────
 
 
 def test_log_with_project_leaves_clean_tree_and_single_related_block(
@@ -112,20 +112,16 @@ def test_log_with_project_leaves_clean_tree_and_single_related_block(
     )
     body = r.json()
 
-    # S-1(a)：写入后工作树干净。**先断言这一条**——即使 API 报错（例如 run_local_mutation
-    # 的 mutation_invariant 事后反查触发），工作树也绝不能脏：那个反查在提交之后才跑，
-    # 只能报错、不能阻止项目页变脏；删掉它，这条断言仍必须能抓住缺陷。
-    assert _porcelain(vault) == ""
     assert r.status_code == 200, body
     assert body["ok"] is True, body
     assert body["projects"] == [_PROJECT]
 
-    # 本次提交必须**同时**包含日志页与关联项目页（缺陷 1：漏列项目页）。
-    message, files = _last_commit_files(vault)
-    assert message.startswith("wb: journal/log")
+    # The local transaction reports every path it changed; Git does not commit workspace data.
+    status = _porcelain(vault)
     log_rel = Path(body["path"]).relative_to(vault).as_posix()
-    assert log_rel in files
-    assert f"projects/{_PROJECT}.md" in files
+    assert log_rel.startswith("logs/")
+    assert "logs/" in status
+    assert f"projects/{_PROJECT}.md" in status
 
     # 项目页确实被刷新了 activity_at（不是"因为没写才干净"）。
     note = load_note(vault / f"projects/{_PROJECT}.md")
@@ -153,7 +149,7 @@ def test_log_without_project_writes_placeholder_and_clean_tree(
 
     r = client.post("/api/journal/log", json={"did": "不属于任何项目的一天。"})
     body = r.json()
-    assert _porcelain(vault) == ""
+    assert "logs/" in _porcelain(vault)
     assert body["ok"] is True, body
 
     journal = load_note(Path(body["path"]))
@@ -163,9 +159,8 @@ def test_log_without_project_writes_placeholder_and_clean_tree(
     assert [h for h in headings if h in _RELATED_HEADINGS] == ["关联"]
     assert len(headings) == len(set(headings)), headings
     # 无项目 ⇒ 不得凭空出现项目页改动。
-    message, files = _last_commit_files(vault)
-    assert message.startswith("wb: journal/log")
-    assert files == {Path(body["path"]).relative_to(vault).as_posix()}
+    assert "logs/" in _porcelain(vault)
+    assert "projects/FinanceOps.md" not in _porcelain(vault)
 
 
 # ───────────── ③ 工作思考：工作树干净 + 区块不重复 ─────────────
@@ -184,14 +179,11 @@ def test_thought_leaves_clean_tree_and_no_duplicate_blocks(tmp_path: Path, backe
         },
     )
     body = r.json()
-    assert _porcelain(vault) == ""
+    assert "thinking/" in _porcelain(vault)
     assert r.status_code == 200, body
     assert body["ok"] is True, body
 
-    message, files = _last_commit_files(vault)
-    assert message.startswith("wb: journal/thought")
     rel = Path(body["path"]).relative_to(vault).as_posix()
-    assert files == {rel}
     assert rel.startswith("thinking/")
 
     # 思考页不写项目页（未关联）⇒ 不留任何额外改动；区块同样不得重复。

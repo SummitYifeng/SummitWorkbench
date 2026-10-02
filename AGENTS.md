@@ -13,13 +13,24 @@
 
 ## 所有权边界（硬约束）
 
+### 下一版架构（Phase 1，2026-10-02）
+
+- 新版 SWB 工作库是用户选择的普通本地目录或 OneDrive 目录，以 `.summit-workbench/manifest.json` 和 `conventions.md` 识别；身份跟随 manifest，不跟随绝对路径。
+- 新版工作库写入只使用原子文件操作及库身份锁，不初始化 Git、不自动 commit/push，也不提供工作库 Git 同步、冲突或撤销功能。Git 仅用于 SWB 源码和发布流程。
+- OneDrive 客户端负责文件同步；SWB 不把本地写盘描述为云端已同步。切换设备前由用户确认 OneDrive 已完成同步。
+- 新版正式内容必须带与当前内容版本匹配的批准证明才可进入检索语料；原件、逐字稿、收件箱及辅助状态始终排除。契约见 `docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md`。
+- 本次 Phase 1 只在隔离测试库实施和验收，不得改写或推送既有真实 `_vault`；第二至第四阶段须等本阶段验收通过后再做。
+
 - **SWB 是工作知识库 `_vault` 的唯一写入方**（入库 / 审批 / 写回 / 简报）。
 - **`_vault` 的规范单一真源不在本仓库**，而在另一个仓库：
   `~/Documents/Work/_vault/conventions.md`（其 **§9.1** 是 SWB ↔ SK 的接口契约）。
   写与工作库相关的代码前，**先读它**。
 - **SK（SummitKnowledge）是唯一检索方**，只读工作库；不要在本仓库实现检索/向量化。
 
-## 写入 API（Web 面板 → vault）
+## 旧版写入 API（0.4.x Web 面板 → legacy vault）
+
+以下接口细节记录旧库格式与 0.4.x 行为；0.5.0 起新建工作库按 `SWB-WORKSPACE-CONTRACT-v1.md` 与
+当前实现工作，正式内容先按版本批准证明判定，写操作只落本地文件，不接工作库 Git。
 
 - 日常写入入口（2026-09-19 起，契约 §4.10）：
   - **`POST /api/journal/log`** ——「日常手记」五区块形态。入参 `did` / `remaining` /
@@ -30,7 +41,7 @@
     `conclusion`）都必填；落 `thinking/<YYYYMMDD>-<slug>.md`（目录按需创建，不放 `.gitkeep`），
     **落盘前**过 schema + 检索就绪 + §2.1 叠加必填；`id`/`title`/`summary`/`workstream`(默认 `cross`)
     自动填，`project: global` 或不绑项目。
-- 两条都经 `MutationRuntime.run`（自动 commit；`WB_NO_AUTO_PUSH=1` 关自动推送），落盘复用
+- 旧版两条都经 `MutationRuntime.run`（自动 commit；`WB_NO_AUTO_PUSH=1` 关自动推送），落盘复用
   `repositories/thread_notes.append_work_log`——**不要另写一套落盘**。
 - **收件箱提升通路**（2026-09-19 起，契约 §10）——`inbox.md` 的条目可以被提升为正式内容：
   - **`GET /api/inbox`** ——待处理条目 + 稳定标识 + `#项目` 解析 + capture 机器标记
@@ -247,7 +258,7 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
 被卸，`release-macos.sh` 一路跑到打包步才报 `No module named PyInstaller`）。
 **构建或跑门禁前统一用 `uv sync --extra dev --extra web --extra packaging`。**
 
-**⚠️ 任何经 App / Web 的写入都会自动 commit + push vault**（2026-09-19 真实事故）：
+**⚠️ 旧版 0.4.x 写入曾自动 commit + push legacy vault**（2026-09-19 真实事故；0.5.0 已退役此链路）：
 `webapp/mutation_runtime.py` 的 `_push_after_commit` 把所有写路径（capture / 任务编辑 /
 审批写回……）在 commit 之后接到 `sync_coordinator.push_after_commit`。这是日常使用应有的
 行为，但**验证动作不该顺带推送**——当时闸门加了 `--no-push` 仍被运行中的 App 自动推送，
@@ -260,7 +271,7 @@ PyInstaller 在 `packaging` extra、Web 面板在 `web` extra。裸 `uv sync` �
    **绝不允许把它记成同步成功（`ready`）**——跳过发生在 push 之前，同步状态机不参与。
    默认不设 = 行为完全不变。显式 `/api/sync/run`、`wb sync` 不受影响。
 
-**跨端回归闸门**（跨 SWB × `_vault` × SK，**会写 vault 并花一次极小模型费用**）：
+**legacy vault 跨端回归闸门**（跨旧版 SWB × `_vault` × SK，**会写库并花一次极小模型费用**；新版 Phase 1 不运行）：
 
 ```bash
 # 验证姿势（推荐）：源码服务 + 不自动推送 + 收尾不推

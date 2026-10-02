@@ -44,18 +44,6 @@ import {
   toast,
   viewElement,
 } from './features/shell';
-import {
-  applySyncConflictRecovery,
-  exportSyncConflictPackage,
-  exportSyncSnapshot,
-  mountSyncBanner,
-  previewSyncConflictRecovery,
-  autoSyncIfIdle,
-  refreshSyncBanner,
-  retrySync,
-  showSyncConflictDetails,
-} from './features/sync';
-import { mountUndo, openUndoModal } from './features/undo';
 import { invalidateSourceReads, openSource } from './features/source-reader';
 import {
   mountThreads,
@@ -91,20 +79,12 @@ import {
   submitReviewEdit,
 } from './features/review';
 import {
-  applyGitRemoteNormalization,
   authorizeFeishu,
-  claimAutomationPrimary,
   copyAutomationSummary,
-  downgradeAutomationPrimary,
-  migrateWorkspace,
   mountSettings,
-  previewGitRemoteNormalization,
-  publishWorkspaceToRemote,
   removeProfile,
   renderSettingsView,
   reopenOnboarding,
-  rollbackGitRemoteNormalization,
-  runAcceptancePreflight,
   runSettingsDoctor,
   runSettingsDoctorOnline,
   switchProfile,
@@ -160,7 +140,6 @@ interface StatusState {
   budget: StatusBudget;
   backlog: StatusBacklog;
   feishu_auth: StatusFeishu;
-  automation_not_primary?: boolean;
 }
 interface StatePayload {
   day: string;
@@ -508,9 +487,6 @@ function healthTone(): { tone: string; label: string } {
   if (s.failed > 0 || s.feishu_auth.needs_reauthorize) {
     return { tone: 'bad', label: '有异常待处理' };
   }
-  if (s.automation_not_primary) {
-    return { tone: 'warn', label: '定时自动化未在本机运行 · 去设置接管' };
-  }
   if (s.backlog.active || s.budget.over_soft_limit) {
     return { tone: 'warn', label: '有积压/接近预算' };
   }
@@ -811,34 +787,6 @@ document.addEventListener('click', (ev) => {
     }
     return;
   }
-  if (action === 'sync-retry') {
-    void retrySync();
-    return;
-  }
-  if (action === 'sync-refresh') {
-    void refreshSyncBanner();
-    return;
-  }
-  if (action === 'sync-conflict-details') {
-    void showSyncConflictDetails();
-    return;
-  }
-  if (action === 'sync-conflict-preview') {
-    void previewSyncConflictRecovery();
-    return;
-  }
-  if (action === 'sync-conflict-apply') {
-    void applySyncConflictRecovery();
-    return;
-  }
-  if (action === 'sync-conflict-export') {
-    void exportSyncConflictPackage();
-    return;
-  }
-  if (action === 'sync-export') {
-    void exportSyncSnapshot();
-    return;
-  }
   if (action === 'goto-projects') {
     tab = 'projects';
     render();
@@ -851,44 +799,6 @@ document.addEventListener('click', (ev) => {
   if (action === 'profile-switch') {
     const workspaceId = btn.dataset.workspace ?? '';
     if (workspaceId) void switchProfile(workspaceId).catch((err: unknown) => toast(err, 'err'));
-    return;
-  }
-  if (action === 'workspace-migrate') {
-    const deviceId = btn.dataset.device ?? '';
-    if (deviceId) void migrateWorkspace(deviceId);
-    return;
-  }
-  if (action === 'git-remote-preview') {
-    void previewGitRemoteNormalization();
-    return;
-  }
-  if (action === 'git-remote-apply') {
-    const planId = btn.dataset.plan ?? '';
-    if (planId) void applyGitRemoteNormalization(planId);
-    return;
-  }
-  if (action === 'git-remote-rollback') {
-    void rollbackGitRemoteNormalization();
-    return;
-  }
-  if (action === 'git-remote-publish') {
-    void publishWorkspaceToRemote();
-    return;
-  }
-  if (action === 'acceptance-preflight') {
-    void runAcceptancePreflight();
-    return;
-  }
-  if (action === 'primary-claim') {
-    void claimAutomationPrimary(
-      btn.dataset.device ?? '',
-      btn.dataset.takeover === 'true',
-      btn.dataset.generation ?? '',
-    );
-    return;
-  }
-  if (action === 'primary-downgrade') {
-    void downgradeAutomationPrimary();
     return;
   }
   if (action === 'profile-remove') {
@@ -1180,20 +1090,11 @@ export function mountLegacyWorkbench(): void {
       render();
       if (changed && next === 'review') void refreshReview();
     },
-    onSync: () => { void retrySync(); },
     onRefresh: () => {
-      void Promise.all([refreshAll(), refreshSyncBanner()]).then(([result]) => {
+      void refreshAll().then((result) => {
         toast(result.state && result.review ? '已刷新' : '刷新未完成：保留了可用的旧数据', result.state && result.review ? 'ok' : 'err');
       });
     },
-    onCheckUpdates: () => {
-      if (sendNativeMessage({ type: 'checkForUpdates' })) {
-        toast('正在检查更新', 'info');
-      } else {
-        toast('更新检查仅支持已安装的 macOS App', 'info');
-      }
-    },
-    onUndo: () => { void openUndoModal(); },
     onQuit: () => {
       if (!window.confirm('确定退出工作台并停止本地服务？')) return;
       if (sendNativeMessage({ type: 'quit' })) return;
@@ -1220,7 +1121,6 @@ export function mountLegacyWorkbench(): void {
       }
     }).catch(() => { /* keep the unresolved receipt visible; the user may retry reading */ });
   }
-  mountUndo({ refreshAll });
   mountTodayActions({
     api,
     mutation,
@@ -1269,11 +1169,6 @@ export function mountLegacyWorkbench(): void {
     workspaceId: () => remoteVersion?.workspace_id,
     persistEntityDraft,
   });
-  mountSyncBanner({
-    refreshState,
-    workspaceId: () => remoteVersion?.workspace_id,
-    persistEntityDraft,
-  });
   // 来源弹层的在途读取必须在关闭时作废（§4.4）；原由 mountAsk 注册，问答下线后在此注册。
   registerModalCloseHook(invalidateSourceReads);
   // 连接恢复后重查一次版本（原 apiClient 的 onSuccess 回调，§4.5）。
@@ -1286,8 +1181,6 @@ export function mountLegacyWorkbench(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     void checkVersion('visible');
-    // D6：回到前台时先读状态，若仍是 ready（干净、无保护态）就真正拉一次远端。
-    void autoSyncIfIdle();
   });
 
   async function startApp(): Promise<void> {
@@ -1306,14 +1199,11 @@ export function mountLegacyWorkbench(): void {
 
   // 60 秒自动刷新只发生在可见页；隐藏页暂停读取，回到前台时由 visibilitychange 立即补一次。
   void startApp();
-  // D6：启动后也拉一次——只读为主的设备打开即是新的。
-  void autoSyncIfIdle();
   window.setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     void checkVersion('interval');
   }, 60000);
   window.setInterval(() => {
     if (document.visibilityState !== 'visible') return;
-    void autoSyncIfIdle();
   }, 60000);
 }

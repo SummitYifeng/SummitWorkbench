@@ -17,7 +17,7 @@ from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
 from summit_workbench.domain.markdown_blocks import chunk_markdown
-from summit_workbench.domain.review import CandidateDecision, RouteTarget
+from summit_workbench.domain.review import APPROVAL_ROUTES, CandidateDecision, RouteTarget
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -205,6 +205,8 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
 
     @app.post("/api/review/edit", response_model=None)
     def api_edit(payload: EditPayload) -> dict[str, object]:
+        if payload.route and payload.route not in {route.value for route in APPROVAL_ROUTES}:
+            return {"ok": False, "message": "请选择沉淀知识、更新项目或创建飞书任务"}
         try:
 
             def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
@@ -284,6 +286,8 @@ def register_review_page_routes(
         sink_target: str = Form("", max_length=512),
     ) -> RedirectResponse:
         try:
+            if route and RouteTarget(route) not in APPROVAL_ROUTES:
+                raise ValueError("请选择沉淀知识、更新项目或创建飞书任务")
 
             def mutate(_operation_id: str) -> LocalMutationOutcome[None]:
                 update_fields(

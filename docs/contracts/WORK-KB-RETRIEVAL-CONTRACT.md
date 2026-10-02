@@ -1,5 +1,7 @@
 # 工作知识库检索契约（WORK-KB-RETRIEVAL-CONTRACT）
 
+> **新版工作区补充（2026-10-02）**：新版工作库可以是用户选择的任意本地或 OneDrive 目录，不再要求工作库是 Git 仓库。跨设备同步由 OneDrive 客户端负责；本地写盘不等于云端同步完成。新版正式内容需具有匹配当前版本的批准证明才能检索，契约定义见 [SWB-WORKSPACE-CONTRACT-v1](SWB-WORKSPACE-CONTRACT-v1.md)。真实旧 `_vault` 的原有目录与 §9.1 接口契约继续按其自身 `conventions.md` 维护；第一阶段不得迁移或改写它。
+
 > 状态：生效（v0.4.9 起）。
 > 适用范围：`~/Documents/Work/_vault/`（下称**工作库**）的全部 Markdown。
 > 双方：**SummitWorkbench（SWB）是写入方**，**SummitKnowledge（SK）是检索方**。

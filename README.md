@@ -1,5 +1,9 @@
 # SummitWorkbench
 
+## 下一版工作台改造计划
+
+2026-10-02 按 [SWB 文件夹工作台改造与四阶段验收计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 实施第一阶段。新工作库使用本地目录与版本化契约，写入不依赖工作库 Git；OneDrive 负责跨设备同步，SK 仍负责只读检索。第一阶段验收与包身份记录见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。下文中的 0.4.x 交付说明是历史记录。
+
 ## 2026-09-19 交付状态（本地 `main`）
 
 **本次交付**：**`0.4.10`**，已发布到更新通道（tag `v0.4.10`，提交 `4e91469`）——
