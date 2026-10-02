@@ -301,6 +301,9 @@ function restoreModalDraft(event: Event): void {
       form.querySelectorAll<HTMLInputElement>('input[name="log-proj"]').forEach((input) => {
         input.checked = value.includes(input.value);
       });
+      form.querySelectorAll<HTMLInputElement>('input[name="journal-project"]').forEach((input) => {
+        input.checked = value.includes(input.value);
+      });
       continue;
     }
     const elementId = ids[type]?.[field] ?? field;
@@ -438,13 +441,13 @@ const persistDraftInput = (event: Event): void => {
     values.remaining = (form.querySelector('#journal-remaining') as HTMLTextAreaElement | null)?.value ?? '';
     values.reflection = (form.querySelector('#journal-reflection') as HTMLTextAreaElement | null)?.value ?? '';
     values.blockers = (form.querySelector('#journal-blockers') as HTMLTextAreaElement | null)?.value ?? '';
-    values.projects = Array.from(form.querySelector<HTMLSelectElement>('#journal-log-projects')?.selectedOptions ?? []).map((option) => option.value);
+    values.projects = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="journal-project"]:checked')).map((input) => input.value);
   }
   if (type === 'journal-thought') {
     for (const [field, elementId] of Object.entries({ problem: 'journal-problem', thinking: 'journal-thinking', conclusion: 'journal-conclusion', summary: 'journal-summary' })) {
       values[field] = (form.querySelector('#' + elementId) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? '';
     }
-    values.projects = Array.from(form.querySelector<HTMLSelectElement>('#journal-thought-projects')?.selectedOptions ?? []).map((option) => option.value);
+    values.projects = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="journal-project"]:checked')).map((input) => input.value);
   }
   if (type === 'inbox-promote') {
     values.target = form.querySelector<HTMLInputElement>('input[name="inbox-target"]:checked')?.value ?? 'thought';

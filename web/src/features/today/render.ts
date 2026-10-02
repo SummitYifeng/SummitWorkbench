@@ -51,7 +51,7 @@ function importDrawer(open: boolean, importing: boolean, results: ImportReceipt[
       '<span class="hint">' + (result.bytes / 1024 / 1024).toFixed(2) + ' MiB · ' + esc(result.message) + '</span>' +
       (result.details?.length ? '<ul>' + result.details.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '') +
       (result.estimate?.crosses_soft_budget ? '<span class="hint">本次估算接近软预算，仅提示，不阻断导入。</span>' : '') +
-      (result.status === 'error' && result.jobId ? '<button class="ghost import-retry" data-action="import-retry" data-job-id="' + esc(result.jobId) + '">继续处理</button>' : '') +
+      ((result.status === 'error' || result.status === 'partial') && result.jobId ? '<button class="ghost import-retry" data-action="import-retry" data-job-id="' + esc(result.jobId) + '">' + (result.status === 'partial' ? '继续处理失败项' : '继续处理') + '</button>' : '') +
       '</div>'
     ).join('') + '</div>' : '';
   return '<div class="import-drawer' + (open ? ' open' : '') + '" id="import-drawer"' +
@@ -75,14 +75,14 @@ export function todayHtml(options: TodayRenderOptions, captureValue: string): st
   const briefBody = state.brief
     ? briefCardHtml(state.brief, state.day, projectNames)
     : emptyBriefCardHtml();
-  const capture = '<div class="today-tool today-capture"><h3>记点什么</h3><form id="capture-form" autocomplete="off">' +
-    '<input id="capture-input" type="text" placeholder="记点什么…（想法 / 承诺，可用 #项目 标注）" value="' +
+  const capture = '<div class="today-tool today-capture"><h3>记一句</h3><p class="hint">快速收下一个想法或承诺，稍后再整理。</p><form id="capture-form" autocomplete="off">' +
+    '<input id="capture-input" type="text" placeholder="写下一句话…（可用 #项目 标注）" value="' +
     esc(captureValue) + '"><button class="primary" type="submit"' + (options.capturing ? ' disabled' : '') + '>' +
     (options.capturing ? '保存中…' : '记入') + '</button></form>' +
-    '<p class="hint">回车即记入全局 inbox；说清「要做什么 + 截止 + #项目」的，AI 会帮你分类。</p>' +
+    '<p class="hint">回车保存。条目会出现在收件箱，之后可以决定放到哪里。</p>' +
     '<div class="row today-journal-actions">' +
-    '<button class="ghost" type="button" data-action="journal-log" title="写今天 / 本周的工作日志（落在 logs/）">写工作日志</button>' +
-    '<button class="ghost" type="button" data-action="journal-thought" title="写一篇工作思考（落在 thinking/，会被检索）">写工作思考</button>' +
+    '<button class="ghost" type="button" data-action="journal-log" title="记录今天的进展、待办和卡点">工作日志</button>' +
+    '<button class="ghost" type="button" data-action="journal-thought" title="整理一个问题、思考过程和结论">工作思考</button>' +
     '</div></div>';
   const header = '<div class="brief-head"><div class="brief-head-main"><p class="kicker">今天</p>' +
     '<h2>' + esc(state.day) + '</h2></div><div class="brief-head-side"><span class="health ' +

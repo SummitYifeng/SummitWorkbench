@@ -24,6 +24,7 @@ import {
   publishWorkspaceToRemote,
   runAutomationFromForm,
 } from './features/settings';
+import { saveModel, verifySavedModel } from './features/settings/render';
 
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
 
@@ -343,6 +344,37 @@ export const automationRunProbe = {
   ranJob: runJobs[0] ?? null,
   nativeMessages: nativeMessages.slice(),
 };
+
+const modelSecret = { value: 'synthetic-model-key' };
+const modelResult = { innerHTML: '' };
+const modelView = { querySelector: (selector) => selector === '#model-secret' ? modelSecret : selector === '#model-result' ? modelResult : null };
+const modelCalls = [];
+let verifyCount = 0;
+const modelActions = {
+  api: async (url, init) => {
+    modelCalls.push({ url, init });
+    if (url.endsWith('/verify') && ++verifyCount === 1) throw new Error('offline');
+    return { ok: true, message: '连接正常' };
+  },
+  mutation: (work) => work(), toast: (message, kind) => toasts.push({ message, kind }), refresh: () => {},
+};
+await saveModel(modelView, modelActions);
+export const modelSaveFailureProbe = { html: modelResult.innerHTML, calls: modelCalls.length, secret: modelSecret.value };
+await verifySavedModel(modelView, modelActions);
+export const modelSavedRetryProbe = { html: modelResult.innerHTML, calls: modelCalls.length, urls: modelCalls.map((call) => call.url) };
+
+const partialFailureView = makeView();
+await renderSettings(partialFailureView, {
+  api: async (url) => {
+    if (url === '/api/settings/profiles') throw new Error('profile read failed');
+    if (url === '/api/settings/automation') throw new Error('automation read failed');
+    if (url === '/api/settings/model-parameters') throw new Error('advanced read failed');
+    if (url === '/api/sync/status') throw new Error('sync read failed');
+    return { status: { feishu_auth: { needs_reauthorize: false } } };
+  },
+  mutation: (work) => work(), toast: () => {}, refresh: () => {},
+});
+export const partialFailureHtml = partialFailureView.innerHTML;
 `;
 
 mkdirSync(tmpDir, { recursive: true });
@@ -472,6 +504,20 @@ try {
     [{ type: 'automationSettingsChanged', enabled: true }],
     'turning the schedule on must tell the native shell to register the helper',
   );
+
+  assert.match(mod.partialFailureHtml, /id="model-card"/, 'core model settings survive an unrelated read failure');
+  assert.match(mod.partialFailureHtml, /<strong>飞书<\/strong>/, 'the Feishu card remains available');
+  assert.match(mod.partialFailureHtml, /工作区信息暂时无法读取/, 'workspace read failure is local to its card');
+  assert.match(mod.partialFailureHtml, /自动化设置暂时无法读取/, 'advanced settings failure is local to advanced settings');
+  assert.match(mod.partialFailureHtml, /模型参数暂时无法读取/, 'read-only parameter failure is localized');
+  assert.match(mod.modelSaveFailureProbe.html, /配置已保存，连接尚未验证/, 'verification failure is distinct from a failed save');
+  assert.match(mod.modelSaveFailureProbe.html, /无需再次粘贴密钥/, 'verification retry does not ask for the secret again');
+  assert.equal(mod.modelSaveFailureProbe.secret, '', 'the saved secret is cleared from the form');
+  assert.match(mod.modelSavedRetryProbe.html, /连接验证通过/, 'retry can confirm the saved configuration');
+  assert.equal(mod.modelSavedRetryProbe.calls, 3, 'retry verifies without saving the credential again');
+  assert.deepEqual(mod.modelSavedRetryProbe.urls, [
+    '/api/settings/provider', '/api/settings/provider/verify', '/api/settings/provider/verify',
+  ]);
 
   console.log('Settings render race tests passed');
 } finally {

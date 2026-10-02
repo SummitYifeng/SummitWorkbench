@@ -59,7 +59,7 @@ try {
     assert.equal((html.match(/class="today-tool /g) || []).length, 2);
     assert.equal((html.match(/class="today-panel/g) || []).length, 3);
     assert.equal((html.match(/id="today-inbox"/g) || []).length, 1);
-    assert.match(html, /记点什么/);
+    assert.match(html, /记一句/);
     assert.match(html, /导入会议纪要/);
     assert.match(html, /id="capture-form"/);
     assert.match(html, /id="capture-input"/);
@@ -69,11 +69,11 @@ try {
     assert.match(html, /id="file-input"/);
     assert.match(html, /id="btn-pick"/);
     assert.match(html, /data-action="run-brief"/);
-    // 「今日」页两个新入口（写工作日志 / 写工作思考）必须在「记点什么」附近可见
+    // 「今日」页三个清楚的记录入口必须可见
     assert.match(html, /data-action="journal-log"/);
     assert.match(html, /data-action="journal-thought"/);
-    assert.match(html, /写工作日志/);
-    assert.match(html, /写工作思考/);
+    assert.match(html, />工作日志</);
+    assert.match(html, />工作思考</);
     const taskAt = html.indexOf('class="bf-sec-title">待办任务');
     const meetingAt = html.indexOf('class="bf-sec-title">会议');
     const actionAt = html.indexOf('class="bf-sec-title">需要行动');

@@ -35,12 +35,14 @@ struct ServiceSupervisorTests {
         let stuck = try child(ignoresSIGTERM: true)
         let stuckDone = DispatchSemaphore(value: 0)
         var completions = 0
+        var cleanedBeforeCompletion = false
         BoundedProcessTerminator.stop(
             stuck,
             owns: { stuck.isRunning },
             gracefulTimeout: 0.2
         ) {
             completions += 1
+            cleanedBeforeCompletion = !stuck.isRunning
             stuckDone.signal()
         }
         BoundedProcessTerminator.stop(
@@ -54,8 +56,21 @@ struct ServiceSupervisorTests {
         expect(stuckDone.wait(timeout: .now() + 2) == .success, "stuck child must have a bounded completion")
         expect(stuckDone.wait(timeout: .now() + 0.2) == .timedOut, "duplicate stop must not complete twice")
         expect(completions == 1, "stop completion must be called exactly once")
+        expect(cleanedBeforeCompletion, "restart may proceed only after the stuck child is terminated")
         if stuck.isRunning { kill(stuck.processIdentifier, SIGKILL) }
         stuck.waitUntilExit()
+
+        let unowned = try child(ignoresSIGTERM: false)
+        let unownedDone = DispatchSemaphore(value: 0)
+        BoundedProcessTerminator.stop(
+            unowned,
+            owns: { false },
+            gracefulTimeout: 0.2
+        ) { unownedDone.signal() }
+        expect(unownedDone.wait(timeout: .now() + 1) == .success, "identity mismatch must not block shutdown")
+        expect(unowned.isRunning, "identity mismatch must never signal another process")
+        kill(unowned.processIdentifier, SIGKILL)
+        unowned.waitUntilExit()
         print("native service supervisor lifecycle tests passed")
     }
 }

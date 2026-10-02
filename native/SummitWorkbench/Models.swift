@@ -197,6 +197,7 @@ enum NativeMessage {
     case automationSettingsChanged(enabled: Bool)
     case updateAutoCheckChanged(enabled: Bool)
     case checkForUpdates
+    case chooseWorkspaceFolder
 
     init?(body: Any) {
         guard let dictionary = body as? [String: Any],
@@ -229,6 +230,7 @@ enum NativeMessage {
             guard let enabled = dictionary["enabled"] as? Bool else { return nil }
             self = .updateAutoCheckChanged(enabled: enabled)
         case "checkForUpdates": self = .checkForUpdates
+        case "chooseWorkspaceFolder": self = .chooseWorkspaceFolder
         default: return nil
         }
     }

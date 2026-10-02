@@ -817,3 +817,7 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 .inbox-target-option .hint { margin: 2px 0 0; }
 .modal-draft-close { position: sticky; bottom: 0; margin: 1rem -1rem -1rem; padding: 1rem; border-top: 1px solid var(--border); background: var(--card); box-shadow: 0 -8px 24px rgb(0 0 0 / 10%); }
 .modal-draft-close [data-draft-close-status] { min-height: 1.4em; }
+.project-checklist { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .25rem .75rem; }
+.project-checklist label { display: flex; align-items: center; gap: .45rem; }
+.project-checklist input { width: auto; }
+.journal-count { display: block; margin-top: -.25rem; text-align: right; }

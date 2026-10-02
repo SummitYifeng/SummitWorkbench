@@ -62,6 +62,53 @@
     "method": [
       "GET"
     ],
+    "path": "/api/drafts",
+    "request_fields": [],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "DELETE"
+    ],
+    "path": "/api/drafts/{key}",
+    "request_fields": [
+      "key"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/drafts/{key}",
+    "request_fields": [
+      "key"
+    ],
+    "request_model": null,
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "PUT"
+    ],
+    "path": "/api/drafts/{key}",
+    "request_fields": [
+      "key",
+      "payload"
+    ],
+    "request_model": "DraftPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
     "path": "/api/external-actions",
     "request_fields": [],
     "request_model": null,
@@ -252,6 +299,18 @@
       "payload"
     ],
     "request_model": "OnboardingVaultPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "GET"
+    ],
+    "path": "/api/operations/{request_id}",
+    "request_fields": [
+      "request_id"
+    ],
+    "request_model": null,
     "response_status": 200,
     "error_codes": []
   },

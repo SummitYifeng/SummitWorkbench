@@ -248,8 +248,9 @@ final class ServiceSupervisor {
             let delays: [Double] = [0, 0.1, 0.25, 0.5, 1, 1, 2, 2, 2, 2, 2]
             guard attempt < delays.count else {
                 self.logger.log("service_exited", level: "error", fields: ["reason": "readiness_timeout"])
-                self.terminateOwnedProcessBeforeRetry()
-                self.registerFailureAndMaybeRetry()
+                self.terminateOwnedProcessBeforeRetry { [weak self] in
+                    self?.registerFailureAndMaybeRetry()
+                }
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + delays[attempt]) {
@@ -272,15 +273,34 @@ final class ServiceSupervisor {
     /// compatible response never arrives. Always stop that exact Process
     /// instance before scheduling another one, otherwise retries can leave
     /// orphan servers listening on random ports and collide on runtime.json.
-    private func terminateOwnedProcessBeforeRetry() {
+    private func terminateOwnedProcessBeforeRetry(completion: @escaping () -> Void) {
         guard let child = process, child.isRunning else {
             process = nil
+            completion()
             return
         }
-        RuntimeRecord.remove(forPID: child.processIdentifier)
-        child.terminationHandler = nil
-        child.terminate()
-        process = nil
+        BoundedProcessTerminator.stop(
+            child,
+            owns: { [weak self, weak child] in
+                guard let self, let child else { return false }
+                return self.ownsCurrentProcess(child)
+            },
+            gracefulTimeout: 2.0
+        ) { [weak self, weak child] in
+            DispatchQueue.main.async {
+                guard let self, let child else { return }
+                guard !child.isRunning else {
+                    self.logger.log("service_cleanup_unconfirmed", level: "error",
+                                    fields: ["pid": String(child.processIdentifier)])
+                    self.setState(.conflict)
+                    self.finish(nil)
+                    return
+                }
+                RuntimeRecord.remove(forPID: child.processIdentifier)
+                if self.process === child { self.process = nil }
+                completion()
+            }
+        }
     }
 
     private func registerFailureAndMaybeRetry() {

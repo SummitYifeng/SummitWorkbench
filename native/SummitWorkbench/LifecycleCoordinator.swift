@@ -181,6 +181,8 @@ final class LifecycleCoordinator {
             updateCoordinator?.setAutomaticChecksEnabled(enabled)
         case .checkForUpdates:
             updateCoordinator?.check(manual: true)
+        case .chooseWorkspaceFolder:
+            break // PanelWindowController handles the folder picker locally.
         }
     }
 

@@ -93,7 +93,33 @@ final class PanelWindowController: NSWindowController, WKNavigationDelegate, WKU
             logger.log("native_message_ignored", fields: ["reason": "invalid_message"])
             return
         }
+        if case .chooseWorkspaceFolder = native {
+            chooseWorkspaceFolder()
+            return
+        }
         onMessage?(native)
+    }
+
+    private func chooseWorkspaceFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "选择工作区文件夹"
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            do {
+                let data = try JSONSerialization.data(withJSONObject: ["path": url.path])
+                guard let detail = String(data: data, encoding: .utf8) else { return }
+                DispatchQueue.main.async {
+                    self.webView.evaluateJavaScript(
+                        "window.dispatchEvent(new CustomEvent('wb:folder-selected',{detail:\(detail)}))"
+                    )
+                }
+            } catch {
+                self.logger.log("workspace_folder_selection_failed", level: "error")
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,

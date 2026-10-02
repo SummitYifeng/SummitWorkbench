@@ -1,3 +1,5 @@
+import { workspaceStore } from '../../core/workspace-store';
+
 export interface OperationFeedback {
   id: string;
   status: 'success' | 'partial' | 'failed' | 'unknown' | 'not_found';
@@ -9,9 +11,13 @@ export interface OperationFeedback {
 
 const STORAGE_KEY = 'swb:recent-operation-feedback';
 
+function storageKey(): string {
+  return STORAGE_KEY + ':' + encodeURIComponent(workspaceStore.workspaceId ?? 'unknown');
+}
+
 function readFeedback(): OperationFeedback[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
+    const parsed: unknown = JSON.parse(localStorage.getItem(storageKey()) ?? '[]');
     return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === 'string') : [];
   } catch { return []; }
 }
@@ -93,7 +99,7 @@ function render(): void {
   dismiss.className = 'ghost operation-feedback-dismiss';
   dismiss.textContent = '清除提示';
   dismiss.addEventListener('click', () => {
-    try { localStorage.removeItem(STORAGE_KEY); } catch { /* optional persistence */ }
+    try { localStorage.removeItem(storageKey()); } catch { /* optional persistence */ }
     render();
   });
   root.appendChild(dismiss);
@@ -134,7 +140,7 @@ export function publishOperationFeedback(
     updatedAt: new Date().toISOString(),
   };
   const entries = [entry, ...readFeedback().filter((item) => item.id !== id)].slice(0, 10);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch { /* save must not fail */ }
+  try { localStorage.setItem(storageKey(), JSON.stringify(entries)); } catch { /* save must not fail */ }
   render();
 }
 

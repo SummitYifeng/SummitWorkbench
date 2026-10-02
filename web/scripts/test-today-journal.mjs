@@ -66,6 +66,10 @@ const elements = {
   'journal-summary': { value: '' },
   'journal-thought-projects': { selectedOptions: [{ value: 'beta' }] },
 };
+const logProject = { value: 'alpha', checked: true };
+const thoughtProject = { value: 'beta', checked: true };
+elements['journal-log-form'].querySelectorAll = (selector) => selector === 'input[name="journal-project"]:checked' ? [logProject] : [];
+elements['journal-thought-form'].querySelectorAll = (selector) => selector === 'input[name="journal-project"]:checked' ? [thoughtProject] : [];
 globalThis.HTMLElement = class {};
 globalThis.window = { confirm: () => true };
 globalThis.document = {
@@ -99,6 +103,8 @@ try {
     assert.ok(logModalHtml.includes(label), `log modal has label ${label}`);
   }
   assert.ok(logModalHtml.includes('项目甲'), 'project choices are rendered');
+  assert.ok(logModalHtml.includes('0 / 1500'), 'each log section shows its character limit');
+  assert.ok(logModalHtml.includes('name="journal-project"'), 'project links use a checkbox list');
 
   elements['journal-log-form'].listeners.submit({ preventDefault() {} });
   await tick();
@@ -120,7 +126,7 @@ try {
   assert.equal(elements['modal-backdrop'].hidden, true, 'a successful save closes the modal');
   const okToast = mod.toasts.at(-1);
   assert.equal(okToast.kind, 'ok');
-  assert.match(okToast.message, /logs\/2026-09-19-001\.md/, 'the receipt names the vault path');
+  assert.match(okToast.message, /最近操作结果/, 'the receipt points to the persistent record view');
 
   // ---- 后端拒绝：提示原样上屏、弹层不关 ----
   const refusal = '至少填一段：今天做了什么 / 还剩什么没做 / 今天的一点感悟 / 卡点与需要谁';
@@ -159,7 +165,7 @@ try {
   elements['journal-thought-form'].listeners.submit({ preventDefault() {} });
   await tick();
   assert.equal(elements['modal-backdrop'].hidden, true, 'a successful thought closes the modal');
-  assert.match(mod.toasts.at(-1).message, /thinking\/20260919-ab12\.md/);
+  assert.match(mod.toasts.at(-1).message, /最近操作结果/);
 
   console.log('Today journal entry tests passed');
 } finally {

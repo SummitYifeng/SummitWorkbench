@@ -10,7 +10,7 @@ import type { ImportReceipt, TodayActions } from './types';
 export function createTodayActions(view: HTMLElement): TodayActions {
   const applyJob = (job: { job_id: string; file_name: string; bytes?: number; status: string; stage: string; error?: string | null; result?: { message?: string; candidates?: number } | null }): void => {
     const index = todayUi.importResults.findIndex((item) => item.jobId === job.job_id);
-    const status: ImportReceipt['status'] = job.status === 'succeeded'
+      const status: ImportReceipt['status'] = job.status === 'succeeded'
       ? 'success' : job.status === 'partial' ? 'partial' : job.status === 'failed' ? 'error' : 'processing';
     const message = job.error || job.result?.message || ({
       uploaded: '已上传，等待归档', archived: '已归档，等待结构化', structuring: '正在结构化…',
@@ -152,7 +152,7 @@ export async function retryImport(jobId: string): Promise<void> {
       const receipt = todayUi.importResults.find((item) => item.jobId === jobId);
       if (receipt) {
         receipt.status = 'processing';
-        receipt.message = '已重新排队…';
+        receipt.message = '正在继续处理失败项…';
       }
       void refreshState();
     }
@@ -274,8 +274,8 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
       const draftType = kind === 'task' ? 'task-edit' : 'meeting-edit';
       try { await clearServerDraft(api, draftType, id); }
       catch { /* retain the draft if cleanup cannot be confirmed */ }
+      closeModal();
     }
-    closeModal();
     toast(r.message, r.ok ? 'ok' : 'err');
     if (r.ok) void refreshState();
   } catch (err) {
@@ -298,22 +298,40 @@ function fieldValue(id: string): string {
   return (document.getElementById(id) as HTMLTextAreaElement | HTMLInputElement | null)?.value ?? '';
 }
 
-function selectedProjects(id: string): string[] {
-  const select = document.getElementById(id) as HTMLSelectElement | null;
-  return select ? Array.from(select.selectedOptions).map((option) => option.value) : [];
+function projectCheckboxes(projects: ProjectChoice[]): string {
+  if (!projects.length) return '<p class="hint">暂无已建档项目，可以先不关联。</p>';
+  return '<div class="project-checklist">' + projects.map((project) =>
+    '<label><input type="checkbox" name="journal-project" value="' + esc(project.name) + '"> ' +
+    esc(project.title || project.name) + '</label>',
+  ).join('') + '</div>';
 }
 
-function projectOptions(projects: ProjectChoice[]): string {
-  if (!projects.length) return '<option value="" disabled>（暂无已建档项目）</option>';
-  return projects
-    .map((project) => '<option value="' + esc(project.name) + '">' + esc(project.title || project.name) + '</option>')
-    .join('');
+function selectedProjectChecks(formId: string): string[] {
+  const form = document.getElementById(formId);
+  return Array.from(form?.querySelectorAll<HTMLInputElement>('input[name="journal-project"]:checked') ?? [])
+    .map((input) => input.value);
 }
 
-/** 落点回执：后端 message + vault 相对路径（与「记点什么」的 toast 风格一致）。 */
-function journalReceipt(result: { message: string; path?: string }): string {
-  const rel = result.path ? result.path.replace(/^.*\/_vault\//, '') : '';
-  return rel && !result.message.includes(rel) ? result.message + ' · ' + rel : result.message;
+function bindJournalCounters(formId: string): void {
+  const form = document.getElementById(formId) as HTMLFormElement | null;
+  if (!form) return;
+  const update = (): void => {
+    form.querySelectorAll<HTMLTextAreaElement>('textarea[data-count]').forEach((input) => {
+      const count = form.querySelector<HTMLElement>('[data-count-for="' + input.id + '"]');
+      const length = Array.from(input.value).length;
+      if (count) count.textContent = length + ' / 1500';
+      input.setCustomValidity(length > 1500 ? '这一段不能超过 1500 字符' : '');
+    });
+  };
+  form.addEventListener('input', update);
+  update();
+}
+
+/** 操作面板提供「查看记录」；瞬时提示用中文说明落点，不暴露目录字段。 */
+function journalReceipt(url: string): string {
+  return url.endsWith('/log')
+    ? '工作日志已保存，可在最近操作结果中查看记录。'
+    : '工作思考已保存，可在最近操作结果中查看记录。';
 }
 
 let journalSubmitting = false;
@@ -321,6 +339,14 @@ let journalSubmitting = false;
 /** 提交一条日志/思考；后端的中文提示**原样**显示，成功才关弹层并给落点回执。 */
 async function submitJournal(url: string, formId: string, body: Record<string, unknown>): Promise<void> {
   if (journalSubmitting) return;
+  const oversized = Array.from(document.getElementById(formId)?.querySelectorAll<HTMLTextAreaElement>('textarea[data-count]') ?? [])
+    .find((field) => Array.from(field.value).length > 1500);
+  if (oversized) {
+    oversized.setCustomValidity('这一段不能超过 1500 字符');
+    oversized.reportValidity();
+    oversized.focus();
+    return;
+  }
   journalSubmitting = true;
   const submit = document.querySelector<HTMLButtonElement>('#' + formId + ' button[type="submit"]');
   if (submit) submit.disabled = true;
@@ -335,7 +361,7 @@ async function submitJournal(url: string, formId: string, body: Record<string, u
       try { await clearServerDraft(api, draftType, 'daily'); }
       catch { /* retain the draft if cleanup cannot be confirmed */ }
       closeModal();
-      toast(journalReceipt(result), 'ok');
+      toast(journalReceipt(url), 'ok');
     } else {
       // 弹层留着好改：把「至少填一段…」「缺少必填段落：## 思考展开」「超过 1500 字符…」原样显示。
       toast(result.message, 'err');
@@ -350,20 +376,23 @@ async function submitJournal(url: string, formId: string, body: Record<string, u
 
 /** 打开「写工作日志」弹层：四段（标签用使用者的话术），至少填一段；可多选关联项目。 */
 export function openJournalLogModal(projects: ProjectChoice[] = []): void {
+  const textField = (id: string, label: string, rows: number): string =>
+    '<label for="' + id + '">' + label + '</label><textarea id="' + id + '" data-count aria-describedby="count-' + id + '" rows="' + rows + '"></textarea>' +
+    '<span class="hint journal-count" id="count-' + id + '" data-count-for="' + id + '">0 / 1500</span>';
   openModal(
     '<h3>写工作日志</h3>' +
-    '<p class="hint">只填你有的；四段都空不能保存。不选关联项目时按 <code>project: global</code> 落盘，落在 <code>logs/</code>。</p>' +
+    '<p class="hint">按段填写今天的进展；每段最多 1500 字符，至少填写一段。</p>' +
     '<form id="journal-log-form" data-draft-type="journal-log" data-draft-id="daily">' +
-    '<label>今天做了什么</label><textarea id="journal-did" rows="3"></textarea>' +
-    '<label>还剩什么没做</label><textarea id="journal-remaining" rows="2"></textarea>' +
-    '<label>今天的一点感悟（可留空）</label><textarea id="journal-reflection" rows="2"></textarea>' +
-    '<label>卡点与需要谁（可留空）</label><textarea id="journal-blockers" rows="2"></textarea>' +
-    '<label>关联项目（可多选，可不选）</label>' +
-    '<select id="journal-log-projects" multiple size="4">' + projectOptions(projects) + '</select>' +
+    textField('journal-did', '今天做了什么', 3) +
+    textField('journal-remaining', '还剩什么没做', 2) +
+    textField('journal-reflection', '今天的一点感悟（可留空）', 2) +
+    textField('journal-blockers', '卡点与需要谁（可留空）', 2) +
+    '<fieldset><legend>关联项目（可多选，可不选）</legend>' + projectCheckboxes(projects) + '</fieldset>' +
     '<div class="row"><button class="primary" type="submit">保存</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>',
   );
+  bindJournalCounters('journal-log-form');
   const form = document.getElementById('journal-log-form') as HTMLFormElement | null;
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -372,27 +401,30 @@ export function openJournalLogModal(projects: ProjectChoice[] = []): void {
       remaining: fieldValue('journal-remaining'),
       reflection: fieldValue('journal-reflection'),
       blockers: fieldValue('journal-blockers'),
-      projects: selectedProjects('journal-log-projects'),
+      projects: selectedProjectChecks('journal-log-form'),
     });
   });
 }
 
 /** 打开「写工作思考」弹层：三段都必填；可多选关联项目、可选一句话摘要。 */
 export function openJournalThoughtModal(projects: ProjectChoice[] = []): void {
+  const textField = (id: string, label: string, rows: number): string =>
+    '<label for="' + id + '">' + label + '</label><textarea id="' + id + '" data-count required aria-describedby="count-' + id + '" rows="' + rows + '"></textarea>' +
+    '<span class="hint journal-count" id="count-' + id + '" data-count-for="' + id + '">0 / 1500</span>';
   openModal(
     '<h3>写工作思考</h3>' +
-    '<p class="hint">三段都要写；落在 <code>thinking/</code>，会被检索（可被引用）。</p>' +
+    '<p class="hint">问题缘起、思考展开和当前结论都要填写；每段最多 1500 字符。</p>' +
     '<form id="journal-thought-form" data-draft-type="journal-thought" data-draft-id="daily">' +
-    '<label>问题缘起</label><textarea id="journal-problem" rows="3"></textarea>' +
-    '<label>思考展开</label><textarea id="journal-thinking" rows="4"></textarea>' +
-    '<label>当前结论</label><textarea id="journal-conclusion" rows="3"></textarea>' +
-    '<label>一句话摘要（可留空，默认取「当前结论」首句）</label><input id="journal-summary">' +
-    '<label>关联项目（可多选，可不选）</label>' +
-    '<select id="journal-thought-projects" multiple size="4">' + projectOptions(projects) + '</select>' +
+    textField('journal-problem', '问题缘起', 3) +
+    textField('journal-thinking', '思考展开', 4) +
+    textField('journal-conclusion', '当前结论', 3) +
+    '<label for="journal-summary">一句话摘要（可留空）</label><input id="journal-summary">' +
+    '<fieldset><legend>关联项目（可多选，可不选）</legend>' + projectCheckboxes(projects) + '</fieldset>' +
     '<div class="row"><button class="primary" type="submit">保存</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>',
   );
+  bindJournalCounters('journal-thought-form');
   const form = document.getElementById('journal-thought-form') as HTMLFormElement | null;
   form?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -401,7 +433,7 @@ export function openJournalThoughtModal(projects: ProjectChoice[] = []): void {
       thinking: fieldValue('journal-thinking'),
       conclusion: fieldValue('journal-conclusion'),
       summary: fieldValue('journal-summary'),
-      projects: selectedProjects('journal-thought-projects'),
+      projects: selectedProjectChecks('journal-thought-form'),
     });
   });
 }

@@ -6,7 +6,7 @@
   "description": "SummitWorkbench 本地 Web 工作台（SPA，Vite + 原生 TypeScript）",
   "scripts": {
     "dev": "vite",
-    "test:frontend": "node scripts/test-build.mjs && node scripts/test-md-render.mjs && node scripts/test-project-render.mjs && node scripts/test-review-render.mjs && node scripts/test-source-reader-render.mjs && node scripts/test-today-render.mjs && node scripts/test-today-import-render.mjs && node scripts/test-today-journal.mjs && node scripts/test-today-inbox.mjs && node scripts/test-settings-render.mjs && node scripts/test-sync-render.mjs && node scripts/test-undo-render.mjs && node scripts/test-threads-render.mjs && node scripts/test-api-error.mjs && node scripts/test-api-timeout.mjs && node scripts/test-time.mjs && node scripts/test-ui-language.mjs && node scripts/test-version-status.mjs && node scripts/test-browser-contract.mjs",
+    "test:frontend": "node scripts/test-build.mjs && node scripts/test-md-render.mjs && node scripts/test-project-render.mjs && node scripts/test-review-render.mjs && node scripts/test-source-reader-render.mjs && node scripts/test-today-render.mjs && node scripts/test-today-import-render.mjs && node scripts/test-today-journal.mjs && node scripts/test-today-inbox.mjs && node scripts/test-settings-render.mjs && node scripts/test-sync-render.mjs && node scripts/test-undo-render.mjs && node scripts/test-threads-render.mjs && node scripts/test-api-error.mjs && node scripts/test-api-timeout.mjs && node scripts/test-api-retry.mjs && node scripts/test-operation-feedback.mjs && node scripts/test-time.mjs && node scripts/test-ui-language.mjs && node scripts/test-version-status.mjs && node scripts/test-browser-contract.mjs",
     "test:build": "node scripts/test-build.mjs",
     "build": "node scripts/build.mjs"
   },

@@ -138,4 +138,4 @@ def test_onboarding_wizard_escapes_error_messages() -> None:
     """向导里所有错误文案都必须过 `escapeHtml`（同一文件其它地方本来就是这么做的）。"""
     page = ONBOARDING.read_text(encoding="utf-8")
     assert "'<div class=\"error\">'+error.message" not in page, "有错误文案漏了转义"
-    assert page.count("escapeHtml(error.message)") == 3
+    assert page.count("escapeHtml(error.message)") == 4

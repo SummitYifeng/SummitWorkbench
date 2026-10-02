@@ -17,6 +17,7 @@ from summit_workbench.repositories.onboarding_draft import (
     save_onboarding_draft,
 )
 from summit_workbench.webapp.app import create_app
+from summit_workbench.webapp.onboarding_view import render_onboarding_wizard
 
 
 def test_onboarding_draft_is_atomic_private_and_contains_no_secret(tmp_path: Path) -> None:
@@ -126,3 +127,14 @@ def test_wizard_clears_the_draft_when_entering_the_workbench(tmp_path: Path, mon
     assert body is not None, "向导里找不到 enterWorkbench"
     assert "method:'DELETE'" in body.group(0)
     assert "/api/onboarding/draft" in body.group(0)
+
+
+def test_folder_picker_is_native_only_and_skip_explains_capability_limits() -> None:
+    browser = render_onboarding_wizard(full_app=False)
+    native = render_onboarding_wizard(full_app=True)
+    assert "const fullApp = false" in browser
+    assert "const fullApp = true" in native
+    assert 'fullApp ? \'<button type="button" id="choose-folder"' in browser
+    assert "chooseWorkspaceFolder" in native
+    assert "跳过模型会暂时关闭 AI 整理与摘要" in browser
+    assert "跳过飞书会暂时关闭日历、任务读取和完成回写" in browser

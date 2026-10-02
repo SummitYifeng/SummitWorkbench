@@ -64,7 +64,8 @@ export async function refreshSyncBanner(): Promise<SyncStatusPayload | null> {
         '<details class="sync-more"><summary>查看详情（分支 / 远端 / 设备 / 状态码）</summary>' +
         grid(detailRows) +
         '<div class="sync-actions sync-actions-inline">' +
-        '<button class="ghost" data-action="sync-export">导出本机副本</button></div></details>';
+        '<p class="hint">可导出同步状态供排查使用；文件不包含工作资料。</p>' +
+        '<button class="ghost" data-action="sync-export">导出同步诊断信息</button></div></details>';
     }
     return data;
   } catch (err) {
@@ -130,7 +131,7 @@ export async function exportSyncSnapshot(): Promise<void> {
     const content = JSON.stringify(data, null, 2) + '\n';
     if (sendNativeMessage({
       type: 'saveTextFile',
-      filename: 'summitworkbench-sync-status.json',
+      filename: 'summitworkbench-sync-diagnostics.json',
       content,
     })) {
       toast('请选择保存位置', 'info');
@@ -139,7 +140,7 @@ export async function exportSyncSnapshot(): Promise<void> {
     const blob = new Blob([content], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'summitworkbench-sync-status.json';
+    link.download = 'summitworkbench-sync-diagnostics.json';
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();

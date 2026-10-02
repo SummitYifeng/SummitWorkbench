@@ -17,6 +17,29 @@ export function isStaleWorkspaceResponse(error: unknown): boolean {
 }
 
 let apiRequestSequence = 0;
+const READ_RETRY_DELAYS = [1_000, 3_000, 10_000];
+
+export async function retryRead<T>(
+  work: () => Promise<T>,
+  generation: number,
+  pause: (delay: number) => Promise<void> = (delay) =>
+    new Promise<void>((resolve) => globalThis.setTimeout(resolve, delay)),
+): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof StaleWorkspaceResponseError) throw error;
+      const retryable = error instanceof TypeError ||
+        (error instanceof ApiError && (error.status === 408 || error.status >= 500));
+      if (!retryable) throw error;
+      const delay = READ_RETRY_DELAYS[attempt];
+      if (delay === undefined) throw error;
+      await pause(delay);
+      if (generation !== workspaceStore.generation) throw new StaleWorkspaceResponseError();
+    }
+  }
+}
 
 /**
  * 连接从"失败"恢复为"成功"时的观察者。
@@ -40,7 +63,8 @@ const FEEDBACK_MUTATIONS = new Set([
 function mutationFingerprint(url: string, body: string): string {
   // The fingerprint is only a localStorage key; the request body itself is never persisted.
   let hash = 2166136261;
-  for (const char of url + '\n' + body) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  const workspaceId = workspaceStore.workspaceId ?? 'unknown';
+  for (const char of workspaceId + '\n' + url + '\n' + body) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
   return (hash >>> 0).toString(16);
 }
 
@@ -102,7 +126,8 @@ export async function api<T>(url: string, init?: RequestInit, options?: ApiReque
   if (requestId) headers.set('X-WB-Request-Id', requestId);
   let result: T;
   try {
-    result = await apiClient.request<T>(url, { ...init, headers }, options);
+    const request = (): Promise<T> => apiClient.request<T>(url, { ...init, headers }, options);
+    result = method === 'GET' ? await retryRead(request, generation) : await request();
     if (recordsFeedback && result && typeof result === 'object') {
       const response = result as Record<string, unknown>;
       publishOperationFeedback(
@@ -116,7 +141,7 @@ export async function api<T>(url: string, init?: RequestInit, options?: ApiReque
   } catch (error) {
     if (!requestId || (error instanceof ApiError && error.status !== 408 && error.status < 500)) throw error;
     try {
-      const receipt = await apiClient.request<{
+      const receipt = await retryRead(() => apiClient.request<{
         status?: string;
         response?: T;
       }>('/api/operations/' + encodeURIComponent(requestId), {
@@ -124,7 +149,7 @@ export async function api<T>(url: string, init?: RequestInit, options?: ApiReque
           'X-WB-Workspace-Generation': String(generation),
           'X-WB-Request-Sequence': String(++apiRequestSequence),
         }),
-      }, { timeoutMs: 10_000 });
+      }, { timeoutMs: 10_000 }), generation);
       if (receipt.status === 'completed' && receipt.response) {
         clearRequestId(baseUrl, body);
         result = receipt.response;
