@@ -297,8 +297,11 @@ def _external_request(entry: ReviewEntry) -> dict[str, object]:
             "target_project": item.target_project,
             "due_date": item.due_date,
         }
-        if item.start_at is not None:
-            request["start_at"] = item.start_at
+        # Feishu Task v2 expects both all-day dates. When the reviewer leaves
+        # the start date empty, make the task due on its start day.
+        start_at = item.start_at or item.due_date
+        if start_at is not None:
+            request["start_at"] = start_at
         return request
     raise ValueError("only Feishu task is an active external approval destination")
 
@@ -372,7 +375,9 @@ def _run_external(
                 creator,
                 args,
                 sending.operation_id,
-                start_at=item.start_at if kind is ExternalActionKind.FEISHU_TASK else None,
+                start_at=(item.start_at or item.due_date)
+                if kind is ExternalActionKind.FEISHU_TASK
+                else None,
             )
         except FeishuError as exc:
             if getattr(exc, "result_unknown", False):
@@ -631,6 +636,13 @@ def apply_meeting_review(
                         entry,
                         vault_dir,
                         task_creator=task_creator,
+                    )
+                    entry = replace(
+                        entry,
+                        candidate=replace(
+                            entry.candidate,
+                            start_at=entry.candidate.start_at or entry.candidate.due_date,
+                        ),
                     )
                 else:
                     destination, external_id = _write_local(entry, vault_dir, work_root)

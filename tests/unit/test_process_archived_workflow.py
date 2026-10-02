@@ -80,6 +80,9 @@ def test_success_writes_note_usage_and_advances_pending_review(tmp_path):
     assert report.action == "processed"
     assert report.note_path is not None and report.note_path.is_file()
     assert report.state == ProcessingState.PENDING_REVIEW
+    note = load_note(report.note_path)
+    assert note.meta["transcript"] == f"[[meetings/transcripts/{archived.path.stem}]]"
+    assert f"[[meetings/transcripts/{archived.path.stem}]]" in note.body
     assert latest_task(tmp_path, "m1:n1").state == ProcessingState.PENDING_REVIEW  # type: ignore[union-attr]
     assert list((tmp_path / "_signals" / "model-usage").glob("*.jsonl"))
     rerun = process_archived_transcript(

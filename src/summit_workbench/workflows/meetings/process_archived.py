@@ -16,7 +16,6 @@ from summit_workbench.domain.pipeline import ProcessingState, SourceKind
 from summit_workbench.prompts import Prompt
 from summit_workbench.providers.llm.config import ModelConfig
 from summit_workbench.providers.llm.usage import UsageRecord
-from summit_workbench.repositories.meeting_archive import transcript_stem
 from summit_workbench.repositories.meeting_note import MeetingNoteInput, archive_meeting_note
 from summit_workbench.repositories.meeting_state import latest_task, record_task
 from summit_workbench.repositories.model_errors import clear_model_error, record_model_error
@@ -146,8 +145,6 @@ def process_archived_transcript(
         source = SourceKind(str(note.meta.get("source")))
         title = _title(note.body, transcript_path.stem)
         date = str(note.meta.get("date"))
-        slug = transcript_path.stem.removesuffix("-transcript").removeprefix(f"{date}-")
-        stem = transcript_stem(date, slug)
     except ProcessingFailure as failure:
         failure_reason = str(failure)
         failure_stage = failure.stage
@@ -197,7 +194,10 @@ def process_archived_transcript(
                 idem_key=resolved_key,
                 extraction=processed.extraction,
                 source=source,
-                transcript_stem=stem,
+                # Store the vault-relative path of the immutable evidence file. A bare
+                # stem is not a valid workspace link and cannot be opened by the
+                # review page's source allowlist.
+                transcript_stem=transcript_path.relative_to(vault_dir).with_suffix("").as_posix(),
                 model_id=cfg.model_id,
                 prompt_version=processed.prompt_version,
                 meeting_id=str(note.meta.get("meeting_id") or "") or None,

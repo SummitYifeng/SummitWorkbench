@@ -172,6 +172,36 @@ def test_feishu_creator_and_partial_failure_keep_failed_item(tmp_path):
     assert "不存在" in parsed.entries[0].apply_error
 
 
+def test_feishu_task_defaults_missing_start_date_to_due_date(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    _project_main(vault)
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
+    )
+    refresh_review_page(vault, [entry])
+    created: list[tuple[str | None, str | None]] = []
+
+    def create(title: str, due: str | None, stable_id: str, **kwargs: object) -> str:
+        del title, stable_id
+        created.append((kwargs.get("start_at"), due))  # type: ignore[arg-type]
+        return "task-default-start"
+
+    report = apply_meeting_review(vault, work, apply=True, task_creator=create)
+
+    assert report.applied == 1
+    assert report.failed == 0
+    assert created == [("2026-09-04", "2026-09-04")]
+    action = latest_for_candidate(vault, entry.candidate.candidate_id)
+    assert action is not None
+    assert action.state is ExternalActionState.SUCCEEDED
+    assert report.archive_path is not None
+    assert "- start_at：2026-09-04" in report.archive_path.read_text(encoding="utf-8")
+
+
 def _project_with_alias(vault, project: str, alias: str):
     path = vault / "projects" / f"{project}.md"
     path.parent.mkdir(parents=True)
