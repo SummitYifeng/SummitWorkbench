@@ -81,7 +81,7 @@ function writeBuildMeta(identity) {
   const index = readFileSync(join(STATIC_DIR, 'index.html'));
   let porcelainStatus = null;
   try {
-    porcelainStatus = execFileSync('git', ['status', '--porcelain'], {
+    porcelainStatus = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     }).trim();
@@ -90,7 +90,7 @@ function writeBuildMeta(identity) {
   }
   // 溯源字段同样确定化，否则已跟踪的 build-meta.json 每次构建都变（git_revision 随提交走、
   // built_at 随秒走），仓库内产物永远追不上 HEAD：
-  //   - 工作树脏 → 这份产物不对应任何提交，revision 写空（消费方 assembly 已是「非空才追加」）；
+  //   - 已跟踪文件有改动 → 这份产物不对应任何提交，revision 写空（消费方 assembly 已是「非空才追加」）；
   //   - built_at 收敛到日期（与 frontendBuild 的日期同源），保留「哪天构建」的信息。
   const meta = {
     schema_version: 1,
