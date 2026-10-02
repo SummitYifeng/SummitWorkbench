@@ -23,7 +23,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from summit_workbench.domain.review import CandidateKind
 from summit_workbench.domain.time import business_date
@@ -47,6 +48,7 @@ from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.feishu_pool import _FeishuClientPool
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
+from summit_workbench.webapp.operation_receipts import run_with_receipt
 from summit_workbench.workflows.capture import classify_capture, extract_project_tags
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
 from summit_workbench.workflows.review_apply import create_task_through_outbox
@@ -198,7 +200,19 @@ def register_inbox_routes(
         }
 
     @app.post("/api/inbox/promote", response_model=None)
-    def api_inbox_promote(payload: InboxPromotePayload) -> dict[str, object]:
+    def api_inbox_promote(
+        request: Request, payload: InboxPromotePayload
+    ) -> dict[str, object] | JSONResponse:
+        if payload.target not in {"project", "thought"}:
+            return _inbox_promote(payload)
+        return run_with_receipt(
+            ctx,
+            request,
+            payload.model_dump(mode="json"),
+            lambda: _inbox_promote(payload),
+        )
+
+    def _inbox_promote(payload: InboxPromotePayload) -> dict[str, object]:
         """把一条条目提升为正式内容，并在**同一个提交**里把它移出收件箱（契约 §10）。"""
         inbox = ctx.vault_dir / _INBOX_FILENAME
         if not inbox.is_file():

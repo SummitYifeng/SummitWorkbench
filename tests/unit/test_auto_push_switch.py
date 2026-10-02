@@ -22,6 +22,7 @@ from summit_workbench.config.auto_push import (
     auto_push_disabled,
     auto_push_skip_note,
 )
+from summit_workbench.domain.sync import SyncState
 from summit_workbench.observability.server_log import server_log_path
 from summit_workbench.repositories.autocommit import CommitResult, CommitStatus
 from summit_workbench.webapp import mutation_runtime
@@ -199,6 +200,25 @@ def test_run_local_mutation_ignores_non_string_push_result(tmp_path: Path) -> No
     result = run_local_mutation(vault, "test", mutate, push_after_commit=lambda: (object(), None))
     assert result.push_note == ""
     assert "auto_push" not in _mutation_fields(result)
+
+
+def test_run_local_mutation_surfaces_real_push_state(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    _init_repo(vault)
+
+    def mutate(_operation_id: str) -> LocalMutationOutcome[str]:
+        path = vault / "a.md"
+        path.write_text("x", encoding="utf-8")
+        return LocalMutationOutcome(str(path), (path,))
+
+    result = run_local_mutation(
+        vault,
+        "test",
+        mutate,
+        push_after_commit=lambda: (SyncState.OFFLINE_LOCAL_AHEAD, None),
+    )
+    assert result.push_status == "offline-local-ahead"
+    assert _mutation_fields(result)["push"] == {"status": "offline-local-ahead"}
 
 
 # ─────────── 结构性守卫：自动推送必须经过单一出口 ───────────

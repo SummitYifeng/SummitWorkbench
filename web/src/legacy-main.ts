@@ -27,6 +27,7 @@ import {
 } from './lifecycle/version';
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
+import { publishOperationFeedback, unresolvedOperationIds } from './features/shell/operation-feedback';
 import { type BriefData } from './brief-card';
 import { createDiagnosticsActions } from './features/diagnostics';
 import type { ProjectState } from './features/projects';
@@ -409,6 +410,24 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'source-open') {
     void openSource(btn.dataset.sourceId ?? '');
+    return;
+  }
+  if (action === 'operation-query') {
+    const operationId = btn.dataset.operationId ?? '';
+    if (!operationId) return;
+    const queryButton = btn as HTMLButtonElement;
+    queryButton.disabled = true;
+    void api<{
+      status?: string;
+      response?: Record<string, unknown>;
+      message?: string;
+    }>('/api/operations/' + encodeURIComponent(operationId)).then((receipt) => {
+      if (receipt.status === 'completed' && receipt.response) {
+        publishOperationFeedback(operationId, receipt.response);
+      } else {
+        toast(receipt.message ?? '结果仍在核实中，请稍后再查。', 'info');
+      }
+    }).catch((error: unknown) => toast(error, 'err')).finally(() => { queryButton.disabled = false; });
     return;
   }
   if (action === 'copy-diagnostics') {
@@ -830,6 +849,16 @@ export function mountLegacyWorkbench(): void {
       });
     },
   });
+  for (const operationId of unresolvedOperationIds()) {
+    void api<{
+      status?: string;
+      response?: Record<string, unknown>;
+    }>('/api/operations/' + encodeURIComponent(operationId)).then((receipt) => {
+      if (receipt.status === 'completed' && receipt.response) {
+        publishOperationFeedback(operationId, receipt.response);
+      }
+    }).catch(() => { /* keep the unresolved receipt visible; the user may retry reading */ });
+  }
   mountUndo({ refreshAll });
   mountTodayActions({
     api,

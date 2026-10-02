@@ -78,6 +78,36 @@ def test_log_with_only_did_lands_as_five_block_journal(tmp_path: Path) -> None:
     assert "## 卡点与需要谁" not in note.body
 
 
+def test_log_request_receipt_prevents_duplicate_and_is_queryable(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path)
+    headers = {"X-WB-Request-Id": "journal-once-001"}
+    payload = {"did": "只应保存一次的记录。"}
+
+    first = client.post("/api/journal/log", json=payload, headers=headers)
+    second = client.post("/api/journal/log", json=payload, headers=headers)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json()["path"] == second.json()["path"]
+    assert len(list((vault / "logs").glob("*.md"))) == 1
+    receipt = client.get("/api/operations/journal-once-001")
+    assert receipt.status_code == 200
+    assert receipt.json()["status"] == "completed"
+    assert receipt.json()["business_write"] == "succeeded"
+    assert receipt.json()["commit_status"] == "not-git"
+    assert receipt.json()["response"]["path"] == first.json()["path"]
+
+
+def test_log_request_receipt_rejects_reused_identifier_for_changed_input(tmp_path: Path) -> None:
+    client, _vault = _client(tmp_path)
+    headers = {"X-WB-Request-Id": "journal-once-002"}
+    first = client.post("/api/journal/log", json={"did": "记录 A"}, headers=headers)
+    second = client.post("/api/journal/log", json={"did": "记录 B"}, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert "不同内容" in second.json()["message"]
+
+
 def test_log_with_all_four_sections_generates_five_blocks(tmp_path: Path) -> None:
     """四段齐全 ⇒ 五个区块（四段 + `## 关联`），顺序与契约一致。"""
     client, vault = _client(tmp_path)

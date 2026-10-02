@@ -1,6 +1,7 @@
 import { appRoot, modalBackdrop } from './dom';
 import { requestModalClose } from './modal';
 import { normalizeTab, type ShellTab } from './tabs';
+import { mountOperationFeedback, operationFeedbackHtml } from './operation-feedback';
 
 /**
  * 外壳需要组合根提供的动作。
@@ -35,6 +36,7 @@ export function mountShell(actions: ShellActions): void {
     '<button class="ghost" id="btn-quit" title="退出工作台（停止本地服务）">退出</button>' +
     '</div></header>' +
     '<div class="sync-banner" id="sync-banner" hidden></div>' +
+    operationFeedbackHtml() +
     '<div class="version-error-banner" id="version-error-banner" hidden>' +
     '<span>工作台更新未完成。你的草稿已保留。</span>' +
     '<button class="ghost" data-action="retry-update">重试更新</button>' +
@@ -53,6 +55,8 @@ export function mountShell(actions: ShellActions): void {
     '<section id="view-settings" class="view" role="tabpanel" tabindex="0"></section>' +
     '</main>' +
     '<div class="modal-backdrop" id="modal-backdrop" hidden><div class="modal" id="modal"></div></div>';
+
+  mountOperationFeedback();
 
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
     b.addEventListener('click', () => {

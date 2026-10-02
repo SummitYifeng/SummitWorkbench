@@ -45,11 +45,14 @@ from summit_workbench.workflows.local_mutation import (
 )
 
 
-def _push_after_commit(ctx: WebContext, *, where: str) -> str:
+def _push_after_commit(
+    ctx: WebContext, *, where: str, return_result: bool = False
+) -> str | object:
     """commit 之后的后置推送（**唯一的后置推送出口**）。
 
     ``WB_NO_AUTO_PUSH`` 启用时**不推送**，改为写一行服务日志并返回可见说明——绝不留一个
-    看起来成功的同步状态（跳过发生在 push 之前，同步状态机不参与）。正常推送返回空串。
+    看起来成功的同步状态（跳过发生在 push 之前，同步状态机不参与）。事务写入调用方会读取
+    正常推送返回的真实状态；兼容的字符串调用方仍拿到空后缀。
 
     ``where`` 只用于日志定位是哪条写入路径，不含路径/正文。
     """
@@ -61,14 +64,14 @@ def _push_after_commit(ctx: WebContext, *, where: str) -> str:
         return auto_push_skip_note()
     from summit_workbench.workflows import sync_coordinator
 
-    sync_coordinator.push_after_commit(
+    result = sync_coordinator.push_after_commit(
         ctx.vault_dir,
         home=ctx.active_workspace.home if ctx.active_workspace else None,
         workspace_id=ctx.workspace_id,
         backend_kind=ctx.git_backend_kind,
         context=ctx.active_workspace,
     )
-    return ""
+    return result if return_result else ""
 
 
 def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -> str:
@@ -90,7 +93,8 @@ def _commit_suffix(ctx: WebContext, paths: Sequence[Path | str], summary: str) -
         ),
     )
     if result.status is CommitStatus.COMMITTED and ctx.active_workspace is not None:
-        return _commit_note(result) + _push_after_commit(ctx, where="commit_suffix")
+        pushed = _push_after_commit(ctx, where="commit_suffix")
+        return _commit_note(result) + (pushed if isinstance(pushed, str) else "")
     return _commit_note(result)
 
 
@@ -141,7 +145,11 @@ class MutationRuntime:
             backend_kind=ctx.git_backend_kind,
             author=profile_identity(profile) if profile is not None else None,
             push_after_commit=(
-                (lambda: _push_after_commit(ctx, where=f"mutation:{action}"))
+                (
+                    lambda: _push_after_commit(
+                        ctx, where=f"mutation:{action}", return_result=True
+                    )
+                )
                 if ctx.active_workspace
                 else None
             ),

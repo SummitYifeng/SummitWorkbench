@@ -18,7 +18,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from summit_workbench.domain.vault import WORKSTREAM_VOCAB
 from summit_workbench.repositories.project_registry import load_project_registry
@@ -32,6 +33,7 @@ from summit_workbench.webapp.api import JournalLogPayload, JournalThoughtPayload
 from summit_workbench.webapp.dependencies import RouteDependencies
 from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fields
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
+from summit_workbench.webapp.operation_receipts import run_with_receipt
 from summit_workbench.webapp.services.work_log import (
     thread_activity_migration,
     work_log_outcome,
@@ -62,7 +64,17 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
     ctx = dependencies.context
 
     @app.post("/api/journal/log", response_model=None)
-    def api_journal_log(payload: JournalLogPayload) -> dict[str, object]:
+    def api_journal_log(
+        request: Request, payload: JournalLogPayload
+    ) -> dict[str, object] | JSONResponse:
+        return run_with_receipt(
+            ctx,
+            request,
+            payload.model_dump(mode="json"),
+            lambda: _journal_log(payload),
+        )
+
+    def _journal_log(payload: JournalLogPayload) -> dict[str, object]:
         """写一条「日常手记」（五区块形态；可关联 0..n 个项目；不绑项目 → `project: global`）。"""
         sections = {
             "did": payload.did,
@@ -121,7 +133,17 @@ def register_journal_routes(dependencies: RouteDependencies, *, runtime: Mutatio
         }
 
     @app.post("/api/journal/thought", response_model=None)
-    def api_journal_thought(payload: JournalThoughtPayload) -> dict[str, object]:
+    def api_journal_thought(
+        request: Request, payload: JournalThoughtPayload
+    ) -> dict[str, object] | JSONResponse:
+        return run_with_receipt(
+            ctx,
+            request,
+            payload.model_dump(mode="json"),
+            lambda: _journal_thought(payload),
+        )
+
+    def _journal_thought(payload: JournalThoughtPayload) -> dict[str, object]:
         """写一篇工作思考（三段都必填；过 schema + 检索就绪才落盘）。"""
         sections = {
             "问题缘起": payload.problem.strip(),

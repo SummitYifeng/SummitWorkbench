@@ -46,6 +46,7 @@ from summit_workbench.webapp.mutation_runtime import (
 from summit_workbench.webapp.mutation_runtime import (
     _commit_suffix as _commit_suffix,
 )
+from summit_workbench.webapp.operation_receipts import register_operation_receipt_routes
 from summit_workbench.webapp.request_boundary import (
     _SCHEMA_UPGRADE_WRITE_EXEMPTIONS as _SCHEMA_UPGRADE_WRITE_EXEMPTIONS,
 )
@@ -213,6 +214,7 @@ def create_app(
     register_capture_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
     register_journal_routes(dependencies, runtime=runtime)
     register_inbox_routes(dependencies, runtime=runtime, feishu_clients=feishu_clients)
+    register_operation_receipt_routes(app, ctx)
     register_brief_routes(dependencies, runtime=runtime)
     register_meetings_routes(dependencies, runtime=runtime, importer=meeting_importer)
     register_undo_routes(dependencies, runtime=runtime)

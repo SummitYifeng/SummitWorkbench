@@ -619,7 +619,7 @@ def test_api_capture_appends_inbox(tmp_path: Path) -> None:
     resp = client.post("/api/capture", json={"text": "给老王回邮件 #网课"})
     data = resp.json()
     assert data["ok"] is True
-    assert "已记入全局 inbox" in data["message"]
+    assert "已记入收件箱" in data["message"]
     assert data["operation_id"]
     assert data["commit"]["status"] == "not-git"
     text = (vault / "inbox.md").read_text(encoding="utf-8")
@@ -839,6 +839,44 @@ def test_api_capture_falls_back_when_model_unavailable(tmp_path: Path, monkeypat
     text = (vault / "inbox.md").read_text(encoding="utf-8")
     assert "- [ ] 想到一个点子" in text
     assert "<!-- wb-capture-kind: idea -->" in text
+
+
+def test_capture_request_receipt_prevents_model_and_write_replay(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from summit_workbench.domain.capture import CaptureClassification, CaptureKind
+
+    class FakeCfg:
+        api_key_ref = "fake"
+
+    calls = 0
+    monkeypatch.setenv("WB_CONFIG_FILE", str(tmp_path / "none.toml"))
+    monkeypatch.setattr(
+        "summit_workbench.webapp.routers.capture._load_model_config_for_context",
+        lambda *_: FakeCfg(),
+    )
+    monkeypatch.setattr(
+        "summit_workbench.config.secrets.resolve_credential", lambda _ref: SecretStr("fake")
+    )
+    monkeypatch.setattr("summit_workbench.prompts.load_prompt", lambda _name: object())
+
+    def classify(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return CaptureClassification(kind=CaptureKind.IDEA, due_date=None, involves_others=False)
+
+    monkeypatch.setattr("summit_workbench.workflows.capture.classify_capture", classify)
+    client, vault = _client(tmp_path)
+    headers = {"X-WB-Request-Id": "capture-once-001"}
+    payload = {"text": "同一条只记一次"}
+
+    first = client.post("/api/capture", json=payload, headers=headers)
+    second = client.post("/api/capture", json=payload, headers=headers)
+
+    assert first.json()["ok"] is True
+    assert second.json() == first.json()
+    assert calls == 1
+    assert (vault / "inbox.md").read_text(encoding="utf-8").count("同一条只记一次") == 1
 
 
 # ---------- /api/state 项目推进 ----------

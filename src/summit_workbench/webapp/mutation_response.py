@@ -27,6 +27,8 @@ def _mutation_fields[T](result: LocalMutationResult[T]) -> dict[str, object]:
     if result.push_note:
         # WB_NO_AUTO_PUSH 跳过后置推送：显式暴露，绝不伪装成一次成功的同步。
         fields["auto_push"] = {"skipped": True, "note": result.push_note}
+    if result.push_status is not None:
+        fields["push"] = {"status": result.push_status}
     return fields
 
 
