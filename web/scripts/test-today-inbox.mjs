@@ -148,8 +148,9 @@ try {
   elements['inbox-promote-form'].listeners.submit({ preventDefault() {} });
   await tick();
   let call = mod.calls.at(-1);
-  assert.equal(call.url, '/api/inbox/promote');
-  assert.deepEqual(JSON.parse(call.options.body), {
+  assert.equal(call.url, '/api/drafts/inbox-promote%3Aweb-a');
+  let promoteCall = mod.calls.filter((entryCall) => entryCall.url === '/api/inbox/promote').at(-1);
+  assert.deepEqual(JSON.parse(promoteCall.options.body), {
     id: 'web-a', target: 'project', project: 'alpha', block: 'followup',
   });
 
@@ -157,7 +158,9 @@ try {
   elements['inbox-promote-form'].listeners.submit({ preventDefault() {} });
   await tick();
   call = mod.calls.at(-1);
-  assert.deepEqual(JSON.parse(call.options.body), {
+  assert.equal(call.url, '/api/drafts/inbox-promote%3Aweb-a', 'successful promotion clears its saved draft');
+  promoteCall = mod.calls.filter((entryCall) => entryCall.url === '/api/inbox/promote').at(-1);
+  assert.deepEqual(JSON.parse(promoteCall.options.body), {
     id: 'web-a', target: 'feishu-task', due_date: '2026-09-25', start_date: '2026-09-25',
   });
 
@@ -165,7 +168,9 @@ try {
   elements['inbox-promote-form'].listeners.submit({ preventDefault() {} });
   await tick();
   call = mod.calls.at(-1);
-  assert.deepEqual(JSON.parse(call.options.body), {
+  assert.equal(call.url, '/api/drafts/inbox-promote%3Aweb-a');
+  promoteCall = mod.calls.filter((entryCall) => entryCall.url === '/api/inbox/promote').at(-1);
+  assert.deepEqual(JSON.parse(promoteCall.options.body), {
     id: 'web-a', target: 'thought',
     problem: '要不要把术语表前置？',
     thinking: '返工都出在术语上。',

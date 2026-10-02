@@ -712,6 +712,16 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   background: var(--surface, #fff);
   color: var(--ink, #292524);
 }
+.draft-notice {
+  margin: 8px auto 0;
+  width: min(1080px, calc(100% - 32px));
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #166534;
+  font-size: 13px;
+}
+.draft-notice.error { background: #fef2f2; color: #991b1b; }
 .operation-notice ul { margin: 6px 0 0; padding-left: 20px; }
 .operation-feedback-row { margin: 5px 0; }
 .operation-feedback-row.success { color: #166534; }
@@ -805,3 +815,5 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
 }
 .inbox-target-option strong { display: block; font-size: 13.5px; }
 .inbox-target-option .hint { margin: 2px 0 0; }
+.modal-draft-close { position: sticky; bottom: 0; margin: 1rem -1rem -1rem; padding: 1rem; border-top: 1px solid var(--border); background: var(--card); box-shadow: 0 -8px 24px rgb(0 0 0 / 10%); }
+.modal-draft-close [data-draft-close-status] { min-height: 1.4em; }

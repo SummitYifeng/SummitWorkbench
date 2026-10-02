@@ -142,10 +142,25 @@ export function mountOperationFeedback(): void {
   render();
 }
 
+export function publishDraftStatus(message: string, failed = false): void {
+  const root = document.getElementById('draft-notice');
+  if (!root) return;
+  root.hidden = false;
+  root.classList.toggle('error', failed);
+  root.textContent = message;
+  const manage = document.createElement('button');
+  manage.type = 'button';
+  manage.className = 'link';
+  manage.dataset.action = 'drafts-open';
+  manage.textContent = '查看草稿';
+  root.appendChild(manage);
+}
+
 export function unresolvedOperationIds(): string[] {
   return readFeedback().filter((entry) => entry.status === 'unknown').map((entry) => entry.id);
 }
 
 export function operationFeedbackHtml(): string {
-  return '<section id="operation-notice" class="operation-notice" role="status" aria-live="polite" hidden></section>';
+  return '<section id="draft-notice" class="draft-notice" role="status" aria-live="polite" hidden></section>' +
+    '<section id="operation-notice" class="operation-notice" role="status" aria-live="polite" hidden></section>';
 }

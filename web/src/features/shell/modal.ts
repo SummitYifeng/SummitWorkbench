@@ -43,6 +43,9 @@ export function activateModal(html: string, includeCloseButton = false): HTMLEle
   } else {
     modal.removeAttribute('aria-labelledby');
   }
+  if (typeof document.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('swb:modal-opened', { detail: modal }));
+  }
   if (includeCloseButton) {
     const close = document.createElement('button');
     close.className = 'ghost close-modal';
@@ -59,7 +62,9 @@ export function activateModal(html: string, includeCloseButton = false): HTMLEle
 export function openModal(html: string): HTMLElement {
   const modal = activateModal(html, true);
   modal.dataset.draftDirty = '0';
-  delete modal.dataset.draftEntity;
+  const draftForm = modal.querySelector<HTMLFormElement>('form[data-draft-type][data-draft-id]');
+  if (draftForm) modal.dataset.draftEntity = draftForm.dataset.draftType + ':' + draftForm.dataset.draftId;
+  else delete modal.dataset.draftEntity;
   modal.oninput = () => {
     if (modal.dataset.draftEntity) modal.dataset.draftDirty = '1';
   };
@@ -79,6 +84,40 @@ export function closeModal(): void {
 export function requestModalClose(): void {
   const modal = modalRoot();
   const hasDraft = modal?.dataset.draftDirty === '1';
-  if (hasDraft && !window.confirm('当前弹层里有未保存内容。继续关闭并放弃草稿吗？')) return;
+  if (hasDraft) {
+    if (modal.querySelector('.modal-draft-close')) return;
+    const choice = document.createElement('section');
+    choice.className = 'modal-draft-close';
+    choice.setAttribute('role', 'alert');
+    choice.innerHTML = '<p>这份内容还在保存。请选择如何处理：</p>' +
+      '<div class="row"><button type="button" data-draft-close="keep">保留草稿并关闭</button>' +
+      '<button type="button" class="ghost" data-draft-close="continue">继续编辑</button>' +
+      '<button type="button" class="ghost" data-draft-close="discard">放弃草稿</button></div>' +
+      '<p class="hint" data-draft-close-status aria-live="polite"></p>';
+    modal.appendChild(choice);
+    choice.querySelector<HTMLButtonElement>('[data-draft-close="continue"]')?.addEventListener('click', () => choice.remove());
+    for (const button of choice.querySelectorAll<HTMLButtonElement>('[data-draft-close="keep"], [data-draft-close="discard"]')) {
+      button.addEventListener('click', () => {
+        const status = choice.querySelector<HTMLElement>('[data-draft-close-status]');
+        if (status) status.textContent = button.dataset.draftClose === 'keep' ? '正在确认草稿已保存在本机…' : '正在删除本机草稿…';
+        for (const option of choice.querySelectorAll<HTMLButtonElement>('button')) option.disabled = true;
+        const finish = (close: boolean, message?: string): void => {
+          if (close) closeModal();
+          else {
+            if (status) status.textContent = message ?? '操作暂未完成，请继续编辑或重试。';
+            for (const option of choice.querySelectorAll<HTMLButtonElement>('button')) option.disabled = false;
+          }
+        };
+        if (typeof document.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+          document.dispatchEvent(new CustomEvent('swb:modal-close-choice', {
+            detail: { choice: button.dataset.draftClose, modal, finish },
+          }));
+        } else {
+          finish(false, '无法确认草稿操作，请继续编辑。');
+        }
+      });
+    }
+    return;
+  }
   closeModal();
 }

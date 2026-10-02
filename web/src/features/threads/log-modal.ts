@@ -1,6 +1,7 @@
 import { api } from '../../api/request';
 import { mutation } from '../../lifecycle/connection';
 import { clearEntityDraft, loadEntityDraft } from '../../lifecycle/drafts';
+import { clearServerDraft } from '../../lifecycle/server-drafts';
 import { esc } from '../../md';
 import { projectDisplayName } from '../projects';
 import type { ProjectState } from '../projects/types';
@@ -49,7 +50,7 @@ export function openLogModal(defaultProject: string): void {
     '<h3>追加推进日志</h3>' +
     '<p class="hint">粘贴一段推进/沟通摘录/跟进（文本即可，语音请先自行转写）。可勾选多个关联的线程或项目；' +
     'AI 会整理摘要并归入各线程。模型不可用时只存原文，绝不丢。</p>' +
-    '<form id="log-form">' +
+    '<form id="log-form" data-draft-type="thread-log" data-draft-id="' + esc(defaultProject) + '">' +
     '<input id="log-project-search" type="search" placeholder="搜索项目名或 ID…" autocomplete="off">' +
     '<p class="hint">已选择 <span id="log-project-count">' + selectedProjects.length + '</span> 个项目</p>' +
     '<div class="log-projs">' + (boxes || '<span class="hint">还没有已建档的项目，先在「项目」页建档。</span>') + '</div>' +
@@ -123,6 +124,10 @@ export async function submitLog(): Promise<void> {
     if (r.ok) {
       const entity = document.getElementById('modal')?.dataset.draftEntity;
       if (entity) clearEntityDraft(entity, getThreadsDeps()?.workspaceId());
+      if (entity?.startsWith('log:')) {
+        try { await clearServerDraft(api, 'thread-log', entity.slice(4)); }
+        catch { /* retain the draft if cleanup cannot be confirmed */ }
+      }
       closeModal();
     }
     toast(r.message, r.ok ? 'ok' : 'err');

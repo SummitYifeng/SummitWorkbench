@@ -45,9 +45,7 @@ from summit_workbench.workflows.local_mutation import (
 )
 
 
-def _push_after_commit(
-    ctx: WebContext, *, where: str, return_result: bool = False
-) -> str | object:
+def _push_after_commit(ctx: WebContext, *, where: str, return_result: bool = False) -> str | object:
     """commit 之后的后置推送（**唯一的后置推送出口**）。
 
     ``WB_NO_AUTO_PUSH`` 启用时**不推送**，改为写一行服务日志并返回可见说明——绝不留一个
@@ -145,11 +143,7 @@ class MutationRuntime:
             backend_kind=ctx.git_backend_kind,
             author=profile_identity(profile) if profile is not None else None,
             push_after_commit=(
-                (
-                    lambda: _push_after_commit(
-                        ctx, where=f"mutation:{action}", return_result=True
-                    )
-                )
+                (lambda: _push_after_commit(ctx, where=f"mutation:{action}", return_result=True))
                 if ctx.active_workspace
                 else None
             ),

@@ -10,6 +10,7 @@ import { workspaceStore } from './core/workspace-store';
 import { formatBusinessTime } from './core/time';
 import { mutation, deferReloadUntilMutationsComplete, isMutationInFlight, setMutationIdleHandler } from './lifecycle/connection';
 import {
+  clearEntityDraft,
   clearDraftSnapshot,
   loadDraftSnapshot,
   saveDraftSnapshot as persistDraftSnapshot,
@@ -28,6 +29,8 @@ import {
 import { notifyClientReady, sendNativeMessage } from './lifecycle/native-bridge';
 import { esc } from './md';
 import { publishOperationFeedback, unresolvedOperationIds } from './features/shell/operation-feedback';
+import { publishDraftStatus } from './features/shell/operation-feedback';
+import { clearServerDraft } from './lifecycle/server-drafts';
 import { type BriefData } from './brief-card';
 import { createDiagnosticsActions } from './features/diagnostics';
 import type { ProjectState } from './features/projects';
@@ -35,6 +38,7 @@ import type { ExternalAction, ReviewPayload } from './features/review';
 import {
   applyTabChrome,
   mountShell,
+  openModal,
   registerModalCloseHook,
   requestModalClose,
   toast,
@@ -208,13 +212,291 @@ let versionCheckPromise: Promise<void> | null = null;
 let restoredDraft: DraftSnapshot | null = null;
 // null = 尚未按任何 workspace 载入过；服务端省略 workspace_id 时回退为 'unknown'，也必须载入一次。
 let loadedWorkspaceId: string | null = null;
+interface BackendDraft {
+  type: string;
+  id: string;
+  value: Record<string, unknown>;
+  edited_at: string;
+}
+const backendDrafts = new Map<string, BackendDraft>();
+const draftTimers = new Map<string, number>();
+const draftValues = new Map<string, { type: string; id: string; value: Record<string, unknown> }>();
+const draftWrites = new Map<string, Promise<void>>();
+
+function backendDraftKey(type: string, id: string): string {
+  return type + ':' + id;
+}
+
+function scheduleBackendDraft(
+  type: string,
+  id: string,
+  value: Record<string, unknown>,
+  delayMs = 500,
+): void {
+  if (!remoteVersion?.workspace_id || !id) return;
+  const key = backendDraftKey(type, id);
+  draftValues.set(key, { type, id, value });
+  const oldTimer = draftTimers.get(key);
+  if (oldTimer !== undefined) window.clearTimeout(oldTimer);
+  publishDraftStatus('正在保存草稿…');
+  draftTimers.set(key, window.setTimeout(() => {
+    draftTimers.delete(key);
+    const current = draftValues.get(key);
+    if (!current) return;
+    const previous = draftWrites.get(key) ?? Promise.resolve();
+    const write = previous.catch(() => undefined).then(async () => {
+      const result = await api<{ ok: boolean; draft?: BackendDraft; message?: string }>(
+        '/api/drafts/' + encodeURIComponent(backendDraftKey(type, id)),
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(current),
+        },
+      );
+      if (!result.ok || !result.draft) throw new Error(result.message ?? '草稿暂未保存');
+      backendDrafts.set(key, result.draft);
+      const modal = document.getElementById('modal');
+      if (draftValues.get(key) === current && modal?.dataset.draftEntity === type + ':' + id) {
+        modal.dataset.draftDirty = '0';
+      }
+      publishDraftStatus('草稿已保存在本机');
+    }).catch(() => {
+      publishDraftStatus('草稿暂未保存在本机；编辑内容仍在当前页面，请复制后再离开。', true);
+    });
+    draftWrites.set(key, write);
+    void write.finally(() => {
+      if (draftWrites.get(key) === write) draftWrites.delete(key);
+    });
+  }, delayMs));
+}
+
+function restoreModalDraft(event: Event): void {
+  const modal = (event as CustomEvent<HTMLElement>).detail;
+  const form = modal?.querySelector<HTMLFormElement>('form[data-draft-type][data-draft-id]');
+  if (!form) return;
+  const type = form.dataset.draftType ?? '';
+  const id = form.dataset.draftId ?? '';
+  modal.dataset.draftEntity = type + ':' + id;
+  if (!modal.dataset.draftDirty) modal.dataset.draftDirty = '0';
+  const draft = backendDrafts.get(backendDraftKey(type, id));
+  if (!draft || !window.confirm('发现一份保存在本机的草稿（' + draft.edited_at + '）。要恢复到当前表单吗？')) return;
+  const ids: Record<string, Record<string, string>> = {
+    'journal-log': { did: 'journal-did', remaining: 'journal-remaining', reflection: 'journal-reflection', blockers: 'journal-blockers' },
+    'journal-thought': { problem: 'journal-problem', thinking: 'journal-thinking', conclusion: 'journal-conclusion', summary: 'journal-summary' },
+    'inbox-promote': { project: 'inbox-project', block: 'inbox-block', due_date: 'inbox-due', start_date: 'inbox-start', problem: 'inbox-problem', thinking: 'inbox-thinking', conclusion: 'inbox-conclusion', summary: 'inbox-summary' },
+    'task-edit': { summary: 'row-edit-summary', due_date: 'row-edit-due' },
+    'meeting-edit': { summary: 'row-edit-summary', start_at: 'row-edit-start', end_at: 'row-edit-end' },
+    'thread-log': { text: 'log-text' },
+    artifact: { project: 'artifact-project', title: 'artifact-title', text: 'artifact-text' },
+  };
+  for (const [field, value] of Object.entries(draft.value)) {
+    if (field === 'target') {
+      const radio = form.querySelector<HTMLInputElement>('input[name="inbox-target"][value="' + String(value) + '"]');
+      if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change', { bubbles: true })); }
+      continue;
+    }
+    if (field === 'projects' && Array.isArray(value)) {
+      const select = form.querySelector<HTMLSelectElement>('select[multiple]');
+      if (select) Array.from(select.options).forEach((option) => { option.selected = value.includes(option.value); });
+      form.querySelectorAll<HTMLInputElement>('input[name="log-proj"]').forEach((input) => {
+        input.checked = value.includes(input.value);
+      });
+      continue;
+    }
+    const elementId = ids[type]?.[field] ?? field;
+    const input = document.getElementById(elementId);
+    if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+      input.value = typeof value === 'string' ? value : String(value);
+    }
+  }
+  modal.dataset.draftDirty = '0';
+  publishDraftStatus('已恢复本机草稿；内容尚未提交。');
+}
+
+function openDraftManager(): void {
+  const labels: Record<string, string> = {
+    'quick-note': '快速记录', 'journal-log': '工作日志', 'journal-thought': '工作思考',
+    'inbox-promote': '收件箱提升', 'review-edit': '审批修改', 'project-edit': '项目修改',
+    'task-edit': '任务修改', 'meeting-edit': '会议修改', 'thread-log': '项目记录', artifact: '导入文档',
+  };
+  const entries = [...backendDrafts.values()];
+  const body = entries.length ? entries.map((draft, index) => {
+    const key = backendDraftKey(draft.type, draft.id);
+    return '<details class="draft-manager-item"><summary>' + esc(labels[draft.type] ?? '草稿') +
+      ' · ' + esc(draft.id) + ' · ' + esc(draft.edited_at) + '</summary>' +
+      '<pre class="draft-manager-content">' + esc(JSON.stringify(draft.value, null, 2)) + '</pre>' +
+      '<div class="row"><button type="button" class="ghost" data-action="draft-copy" data-draft-index="' + index + '">复制内容</button>' +
+      '<button type="button" class="ghost" data-action="draft-delete" data-draft-index="' + index + '">删除草稿</button></div>' +
+      '<span class="visually-hidden" data-draft-key="' + esc(key) + '"></span></details>';
+  }).join('') : '<p>当前工作区没有未完成草稿。</p>';
+  openModal('<h3>本机草稿</h3><p class="hint">草稿仅保存在这台 Mac，编辑后七天到期。恢复不会自动提交。</p>' + body);
+  document.querySelectorAll<HTMLButtonElement>('[data-action="draft-copy"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const draft = entries[Number(button.dataset.draftIndex)];
+      if (!draft) return;
+      void navigator.clipboard.writeText(JSON.stringify(draft.value, null, 2))
+        .then(() => toast('草稿内容已复制', 'ok'))
+        .catch(() => toast('无法访问剪贴板；可直接选择并复制草稿内容。', 'err'));
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-action="draft-delete"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const draft = entries[Number(button.dataset.draftIndex)];
+      if (!draft || !window.confirm('确定删除这份本机草稿？')) return;
+      void clearServerDraft(api, draft.type, draft.id).then(() => {
+        openDraftManager();
+        publishDraftStatus('已删除所选本机草稿');
+      }).catch(() => publishDraftStatus('草稿暂未删除；请恢复连接后重试。', true));
+    });
+  });
+}
+
+document.addEventListener('swb:modal-opened', restoreModalDraft);
+document.addEventListener('swb:modal-close-choice', (event) => {
+  const detail = (event as CustomEvent<{
+    choice: string;
+    modal: HTMLElement;
+    finish: (close: boolean, message?: string) => void;
+  }>).detail;
+  if (!detail) return;
+  const { choice, modal, finish } = detail;
+  const entity = modal.dataset.draftEntity ?? '';
+  const separator = entity.indexOf(':');
+  if (choice === 'discard') {
+    const perform = async (): Promise<void> => {
+      if (separator >= 0) {
+        const type = entity.slice(0, separator);
+        const id = entity.slice(separator + 1);
+        await clearServerDraft(api, type, id);
+        clearEntityDraft(entity, remoteVersion?.workspace_id);
+      }
+      modal.dataset.draftDirty = '0';
+      finish(true);
+    };
+    void perform().catch(() => finish(false, '草稿暂未删除；请恢复连接后重试。'));
+    return;
+  }
+  if (choice !== 'keep') return;
+  const form = modal.querySelector<HTMLFormElement>('form[data-draft-type][data-draft-id]');
+  const input = form?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('input:not([type="file"]), textarea, select');
+  if (input && typeof input.dispatchEvent === 'function' && typeof Event !== 'undefined') {
+    modal.dataset.draftDirty = '1';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  if (separator < 0) {
+    finish(false, '这类内容暂不支持本机草稿；请复制后再关闭。');
+    return;
+  }
+  const started = Date.now();
+  const confirmSaved = (): void => {
+    if (modal.dataset.draftDirty !== '1') {
+      finish(true);
+      return;
+    }
+    if (Date.now() - started > 15_000) {
+      finish(false, '草稿尚未确认保存；请保持编辑页打开并检查连接。');
+      return;
+    }
+    window.setTimeout(confirmSaved, 100);
+  };
+  window.setTimeout(confirmSaved, 100);
+});
+document.addEventListener('swb:draft-cleared', (event) => {
+  const detail = (event as CustomEvent<{ type: string; id: string }>).detail;
+  if (!detail) return;
+  const key = backendDraftKey(detail.type, detail.id);
+  backendDrafts.delete(key);
+  draftValues.delete(key);
+  const timer = draftTimers.get(key);
+  if (timer !== undefined) window.clearTimeout(timer);
+  draftTimers.delete(key);
+});
+
+const persistDraftInput = (event: Event): void => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement)) return;
+  if (target.id === 'capture-input') {
+    scheduleBackendDraft('quick-note', 'quick', { text: target.value });
+    return;
+  }
+  const form = target.closest<HTMLFormElement>('form');
+  if (!form) return;
+  let type = form.dataset.draftType;
+  let id = form.dataset.draftId;
+  if (form.classList.contains('edit-form')) {
+    type = 'review-edit';
+    id = String(new FormData(form).get('candidate_id') ?? '');
+  }
+  if (!type || !id) return;
+  const fields = new FormData(form);
+  const values: Record<string, unknown> = {};
+  for (const [field, value] of fields.entries()) {
+    if (typeof value === 'string' && field !== 'candidate_id') values[field] = value;
+  }
+  if (type === 'journal-log') {
+    values.did = (form.querySelector('#journal-did') as HTMLTextAreaElement | null)?.value ?? '';
+    values.remaining = (form.querySelector('#journal-remaining') as HTMLTextAreaElement | null)?.value ?? '';
+    values.reflection = (form.querySelector('#journal-reflection') as HTMLTextAreaElement | null)?.value ?? '';
+    values.blockers = (form.querySelector('#journal-blockers') as HTMLTextAreaElement | null)?.value ?? '';
+    values.projects = Array.from(form.querySelector<HTMLSelectElement>('#journal-log-projects')?.selectedOptions ?? []).map((option) => option.value);
+  }
+  if (type === 'journal-thought') {
+    for (const [field, elementId] of Object.entries({ problem: 'journal-problem', thinking: 'journal-thinking', conclusion: 'journal-conclusion', summary: 'journal-summary' })) {
+      values[field] = (form.querySelector('#' + elementId) as HTMLInputElement | HTMLTextAreaElement | null)?.value ?? '';
+    }
+    values.projects = Array.from(form.querySelector<HTMLSelectElement>('#journal-thought-projects')?.selectedOptions ?? []).map((option) => option.value);
+  }
+  if (type === 'inbox-promote') {
+    values.target = form.querySelector<HTMLInputElement>('input[name="inbox-target"]:checked')?.value ?? 'thought';
+    for (const [field, elementId] of Object.entries({ project: 'inbox-project', block: 'inbox-block', due_date: 'inbox-due', start_date: 'inbox-start', problem: 'inbox-problem', thinking: 'inbox-thinking', conclusion: 'inbox-conclusion', summary: 'inbox-summary' })) {
+      const element = form.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>('#' + elementId);
+      if (element) values[field] = element.value;
+    }
+    values.id = id;
+  }
+  if (type === 'task-edit') {
+    values.summary = (form.querySelector('#row-edit-summary') as HTMLInputElement | null)?.value ?? '';
+    values.due_date = (form.querySelector('#row-edit-due') as HTMLInputElement | null)?.value ?? '';
+  }
+  if (type === 'meeting-edit') {
+    values.summary = (form.querySelector('#row-edit-summary') as HTMLInputElement | null)?.value ?? '';
+    values.start_at = (form.querySelector('#row-edit-start') as HTMLInputElement | null)?.value ?? '';
+    values.end_at = (form.querySelector('#row-edit-end') as HTMLInputElement | null)?.value ?? '';
+  }
+  if (type === 'thread-log') {
+    values.text = (form.querySelector('#log-text') as HTMLTextAreaElement | null)?.value ?? '';
+    values.projects = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="log-proj"]:checked')).map((input) => input.value);
+  }
+  if (type === 'artifact') {
+    values.project = (form.querySelector('#artifact-project') as HTMLInputElement | null)?.value ?? '';
+    values.title = (form.querySelector('#artifact-title') as HTMLInputElement | null)?.value ?? '';
+    values.syncState = !!form.querySelector<HTMLInputElement>('#artifact-to-state')?.checked;
+    if (!form.querySelector<HTMLInputElement>('#artifact-file')?.files?.length) {
+      values.text = (form.querySelector('#artifact-text') as HTMLTextAreaElement | null)?.value ?? '';
+    } else {
+      delete values.text;
+    }
+  }
+  if ((type === 'artifact') && form.querySelector<HTMLInputElement>('#artifact-file')?.files?.length) {
+    delete values.text;
+  }
+  scheduleBackendDraft(type, id, values);
+};
+document.addEventListener('input', persistDraftInput);
+document.addEventListener('change', persistDraftInput);
 
 function persistEntityDraft<T>(entity: string, value: T): void {
-  if (saveEntityDraft(entity, value, remoteVersion?.workspace_id)) return;
-  if (!draftStorageWarningShown) {
+  const saved = saveEntityDraft(entity, value, remoteVersion?.workspace_id);
+  if (!saved && !draftStorageWarningShown) {
     draftStorageWarningShown = true;
     toast('浏览器暂时无法保存草稿；请先完成当前编辑再切页', 'err');
   }
+  const separator = entity.indexOf(':');
+  if (separator < 0) return;
+  const prefix = entity.slice(0, separator);
+  const id = entity.slice(separator + 1);
+  if (prefix === 'log') scheduleBackendDraft('thread-log', id, value as Record<string, unknown>);
+  if (prefix === 'artifact') scheduleBackendDraft('artifact', id, value as Record<string, unknown>);
 }
 
 function healthTone(): { tone: string; label: string } {
@@ -261,10 +543,75 @@ function saveCurrentDraftSnapshot(): void {
     capture_text: capture?.value ?? '',
     review_forms: persistedReviewForms,
   }, remoteVersion?.workspace_id);
+  if (capture?.value) scheduleBackendDraft('quick-note', 'quick', { text: capture.value }, 0);
+  for (const [candidateId, fields] of Object.entries(persistedReviewForms)) {
+    scheduleBackendDraft('review-edit', candidateId, fields as unknown as Record<string, unknown>, 0);
+  }
   if (!saved && !draftStorageWarningShown) {
     draftStorageWarningShown = true;
     toast('浏览器暂时无法保存草稿；版本更新仍会继续，但请先完成当前编辑', 'err');
   }
+}
+
+async function loadBackendDrafts(): Promise<void> {
+  backendDrafts.clear();
+  const result = await api<{ ok: boolean; drafts?: BackendDraft[] }>('/api/drafts');
+  if (!result.ok || !result.drafts) throw new Error('读取本机草稿失败');
+  for (const draft of result.drafts) backendDrafts.set(backendDraftKey(draft.type, draft.id), draft);
+
+  // 一次性迁移旧标签页快照；仅当后端版本不比快照新时迁移。
+  const legacy = loadDraftSnapshot(Date.now(), remoteVersion?.workspace_id);
+  if (legacy) {
+    let migrated = true;
+    const legacyValues: Array<{ type: string; id: string; value: Record<string, unknown> }> = [];
+    if (legacy.capture_text) legacyValues.push({ type: 'quick-note', id: 'quick', value: { text: legacy.capture_text } });
+    for (const [id, fields] of Object.entries(legacy.review_forms)) {
+      legacyValues.push({ type: 'review-edit', id, value: fields as unknown as Record<string, unknown> });
+    }
+    const legacyEditedAt = Date.parse(legacy.saved_at);
+    for (const draft of legacyValues) {
+      const key = backendDraftKey(draft.type, draft.id);
+      const existing = backendDrafts.get(key);
+      if (existing && Date.parse(existing.edited_at) >= legacyEditedAt) continue;
+      try {
+        const saved = await api<{ ok: boolean; draft?: BackendDraft }>('/api/drafts/' + encodeURIComponent(key), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(draft),
+        });
+        if (!saved.ok || !saved.draft) { migrated = false; continue; }
+        backendDrafts.set(key, saved.draft);
+      } catch { migrated = false; }
+    }
+    if (migrated) clearDraftSnapshot(remoteVersion?.workspace_id);
+    else publishDraftStatus('旧草稿迁移未完成；原草稿仍保留在当前浏览器。', true);
+  }
+
+  const drafts = [...backendDrafts.values()];
+  if (!drafts.length) return;
+  if (!window.confirm('发现 ' + drafts.length + ' 份本机草稿（七天内编辑）。确定后恢复快速记录和审批表单；其它表单打开时仍会逐份询问。')) {
+    publishDraftStatus('有本机草稿尚未恢复；打开相应表单时仍可选择恢复。');
+    return;
+  }
+  const quick = backendDrafts.get(backendDraftKey('quick-note', 'quick'));
+  const reviewForms: Record<string, ReviewDraftFields> = {};
+  for (const draft of drafts) {
+    if (draft.type === 'review-edit') reviewForms[draft.id] = draft.value as unknown as ReviewDraftFields;
+    if (draft.type === 'thread-log') saveEntityDraft('log:' + draft.id, draft.value, remoteVersion?.workspace_id);
+    if (draft.type === 'artifact') saveEntityDraft('artifact:' + draft.id, draft.value, remoteVersion?.workspace_id);
+  }
+  if (quick || Object.keys(reviewForms).length) {
+    restoredDraft = {
+      schema: 1,
+      saved_at: new Date().toISOString(),
+      source_build: CLIENT_BUILD,
+      tab,
+      scroll_y: window.scrollY,
+      capture_text: typeof quick?.value.text === 'string' ? quick.value.text : '',
+      review_forms: reviewForms,
+    };
+  }
+  publishDraftStatus('本机草稿已载入；恢复内容不会自动提交。');
 }
 
 function applyRestoredDraft(): void {
@@ -300,6 +647,7 @@ async function doCheckVersion(_reason: string): Promise<void> {
   remoteVersion = remote;
   const workspaceId = remote.workspace_id ?? 'unknown';
   workspaceStore.setWorkspace(workspaceId);
+  const changedWorkspace = loadedWorkspaceId !== null && loadedWorkspaceId !== workspaceId;
   if (loadedWorkspaceId !== workspaceId) {
     state = null;
     review = null;
@@ -312,7 +660,13 @@ async function doCheckVersion(_reason: string): Promise<void> {
     restoredDraft = null;
     resetTodayForWorkspace();
     resetProjectsForWorkspace();
+    backendDrafts.clear();
     loadedWorkspaceId = workspaceId;
+    if (changedWorkspace) {
+      void loadBackendDrafts().then(() => render()).catch(() => {
+        publishDraftStatus('新工作区的草稿暂时无法读取。', true);
+      });
+    }
   }
   if (remote.frontend_build === CLIENT_BUILD) {
     setVersionStatus('synced', remoteVersion);
@@ -410,6 +764,10 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'source-open') {
     void openSource(btn.dataset.sourceId ?? '');
+    return;
+  }
+  if (action === 'drafts-open') {
+    openDraftManager();
     return;
   }
   if (action === 'operation-query') {
@@ -931,7 +1289,14 @@ export function mountLegacyWorkbench(): void {
 
   async function startApp(): Promise<void> {
     await checkVersion('startup');
-    restoredDraft = loadDraftSnapshot(Date.now(), remoteVersion?.workspace_id);
+    const legacyFallback = loadDraftSnapshot(Date.now(), remoteVersion?.workspace_id);
+    restoredDraft = null;
+    try {
+      await loadBackendDrafts();
+    } catch {
+      restoredDraft = legacyFallback;
+      publishDraftStatus('本机草稿暂时无法读取；当前浏览器中已有的草稿仍保留。', true);
+    }
     await refreshAll();
     if (restoredDraft) render();
   }

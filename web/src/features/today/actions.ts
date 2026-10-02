@@ -1,4 +1,5 @@
 import { esc } from '../../md';
+import { clearServerDraft } from '../../lifecycle/server-drafts';
 import { closeModal, openModal, rejectOversizeText } from '../shell';
 import { api, mutation, refreshState, renderToday, toast } from './deps';
 import { todayUi } from './state';
@@ -58,6 +59,10 @@ export function createTodayActions(view: HTMLElement): TodayActions {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),
         }));
+        if (result.ok) {
+          try { await clearServerDraft(api, 'quick-note', 'quick'); }
+          catch { /* retain the draft if cleanup cannot be confirmed */ }
+        }
         toast(result.message, result.ok ? 'ok' : 'err');
         return { ok: result.ok };
       } catch (err) {
@@ -214,7 +219,8 @@ export function openRowEditModal(kind: 'task' | 'meeting', seed: Record<string, 
       '</div>';
   openModal(
     '<h3>' + (kind === 'task' ? '编辑任务' : '编辑会议') + '</h3>' + hint +
-    '<form id="row-edit-form">' + body +
+    '<form id="row-edit-form" data-draft-type="' + (kind === 'task' ? 'task-edit' : 'meeting-edit') +
+    '" data-draft-id="' + esc(seed.id ?? '') + '">' + body +
     '<div class="row"><button class="primary" type="submit">保存</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>'
@@ -264,6 +270,11 @@ async function submitRowEdit(kind: 'task' | 'meeting', id: string): Promise<void
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }));
+    if (r.ok) {
+      const draftType = kind === 'task' ? 'task-edit' : 'meeting-edit';
+      try { await clearServerDraft(api, draftType, id); }
+      catch { /* retain the draft if cleanup cannot be confirmed */ }
+    }
     closeModal();
     toast(r.message, r.ok ? 'ok' : 'err');
     if (r.ok) void refreshState();
@@ -320,6 +331,9 @@ async function submitJournal(url: string, formId: string, body: Record<string, u
       body: JSON.stringify(body),
     }));
     if (result.ok) {
+      const draftType = url.endsWith('/log') ? 'journal-log' : 'journal-thought';
+      try { await clearServerDraft(api, draftType, 'daily'); }
+      catch { /* retain the draft if cleanup cannot be confirmed */ }
       closeModal();
       toast(journalReceipt(result), 'ok');
     } else {
@@ -339,7 +353,7 @@ export function openJournalLogModal(projects: ProjectChoice[] = []): void {
   openModal(
     '<h3>写工作日志</h3>' +
     '<p class="hint">只填你有的；四段都空不能保存。不选关联项目时按 <code>project: global</code> 落盘，落在 <code>logs/</code>。</p>' +
-    '<form id="journal-log-form">' +
+    '<form id="journal-log-form" data-draft-type="journal-log" data-draft-id="daily">' +
     '<label>今天做了什么</label><textarea id="journal-did" rows="3"></textarea>' +
     '<label>还剩什么没做</label><textarea id="journal-remaining" rows="2"></textarea>' +
     '<label>今天的一点感悟（可留空）</label><textarea id="journal-reflection" rows="2"></textarea>' +
@@ -368,7 +382,7 @@ export function openJournalThoughtModal(projects: ProjectChoice[] = []): void {
   openModal(
     '<h3>写工作思考</h3>' +
     '<p class="hint">三段都要写；落在 <code>thinking/</code>，会被检索（可被引用）。</p>' +
-    '<form id="journal-thought-form">' +
+    '<form id="journal-thought-form" data-draft-type="journal-thought" data-draft-id="daily">' +
     '<label>问题缘起</label><textarea id="journal-problem" rows="3"></textarea>' +
     '<label>思考展开</label><textarea id="journal-thinking" rows="4"></textarea>' +
     '<label>当前结论</label><textarea id="journal-conclusion" rows="3"></textarea>' +

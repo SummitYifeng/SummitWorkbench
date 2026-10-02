@@ -1,6 +1,7 @@
 import { api } from '../../api/request';
 import { mutation } from '../../lifecycle/connection';
 import { clearEntityDraft, loadEntityDraft } from '../../lifecycle/drafts';
+import { clearServerDraft } from '../../lifecycle/server-drafts';
 import { esc } from '../../md';
 import { projectDisplayName } from '../projects';
 import { closeModal, openModal, rejectOversizeText, toast } from '../shell';
@@ -32,7 +33,7 @@ export function openArtifactModal(defaultProject: string): void {
     '<h3>存入 AI 产物 / 导入文档</h3>' +
     '<p class="hint">粘贴和 AI 长对话产出的阶段总结 / 背景包 / PRD / 时间线全文，<strong>或直接选择本地 .md/.txt 文件</strong>；' +
     '系统自动命名、生成摘要索引并归入所选线程档案。<strong>也可以直接把文件从访达拖进本窗口</strong>。</p>' +
-    '<form id="artifact-form">' +
+    '<form id="artifact-form" data-draft-type="artifact" data-draft-id="' + esc(defaultProject) + '">' +
     '<div class="form-row"><label for="artifact-project">归入线程/项目</label>' +
     '<input id="artifact-project" list="artifact-project-options" placeholder="搜索项目名或 ID…" autocomplete="off">' +
     '<datalist id="artifact-project-options">' + options + '</datalist></div>' +
@@ -66,10 +67,11 @@ export function openArtifactModal(defaultProject: string): void {
     modal.dataset.draftDirty = saved ? '1' : '0';
   }
   const persistArtifactDraft = (): void => {
+    const fileSelected = !!(document.getElementById('artifact-file') as HTMLInputElement | null)?.files?.length;
     getThreadsDeps()?.persistEntityDraft('artifact:' + defaultProject, {
       project: (document.getElementById('artifact-project') as HTMLInputElement | null)?.value ?? '',
       title: (document.getElementById('artifact-title') as HTMLInputElement | null)?.value ?? '',
-      text: (document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '',
+      text: fileSelected ? '' : (document.getElementById('artifact-text') as HTMLTextAreaElement | null)?.value ?? '',
       syncState: !!(document.getElementById('artifact-to-state') as HTMLInputElement | null)?.checked,
     });
   };
@@ -164,6 +166,8 @@ export async function submitArtifact(): Promise<void> {
     const modal = document.getElementById('modal') as HTMLElement | null;
     const draftEntity = modal?.dataset.draftEntity;
     if (draftEntity) clearEntityDraft(draftEntity, getThreadsDeps()?.workspaceId());
+    try { await clearServerDraft(api, 'artifact', project); }
+    catch { /* retain the draft if cleanup cannot be confirmed */ }
     if (draftEntity !== 'artifact:' + project) {
       clearEntityDraft('artifact:' + project, getThreadsDeps()?.workspaceId());
     }

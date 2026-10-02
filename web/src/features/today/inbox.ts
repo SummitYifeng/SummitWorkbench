@@ -1,4 +1,5 @@
 import { esc } from '../../md';
+import { clearServerDraft } from '../../lifecycle/server-drafts';
 import { closeModal, openModal } from '../shell';
 import { api, mutation, refreshState, toast } from './deps';
 import type { ProjectChoice } from './actions';
@@ -96,6 +97,9 @@ async function submitPromote(url: string, body: Record<string, unknown>): Promis
       }),
     );
     if (result.ok) {
+      try {
+        await clearServerDraft(api, 'inbox-promote', String(body.id ?? ''));
+      } catch { /* retain the draft if cleanup cannot be confirmed */ }
       closeModal();
       const rel = result.path ? result.path.replace(/^.*\/_vault\//, '') : '';
       toast(rel && !result.message.includes(rel) ? result.message + ' · ' + rel : result.message, 'ok');
@@ -123,7 +127,7 @@ export function openInboxPromoteModal(item: Item, projects: ProjectChoice[] = []
     '<div class="row"><button class="ghost" type="button" data-action="inbox-ai-suggest" data-id="' +
     esc(item.id) + '">让 AI 判断这条适合变成什么</button>' +
     '<span class="hint">点它才会调一次模型（便宜）；不点就完全按上面的默认来</span></div>' +
-    '<form id="inbox-promote-form">' +
+    '<form id="inbox-promote-form" data-draft-type="inbox-promote" data-draft-id="' + esc(item.id) + '">' +
     '<div class="inbox-targets">' + targetRadios(item.suggested_target) + '</div>' +
     '<div id="inbox-fields-project">' +
     '<label>写入哪个项目</label><select id="inbox-project">' +
