@@ -17,6 +17,7 @@ from summit_workbench.domain.workspace_contract import (
     WorkspaceContractManifest,
     check_workspace_compatibility,
 )
+from summit_workbench.repositories import workspace_contract
 from summit_workbench.repositories.vault import parse_frontmatter
 from summit_workbench.repositories.workspace_contract import (
     connect_workspace,
@@ -111,3 +112,27 @@ def test_initialize_only_empty_folder_and_connect_preserves_identity(tmp_path: P
     before = (root / ".summit-workbench" / "manifest.json").read_bytes()
     connect_workspace(root)
     assert (root / ".summit-workbench" / "manifest.json").read_bytes() == before
+
+
+def test_workspace_template_lookup_supports_resources_layout(monkeypatch, tmp_path: Path) -> None:
+    resources = tmp_path / "SummitWorkbench.app" / "Contents" / "Resources"
+    module_path = (
+        resources
+        / "server"
+        / "_internal"
+        / "summit_workbench"
+        / "repositories"
+        / "workspace_contract.py"
+    )
+    template = resources / "templates" / "workspace" / "conventions.md"
+    template.parent.mkdir(parents=True)
+    template.write_text("# Packaged workspace contract\n", encoding="utf-8")
+    monkeypatch.setattr(workspace_contract, "__file__", str(module_path))
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    initialize_workspace(root)
+
+    assert (root / "conventions.md").read_text(encoding="utf-8") == template.read_text(
+        encoding="utf-8"
+    )

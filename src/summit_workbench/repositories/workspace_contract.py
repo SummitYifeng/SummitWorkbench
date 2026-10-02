@@ -15,7 +15,15 @@ from summit_workbench.repositories._atomic import atomic_write_text
 
 _STATE_DIR = ".summit-workbench"
 _MANIFEST = "manifest.json"
-_TEMPLATE = Path(__file__).parents[3] / "templates" / "workspace" / "conventions.md"
+
+
+def _workspace_conventions_template() -> Path:
+    module_path = Path(__file__).resolve()
+    for parent in module_path.parents:
+        candidate = parent / "templates" / "workspace" / "conventions.md"
+        if candidate.is_file():
+            return candidate
+    return module_path.parents[3] / "templates" / "workspace" / "conventions.md"
 
 
 def load_contract_manifest(root: Path) -> WorkspaceContractManifest:
@@ -63,7 +71,7 @@ def write_workspace_contract(
     conventions_path = root / "conventions.md"
     if conventions_path.exists() and not replace_conventions:
         raise WorkspaceContractError("conventions.md 已存在；请显式选择模板升级")
-    conventions = _TEMPLATE.read_text(encoding="utf-8")
+    conventions = _workspace_conventions_template().read_text(encoding="utf-8")
     atomic_write_text(
         manifest_path,
         json.dumps(manifest.model_dump(), indent=2) + "\n",
