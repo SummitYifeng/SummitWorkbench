@@ -9,6 +9,7 @@ import subprocess
 import time
 from pathlib import Path
 from typing import cast
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
@@ -133,8 +134,11 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
                 "X-WB-Session-Token": "integration-session-token",
             },
         )
-        with urlopen(create_request, timeout=5) as response:
-            create_payload = json.load(response)
+        try:
+            with urlopen(create_request, timeout=5) as response:
+                create_payload = json.load(response)
+        except HTTPError as exc:
+            pytest.fail(f"packaged onboarding failed: {exc.read().decode('utf-8', 'replace')}")
         assert create_payload["ok"] is True
         assert (created_workspace / "inbox.md").is_file()
         assert (created_workspace / "conventions.md").is_file()
