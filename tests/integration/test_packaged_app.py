@@ -123,6 +123,7 @@ def test_packaged_server_runs_without_repository_python(tmp_path: Path) -> None:
         assert isinstance(protocol, int) and protocol >= 2
 
         created_workspace = tmp_path / "created-workspace"
+        created_workspace.mkdir()
         create_request = Request(
             f"http://127.0.0.1:{port}/api/onboarding/create",
             data=json.dumps({"work_root": str(created_workspace)}).encode("utf-8"),
