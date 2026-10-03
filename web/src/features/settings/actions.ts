@@ -69,10 +69,14 @@ export async function copyAutomationSummary(summary: string): Promise<void> {
 
 export async function switchProfile(workspaceId: string): Promise<void> {
   const prepared = await api<{ plan_id: string }>('/api/settings/profile/prepare', {
-    method: 'POST', body: JSON.stringify({ workspace_id: workspaceId }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workspace_id: workspaceId }),
   });
   const committed = await api<{ restart_required: boolean }>('/api/settings/profile/commit', {
-    method: 'POST', body: JSON.stringify({ plan_id: prepared.plan_id }),
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ plan_id: prepared.plan_id }),
   });
   getSettingsDeps()?.clearDraftSnapshot(getSettingsDeps()?.workspaceId());
   getSettingsDeps()?.disposeWorkspaceStore();

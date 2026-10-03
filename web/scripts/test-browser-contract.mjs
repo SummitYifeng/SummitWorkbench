@@ -115,6 +115,12 @@ assert.match(source, /batchDecide\(selected/, 'selected review actions reuse the
 // pass silently as soon as the code moved, which is a lost guard rather than a failing test.
 assert.doesNotMatch(source, /selected[^\n]*\/api\/review\/apply/, 'selected actions do not bypass review apply');
 assert.match(settingsSource, /data-action="profile-switch"/, 'profile switch remains wired');
+const settingsActionsSource = fileFor('src/features/settings/actions.ts');
+const profileSwitchSource = settingsActionsSource.match(/export async function switchProfile\([\s\S]*?\n\}/)?.[0] ?? '';
+assert.match(profileSwitchSource, /headers:\s*\{\s*['"]Content-Type['"]:\s*['"]application\/json['"]\s*\}/,
+  'profile switch sends JSON content type for both API payloads');
+assert.equal((profileSwitchSource.match(/Content-Type/g) ?? []).length, 2,
+  'profile switch prepare and commit both identify their JSON payloads');
 // The dispatcher branch for profile-remove survived for months with no rendered entry point
 // (cb1bd34 dropped the old settings section, the new page never grew one), so a local profile
 // could not be removed from the UI at all. Pin the entry point, not just the handler.
