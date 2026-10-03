@@ -30,6 +30,16 @@ export interface ReviewGroup {
 export interface ReviewPayload {
   groups: ReviewGroup[];
   errors: string[];
+  content_items?: PendingContent[];
+}
+
+export interface PendingContent {
+  path: string;
+  title: string;
+  content_type: string;
+  summary: string;
+  body: string;
+  content_sha256: string;
 }
 
 export type ReviewFilter = 'all' | 'pending' | 'approved' | 'rejected';

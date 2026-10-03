@@ -61,6 +61,10 @@ export const approvableNone = approvableEntries([
 
 export const cases = {
   empty: reviewHtml({ groups: [], errors: [] }, 0, '2026-09-01', [], []),
+  pendingContent: reviewHtml({ groups: [], errors: [], content_items: [{
+    path: 'projects/demo.md', title: '演示项目', content_type: 'project-main',
+    summary: '样板摘要', body: '# 演示项目\\n\\n正文 <script>拒绝执行</script>', content_sha256: 'a'.repeat(64),
+  }] }, 0, '2026-09-01', [], []),
   pending: reviewHtml({
     groups: [{ meeting_date: '2026-08-27', meeting_title: '排版会', entries: [baseEntry] }],
     errors: [],
@@ -145,6 +149,11 @@ try {
 
   assert.match(mod.cases.empty, /当前筛选没有候选/);
   assert.match(mod.cases.empty, /一键拒绝过期项/);
+  assert.match(mod.cases.pendingContent, /正式内容待确认/);
+  assert.match(mod.cases.pendingContent, /项目主页/);
+  assert.match(mod.cases.pendingContent, /查看完整正文/);
+  assert.match(mod.cases.pendingContent, /批准当前版本/);
+  assert.match(mod.cases.pendingContent, /&lt;script&gt;拒绝执行&lt;\/script&gt;/);
   assert.match(mod.cases.pending, /截止：2026-08-31（已过期）/);
   assert.match(mod.cases.pending, /项目甲/);
   assert.match(mod.cases.pending, /重新核对/);

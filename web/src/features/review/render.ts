@@ -6,6 +6,7 @@ import type {
   ReviewEntry,
   ReviewFilter,
   ReviewPayload,
+  PendingContent,
   ReviewRenderOptions,
 } from './types';
 
@@ -266,6 +267,14 @@ export function reviewHtml(
     ? '<section class="external-actions error-state"><h4>外部写回状态暂时无法读取</h4><p class="hint">' + esc(externalActionsError) +
       '。审批决定仍保留；请稍后重试读取，不要据此重复应用。</p></section>'
     : '') + renderExternalActions(externalActions);
+  const contentItems = review.content_items ?? [];
+  const contentReviewHtml = '<section class="content-review" aria-labelledby="content-review-title">' +
+    '<div class="content-review-head"><h3 class="section-title" id="content-review-title">正式内容待确认</h3>' +
+    '<p class="hint">' + contentItems.length + ' 篇当前版本待确认。批准后会为这一版写入批准证明并转为正式内容；文件变化后需重新确认。此操作不会创建飞书任务。</p></div>' +
+    (contentItems.length === 0
+      ? '<div class="empty"><p>没有待确认的正式内容。</p></div>'
+      : contentItems.map(contentCard).join('')) +
+    '</section>';
   // 「一键拒绝过期项」不受当前筛选/选择影响；必须先显示真实范围，且无可拒绝项时不可点。
   const expiredCount = allEntries.filter((entry) =>
     entry.decision === 'pending' && !!entry.due_date && !!today && entry.due_date < today,
@@ -285,12 +294,35 @@ export function reviewHtml(
     '<button class="primary" data-action="plan">检查并写回</button>' +
     '</div></div>' +
     errorsHtml +
+    contentReviewHtml +
     selectionToolbar +
     externalHtml +
     '<div id="review-groups">' + groupsHtml + '</div>' +
     projectOptions +
     '<div id="plan-result"></div>'
   );
+}
+
+const CONTENT_TYPE_LABELS: Record<string, string> = {
+  'project-main': '项目主页', note: '知识页', decision: '业务决定',
+  'meeting-note': '会议纪要', 'long-form-thought': '工作思考',
+  'work-log': '工作日志', 'thread-doc': '工作材料', 'weekly-review': '周复盘',
+};
+
+function contentCard(item: PendingContent): string {
+  const draftHint = /待核对|待结算|草稿/.test(item.title + item.summary)
+    ? '<p class="content-review-draft">提示：这份内容标记了待核对事项，请先确认它已具备正式批准条件。</p>'
+    : '';
+  return '<article class="card content-review-card" data-content-path="' + esc(item.path) + '">' +
+    '<div class="entry-top"><span class="kind">' + esc(CONTENT_TYPE_LABELS[item.content_type] ?? item.content_type) + '</span>' +
+    '<span class="badge pending">待确认</span></div>' +
+    '<h4>' + esc(item.title) + '</h4>' +
+    '<p class="meta">' + esc(item.path) + '</p>' +
+    (item.summary ? '<p>' + esc(item.summary) + '</p>' : '') + draftHint +
+    '<details class="content-review-details"><summary>查看完整正文</summary><pre>' + esc(item.body) + '</pre></details>' +
+    '<div class="row"><button class="ok" type="button" data-action="content-approve" data-path="' + esc(item.path) +
+    '" data-digest="' + esc(item.content_sha256) + '" data-title="' + esc(item.title) + '">批准当前版本</button></div>' +
+    '</article>';
 }
 
 export { reviewHtml as default };

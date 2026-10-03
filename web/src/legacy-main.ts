@@ -63,6 +63,7 @@ import {
   submitProjectCreate,
 } from './features/projects';
 import {
+  approveContent,
   batchSelectedReview,
   confirmExternalCreated,
   confirmExternalNotFound,
@@ -907,6 +908,10 @@ document.addEventListener('click', (ev) => {
   }
   if (action === 'review-select-all') {
     selectAllReview();
+    return;
+  }
+  if (action === 'content-approve') {
+    void approveContent(btn.dataset.path ?? '', btn.dataset.digest ?? '', btn.dataset.title ?? '当前内容');
     return;
   }
   if (action === 'review-batch') {

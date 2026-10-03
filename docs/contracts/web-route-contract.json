@@ -398,6 +398,18 @@
     "method": [
       "POST"
     ],
+    "path": "/api/review/content/approve",
+    "request_fields": [
+      "payload"
+    ],
+    "request_model": "ContentApprovalPayload",
+    "response_status": 200,
+    "error_codes": []
+  },
+  {
+    "method": [
+      "POST"
+    ],
     "path": "/api/review/decide",
     "request_fields": [
       "payload"

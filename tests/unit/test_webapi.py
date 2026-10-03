@@ -119,6 +119,85 @@ def test_external_action_query_and_manual_reconcile(tmp_path: Path) -> None:
     assert confirmed.json()["action"]["state"] == "reconciled-succeeded"
 
 
+def test_review_lists_pending_formal_content_without_sources_or_writes(tmp_path: Path) -> None:
+    client, vault = _client(tmp_path, seed_review=False)
+    page = vault / "projects" / "demo.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        """---
+title: Demo project
+type: project-main
+status: pending-review
+summary: A draft
+---
+
+# Demo project
+
+Content.
+""",
+        encoding="utf-8",
+    )
+    source = vault / "sources" / "source.md"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "---\ntitle: Source\ntype: source\nstatus: pending-review\n---\n\n# Source\n",
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/review")
+
+    assert response.status_code == 200
+    items = response.json()["content_items"]
+    assert [item["path"] for item in items] == ["projects/demo.md"]
+    assert items[0]["title"] == "Demo project"
+    assert items[0]["content_sha256"]
+    assert "approval:" not in page.read_text(encoding="utf-8")
+
+
+def test_content_approval_is_version_bound_and_activates_the_page(tmp_path: Path) -> None:
+    from summit_workbench.domain.approval import has_valid_approval
+
+    client, vault = _client(tmp_path, seed_review=False)
+    page = vault / "notes" / "draft.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(
+        "---\ntitle: Draft\ntype: note\nstatus: pending-review\n---\n\n# Draft\n\nOriginal.\n",
+        encoding="utf-8",
+    )
+    item = client.get("/api/review").json()["content_items"][0]
+    changed = page.read_text(encoding="utf-8").replace("Original.", "Changed.")
+    page.write_text(changed, encoding="utf-8")
+
+    stale = client.post(
+        "/api/review/content/approve",
+        json={"path": item["path"], "content_sha256": item["content_sha256"]},
+    )
+    assert stale.status_code == 409
+    assert "approval:" not in page.read_text(encoding="utf-8")
+
+    fresh = client.get("/api/review").json()["content_items"][0]
+    approved = client.post(
+        "/api/review/content/approve",
+        json={"path": fresh["path"], "content_sha256": fresh["content_sha256"]},
+    )
+    assert approved.status_code == 200
+    from summit_workbench.repositories.vault import load_note
+
+    note = load_note(page)
+    assert note.meta["status"] == "active"
+    assert has_valid_approval(note.meta, note.body)
+    assert client.get("/api/review").json()["content_items"] == []
+
+
+def test_content_approval_rejects_path_traversal(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path, seed_review=False)
+    response = client.post(
+        "/api/review/content/approve",
+        json={"path": "../outside.md", "content_sha256": "0" * 64},
+    )
+    assert response.status_code == 400
+
+
 def test_api_version_changes_server_instance_per_app_instance(tmp_path: Path) -> None:
     static_dir = tmp_path / "static"
     shutil.copytree(_STATIC_DIR, static_dir)

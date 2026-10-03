@@ -138,6 +138,32 @@ export async function decide(candidateId: string, decision: string): Promise<voi
   void getReviewDeps()?.refreshReview();
   void getReviewDeps()?.refreshState();
 }
+
+/** Approve the exact current version rendered on a formal-content review card. */
+export async function approveContent(path: string, contentSha256: string, title: string): Promise<void> {
+  if (!path || !/^[0-9a-f]{64}$/.test(contentSha256)) {
+    toast('审批版本信息无效，请刷新审批页', 'err');
+    return;
+  }
+  if (!window.confirm('批准“' + title + '”的当前版本？批准后该内容将作为正式版本生效。')) return;
+  try {
+    const response = await mutation(() => api<{ ok: boolean; message: string }>(
+      '/api/review/content/approve',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content_sha256: contentSha256 }),
+      },
+    ));
+    toast(response.message, response.ok ? 'ok' : 'err');
+    if (response.ok) {
+      await getReviewDeps()?.refreshReview();
+      await getReviewDeps()?.refreshState();
+    }
+  } catch (error) {
+    toast(error, 'err');
+  }
+}
 export async function batchDecide(candidateIds: string[], decision: string, note = ''): Promise<void> {
   if (candidateIds.length === 0) {
     toast('没有可操作的条目', 'info');

@@ -55,6 +55,13 @@ class EditPayload(BaseModel):
     end_at: str | None = Field(default=None, max_length=64)
 
 
+class ContentApprovalPayload(BaseModel):
+    """Approve only the exact pending Markdown version shown in the review UI."""
+
+    path: str = Field(min_length=1, max_length=1024)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class TaskEditPayload(BaseModel):
     """今日待办任务行内编辑：只改标题与/或截止日期（空 due_date = 清除截止）。"""
 

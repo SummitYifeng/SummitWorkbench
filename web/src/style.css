@@ -363,6 +363,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 /* ---- 审批页 ---- */
+.content-review { margin: 24px 0; }
+.content-review-head { margin-bottom: 12px; }
+.content-review-card { margin: 12px 0; }
+.content-review-card h4 { margin: 8px 0 4px; }
+.content-review-card .meta { overflow-wrap: anywhere; }
+.content-review-details { margin: 12px 0; }
+.content-review-details summary { cursor: pointer; color: var(--accent); }
+.content-review-details pre { max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; border-radius: 8px; background: var(--bg); }
+.content-review-draft { color: var(--warn); }
 .review-toolbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   margin-bottom: 6px; flex-wrap: wrap;

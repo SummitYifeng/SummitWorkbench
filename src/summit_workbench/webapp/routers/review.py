@@ -16,8 +16,10 @@ from pathlib import Path
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 
+from summit_workbench.domain.approval import RETRIEVAL_TYPES, approval_digest
 from summit_workbench.domain.markdown_blocks import chunk_markdown
 from summit_workbench.domain.review import APPROVAL_ROUTES, CandidateDecision, RouteTarget
+from summit_workbench.repositories.approval import approve_markdown
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -28,6 +30,7 @@ from summit_workbench.repositories.review_page import review_path
 from summit_workbench.repositories.vault import load_note, meta_date_iso
 from summit_workbench.webapp.api import (
     BatchDecidePayload,
+    ContentApprovalPayload,
     DecidePayload,
     EditPayload,
     review_payload,
@@ -41,6 +44,7 @@ from summit_workbench.webapp.mutation_response import _commit_note, _mutation_fi
 from summit_workbench.webapp.mutation_runtime import MutationRuntime
 from summit_workbench.webapp.review_view import _load, _plan_text
 from summit_workbench.webapp.views import render_plan, render_review
+from summit_workbench.workflows.content_review import list_pending_content
 from summit_workbench.workflows.local_mutation import LocalMutationOutcome
 from summit_workbench.workflows.review_apply import apply_meeting_review
 
@@ -53,7 +57,80 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
     @app.get("/api/review")
     def api_review() -> dict[str, object]:
         entries, errors = _load(ctx.vault_dir)
-        return review_payload(entries, errors)
+        return {
+            **review_payload(entries, errors),
+            "content_items": [
+                {
+                    "path": item.path,
+                    "title": item.title,
+                    "content_type": item.content_type,
+                    "summary": item.summary,
+                    "body": item.body,
+                    "content_sha256": item.content_sha256,
+                }
+                for item in list_pending_content(ctx.vault_dir)
+            ],
+        }
+
+    @app.post("/api/review/content/approve", response_model=None)
+    def api_approve_content(payload: ContentApprovalPayload) -> dict[str, object] | JSONResponse:
+        """Approve the exact previewed formal page version, then make it active."""
+        raw_path = payload.path
+        if raw_path.startswith("/") or "\\" in raw_path or ".." in raw_path.split("/"):
+            return JSONResponse({"ok": False, "message": "内容路径无效"}, status_code=400)
+        relative = Path(*raw_path.split("/"))
+        if relative.suffix.lower() != ".md":
+            return JSONResponse(
+                {"ok": False, "message": "只允许审批 Markdown 内容"}, status_code=400
+            )
+        root = ctx.vault_dir.resolve()
+        source = (root / relative).resolve()
+        try:
+            source.relative_to(root)
+        except ValueError:
+            return JSONResponse({"ok": False, "message": "内容路径越界"}, status_code=400)
+        if not source.is_file():
+            return JSONResponse({"ok": False, "message": "内容不存在或已移动"}, status_code=404)
+
+        try:
+
+            def mutate(operation_id: str) -> LocalMutationOutcome[Path]:
+                note = load_note(source)
+                if note.parse_error is not None:
+                    raise ValueError("内容格式无效，不能批准")
+                content_type = note.meta.get("type")
+                if (
+                    not isinstance(content_type, str)
+                    or content_type not in RETRIEVAL_TYPES
+                    or content_type
+                    in {
+                        "source",
+                        "meeting-transcript",
+                    }
+                ):
+                    raise ValueError("该文件不是可批准的正式内容")
+                if note.meta.get("status") != "pending-review":
+                    raise ValueError("内容已变化或不再待审，请刷新审批页")
+                if approval_digest(note.meta, note.body) != payload.content_sha256:
+                    raise ValueError("内容在预览后发生变化，请刷新并重新核对")
+                approve_markdown(
+                    source,
+                    operation_id=operation_id,
+                    status="active",
+                    expected_digest=payload.content_sha256,
+                )
+                return LocalMutationOutcome(source, (source,))
+
+            result = runtime.run("review/content-approve", mutate)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=409)
+        except OSError as exc:
+            return JSONResponse({"ok": False, "message": f"批准失败：{exc}"}, status_code=500)
+        return {
+            "ok": True,
+            "message": f"已批准当前版本：{raw_path}",
+            **_mutation_fields(result),
+        }
 
     @app.get("/api/review/source", response_class=PlainTextResponse)
     def api_review_source(path: str = "") -> PlainTextResponse:
