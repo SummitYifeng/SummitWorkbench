@@ -241,6 +241,7 @@ try {
   assert.equal(probe.captureCalls[0].options.headers['Content-Type'], 'application/json');
   assert.deepEqual(JSON.parse(probe.captureCalls[0].options.body), { text: '合成捕捉文本' });
   assert.ok(probe.renders >= 2, 'capture re-renders before and after the request');
+  assert.ok(probe.refreshes >= 1, 'successful capture reloads inbox state before rendering');
 
   // import
   assert.equal(probe.unsupportedReceipt.status, 'error');

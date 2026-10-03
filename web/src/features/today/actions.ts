@@ -62,6 +62,8 @@ export function createTodayActions(view: HTMLElement): TodayActions {
         if (result.ok) {
           try { await clearServerDraft(api, 'quick-note', 'quick'); }
           catch { /* retain the draft if cleanup cannot be confirmed */ }
+          // Capture mutates inbox.md; reload it before the next render so the new item is visible.
+          await refreshState();
         }
         toast(result.message, result.ok ? 'ok' : 'err');
         return { ok: result.ok };

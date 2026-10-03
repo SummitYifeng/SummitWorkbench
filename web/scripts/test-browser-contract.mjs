@@ -101,6 +101,8 @@ assert.match(reviewSource, /data-action="source-open"/, 'review evidence links o
 assert.match(source, /function openSource/, 'review evidence opens the shared read-only source panel');
 assert.match(source, /\/api\/sources\/read\?source_id=/, 'source reader uses the vault-scoped API');
 assert.match(source, /result\.truncated/, 'source reader surfaces the truncation notice for oversized-but-capped bodies');
+assert.doesNotMatch(source, /旧版可在 vault git 找回/, 'artifact state replacement does not promise Git recovery in a Git-free workspace');
+assert.match(source, /此操作会覆盖原状态内容/, 'artifact state replacement warns that it overwrites current state');
 assert.match(source, /e\.actionable && !!e\.route/, 'batch approval filters incomplete candidates');
 assert.match(source, /REVIEW_BATCH_LIMIT/, 'batch review operations have a client-side limit');
 assert.match(source, /超过单批上限 100 条/, 'batch limit explains how to recover');

@@ -43,7 +43,7 @@ export function openArtifactModal(defaultProject: string): void {
     '<span class="hint" id="artifact-file-name"></span></div>' +
     '<textarea id="artifact-text" rows="10" required placeholder="把整份文档粘贴在这里，或点上方按钮读入本地文件…"></textarea>' +
     '<label class="hint artifact-to-state"><input type="checkbox" id="artifact-to-state"> ' +
-    '保存后先预览并确认把本文档摘要同步为主档案「当前状态」（会覆盖原内容，旧版可在 vault git 找回）</label>' +
+    '保存后先预览并确认把本文档摘要替换为主档案「当前状态」；此操作会覆盖原状态内容</label>' +
     '<div class="row"><button class="primary" type="submit">存入档案</button>' +
     '<button class="ghost" type="button" data-action="close-modal">取消</button></div>' +
     '</form>'
