@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -12,13 +13,17 @@ from fastapi.testclient import TestClient
 from summit_workbench.config.profiles import resolve_active_workspace
 from summit_workbench.config.secrets import CredentialError
 from summit_workbench.domain.workspace import DeviceRole, LocalProfile, WorkspaceManifest
+from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
 from summit_workbench.repositories.profile_registry import (
     active_profile_id,
     save_profile,
     set_active_profile,
 )
+from summit_workbench.repositories.workspace_contract import write_workspace_contract
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.webapp.app import WebContext, create_app
+from summit_workbench.webapp.mutation_runtime import MutationRuntime
+from summit_workbench.workflows.local_mutation import LocalMutationOutcome, MutationBlocked
 from summit_workbench.workflows.profile_settings import (
     commit_profile_switch,
     list_profile_summaries,
@@ -52,6 +57,7 @@ def _profile(home: Path, label: str) -> LocalProfile:
             min_writer_version="0.1.0",
         ),
     )
+    write_workspace_contract(vault, WorkspaceContractManifest(workspace_id=workspace_id))
     return profile
 
 
@@ -157,6 +163,41 @@ def test_settings_api_exposes_prepare_commit_and_safe_remove(tmp_path: Path, mon
     preview = client.post("/api/settings/profile/remove", json={"workspace_id": first.workspace_id})
     assert preview.status_code == 409
     assert preview.json()["code"] == "confirmation_required"
+
+
+def test_profile_switch_waits_for_active_local_mutation(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    runtime = MutationRuntime(WebContext(vault, tmp_path, "UTC"), operation_id=lambda _req: "op")
+    mutation_started = threading.Event()
+    release_mutation = threading.Event()
+    switch_finished = threading.Event()
+    switch_results: list[bool] = []
+
+    def mutation(_operation_id: str) -> LocalMutationOutcome[str]:
+        mutation_started.set()
+        assert release_mutation.wait(timeout=2)
+        return LocalMutationOutcome("saved", ())
+
+    writer = threading.Thread(target=lambda: runtime.run("test/write", mutation))
+    writer.start()
+    assert mutation_started.wait(timeout=2)
+
+    def switch() -> None:
+        switch_results.append(runtime.begin_profile_switch(timeout=2))
+        switch_finished.set()
+
+    switcher = threading.Thread(target=switch)
+    switcher.start()
+    assert not switch_finished.wait(timeout=0.05)
+    with pytest.raises(MutationBlocked, match="正在切换"):
+        runtime.run("test/late-write", lambda _operation_id: LocalMutationOutcome("late", ()))
+
+    release_mutation.set()
+    assert switch_finished.wait(timeout=2)
+    writer.join(timeout=2)
+    switcher.join(timeout=2)
+    assert switch_results == [True]
 
 
 def test_retired_automation_settings_routes_are_not_registered(tmp_path: Path, monkeypatch) -> None:

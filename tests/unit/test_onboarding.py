@@ -97,7 +97,10 @@ def _vault_content_hash(vault: Path) -> str:
     """vault 内既有文件内容的稳定摘要（不含 marker/备份等新增物）。"""
     hasher = hashlib.sha256()
     for path in sorted(p for p in vault.rglob("*") if p.is_file()):
-        if ".summit-workbench" in path.parts:
+        if (
+            ".summit-workbench" in path.parts
+            or path.relative_to(vault).as_posix() == "conventions.md"
+        ):
             continue
         hasher.update(str(path.relative_to(vault)).encode("utf-8"))
         hasher.update(b"\0")
@@ -253,8 +256,9 @@ def test_upgrade_keeps_content_and_only_adds_marker_profile_backup(tmp_path) -> 
     vault = _seed_legacy_vault(tmp_path)
     before_hash = _vault_content_hash(vault)
     result = upgrade_workspace(vault, home=home, app_version=APP_VERSION, device_name="Studio")
-    # 内容哈希不变：只新增 marker，不改任何业务文件
+    # 业务文件原字节不变；本次只新增契约 marker 与通用 conventions.md。
     assert _vault_content_hash(vault) == before_hash
+    assert (vault / "conventions.md").is_file()
     manifest = load_workspace_manifest(vault)
     assert manifest is not None
     assert manifest.workspace_id == result.workspace_id

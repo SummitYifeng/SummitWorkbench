@@ -274,7 +274,7 @@ def preflight(
             report.marker_workspace_id = manifest.workspace_id
             report.compatibility = evaluate_manifest_compatibility(manifest, version)
         if flow is OnboardingFlow.UPGRADE_EXISTING:
-            if manifest is not None:
+            if manifest is not None or portable is not None:
                 reject(
                     "该 vault 已是工作区（已有 marker）：升级仅用于无 marker 的旧 vault，"
                     "请用 connect-local 连接"
@@ -548,6 +548,7 @@ def upgrade_workspace(
     version = app_version or current_app_version()
     workspace_id = str(uuid4())
     display = vault_dir.name or "Workbench"
+    conventions_existed = (vault_dir / "conventions.md").exists()
     backup_root = (
         backups_dir(home=home)
         / f"{vault_dir.name}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}"
@@ -574,6 +575,11 @@ def upgrade_workspace(
 
         manifest = _new_manifest(workspace_id, display, version)
         write_workspace_manifest(vault_dir, manifest)
+        write_workspace_contract(
+            vault_dir,
+            WorkspaceContractManifest(workspace_id=workspace_id),
+            preserve_conventions=True,
+        )
         device = ensure_device_identity(home, device_name=device_name)
         profile = _ensure_profile(
             workspace_id, display, vault_dir.parent, vault_dir, home, device_role
@@ -599,6 +605,9 @@ def upgrade_workspace(
         try:
             if marker_file.is_file():
                 marker_file.unlink()
+            (vault_dir / ".summit-workbench" / "manifest.json").unlink(missing_ok=True)
+            if not conventions_existed:
+                (vault_dir / "conventions.md").unlink(missing_ok=True)
             marker_dir = marker_file.parent
             if marker_dir.is_dir():
                 try:
@@ -666,15 +675,10 @@ def connect_workspace(
             if contract_manifest_path.exists():
                 raise OnboardingError("连接被拒绝", reasons=[str(exc)]) from exc
             # Explicit connection is the migration boundary for an existing SWB-marked folder.
-            from summit_workbench.repositories._atomic import atomic_write_text
-
-            atomic_write_text(
-                vault_dir / ".summit-workbench" / "manifest.json",
-                json.dumps(
-                    WorkspaceContractManifest(workspace_id=workspace_id).model_dump(), indent=2
-                )
-                + "\n",
-                ensure_parents=True,
+            write_workspace_contract(
+                vault_dir,
+                WorkspaceContractManifest(workspace_id=workspace_id),
+                preserve_conventions=True,
             )
             added_contract_manifest = True
 

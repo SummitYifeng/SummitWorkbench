@@ -76,7 +76,14 @@ def _clone_worktree(remote: Path, name: str) -> tuple[Path, GitRepo]:
 def _ensure_marker(vault: Path) -> None:
     from uuid import uuid4
 
+    from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
+    from summit_workbench.repositories.workspace_contract import (
+        load_contract_manifest,
+        write_workspace_contract,
+    )
+
     if load_workspace_manifest(vault) is None:
+        workspace_id = str(uuid4())
         write_workspace_manifest(
             vault,
             __import__(
@@ -84,7 +91,7 @@ def _ensure_marker(vault: Path) -> None:
             ).WorkspaceManifest.model_validate(
                 {
                     "schema_version": 1,
-                    "workspace_id": str(uuid4()),
+                    "workspace_id": workspace_id,
                     "display_name": "sync-vault",
                     "created_at": "2026-09-05T00:00:00Z",
                     "min_reader_version": "0.4.1",
@@ -92,6 +99,19 @@ def _ensure_marker(vault: Path) -> None:
                 }
             ),
         )
+    else:
+        workspace_id = load_workspace_manifest(vault).workspace_id  # type: ignore[union-attr]
+    try:
+        load_contract_manifest(vault)
+    except ValueError:
+        write_workspace_contract(
+            vault,
+            WorkspaceContractManifest(workspace_id=workspace_id),
+            preserve_conventions=(vault / "conventions.md").exists(),
+        )
+        repo = GitRepo(vault)
+        repo.add([".summit-workbench/manifest.json", "conventions.md"])
+        repo.commit("wb: add workspace contract", author=ID)
 
 
 # ---- 领域纯函数 ----
@@ -589,6 +609,10 @@ def test_sync_uses_the_on_disk_git_username_not_the_startup_snapshot(monkeypatch
             }
         ),
     )
+    from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
+    from summit_workbench.repositories.workspace_contract import write_workspace_contract
+
+    write_workspace_contract(vault, WorkspaceContractManifest(workspace_id=workspace_id))
     profile = LocalProfile.model_validate(
         {
             "schema_version": 1,

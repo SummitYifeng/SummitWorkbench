@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
+
+import pytest
 
 from summit_workbench.domain.pipeline import MeetingTask, ProcessingState, SourceKind
 from summit_workbench.repositories.meeting_archive import MeetingArchiveInput, archive_transcript
@@ -92,3 +95,38 @@ def test_corrupt_file_rebuilds_jobs_from_meeting_ledger(tmp_path: Path, monkeypa
     assert rebuilt[0].stage is ImportJobStage.ARCHIVED
     assert rebuilt[0].transcript_path == str(transcript)
     assert manager._queue.get_nowait() == rebuilt[0].job_id
+
+
+def test_pause_rejects_new_imports_and_waits_for_active_job(tmp_path: Path, monkeypatch) -> None:
+    manager = MeetingImportManager(WebContext(tmp_path / "vault", tmp_path, "UTC"), object())  # type: ignore[arg-type]
+    started = threading.Event()
+    release = threading.Event()
+    paused = threading.Event()
+
+    def process(_self, _job_id: str) -> None:
+        started.set()
+        assert release.wait(timeout=2)
+
+    monkeypatch.setattr(MeetingImportManager, "_process", process)
+    manager.start()
+    manager._queue.put("active-job")
+    assert started.wait(timeout=2)
+    result: list[bool] = []
+
+    def pause() -> None:
+        result.append(manager.pause_and_wait(timeout=2))
+        paused.set()
+
+    switch_thread = threading.Thread(target=pause)
+    switch_thread.start()
+    assert not paused.wait(timeout=0.05)
+    with pytest.raises(ValueError, match="正在切换"):
+        manager.submit("meeting.md", "# meeting")
+
+    release.set()
+    assert paused.wait(timeout=2)
+    switch_thread.join(timeout=2)
+    assert result == [True]
+    manager.close()
+    assert manager._thread is not None
+    manager._thread.join(timeout=2)

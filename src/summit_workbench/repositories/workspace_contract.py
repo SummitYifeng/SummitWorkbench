@@ -30,12 +30,17 @@ def load_contract_manifest(root: Path) -> WorkspaceContractManifest:
     path = root / _STATE_DIR / _MANIFEST
     if not path.is_file():
         raise WorkspaceContractError("所选文件夹没有 SWB 工作库契约；请新建工作库或选兼容工作库")
+    conventions_path = root / "conventions.md"
+    if not conventions_path.is_file():
+        raise WorkspaceContractError("工作库缺少可读的 conventions.md 契约说明")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         manifest = WorkspaceContractManifest.model_validate(data)
         check_workspace_compatibility(manifest)
+        if not conventions_path.read_text(encoding="utf-8").strip():
+            raise WorkspaceContractError("工作库 conventions.md 为空")
         return manifest
-    except (OSError, ValueError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         if isinstance(exc, WorkspaceContractError):
             raise
         raise WorkspaceContractError(f"工作库契约损坏：{path}") from exc
@@ -62,6 +67,7 @@ def write_workspace_contract(
     manifest: WorkspaceContractManifest,
     *,
     replace_conventions: bool = False,
+    preserve_conventions: bool = False,
 ) -> Path:
     """Write a frozen manifest into a caller-prepared staging directory."""
     root = root.expanduser().resolve()
@@ -69,7 +75,7 @@ def write_workspace_contract(
     if manifest_path.exists():
         raise WorkspaceContractError("工作库契约已存在，不会覆盖身份")
     conventions_path = root / "conventions.md"
-    if conventions_path.exists() and not replace_conventions:
+    if conventions_path.exists() and not (replace_conventions or preserve_conventions):
         raise WorkspaceContractError("conventions.md 已存在；请显式选择模板升级")
     conventions = _workspace_conventions_template().read_text(encoding="utf-8")
     atomic_write_text(
@@ -78,7 +84,8 @@ def write_workspace_contract(
         ensure_parents=True,
     )
     try:
-        atomic_write_text(conventions_path, conventions, ensure_parents=True)
+        if not (preserve_conventions and conventions_path.exists()):
+            atomic_write_text(conventions_path, conventions, ensure_parents=True)
     except BaseException:
         manifest_path.unlink(missing_ok=True)
         try:

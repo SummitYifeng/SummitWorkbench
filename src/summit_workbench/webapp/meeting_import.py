@@ -7,6 +7,7 @@ import queue
 import shutil
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -59,6 +60,10 @@ class MeetingImportManager:
         self._queue: queue.Queue[str] = queue.Queue()
         self._submit_lock = threading.Lock()
         self._stop = threading.Event()
+        self._worker_condition = threading.Condition()
+        self._accepting = True
+        self._paused = False
+        self._active_job_id: str | None = None
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
@@ -70,6 +75,27 @@ class MeetingImportManager:
 
     def close(self) -> None:
         self._stop.set()
+        with self._worker_condition:
+            self._worker_condition.notify_all()
+
+    def pause_and_wait(self, *, timeout: float = 90.0) -> bool:
+        """Reject new imports and wait for an active job before switching workspace."""
+        deadline = time.monotonic() + timeout
+        with self._worker_condition:
+            self._accepting = False
+            self._paused = True
+            self._worker_condition.notify_all()
+            return self._worker_condition.wait_for(
+                lambda: self._active_job_id is None,
+                timeout=max(0.0, deadline - time.monotonic()),
+            )
+
+    def resume(self) -> None:
+        """Reopen the old workspace worker after a switch attempt is cancelled."""
+        with self._worker_condition:
+            self._accepting = True
+            self._paused = False
+            self._worker_condition.notify_all()
 
     def _recover(self) -> None:
         jobs = self.store.list_recent()
@@ -158,17 +184,40 @@ class MeetingImportManager:
 
     def _work(self) -> None:
         while not self._stop.is_set():
+            with self._worker_condition:
+                self._worker_condition.wait_for(
+                    lambda: self._stop.is_set() or not self._paused,
+                    timeout=0.1,
+                )
+                if self._stop.is_set():
+                    return
             try:
                 job_id = self._queue.get(timeout=0.1)
             except queue.Empty:
                 continue
-            if not self._stop.is_set():
+            with self._worker_condition:
+                if self._stop.is_set():
+                    self._queue.task_done()
+                    return
+                if self._paused:
+                    self._queue.put(job_id)
+                    self._queue.task_done()
+                    continue
+                self._active_job_id = job_id
+            try:
                 self._process(job_id)
-            self._queue.task_done()
+            finally:
+                with self._worker_condition:
+                    self._active_job_id = None
+                    self._worker_condition.notify_all()
+                self._queue.task_done()
 
     def submit(self, file_name: str, text: str) -> ImportJob:
         """串行化上传归档，保证并发重复上传只会创建一个任务。"""
         with self._submit_lock:
+            with self._worker_condition:
+                if not self._accepting:
+                    raise ValueError("工作台正在切换，会议导入已暂停")
             return self._submit_locked(file_name, text)
 
     def _submit_locked(self, file_name: str, text: str) -> ImportJob:
@@ -242,6 +291,9 @@ class MeetingImportManager:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def retry(self, job_id: str) -> ImportJob | None:
+        with self._worker_condition:
+            if not self._accepting:
+                raise ValueError("工作台正在切换，会议处理已暂停")
         job = self.store.get(job_id)
         if job is None:
             return None

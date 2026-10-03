@@ -33,6 +33,7 @@ from summit_workbench.repositories.profile_registry import (
     save_profile,
     set_active_profile,
 )
+from summit_workbench.repositories.workspace_contract import load_contract_manifest
 from summit_workbench.repositories.workspace_manifest import load_workspace_manifest
 
 
@@ -286,14 +287,21 @@ def _apply_provider_settings(
 
 def _compatibility(profile: LocalProfile) -> Compatibility:
     try:
-        manifest = load_workspace_manifest(
-            resolve_work_paths(work_root=profile.work_root, vault_dir=profile.vault_dir).vault_dir
-        )
+        vault_dir = resolve_work_paths(
+            work_root=profile.work_root, vault_dir=profile.vault_dir
+        ).vault_dir
+        manifest = load_workspace_manifest(vault_dir)
+        portable = load_contract_manifest(vault_dir)
     except Exception:
         return Compatibility.CANNOT_OPEN
-    if manifest is None:
+    if (
+        manifest is None
+        or manifest.workspace_id != profile.workspace_id
+        or portable.workspace_id != profile.workspace_id
+    ):
         return Compatibility.CANNOT_OPEN
-    return evaluate_manifest_compatibility(manifest, __version__)
+    compatibility = evaluate_manifest_compatibility(manifest, __version__)
+    return compatibility if compatibility is Compatibility.READ_WRITE else Compatibility.CANNOT_OPEN
 
 
 def _provider_status(profile: LocalProfile) -> dict[str, str]:

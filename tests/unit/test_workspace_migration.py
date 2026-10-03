@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 
 from summit_workbench import __version__
-from summit_workbench.domain.workspace import WorkspaceManifest
+from summit_workbench.domain.workspace import Compatibility, WorkspaceManifest
 from summit_workbench.repositories.git import GitRepo
 from summit_workbench.repositories.git_backend import (
     AheadBehind,
@@ -24,7 +24,6 @@ from summit_workbench.repositories.workspace_manifest import (
 )
 from summit_workbench.workflows.workspace_migration import (
     MigrationRegistry,
-    MigrationResult,
     MigrationStep,
     WorkspaceMigrationError,
     default_migration_registry,
@@ -356,10 +355,10 @@ def test_unknown_future_schema_is_rejected_without_writing(tmp_path: Path) -> No
     assert backend.commits == []
 
 
-def test_legacy_git_workspace_migration_endpoint_is_retired(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_incompatible_legacy_workspace_is_restricted_to_onboarding_control_plane(
+    tmp_path: Path,
 ) -> None:
-    """旧 schema 的只读保护不能把唯一的迁移入口一起挡住。"""
+    """旧 schema 不应进入业务只读态或暴露已退役的 Git 迁移入口。"""
     from fastapi.testclient import TestClient
 
     from summit_workbench.config.profiles import resolve_active_workspace
@@ -382,27 +381,15 @@ def test_legacy_git_workspace_migration_endpoint_is_retired(
     set_active_profile(profile.workspace_id, home=home)
     context = resolve_active_workspace(home=home, app_version="0.4.1")
     assert context.device_id is not None
+    assert context.compatibility is Compatibility.CANNOT_OPEN
     web_context = WebContext.from_active_workspace(context)
-    assert web_context is not None
+    assert web_context is None
 
-    from summit_workbench.workflows import workspace_migration
-
-    monkeypatch.setattr(
-        workspace_migration,
-        "migrate_workspace",
-        lambda *_args, **_kwargs: MigrationResult(
-            status="migrated",
-            workspace_id=manifest.workspace_id,
-            from_version=1,
-            to_version=2,
-            backup_dir=home / "backup",
-            backup_manifest=home / "backup" / "manifest.json",
-            backup_snapshot=home / "backup" / "snapshot",
-        ),
-    )
-    response = TestClient(create_app(web_context, static_dir=tmp_path / "missing")).post(
+    client = TestClient(create_app(None, static_dir=tmp_path / "missing"))
+    response = client.post(
         "/api/workspace/migration",
         json={"confirmed_device_id": context.device_id},
     )
 
     assert response.status_code == 404
+    assert client.get("/api/onboarding/status").status_code == 200

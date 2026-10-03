@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from summit_workbench.config.profiles import (
     ProfileResolutionState,
     resolve_active_workspace,
 )
 from summit_workbench.domain.workspace import Compatibility, LocalProfile, WorkspaceManifest
+from summit_workbench.domain.workspace_contract import WorkspaceContractManifest
 from summit_workbench.providers.feishu.config import load_feishu_config
 from summit_workbench.providers.llm.config import load_model_config
 from summit_workbench.repositories.profile_registry import (
@@ -18,6 +17,7 @@ from summit_workbench.repositories.profile_registry import (
     save_profile,
     set_active_profile,
 )
+from summit_workbench.repositories.workspace_contract import write_workspace_contract
 from summit_workbench.repositories.workspace_manifest import write_workspace_manifest
 from summit_workbench.webapp.app import WebContext, create_app
 
@@ -52,6 +52,16 @@ def _manifest(workspace_id: str) -> WorkspaceManifest:
     )
 
 
+def _write_contract(profile: LocalProfile, *, min_writer_version: int = 1) -> None:
+    write_workspace_contract(
+        profile.vault_dir,
+        WorkspaceContractManifest(
+            workspace_id=profile.workspace_id,
+            min_writer_version=min_writer_version,
+        ),
+    )
+
+
 def test_active_context_is_single_runtime_source_and_reads_marker(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -61,6 +71,7 @@ def test_active_context_is_single_runtime_source_and_reads_marker(
     save_profile(profile, home=home)
     set_active_profile(profile.workspace_id, home=home)
     write_workspace_manifest(profile.vault_dir, _manifest(profile.workspace_id))
+    _write_contract(profile)
     monkeypatch.setenv("WORK_ROOT", str(tmp_path / "wrong-env"))
 
     context = resolve_active_workspace(home=home, app_version="0.5.0")
@@ -155,20 +166,17 @@ def test_incompatible_active_profile_is_exposed_for_backend_gate(tmp_path: Path)
     set_active_profile(profile.workspace_id, home=home)
     manifest = _manifest(profile.workspace_id).model_copy(update={"min_writer_version": "9.0.0"})
     write_workspace_manifest(profile.vault_dir, manifest)
+    _write_contract(profile, min_writer_version=9)
 
     context = resolve_active_workspace(home=home, app_version="0.5.0")
 
-    assert context.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
-
-    ctx = WebContext.from_active_workspace(context)
-    assert ctx is not None
-    client = TestClient(create_app(ctx, static_dir=tmp_path / "missing-static"))
-    response = client.post("/api/capture", json={"text": "must be blocked"})
-    assert response.status_code == 409
-    assert response.json()["code"] == "workspace_read_only_upgrade_required"
+    assert context.compatibility is Compatibility.CANNOT_OPEN
+    assert WebContext.from_active_workspace(context) is None
+    app = create_app(None, static_dir=tmp_path / "missing-static")
+    assert "/api/onboarding/status" in {getattr(route, "path", "") for route in app.routes}
 
 
-def test_remote_normalization_is_allowed_before_schema_upgrade(
+def test_incompatible_contract_does_not_open_a_partial_workspace(
     tmp_path: Path,
 ) -> None:
     """HTTPS normalization must break the old-schema migration deadlock."""
@@ -181,19 +189,10 @@ def test_remote_normalization_is_allowed_before_schema_upgrade(
         profile.vault_dir,
         _manifest(profile.workspace_id).model_copy(update={"min_writer_version": "9.0.0"}),
     )
-
+    _write_contract(profile)
     context = resolve_active_workspace(home=home, app_version="0.5.0")
-    assert context.compatibility is Compatibility.READ_ONLY_UPGRADE_REQUIRED
-    ctx = WebContext.from_active_workspace(context)
-    assert ctx is not None
-    client = TestClient(create_app(ctx, static_dir=tmp_path / "missing-static"))
-
-    response = client.post(
-        "/api/settings/git/remote/apply",
-        json={"plan_id": "missing-plan", "git_username": "user", "pat": "pat"},
-    )
-
-    assert response.status_code == 404
+    assert context.compatibility is Compatibility.CANNOT_OPEN
+    assert WebContext.from_active_workspace(context) is None
 
 
 def test_cannot_open_profile_gets_restricted_control_plane(tmp_path: Path) -> None:

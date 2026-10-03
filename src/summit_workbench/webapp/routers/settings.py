@@ -54,6 +54,8 @@ def register_settings_routes(
     *,
     runtime: MutationRuntime,
     build_info: Callable[[], WebBuildInfo],
+    pause_background_tasks: Callable[[], bool] | None = None,
+    resume_background_tasks: Callable[[], None] | None = None,
 ) -> None:
     """注册设置领域路由（LEGACY-APP-SPLIT-PLAN Step 7 / F）。
 
@@ -91,8 +93,26 @@ def register_settings_routes(
             raise HTTPException(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc
+        if not runtime.begin_profile_switch():
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "workspace_busy",
+                    "message": "当前写入尚未结束；工作台切换已取消，请稍后重试",
+                },
+            )
+        if pause_background_tasks is not None and not pause_background_tasks():
+            runtime.end_profile_switch()
+            if resume_background_tasks is not None:
+                resume_background_tasks()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "workspace_busy",
+                    "message": "会议处理仍在运行；工作台切换已取消，请稍后重试",
+                },
+            )
         switch_plans[plan.plan_id] = plan
-        runtime.begin_profile_switch()
         return {"ok": True, "plan_id": plan.plan_id, "workspace_id": plan.target_workspace_id}
 
     @app.post("/api/settings/profile/commit", response_model=None)
@@ -108,6 +128,8 @@ def register_settings_routes(
             return commit_profile_switch(home=_settings_home(), plan=plan)
         except ProfileSettingsError as exc:
             runtime.end_profile_switch()
+            if resume_background_tasks is not None:
+                resume_background_tasks()
             raise HTTPException(
                 status_code=409, detail={"code": exc.code, "message": str(exc)}
             ) from exc

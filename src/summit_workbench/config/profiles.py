@@ -34,6 +34,7 @@ from summit_workbench.repositories.profile_registry import (
     ensure_device_identity,
     load_profile,
 )
+from summit_workbench.repositories.workspace_contract import load_contract_manifest
 from summit_workbench.repositories.workspace_manifest import (
     WorkspaceManifestError,
     load_workspace_manifest,
@@ -185,12 +186,26 @@ def resolve_active_workspace(
     except WorkspaceManifestError as exc:
         manifest = None
         reason = str(exc)
+    try:
+        portable = load_contract_manifest(paths.vault_dir)
+    except ValueError as exc:
+        portable = None
+        reason = str(exc)
     if manifest is None:
         reason = reason or "active profile 对应 vault 缺少 workspace marker"
     elif manifest.workspace_id != profile.workspace_id:
         reason = "active profile 与 vault workspace marker 不一致"
+    elif portable is None:
+        reason = reason or "active profile 对应 vault 缺少兼容的 SWB 工作库契约"
+    elif portable.workspace_id != profile.workspace_id:
+        reason = "active profile 与便携工作库契约身份不一致"
     else:
-        compatibility = evaluate_manifest_compatibility(manifest, app_version or __version__)
+        legacy_compatibility = evaluate_manifest_compatibility(manifest, app_version or __version__)
+        if legacy_compatibility is Compatibility.READ_WRITE:
+            compatibility = Compatibility.READ_WRITE
+        else:
+            compatibility = Compatibility.CANNOT_OPEN
+            reason = "工作库版本不兼容；请升级应用或显式重新连接工作库"
 
     resolved = WorkspaceResolution(
         state=resolution.state,

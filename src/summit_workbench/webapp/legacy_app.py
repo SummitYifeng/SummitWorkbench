@@ -242,6 +242,12 @@ def create_app(
         dependencies,
         run_mutation=lambda action, mutation: runtime.run(action, mutation),
     )
-    register_settings_routes(dependencies, runtime=runtime, build_info=shell.build_info)
+    register_settings_routes(
+        dependencies,
+        runtime=runtime,
+        build_info=shell.build_info,
+        pause_background_tasks=meeting_importer.pause_and_wait,
+        resume_background_tasks=meeting_importer.resume,
+    )
 
     return app
