@@ -1,20 +1,25 @@
 # SummitWorkbench
 
-## 下一版工作台改造计划
+## 0.5.0 工作库架构与阶段进度
 
-2026-10-02 按 [SWB 文件夹工作台改造与四阶段验收计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 实施第一阶段。新工作库使用本地目录与版本化契约，写入不依赖工作库 Git；OneDrive 负责跨设备同步，SK 仍负责只读检索。第一阶段验收与包身份记录见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。下文中的 0.4.x 交付说明是历史记录。
+新版工作库使用普通本地目录或 OneDrive 文件夹，由 `.summit-workbench/manifest.json` 标识；写入不依赖工作库 Git，OneDrive 客户端负责文件同步，SummitKnowledge 只读已批准内容。
+
+- **Phase 1：已完成。** W0–W8、0.5.0 arm64 包和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。当前本机包为 build `2026100305`，前端身份 `v2026.10.03-4084a225`。
+- **Phase 2：进行中。** OneDrive 后勤样板、材料路径映射和使用说明见 [Phase 2 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)、[导入清单](docs/acceptance/ONEDRIVE-SAMPLE-IMPORT-MANIFEST.md) 和 [快速使用说明](docs/product/ONEDRIVE-SAMPLE-QUICKSTART.md)。用户已确认六份正式内容版本并确认 OneDrive 同步完成；计划中的四类真实工作台操作尚未全部验收。
+- **Phase 3–4：未开始。** 依次等待前一阶段验收门通过；阶段顺序与风险边界见[四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)。
+
+下文的 0.4.x 交付与使用说明是历史版本背景，不描述 0.5.0 新工作库行为。
 
 ## 2026-09-19 交付状态（本地 `main`）
 
-**本次交付**：**`0.4.10`**，已发布到更新通道（tag `v0.4.10`，提交 `4e91469`）——
-`yifeng93/SummitWorkbench-Updates` 的 **Latest**，CI **build `24`**（= run number）；
-DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`
-（51,770,064 B），`update-feed.json` 带签名 ⇒ **装在机器上的 0.4.9 会从 App 内直接升级**。
+**最近已发布的 0.4.x 版本**：`0.4.11`（tag `v0.4.11`，提交 `6253d31`），由 CI build `25` 构建；
+发布产物哈希与升级说明以 `AGENTS.md` 的交付基线及 `CHANGELOG.md` 为准。这里保留 0.4.x 行为史；
+当前 0.5.0 INTERNAL-DEV 包未发布、无自动更新 feed，见上方阶段报告。
 
 本版修一个**用户可见的同步阻断**：打包 App（固定 dulwich）× **HTTPS 远端一直无法同步**
 （`porcelain.fetch` 在 dulwich 1.2 不再接受 `pool_manager`，调用点未跟上 ⇒ `unclassified`
 「未分类的同步失败」）。详见 [CHANGELOG.md](CHANGELOG.md) 的 `[0.4.10]`。
-`main` 与 `origin/main` 同步；门禁在 `4e91469` 上实测 **1399 passed / 1 skipped、覆盖 84.55%**。
+该批次门禁在 `4e91469` 上实测 **1399 passed / 1 skipped、覆盖 84.55%**；这是 0.4.10 的历史基线。
 
 > 上一份交付 `0.4.9 / build 2026091925`（本机构建，无更新 feed）**不要再用**——它同样带这个
 > 同步 bug。装机与升级步骤见
@@ -27,15 +32,19 @@ DMG SHA-256 `fdc1c2ef7d3646e390c5456b7f5e542112107714704d9333a128bc05b607f719`
 剩余人工/跨端确认见 [未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)，逐版变更见
 [CHANGELOG.md](CHANGELOG.md)，发布流程与内置凭据见 [docs/RELEASING.md](docs/RELEASING.md)。
 
-## 2026-09-18 交付状态（历史）
+## 0.4.x 历史交付与产品说明
+
+以下内容描述 0.4.x 的 Git 工作库、定时任务与产品行为。0.5.0 新工作库行为以本文顶部阶段状态、四阶段计划和工作库契约 v1 为准。
+
+### 2026-09-18 交付状态（历史）
 
 修掉三处会持续制造新错误的问题：SSH（SCP 形状）remote 的 push 被误判为不存在的本地路径、逐字稿结构化失败的真因是输出预算被思考模式推理吃光、原生壳不显示 Dock 图标。内容层面：会议笔记不再生成 `## AI 建议`（九区块减为八区块），决策页新增「只记业务结论」硬规则与机器守卫。设置页按使用者偏好精简为三张主卡（工作区 / AI 模型 / 飞书，每张一行），自动化与模型参数移入「高级与维护」。该轮详情见 `CHANGELOG.md`。
 
 使用说明见 [桌面版使用指南](docs/product/WEB_USAGE_GUIDE.md) 与 [`docs/DESKTOP_APP.md`](docs/DESKTOP_APP.md)。
 
-SummitWorkbench 是一个运行在 Mac Studio 上的个人工作系统，定位为“外置执行管理层 + 第二大脑”。它将项目状态、会议转写、工作记录、飞书日历与任务汇集到 Obsidian 工作 vault，在保留证据和人工审批边界的前提下，持续回答三个问题：我做过什么、为什么这样决定、接下来最该做什么。
+SummitWorkbench 是 macOS 本地工作台，整理项目状态、会议记录、工作输入及飞书日历／任务。0.5.0 将工作内容放入由用户选择的可移动工作库，并以版本批准控制正式内容；OneDrive 负责跨设备文件同步。
 
-> **当前源码与交付主线为 `v0.4.9`，本轮已合并到 `main`。** “今日”页现在只保留五个内容模块，并在所有用户正文展示入口统一处理安全 Markdown；会议导入已修复事务回调错误，本机 App 已由 `main` 构建并替换。仓库不含凭据：内置凭据只在构建期生成，发布流程与安全取舍见 [docs/RELEASING.md](docs/RELEASING.md)。
+> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100305`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 
@@ -64,16 +73,20 @@ Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文
 
 每天 08:00 前，`wb brief`（由 launchd 定时触发）把 Obsidian 的**晨间指挥台**写在本机程序目录（不在知识库内）：显示会议、最近完成、项目状态和最多 5 个建议行动。每周一 `wb weekly` 生成跨项目复盘，帮助重新分配注意力。
 
-## 文档优先级
+### 0.4.x 实施进度（历史）
+
+下列 M0–M4 里程碑记录 0.4.x 产品线，不表示 0.5.0 工作库阶段进度；当前进度见本文开头。
+
+### 0.4.x 文档优先级（历史）
 
 发生冲突时，按以下顺序判断：
 
-1. [产品需求文档](docs/product/PRD.md)——唯一权威产品规格与验收标准。
-2. [历史开发计划](docs/archive/plans/DEVELOPMENT_PLAN.md)——已完成阶段的实现顺序、模块边界和质量门禁。
-3. [项目说明](PROJECTDESC.md)——面向开发者与 AI Agent 的稳定项目摘要。
-4. [架构决策记录](docs/decisions/README.md)——各工作包的落地决策与真机验证结论（ADR 索引）。
-5. [需求思考记录（归档）](docs/archive/background/THINKING_DOC.md)——历史背景，不代表当前结论。
-6. [旧架构示意图（归档）](docs/archive/architecture/ARCHITECTURE.html)——v0.1 历史材料，部分结论已失效；必须按 PRD 更新后才能作为实现参考。
+1. [四阶段工作台实施计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 与 [工作库契约 v1](docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md)——0.5.0 新工作库的范围、门槛与数据语义。
+2. [验收报告](docs/acceptance/)——按具体版本和阶段记录已验证事实、用户确认及剩余缺口；历史快照不覆盖较新的验收记录。
+3. [产品需求文档](docs/product/PRD.md)——主要描述 0.4.x 既有产品行为；与新版工作库计划冲突时，以新版计划和契约为准。
+4. [项目说明](PROJECTDESC.md)——面向开发者与 AI Agent 的稳定项目摘要；修改架构后应同步更新。
+5. [架构决策记录](docs/decisions/README.md)——历史实现决策与验证结论。
+6. `docs/archive/` 下文档均为历史资料，不作为当前目录结构或行为的依据。
 
 ## 仓库结构
 
@@ -81,11 +94,11 @@ Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文
 SummitWorkbench/
 ├── README.md / PROJECTDESC.md / config.example.toml
 ├── docs/
-│   ├── product/          # 权威 PRD
+│   ├── product/          # 使用指南、产品说明与 0.4.x PRD
 │   ├── archive/          # 已完成阶段的背景、计划、旧验收、设计预览与**已完结的实施/交接记录**
 │   ├── decisions/        # 当前架构决策记录（ADR 0043–0045；历史 ADR 见 archive/decisions/）
-│   ├── acceptance/       # 当前版本本地发布验收
-│   ├── implementation/   # 只剩两份拆分方案的「指路 stub」（原文已归位 archive/implementation/）
+│   ├── acceptance/       # 发布、阶段与人工环境验收报告
+│   ├── implementation/   # 当前实施计划、工作包盘点与历史拆分指路 stub
 │   ├── contracts/        # API/路由契约
 │   └── DESKTOP_APP.md    # macOS .app 打包说明
 ├── src/summit_workbench/
@@ -173,4 +186,4 @@ Web 工作台前端（`web/`）的构建产物已随包分发，`wb web` 开箱�
 
 ## 版本
 
-`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版）→ `v0.4.5`（交付前清理 + 指南重写）→ `v0.4.6`（指南版本标记改为抗漂移，build 20）→ `v0.4.7`（分发版：内置飞书默认凭据，同事点一下即可完成授权；build 34 收口 D9/D10 并新增主设备接管、首次发布到远端与本机服务日志）。当前仅保留 `main` 主线；变更记录见 [CHANGELOG.md](CHANGELOG.md)，各批次决策见 [docs/decisions/](docs/decisions/)。
+`v0.1.0`（首个发布版）→ `v0.2.0`（Web 工作台产品化 + macOS 桌面 App 正式化 + 晨间简报 v2）→ `v0.3.0`（工作台 → 飞书双向写回，真机核实）→ `v0.4.0`（知识线程项目）→ `v0.4.1`（维护加固）→ `v0.4.2`（打包修复）→ `v0.4.3`（P1-07D/P2-01B/P2-02 产品化基线）→ `v0.4.4`（UI/UX 与交付稳定性维护版）→ `v0.4.5`（交付前清理 + 指南重写）→ `v0.4.6`（指南版本标记改为抗漂移，build 20）→ `v0.4.7`（分发版与本机服务日志）→ `v0.4.8`–`v0.4.11`（迭代维护；最新发布为 `v0.4.11`，详见 [CHANGELOG.md](CHANGELOG.md)）→ `v0.5.0`（新版工作库，当前为内部验收包，阶段状态见本文开头）。当前仅保留 `main` 主线；各批次决策见 [docs/decisions/](docs/decisions/)。

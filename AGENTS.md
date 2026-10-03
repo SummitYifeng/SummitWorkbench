@@ -19,7 +19,7 @@
 - 新版工作库写入只使用原子文件操作及库身份锁，不初始化 Git、不自动 commit/push，也不提供工作库 Git 同步、冲突或撤销功能。Git 仅用于 SWB 源码和发布流程。
 - OneDrive 客户端负责文件同步；SWB 不把本地写盘描述为云端已同步。切换设备前由用户确认 OneDrive 已完成同步。
 - 新版正式内容必须带与当前内容版本匹配的批准证明才可进入检索语料；原件、逐字稿、收件箱及辅助状态始终排除。契约见 `docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md`。
-- 本次 Phase 1 只在隔离测试库实施和验收，不得改写或推送既有真实 `_vault`；第二至第四阶段须等本阶段验收通过后再做。
+- Phase 1 的代码与自动验收只使用隔离测试库。Phase 2 已获准在新的 OneDrive 样板库进行人工验收；既有真实 `_vault` 仍只作来源与备份，不改写、不提交、不推送。第二至第四阶段按实施计划的验收门顺序推进。
 
 - **SWB 是工作知识库 `_vault` 的唯一写入方**（入库 / 审批 / 写回 / 简报）。
 - **`_vault` 的规范单一真源不在本仓库**，而在另一个仓库：
@@ -70,8 +70,8 @@
   **已被撤销**的旧结构（`clusters/`、`## 主题簇`、`hr/people`、按人页）。
   这些文件是**当时的历史计划/会话快照**，已加「结构已过时」横幅，**保留原文**，
   **不要照它判断现有目录结构**，也不要"顺手"把它们改成新结构（会伪造历史）。
-  `docs/implementation/` 现在只留两份 SPLIT-PLAN 的**指路 stub**（源码 docstring 与测试注释按那两个
-  路径引用）；要看拆分后的模块落点看 stub 的「收口现状」，别翻 archive 里的旧行号。
+  `docs/implementation/` 另含两份 SPLIT-PLAN 的**指路 stub**、OneDrive 工作台实施计划和 W0 接口／写入盘点。
+  要看拆分后的模块落点看 stub 的「收口现状」，别翻 archive 里的旧行号。
 - 判断当前结构**一律以 `_vault/conventions.md` 与 `_vault` 实际内容为准**。
 - 仍有价值的活文档：`docs/product/WEB_USAGE_GUIDE.md`、`docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`
   —— 这两份已按当前结构校正过，**改动结构时要同步更新它们**。
@@ -133,6 +133,13 @@
   不更新会被 `pre-push` 门禁的 `uv lock --check` 拦下（2026-09-19 发 0.4.10 时踩到）。
 
 ## ⚠️ 交付产物基线（2026-09-19）
+
+- **当前本机 INTERNAL-DEV 包（未发布）**：`0.5.0 / build 2026100305`，arm64，源码
+  `b70669177a33a76c1ffe08539075728329fe62e6`，前端 `v2026.10.03-4084a225`；已安装到
+  `/Applications/SummitWorkbench.app`。此包用于新版工作库与 OneDrive 样板，未启用自动更新；
+  包身份见 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。
+- **当前人工验收状态**：Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收仍在进行，见
+  `docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md`。该样板库不是旧真实 `_vault`。
 
 - **已发布（tag `v0.4.11`，**最新**）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，
   由 CI（`release.yml`、run `35480773191`；**第 1 次跑在 `hdiutil create` 撞上 `Resource busy`，

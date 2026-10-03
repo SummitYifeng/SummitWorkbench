@@ -1,5 +1,7 @@
 # OneDrive Workbench 第一阶段单机验收记录
 
+> 历史快照：本记录对应临时 build `2026100304`。最终安装包 build `2026100305` 已于 2026-10-03 安装并启动；后续 OneDrive 与在线连接验收见 [Phase 2 报告](SWB-WORKBENCH-PHASE2-REPORT.md)。
+
 - 验收日期：2026-10-03
 - 应用：SummitWorkbench 0.5.0 INTERNAL-DEV，arm64，build `2026100304`
 - 源码提交：`cffd8f9a79aa2aeb1fcc86694aa67ef7d201d471`

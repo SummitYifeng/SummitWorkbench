@@ -46,7 +46,9 @@
 - 前端：`npm --prefix web run test:frontend` 全部通过；`npm --prefix web run build` 成功，最终包的 build identity 与本报告所列一致。
 - 凭据与包内容：`verify-macos-release.sh` 检查通过，包内完整标记为真，测试清单 13 项均为 passed。凭据来自本机已安装的可信内部包，临时 env 权限为 `0600`，构建结束删除；凭据没有传输到飞书。
 - 包机：Mac `Mac16,12`，macOS `27.0.1`，arm64。本轮只对 localhost 和 `/tmp` 隔离目录发起打包服务 smoke；飞书凭据仅检查包内完整性，未登录飞书、未连 OneDrive、未连接旧 SK、未调用嵌入接口。
-- 旧 `_vault`：未写入、未提交、未推送；用户提供的计划文件保持未跟踪，未纳入实现提交。
+- 旧 `_vault`：未写入、未提交、未推送；实施提交当时未包含用户提供的四阶段计划。
+
+> 后续现场补充：build `2026100305` 已安装并启动；用户完成 DeepSeek key 验证，在线健康检查无失败项，并人工确认 OneDrive 样板同步完成。详细记录见 [Phase 2 报告](SWB-WORKBENCH-PHASE2-REPORT.md)。本报告中“未连接 OneDrive／未安装覆盖”的描述是构建验收时的历史状态。
 
 ## W8 单机 UI 验收记录
 
@@ -68,5 +70,7 @@ W0–W8 的隔离服务路径、UI 确认写回和飞书替身调用已通过；
 交接提示：
 
 ## 可复制的后续交接提示
+
+> 历史交接文字：下方提示生成于 Phase 1 尚未开始人工环境验收时。当前阶段与人工操作要求以 [Phase 2 报告](SWB-WORKBENCH-PHASE2-REPORT.md) 和 [四阶段实施计划](../implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 为准。
 
 > 第一阶段 W0–W8 已实现并完成本地隔离验收，接收包 `/tmp/swb-phase1-final-release-20261003/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg`（build `2026100305`，源码 `b70669177a33a76c1ffe08539075728329fe62e6`，前端 `v2026.10.03-4084a225`）。测试报告在 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。不要连接真实旧 `_vault`、旧 SK 或 OneDrive 生产库；不要触发全量嵌入；自动测试不得创建真实飞书任务。第二阶段只能在第一阶段阶段门通过后另行开始。
