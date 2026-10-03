@@ -1,36 +1,36 @@
 # SWB 工作台第一阶段验收报告
 
-日期：2026-10-03（W8 续验与修复）
+日期：2026-10-03（W1 收口、W7 重打包与 W8 交接复核）
 范围：`ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md` 第一阶段 W0–W8
-判定：**W0–W8 通过；W8 在隔离本地 UI 中完成候选审批、预演和最终确认，飞书动作由本地替身承接。**
+判定：**W0–W8 通过。最终源码已重建 arm64 包并通过包级隔离 smoke；W8 UI 操作记录见下文，UI 实操来自 build `2026100302`，最终 build `2026100305` 另通过 W1 单测与打包服务 smoke。**
 
 ## 源码与安装包身份
 
 | 项目 | 值 |
 | --- | --- |
-| 开始时 HEAD | `c89677cc8f73ec9bc6f7f5b297f44f9f4db66d1e` |
-| 安装包源码提交 | `725224cc290a17f43b73aeebf6d19a7ca5e101c2` |
-| 源码修复提交 | `a20ee2e0fd413e9abfc92fcf99cc5dc100785182`、`725224cc290a17f43b73aeebf6d19a7ca5e101c2` |
-| 交付版本 / build | `0.5.0 / 2026100302` |
+| 开始时 HEAD（本轮 W1） | `18e7435` |
+| 安装包源码提交 | `b70669177a33a76c1ffe08539075728329fe62e6` |
+| 本轮源码修复提交 | `b70669177a33a76c1ffe08539075728329fe62e6` |
+| 交付版本 / build | `0.5.0 / 2026100305` |
 | 架构 / 分发 | arm64 / `INTERNAL-DEV` ad-hoc |
-| 前端 build identity | `v2026.10.03-49bc6d84` |
-| 前端完整源码哈希 | `49bc6d842b6441cc1bec74e31c9a23588dcf39ab62dbeff04c9874f30caacda6` |
-| App SHA-256 | `c9888a5d330814e4ef4cb15a6277e684e56524ff0930dfb1e2a99078cf69d2d1` |
-| DMG SHA-256 | `0238c96fce8fa674f5c5b5d8cb91d742574428312813f3708a2024281af0d8fb` |
+| 前端 build identity | `v2026.10.03-4084a225` |
+| 前端完整源码哈希 | `4084a225c0cea6fb6b4a9a5165c86110e933262432bf0c5282d0ac863ac31013` |
+| App SHA-256 | `69ca8da98f32dfeac84caeec093fd9c5b40ace67606decffba497068fcc5a6e5` |
+| DMG SHA-256 | `b929852a1bfed65a8d2d968576f601af500265da1ce3deeff337c218ae1f5a6d` |
 | 飞书凭据包内完整性 | `build-manifest.json` 报告 `complete=true`；凭据值未写入仓库、报告或诊断 |
 | 更新 feed | 空；本地内部包不启用自动更新 |
 
-安装包：[SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg](../../dist/releases/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg)（build `2026100302`）
-产物目录：[dist/releases/0.5.0/arm64](../../dist/releases/0.5.0/arm64)（含 App、DMG、`SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`test-manifest.json` 和 notary 摘要）。
+安装包：[/tmp/swb-phase1-final-release-20261003/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg](/tmp/swb-phase1-final-release-20261003/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg)（build `2026100305`）
+产物目录：[/tmp/swb-phase1-final-release-20261003/0.5.0/arm64](/tmp/swb-phase1-final-release-20261003/0.5.0/arm64)（含 App、DMG、`SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`test-manifest.json` 和 notary 摘要）。
 
-前端身份由 build 日期和完整源码哈希确定，`release-metadata.json` 记录安装包源码提交。该包内 `build-meta.json` 的 `git_revision` 为空；因此前端溯源以完整 `source_hash`（`49bc6d842b6441cc1bec74e31c9a23588dcf39ab62dbeff04c9874f30caacda6`）和可复核的 `frontend_build` 为准。版本/build 与两项产物散列可在目录内的 `release-metadata.json` 重核。
+前端身份由 build 日期和完整源码哈希确定，`release-metadata.json` 记录安装包源码提交。包内 `build-meta.json` 的 `git_revision` 为空；前端溯源以完整 `source_hash`（`4084a225c0cea6fb6b4a9a5165c86110e933262432bf0c5282d0ac863ac31013`）和 `frontend_build` 为准。安装包源码 commit、版本/build 与 App/DMG 散列均可在元数据复核。
 
 ## 工作包结果
 
 | 工作包 | 结果 | 证据与实现 |
 | --- | --- | --- |
 | W0 冻结 | 通过 | [SWB-WORKBENCH-VNEXT.md](../product/SWB-WORKBENCH-VNEXT.md)、[SWB-WORKSPACE-CONTRACT-v1.md](../contracts/SWB-WORKSPACE-CONTRACT-v1.md)、[入口与副作用清单](SWB-WORKBENCH-ENTRY-INVENTORY.md)、共享模板和 `tests/fixtures/workspace-v1/` 样例/资格/批准向量。冻结三个入口、三个审批去处、逐版本批准及无工作库 Git。 |
-| W1 初始化 | 通过 | 普通本地目录身份、兼容连接、损坏/不兼容拒绝；包级 smoke 在临时 HOME 与测试目录创建工作库，验证契约和 conventions 文件存在且无 `.git`。 |
+| W1 初始化 | 通过 | 普通本地目录身份、兼容连接、损坏/不兼容拒绝；切库会排空活动 mutation 与会议 worker。build `2026100305` 的包级 smoke 在临时 HOME 与测试目录创建工作库，验证契约和 conventions 文件存在且无 `.git`。 |
 | W2 写入与恢复 | 通过 | 原子本地文件写、工作区锁、操作回执和中断记录；回归断言覆盖已完成路径、不重放及中断后可检查。运行时没有自动 Git commit/push 调用点。 |
 | W3 入口整理 | 通过 | capture、journal、会议导入/处理、收件箱提升、完整文档产物复用现有写入器；没有保存/列表/预览隐式模型调用的路径守卫。 |
 | W4 审批与动作 | 通过 | 三个去处默认不选；批准证明绑定当前语义内容版本；Feishu task 经既有 outbox。自动测试只使用替身，没有创建真实飞书任务。 |
@@ -41,16 +41,16 @@
 
 ## 检查结果
 
-- 全量 Python：`./.venv/bin/python -m pytest -q` → **1368 passed, 1 skipped**。跳过项是未设置包路径时的打包集成测试；本次发布脚本对实际 App 执行该集成 smoke 并通过（1 passed）。
-- 发布脚本质量门：ruff lint、ruff format、mypy（228 源文件）、`tests/unit`（1270 passed）、Web 路由契约（2 passed）、全部前端契约和打包集成 smoke（1 passed）。
-- 前端：`npm --prefix web run test:frontend` 全部通过；`npm --prefix web run build` 成功，产物身份与本报告所列一致。
+- 全量 Python（含 W1）：`./.venv/bin/python -m pytest -q` → **1373 passed, 1 skipped**；覆盖率 **82.08%**（门槛 80%）。跳过项是未设置包路径时的打包集成测试；发布脚本对 build `2026100305` 实际 App 执行该集成 smoke 并通过（1 passed）。
+- 发布脚本质量门：ruff lint、ruff format、mypy（229 源文件）、`tests/unit`（1275 passed）、Web 路由契约（2 passed）、全部前端契约和打包集成 smoke（1 passed）。
+- 前端：`npm --prefix web run test:frontend` 全部通过；`npm --prefix web run build` 成功，最终包的 build identity 与本报告所列一致。
 - 凭据与包内容：`verify-macos-release.sh` 检查通过，包内完整标记为真，测试清单 13 项均为 passed。凭据来自本机已安装的可信内部包，临时 env 权限为 `0600`，构建结束删除；凭据没有传输到飞书。
-- 包机：Mac `Mac16,12`，macOS `27.0.1`，arm64。本轮只对 localhost 和 `/tmp` 隔离目录发起打包服务 smoke；未登录飞书、未连 OneDrive、未连接旧 SK、未调用嵌入接口。
+- 包机：Mac `Mac16,12`，macOS `27.0.1`，arm64。本轮只对 localhost 和 `/tmp` 隔离目录发起打包服务 smoke；飞书凭据仅检查包内完整性，未登录飞书、未连 OneDrive、未连接旧 SK、未调用嵌入接口。
 - 旧 `_vault`：未写入、未提交、未推送；用户提供的计划文件保持未跟踪，未纳入实现提交。
 
 ## W8 单机 UI 验收记录
 
-- 运行产物为上表中的 arm64 `INTERNAL-DEV` App，前端身份显示 `v2026.10.02-49bc6d84`。通过 UI 选择新建的 `/tmp/swb-phase1-ui-workspace-20261002`；该库由打包 App 创建，`workspace.json` 标记 reader/writer `0.5.0`，没有 `.git`。App 在 macOS 辅助功能权限获准后可完整读取和操作。
+- 主要输入、审批和最终确认 UI 实操由 build `2026100302` 完成，前端身份 `v2026.10.03-49bc6d84`；build `2026100305` 是其后的 W1 切库与契约改动包，另以隔离测试和最终包 smoke 验证。build `2026100302` 通过 UI 选择新建的 `/tmp/swb-phase1-ui-workspace-20261002`；该库由打包 App 创建，`workspace.json` 标记 reader/writer `0.5.0`，没有 `.git`。App 在 macOS 辅助功能权限获准后可完整读取和操作。
 - “记点什么”：输入合成句子并点“记入”，界面显示“已记入收件箱”；刷新后条目出现在收件箱。未调用 AI 建议。
 - 工作思考：使用“问题缘起／思考展开／当前结论”表单保存，界面显示文件名。收件箱的“知识沉淀”去处也按三段式保存成功。两篇思考页面都包含 `approval.version`、内容 SHA-256、`approved_at` 与 `operation_id`。
 - “更新项目”：在隔离库通过 UI 新建 `phase1-acceptance` 测试项目，把捕获条目提升到“下一步”并移出收件箱；项目页有 `wb-candidate` 幂等标记，操作结果给出目标路径。
@@ -63,10 +63,10 @@
 
 ## 阶段门与剩余事项
 
-W0–W8 以及 W8 的隔离端到端服务路径、UI 确认写回、飞书替身调用和新包检查均通过。实际飞书账户动作、OneDrive 两机同步与旧库迁移属于后续人工环境验收，第一阶段没有触发。
+W0–W8 的隔离服务路径、UI 确认写回和飞书替身调用已通过；最终包 build `2026100305` 的源码与前端身份可复核，W1 单测及包级 smoke 通过。实际飞书账户动作、OneDrive 两机同步与旧库迁移属于后续人工环境验收，第一阶段没有触发。
 
 交接提示：
 
 ## 可复制的后续交接提示
 
-> 第一阶段 W0–W8 已实现并完成本地隔离验收，接收包 `dist/releases/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg`（build `2026100302`，源码 `725224cc290a17f43b73aeebf6d19a7ca5e101c2`）。测试报告在 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。不要连接真实旧 `_vault`、旧 SK 或 OneDrive 生产库；不要触发全量嵌入；自动测试不得创建真实飞书任务。第二阶段只能在第一阶段阶段门通过后另行开始。
+> 第一阶段 W0–W8 已实现并完成本地隔离验收，接收包 `/tmp/swb-phase1-final-release-20261003/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg`（build `2026100305`，源码 `b70669177a33a76c1ffe08539075728329fe62e6`，前端 `v2026.10.03-4084a225`）。测试报告在 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。不要连接真实旧 `_vault`、旧 SK 或 OneDrive 生产库；不要触发全量嵌入；自动测试不得创建真实飞书任务。第二阶段只能在第一阶段阶段门通过后另行开始。
