@@ -4,7 +4,7 @@
 
 新版工作库使用普通本地目录或 OneDrive 文件夹，由 `.summit-workbench/manifest.json` 标识；写入不依赖工作库 Git，OneDrive 客户端负责文件同步，SummitKnowledge 只读已批准内容。
 
-- **Phase 1：已完成。** W0–W8、0.5.0 arm64 包和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。当前本机包为 build `2026100305`，前端身份 `v2026.10.03-4084a225`。
+- **Phase 1：已完成。** W0–W8、0.5.0 arm64 包和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。Phase 1 交付包为 build `2026100305`；当前安装的 Phase 2 修复包为 build `2026100306`，前端身份 `v2026.10.03-653aa00f`。
 - **Phase 2：进行中。** OneDrive 后勤样板、材料路径映射和使用说明见 [Phase 2 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)、[导入清单](docs/acceptance/ONEDRIVE-SAMPLE-IMPORT-MANIFEST.md) 和 [快速使用说明](docs/product/ONEDRIVE-SAMPLE-QUICKSTART.md)。用户已确认六份正式内容版本并确认 OneDrive 同步完成；计划中的四类真实工作台操作尚未全部验收。
 - **Phase 3–4：未开始。** 依次等待前一阶段验收门通过；阶段顺序与风险边界见[四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)。
 
@@ -44,7 +44,7 @@
 
 SummitWorkbench 是 macOS 本地工作台，整理项目状态、会议记录、工作输入及飞书日历／任务。0.5.0 将工作内容放入由用户选择的可移动工作库，并以版本批准控制正式内容；OneDrive 负责跨设备文件同步。
 
-> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100305`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
+> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100306`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 

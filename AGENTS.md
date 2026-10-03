@@ -134,8 +134,8 @@
 
 ## ⚠️ 交付产物基线（2026-09-19）
 
-- **当前本机 INTERNAL-DEV 包（未发布）**：`0.5.0 / build 2026100305`，arm64，源码
-  `b70669177a33a76c1ffe08539075728329fe62e6`，前端 `v2026.10.03-4084a225`；已安装到
+- **当前本机 INTERNAL-DEV 包（未发布）**：`0.5.0 / build 2026100306`，arm64，源码
+  `242c71e57148872748c6ae8828f94e5c0fb00248`，前端 `v2026.10.03-653aa00f`；已安装到
   `/Applications/SummitWorkbench.app`。此包用于新版工作库与 OneDrive 样板，未启用自动更新；
   包身份见 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。
 - **当前人工验收状态**：Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收仍在进行，见
