@@ -605,6 +605,9 @@ button.project-link:hover { color: var(--accent); text-decoration: underline; }
   border: 1px solid var(--border); background: var(--card); color: var(--fg);
 }
 .modal textarea { resize: vertical; min-height: 60px; line-height: 1.6; }
+.pending-meeting-date-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 12px 0; }
+.pending-meeting-date-form label { display: grid; gap: 4px; font-size: 13px; }
+.pending-meeting-date-form input[type="date"] { min-width: 170px; margin: 0; }
 /* 项目多选：一项一行、占满整宽（原先 minmax(160px) 的窄网格会错行、中英挤在一起） */
 .log-projs {
   display: grid; grid-template-columns: minmax(0, 1fr);

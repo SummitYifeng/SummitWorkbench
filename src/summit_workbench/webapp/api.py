@@ -62,6 +62,14 @@ class ContentApprovalPayload(BaseModel):
     content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class PendingMeetingDateEditPayload(BaseModel):
+    """Change the date on one version-checked, pending meeting note."""
+
+    path: str = Field(min_length=1, max_length=1024)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
 class TaskEditPayload(BaseModel):
     """今日待办任务行内编辑：只改标题与/或截止日期（空 due_date = 清除截止）。"""
 

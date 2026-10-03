@@ -21,6 +21,7 @@ export {
   selectAllReview,
   selectedReviewEntries,
   submitReviewEdit,
+  updatePendingMeetingDate,
 } from './actions';
 export type { ReviewEditDeps } from './actions';
 export type { ReviewAssembleInput, ReviewDeps } from './deps';

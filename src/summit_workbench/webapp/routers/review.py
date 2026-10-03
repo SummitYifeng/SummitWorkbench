@@ -20,6 +20,7 @@ from summit_workbench.domain.approval import RETRIEVAL_TYPES, approval_digest
 from summit_workbench.domain.markdown_blocks import chunk_markdown
 from summit_workbench.domain.review import APPROVAL_ROUTES, CandidateDecision, RouteTarget
 from summit_workbench.repositories.approval import approve_markdown
+from summit_workbench.repositories.pending_meeting_edit import update_pending_meeting_date
 from summit_workbench.repositories.review_edit import (
     ReviewEditError,
     set_decision,
@@ -33,6 +34,7 @@ from summit_workbench.webapp.api import (
     ContentApprovalPayload,
     DecidePayload,
     EditPayload,
+    PendingMeetingDateEditPayload,
     review_payload,
 )
 from summit_workbench.webapp.dependencies import RouteDependencies
@@ -64,6 +66,7 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
                     "path": item.path,
                     "title": item.title,
                     "content_type": item.content_type,
+                    "date": item.date,
                     "summary": item.summary,
                     "body": item.body,
                     "content_sha256": item.content_sha256,
@@ -129,6 +132,51 @@ def register_review_routes(dependencies: RouteDependencies, *, runtime: Mutation
         return {
             "ok": True,
             "message": f"已批准当前版本：{raw_path}",
+            **_mutation_fields(result),
+        }
+
+    @app.post("/api/review/content/meeting-date", response_model=None)
+    def api_edit_pending_meeting_date(
+        payload: PendingMeetingDateEditPayload,
+    ) -> dict[str, object] | JSONResponse:
+        """Correct one pending meeting note's date without approving it."""
+        raw_path = payload.path
+        relative = Path(raw_path)
+        if (
+            raw_path.startswith("/")
+            or "\\" in raw_path
+            or ".." in relative.parts
+            or relative.suffix.lower() != ".md"
+            or relative.parent.as_posix() != "meetings/notes"
+        ):
+            return JSONResponse({"ok": False, "message": "只允许修改会议纪要路径"}, status_code=400)
+        root = ctx.vault_dir.resolve()
+        source = (root / relative).resolve()
+        try:
+            source.relative_to(root)
+        except ValueError:
+            return JSONResponse({"ok": False, "message": "内容路径越界"}, status_code=400)
+        if not source.is_file():
+            return JSONResponse({"ok": False, "message": "会议纪要不存在或已移动"}, status_code=404)
+
+        try:
+
+            def mutate(_operation_id: str) -> LocalMutationOutcome[Path]:
+                update_pending_meeting_date(
+                    source,
+                    meeting_date=payload.date,
+                    expected_digest=payload.content_sha256,
+                )
+                return LocalMutationOutcome(source, (source,))
+
+            result = runtime.run("review/meeting-date", mutate)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=409)
+        except OSError as exc:
+            return JSONResponse({"ok": False, "message": f"纪要更新失败：{exc}"}, status_code=500)
+        return {
+            "ok": True,
+            "message": f"纪要日期已更新为 {payload.date}，仍待审批：{raw_path}",
             **_mutation_fields(result),
         }
 

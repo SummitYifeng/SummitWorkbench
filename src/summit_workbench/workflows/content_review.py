@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from summit_workbench.domain.approval import RETRIEVAL_TYPES, approval_digest
-from summit_workbench.repositories.vault import iter_markdown_files, load_note
+from summit_workbench.repositories.vault import iter_markdown_files, load_note, meta_date_iso
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,7 @@ class PendingContent:
     path: str
     title: str
     content_type: str
+    date: str
     summary: str
     body: str
     content_sha256: str
@@ -53,6 +54,7 @@ def list_pending_content(vault_dir: Path) -> list[PendingContent]:
                 path=relative,
                 title=title.strip(),
                 content_type=content_type,
+                date=meta_date_iso(note.meta.get("date")) or "",
                 summary=summary.strip() if isinstance(summary, str) else "",
                 body=note.body,
                 content_sha256=digest,

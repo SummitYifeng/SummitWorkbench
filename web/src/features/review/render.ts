@@ -320,6 +320,11 @@ function contentCard(item: PendingContent): string {
     '<p class="meta">' + esc(item.path) + '</p>' +
     (item.summary ? '<p>' + esc(item.summary) + '</p>' : '') + draftHint +
     '<details class="content-review-details"><summary>查看完整正文</summary><pre>' + esc(item.body) + '</pre></details>' +
+    (item.content_type === 'meeting-note'
+      ? '<form class="pending-meeting-date-form" data-path="' + esc(item.path) + '" data-digest="' + esc(item.content_sha256) + '" data-title="' + esc(item.title) + '">' +
+        '<label>会议日期 <input type="date" name="date" value="' + esc(item.date) + '" required></label>' +
+        '<button class="ghost" type="submit">保存日期（纪要继续待审）</button></form>'
+      : '') +
     '<div class="row"><button class="ok" type="button" data-action="content-approve" data-path="' + esc(item.path) +
     '" data-digest="' + esc(item.content_sha256) + '" data-title="' + esc(item.title) + '">批准当前版本</button></div>' +
     '</article>';

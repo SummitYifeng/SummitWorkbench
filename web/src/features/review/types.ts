@@ -37,6 +37,7 @@ export interface PendingContent {
   path: string;
   title: string;
   content_type: string;
+  date: string;
   summary: string;
   body: string;
   content_sha256: string;

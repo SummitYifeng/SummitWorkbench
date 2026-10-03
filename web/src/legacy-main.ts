@@ -78,6 +78,7 @@ import {
   retryExternalAction,
   selectAllReview,
   submitReviewEdit,
+  updatePendingMeetingDate,
 } from './features/review';
 import {
   authorizeFeishu,
@@ -977,6 +978,11 @@ document.addEventListener('click', (ev) => {
 
 document.addEventListener('submit', (ev) => {
   const form = ev.target as HTMLFormElement;
+  if (form.classList.contains('pending-meeting-date-form')) {
+    ev.preventDefault();
+    void updatePendingMeetingDate(form, { api, mutation, toast, refreshReview, refreshState });
+    return;
+  }
   if (form.classList.contains('thread-create-form')) {
     ev.preventDefault();
     submitProjectCreate(form, {

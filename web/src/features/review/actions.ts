@@ -164,6 +164,39 @@ export async function approveContent(path: string, contentSha256: string, title:
     toast(error, 'err');
   }
 }
+
+/** Correct a pending meeting note date using the exact previewed version. */
+export async function updatePendingMeetingDate(
+  form: HTMLFormElement,
+  deps: Pick<ReviewEditDeps, 'api' | 'mutation' | 'toast' | 'refreshReview' | 'refreshState'>,
+): Promise<void> {
+  const path = form.dataset.path ?? '';
+  const contentSha256 = form.dataset.digest ?? '';
+  const value = new FormData(form).get('date');
+  const meetingDate = typeof value === 'string' ? value : '';
+  if (!path || !/^[0-9a-f]{64}$/.test(contentSha256) || !/^\d{4}-\d{2}-\d{2}$/.test(meetingDate)) {
+    deps.toast('纪要版本或日期无效，请刷新审批页后重试', 'err');
+    return;
+  }
+  try {
+    const response = await deps.mutation(() => deps.api<{ ok: boolean; message: string }>(
+      '/api/review/content/meeting-date',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content_sha256: contentSha256, date: meetingDate }),
+      },
+    ));
+    deps.toast(response.message, response.ok ? 'ok' : 'err');
+    if (response.ok) {
+      await deps.refreshReview();
+      await deps.refreshState();
+    }
+  } catch (error) {
+    deps.toast(error, 'err');
+  }
+}
+
 export async function batchDecide(candidateIds: string[], decision: string, note = ''): Promise<void> {
   if (candidateIds.length === 0) {
     toast('没有可操作的条目', 'info');
