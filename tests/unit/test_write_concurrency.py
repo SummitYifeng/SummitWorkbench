@@ -59,6 +59,7 @@ def _entry(
     decision: CandidateDecision = CandidateDecision.PENDING,
     route: RouteTarget = RouteTarget.PROJECT_MAIN,
     project: str = "P1",
+    due: str | None = None,
 ) -> ReviewEntry:
     candidate = ApprovalCandidate(
         candidate_id=cid,
@@ -67,6 +68,7 @@ def _entry(
         target_project=project,
         route=route,
         evidence=EvidenceRef(anchor="木子 00:03"),
+        due_date=due,
         is_next_step=True,
         decision=decision,
     )
@@ -216,8 +218,18 @@ def test_t2_apply_preserves_concurrent_decision_interleaved(tmp_path: Path) -> N
     _seed_page(
         vault,
         [
-            _entry("m1#task-0", decision=CandidateDecision.APPROVED, route=RouteTarget.FEISHU_TASK),
-            _entry("m1#task-1", decision=CandidateDecision.PENDING, route=RouteTarget.FEISHU_TASK),
+            _entry(
+                "m1#task-0",
+                decision=CandidateDecision.APPROVED,
+                route=RouteTarget.FEISHU_TASK,
+                due="2026-09-04",
+            ),
+            _entry(
+                "m1#task-1",
+                decision=CandidateDecision.PENDING,
+                route=RouteTarget.FEISHU_TASK,
+                due="2026-09-04",
+            ),
         ],
     )
     started = threading.Event()
@@ -274,7 +286,14 @@ def test_t2_apply_keeps_concurrently_edited_candidate(tmp_path: Path) -> None:
     work = tmp_path / "work"
     _seed_page(
         vault,
-        [_entry("m1#task-0", decision=CandidateDecision.APPROVED, route=RouteTarget.FEISHU_TASK)],
+        [
+            _entry(
+                "m1#task-0",
+                decision=CandidateDecision.APPROVED,
+                route=RouteTarget.FEISHU_TASK,
+                due="2026-09-04",
+            )
+        ],
     )
     started = threading.Event()
     release = threading.Event()

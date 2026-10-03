@@ -202,6 +202,34 @@ def test_feishu_task_defaults_missing_start_date_to_due_date(tmp_path):
     assert "- start_at：2026-09-04" in report.archive_path.read_text(encoding="utf-8")
 
 
+def test_feishu_task_without_due_date_stays_out_of_external_writeback(tmp_path):
+    vault = tmp_path / "vault"
+    work = tmp_path / "work"
+    _project_main(vault)
+    entry = _entry(
+        "m:n#action-item-0",
+        decision=CandidateDecision.APPROVED,
+        route=RouteTarget.FEISHU_TASK,
+    )
+    refresh_review_page(vault, [entry])
+    calls: list[str] = []
+
+    def create(title: str, due: str | None, stable_id: str, **kwargs: object) -> str:
+        del title, due, stable_id, kwargs
+        calls.append("created")
+        return "should-not-create"
+
+    preview = apply_meeting_review(vault, work)
+    assert preview.failed == 1
+    assert "需要截止日期" in (preview.actions[0].reason or "")
+
+    result = apply_meeting_review(vault, work, apply=True, task_creator=create)
+    assert result.applied == 0
+    assert result.failed == 1
+    assert calls == []
+    assert not (vault / "_signals" / "external-actions" / "log.jsonl").exists()
+
+
 def _project_with_alias(vault, project: str, alias: str):
     path = vault / "projects" / f"{project}.md"
     path.parent.mkdir(parents=True)
@@ -343,11 +371,13 @@ def test_one_feishu_error_does_not_block_next_external_action(tmp_path):
         "m:n#action-item-0",
         decision=CandidateDecision.APPROVED,
         route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
     )
     second = _entry(
         "m:n#action-item-1",
         decision=CandidateDecision.APPROVED,
         route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
     )
     refresh_review_page(vault, [first, second])
     calls: list[str] = []
@@ -371,6 +401,7 @@ def test_succeeded_outbox_reuses_remote_id_without_creator_call(tmp_path):
         "m:n#action-item-0",
         decision=CandidateDecision.APPROVED,
         route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
     )
     refresh_review_page(vault, [entry])
     prepared = prepare_action(
@@ -381,6 +412,7 @@ def test_succeeded_outbox_reuses_remote_id_without_creator_call(tmp_path):
             "description": entry.candidate.description,
             "target_project": entry.candidate.target_project,
             "due_date": entry.candidate.due_date,
+            "start_at": entry.candidate.due_date,
         },
         target_account_ref="feishu:user",
     )
@@ -405,6 +437,7 @@ def test_remote_success_with_local_accounting_failure_is_not_retried(tmp_path, m
         "m:n#action-item-0",
         decision=CandidateDecision.APPROVED,
         route=RouteTarget.FEISHU_TASK,
+        due="2026-09-04",
     )
     refresh_review_page(vault, [entry])
     calls = 0

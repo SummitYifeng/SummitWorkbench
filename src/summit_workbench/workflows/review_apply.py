@@ -149,6 +149,8 @@ def _plan(entries: list[ReviewEntry], vault_dir: Path, work_root: Path) -> list[
             reason = "缺少 route"
         elif item.route not in APPROVAL_ROUTES:
             reason = "此审批去处已退役，请选择沉淀知识、更新项目或创建飞书任务"
+        elif item.route is RouteTarget.FEISHU_TASK and item.due_date is None:
+            reason = "飞书任务需要截止日期（在「修改」里填写）"
         elif item.route is RouteTarget.FEISHU_MEETING and item.start_at is None:
             reason = "新建会议需要开始时间（在「修改」里填开始时间）"
         elif item.route is RouteTarget.KNOWLEDGE_NOTE and not Path(destination).is_file():
