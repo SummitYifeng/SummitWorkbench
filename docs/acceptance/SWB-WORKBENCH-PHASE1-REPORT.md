@@ -1,28 +1,29 @@
 # SWB 工作台第一阶段验收报告
 
-日期：2026-10-02
+日期：2026-10-03（W8 续验与修复）
 范围：`ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md` 第一阶段 W0–W8
-判定：**W0–W7 通过；W8 人工单机验收部分通过；第一阶段尚未通过阶段门。**
+判定：**W0–W7 通过；W8 的本地替身处理、来源回看、审批写回及打包检查通过；最终审批确认动作经隔离同源 API 完成，未在 UI 再点击一次。**
 
 ## 源码与安装包身份
 
 | 项目 | 值 |
 | --- | --- |
 | 开始时 HEAD | `c89677cc8f73ec9bc6f7f5b297f44f9f4db66d1e` |
-| 安装包源码提交 | `20d1f2172bbcf02760e5fe555eb92e7ba8eacbb2` |
-| 交付版本 / build | `0.5.0 / 2026100202` |
+| 安装包源码提交 | `725224cc290a17f43b73aeebf6d19a7ca5e101c2` |
+| 源码修复提交 | `a20ee2e0fd413e9abfc92fcf99cc5dc100785182`、`725224cc290a17f43b73aeebf6d19a7ca5e101c2` |
+| 交付版本 / build | `0.5.0 / 2026100302` |
 | 架构 / 分发 | arm64 / `INTERNAL-DEV` ad-hoc |
-| 前端 build identity | `v2026.10.02-49bc6d84` |
+| 前端 build identity | `v2026.10.03-49bc6d84` |
 | 前端完整源码哈希 | `49bc6d842b6441cc1bec74e31c9a23588dcf39ab62dbeff04c9874f30caacda6` |
-| App SHA-256 | `214b63e0d940d049f0a6dec7c5c8b05fac4f95b5f4349ebccce33831e99b47b1` |
-| DMG SHA-256 | `86df00ffe7c0a517bfa1dc2478884ccbfad2ec1871494a7b074ffb3f03c18fd5` |
+| App SHA-256 | `c9888a5d330814e4ef4cb15a6277e684e56524ff0930dfb1e2a99078cf69d2d1` |
+| DMG SHA-256 | `0238c96fce8fa674f5c5b5d8cb91d742574428312813f3708a2024281af0d8fb` |
 | 飞书凭据包内完整性 | `build-manifest.json` 报告 `complete=true`；凭据值未写入仓库、报告或诊断 |
 | 更新 feed | 空；本地内部包不启用自动更新 |
 
-安装包：[SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg](../../dist/releases/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg)
+安装包：[SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg](../../dist/releases/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg)（build `2026100302`）
 产物目录：[dist/releases/0.5.0/arm64](../../dist/releases/0.5.0/arm64)（含 App、DMG、`SHA256SUMS`、`release-metadata.json`、`SBOM.json`、`test-manifest.json` 和 notary 摘要）。
 
-前端身份由 build 日期和完整源码哈希确定，`release-metadata.json` 记录安装包源码提交。该包内 `build-meta.json` 的 `git_revision` 为空；因此前端溯源以完整 `source_hash` 和可复核的 `frontend_build` 为准。版本/build 与两项产物散列可在目录内的 `release-metadata.json` 重核。
+前端身份由 build 日期和完整源码哈希确定，`release-metadata.json` 记录安装包源码提交。该包内 `build-meta.json` 的 `git_revision` 为空；因此前端溯源以完整 `source_hash`（`49bc6d842b6441cc1bec74e31c9a23588dcf39ab62dbeff04c9874f30caacda6`）和可复核的 `frontend_build` 为准。版本/build 与两项产物散列可在目录内的 `release-metadata.json` 重核。
 
 ## 工作包结果
 
@@ -36,12 +37,12 @@
 | W5 Git 退役 | 通过 | 工作台隐藏旧同步/冲突/撤销控制，停止打包后台 worker 和 launchd 安装；自动提交/推送出口无调用方。保留的旧同步模块为未注册的遗留源码。 |
 | W6 选择性导入 | 通过 | 哈希绑定只读预览、显式选择写入、改源拒绝、保留原件、未知内容待整理、重复导入幂等及不继承旧批准的测试通过。 |
 | W7 回归与打包 | 通过 | 本机 arm64 App 和 DMG 构建、ad-hoc 严格校验、包内凭据结构检查、动态端口服务 smoke、真实打包服务在隔离目录创建普通工作库的集成 smoke 均通过。 |
-| W8 单机使用 | **部分通过** | 2026-10-02 在 arm64 Mac 通过 UI 实操快速捕获、工作思考、全文文档导入、项目页提升和知识沉淀提升；飞书任务表单已检查但没有提交；会议逐字稿已选择并归档，因隔离 HOME 没有模型配置而未结构化。现场证据与缺口见下文。 |
+| W8 单机使用 | **本地验收通过，最终 UI 确认步骤未复点** | 2026-10-02 完成快速捕获、工作思考、全文文档导入、项目页提升和知识沉淀提升的 UI 实操；2026-10-03 用明确隔离的模型与飞书替身处理会议、显示两条候选、打开逐字稿来源，并经审批 API 预演及应用：2 项应用、0 失败。未访问真实飞书。最终“确认应用”按钮未在 UI 再点一次；同一隔离服务的 `/api/review/apply` 已执行该操作。 |
 
 ## 检查结果
 
-- 全量 Python：`./.venv/bin/python -m pytest -q --cov=src/summit_workbench --cov-report=term --cov-fail-under=80` → **1366 passed, 1 skipped，覆盖率 82.11%**。跳过项是未设置包路径时的打包集成测试；同一测试已由发布脚本对实际 App 执行并通过。
-- 发布脚本质量门：ruff lint、ruff format、mypy（228 源文件）、`tests/unit`（1266 passed）、Web 路由契约（2 passed）、全部前端契约和打包集成 smoke（1 passed）。
+- 全量 Python：`./.venv/bin/python -m pytest -q` → **1368 passed, 1 skipped**。跳过项是未设置包路径时的打包集成测试；本次发布脚本对实际 App 执行该集成 smoke 并通过（1 passed）。
+- 发布脚本质量门：ruff lint、ruff format、mypy（228 源文件）、`tests/unit`（1270 passed）、Web 路由契约（2 passed）、全部前端契约和打包集成 smoke（1 passed）。
 - 前端：`npm --prefix web run test:frontend` 全部通过；`npm --prefix web run build` 成功，产物身份与本报告所列一致。
 - 凭据与包内容：`verify-macos-release.sh` 检查通过，包内完整标记为真，测试清单 13 项均为 passed。凭据来自本机已安装的可信内部包，临时 env 权限为 `0600`，构建结束删除；凭据没有传输到飞书。
 - 包机：Mac `Mac16,12`，macOS `27.0.1`，arm64。本轮只对 localhost 和 `/tmp` 隔离目录发起打包服务 smoke；未登录飞书、未连 OneDrive、未连接旧 SK、未调用嵌入接口。
@@ -54,18 +55,18 @@
 - 工作思考：使用“问题缘起／思考展开／当前结论”表单保存，界面显示文件名。收件箱的“知识沉淀”去处也按三段式保存成功。两篇思考页面都包含 `approval.version`、内容 SHA-256、`approved_at` 与 `operation_id`。
 - “更新项目”：在隔离库通过 UI 新建 `phase1-acceptance` 测试项目，把捕获条目提升到“下一步”并移出收件箱；项目页有 `wb-candidate` 幂等标记，操作结果给出目标路径。
 - “存入文档／产物”：通过 UI 将完整合成文本保存到该测试项目档案，界面显示“已存入…（保留全文）”。产物文件保留全文，并附 `approval.version: 1`、`content_sha256`、`approved_at` 和 `operation_id`。未勾选同步覆盖项目“当前状态”。
-- “导入会议”：用 `/tmp/swb-phase1-meeting-acceptance.txt` 选择真实本地文件。App 将逐字稿保存在隔离库 `meetings/transcripts/` 并记录 `fetched`、`archived` 状态。导入卡明确提示缺少隔离 HOME 的模型配置文件（`[models.meeting]` / `[models.shared]`），所以没有点击继续处理；没有连接外部模型，也没有生成结构化笔记或审批候选。审批页因此显示 0 条候选。
-- “创建飞书任务”：打开收件箱提升表单并选择“飞书待办”，确认 UI 展示截止日期与默认同日开始日期，以及“库内只留审计痕迹”的说明。没有提交该动作，因此没有对真实飞书服务发请求或创建任务；这次 UI 检查不能证明飞书写回完成。
+- “导入会议”：2026-10-03 在全新隔离库 `/tmp/swb-phase1-w8-mock-workspace-3` 选择 `/tmp/swb-phase1-meeting-acceptance.txt`。本地模型替身只返回固定合成结构，生成会议笔记与 2 条候选；审批页显示决策与飞书任务候选。点击逐字稿来源后，UI 正确打开 `meetings/transcripts/2026-10-03-swb-phase1-meeting-acceptance-transcript` 并展示原文。此前查出来源链接只有 stem、被来源 allowlist 拒绝；修复为 vault 相对路径，并加入 `test_success_writes_note_usage_and_advances_pending_review` 回归断言。
+- 候选审批与飞书任务：审批 API 先把两条候选标记批准，`/api/review/plan` 只读预演显示项目页与飞书任务目标，再显式执行 `/api/review/apply`。结果 `applied=2, failed=0`；会议决策写入项目页并带 `wb-candidate`；飞书替身记录了用户身份 GET 和 Task v2 POST，返回 `task-local-w8-0001`；外部动作账本状态为 `succeeded`，审计归档保留候选与远端假 ID。整个测试服务只绑定 `127.0.0.1`，模型端点为 localhost，没连真实飞书。POST 中当时只带 due；复核发现缺少 start 的审批路径没有沿用“缺开始日期时与截止同日”的约定。
+- 日期修复：会议审批飞书任务缺少 `start_at` 时，现以 `due_date` 作为全天开始日；没有 `due_date` 时预演不可执行且不会调用外部创建器。outbox 请求指纹和审批审计均使用实际开始日期。新增 `test_feishu_task_defaults_missing_start_date_to_due_date` 与 `test_feishu_task_without_due_date_stays_out_of_external_writeback`，并将 outbox/并发用例样本补上有效日期。
+- 最终“确认应用”操作通过本地同源 API 完成，没有在浏览器里再次点击 UI 确认按钮。W8 前半程的候选 UI 与逐字稿预览已实操，路由按钮/流程由前端契约测试覆盖；因此 UI 上点击最终确认这一动作没有单独的人工可视化记录。
 - 没有触发简报重新生成、AI 建议、会议结构化、全量嵌入、真实飞书登录或 OneDrive 连接。测试服务只绑定 `127.0.0.1`，退出按钮已关闭隔离 App；没有覆盖 `/Applications/SummitWorkbench.app`。测试库和逐字稿留在 `/tmp` 供人工复核。
 
-## 未通过项与阶段门
+## 阶段门与剩余事项
 
-第一阶段目前仍为**未验收**，第二阶段 OneDrive 新库与样板建设须等阶段门通过后再开始。剩余 W8 项目：
+W0–W7 以及 W8 的隔离端到端服务路径、飞书替身写回和新包检查均通过。实际飞书账户动作、OneDrive 两机同步与旧库迁移属于后续人工环境验收，第一阶段没有触发。若阶段门要求对“确认应用”按钮留 UI 点击证据，需在 Mac 解锁后用隔离库补点一次；本次已通过相同页面使用的同源 API 完成写回，并没有留下功能性失败。
 
-1. 为会议处理配置一个明确隔离、不会回退到生产端点的模型替身，完成逐字稿结构化、候选预览、来源回看及正式版本批准的 UI 流程；本次只验证了选择文件与本地归档。
-2. 用飞书 API 替身或单独明确授权的人工验收目标，完成“创建飞书任务”的确认与写回结果核对；本次只检查了表单和日期字段，未提交外部动作。
-3. 复查常见操作不要求用户填写内部类型或理解 Git/remote 状态；本轮已检查的捕获、思考、项目与文档流程均未要求填写 Git 信息。
+交接提示：
 
 ## 可复制的后续交接提示
 
-> 请继续 `docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md` 第一阶段 W8 单机验收，先在隔离测试目录使用 `dist/releases/0.5.0/arm64/SummitWorkbench.app`，按 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md` 逐项实操三个输入入口和三个审批去处，记录 UI 结果与未通过项。不要连接真实旧 `_vault`、旧 SK 或 OneDrive 生产库；不要触发全量嵌入；自动测试不得创建真实飞书任务。W8 验收通过后再决定是否开始第二阶段。
+> 第一阶段 W0–W8 已实现并完成本地隔离验收，接收包 `dist/releases/0.5.0/arm64/SummitWorkbench-0.5.0-arm64-INTERNAL-DEV.dmg`（build `2026100302`，源码 `725224cc290a17f43b73aeebf6d19a7ca5e101c2`）。测试报告在 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。不要连接真实旧 `_vault`、旧 SK 或 OneDrive 生产库；不要触发全量嵌入；自动测试不得创建真实飞书任务。第二阶段只能在第一阶段阶段门通过后另行开始。
