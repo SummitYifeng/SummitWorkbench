@@ -206,6 +206,8 @@ assert.match(
 // the *ordering*: the state write-back must sit behind the final confirmation.
 assert.match(source, /const confirmed = window\.confirm\(/, 'artifact state sync asks for a final confirmation');
 assertNearby(/const confirmed = window\.confirm\(/, /[\s\S]{0,500}\/api\/threads\/state/, 'artifact state sync requires a final preview confirmation');
+assert.match(source, /if \(draftValues\.get\(key\) !== current\) return;/, 'cleared drafts cannot start a stale delayed write');
+assert.match(source, /if \(draftValues\.get\(key\) !== current\) \{[\s\S]{0,250}method: 'DELETE'/, 'a draft cleared during an in-flight write is deleted after the write settles');
 // 外部写回状态读取同样需要乱序保护：并发的旧列表不能覆盖新列表。
 assert.match(source, /latestExternalActionsRequest/, 'external action reads carry a request sequence');
 assert.match(source, /requestId !== latestExternalActionsRequest/, 'stale external action reads are discarded');

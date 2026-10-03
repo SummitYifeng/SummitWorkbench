@@ -225,15 +225,23 @@ function scheduleBackendDraft(
     if (!current) return;
     const previous = draftWrites.get(key) ?? Promise.resolve();
     const write = previous.catch(() => undefined).then(async () => {
-      const result = await api<{ ok: boolean; draft?: BackendDraft; message?: string }>(
-        '/api/drafts/' + encodeURIComponent(backendDraftKey(type, id)),
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(current),
-        },
-      );
+      const url = '/api/drafts/' + encodeURIComponent(backendDraftKey(type, id));
+      // A successful submit can clear a draft while its debounce timer is waiting behind an
+      // earlier write. Do not let that stale value start a PUT after the clear event.
+      if (draftValues.get(key) !== current) return;
+      const result = await api<{ ok: boolean; draft?: BackendDraft; message?: string }>(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(current),
+      });
       if (!result.ok || !result.draft) throw new Error(result.message ?? '草稿暂未保存');
+      // If the clear raced with this in-flight PUT, remove its late server-side write. If a newer
+      // value exists, its serialized PUT will replace this one, so deleting here would lose it.
+      if (draftValues.get(key) !== current) {
+        backendDrafts.delete(key);
+        if (!draftValues.has(key)) await api<{ ok: boolean }>(url, { method: 'DELETE' });
+        return;
+      }
       backendDrafts.set(key, result.draft);
       const modal = document.getElementById('modal');
       if (draftValues.get(key) === current && modal?.dataset.draftEntity === type + ':' + id) {
