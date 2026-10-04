@@ -9,8 +9,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
  * 「主显中文名，英文 ID 放次要位置（小字 / hover），只有『引用来源』保留完整路径」。
  *
  * 这一组断言把口径钉成机器判据——把中文映射去掉、或把英文 ID 放回可见文本，
- * 立刻会红。覆盖：同步状态码、简报里的项目 ID 与文件名、审批的 target_project /
- * unresolved、外部写回的 candidate_id、以及错误文案归一化。
+ * 立刻会红。覆盖：简报里的项目 ID 与文件名、审批的 target_project / unresolved、
+ * 外部写回的 candidate_id、以及错误文案归一化。
  */
 const scriptPath = fileURLToPath(import.meta.url);
 const webRoot = resolve(scriptPath, '..', '..');
@@ -21,7 +21,6 @@ const entry = `
 import { briefCardHtml, briefSourceLabel } from './brief-card';
 import { errorText } from './api/client';
 import { reviewHtml } from './features/review';
-import { syncStateLabel } from './features/sync/labels';
 import { logProjectChoices } from './features/threads';
 
 const brief = {
@@ -81,9 +80,6 @@ const review = (e) => reviewHtml(
 );
 
 export const labels = {
-  ready: syncStateLabel('ready'),
-  diverged: syncStateLabel('diverged-protected'),
-  unknownCode: syncStateLabel('some-new-state'),
   sourceLabel: briefSourceLabel('logistics/sources/2026-09-14-1977-hotel.md'),
   feishuRef: briefSourceLabel('feishu-task:abc'),
   anchored: briefSourceLabel('projects/hii-affairs.md#下一步'),
@@ -115,13 +111,7 @@ try {
   writeFileSync(bundlePath, result.outputFiles[0].text);
   const mod = await import(pathToFileURL(bundlePath).href + '?t=' + Date.now());
 
-  // ① 同步状态码：中文短句；未知码不泄漏原文。
-  assert.equal(mod.labels.ready, '已同步');
-  assert.equal(mod.labels.diverged, '本机与远端已分叉', 'the banner status word must stay short');
-  assert.equal(mod.labels.unknownCode, '需要处理');
-  assert.ok(!mod.labels.unknownCode.includes('some-new-state'), 'unknown sync codes must not leak');
-
-  // ② 简报：项目显示中文名、出处只留可读标题（不显示英文项目 ID / 文件名 / 目录）。
+  // ① 简报：项目显示中文名、出处只留可读标题（不显示英文项目 ID / 文件名 / 目录）。
   assert.match(mod.briefHtml, /活满后勤&amp;行政/);
   assert.ok(!mod.briefHtml.includes('huoman-logistics'), 'brief must not print the raw project id');
   assert.ok(!mod.briefHtml.includes('logistics/sources/'), 'brief must not print source paths');
@@ -136,7 +126,7 @@ try {
   );
   assert.equal(mod.labels.feishuRef, '', 'feishu task refs have no readable file name');
 
-  // ③ 审批：目标项目显示中文名；内部标记 unresolved 显示为「未定」。
+  // ② 审批：目标项目显示中文名；内部标记 unresolved 显示为「未定」。
   assert.match(mod.reviewHtmlText, /目标：活满后勤&amp;行政/);
   assert.ok(!mod.reviewHtmlText.includes('目标：huoman-logistics'), 'review must not print the raw project id');
   assert.match(mod.unresolvedHtml, /目标：未定/);
@@ -149,14 +139,14 @@ try {
   );
   assert.match(mod.reviewHtmlText, /title="远端记录：om_abc123｜内部标识：2026-09-14-meeting#decision-0"/);
 
-  // ④ 错误文案：网络错误不把 `TypeError: Failed to fetch` 原样给使用者。
+  // ③ 错误文案：网络错误不把 `TypeError: Failed to fetch` 原样给使用者。
   assert.equal(mod.networkError, '连不上本地服务，请确认工作台还在运行');
 
-  // ⑤ 今日页三个独立内容区：新标记在、旧的两列网格标记不在。
+  // ④ 今日页三个独立内容区：新标记在、旧的两列网格标记不在。
   assert.equal(mod.todayPanels.count, 3, 'the brief must keep three content panels');
   assert.equal(mod.todayPanels.hasGrid, false, 'the old two-column brief grid must be gone');
 
-  // ⑥ 「追加推进日志」的项目勾选：可见文本只有中文名，英文 ID 只进 title 属性。
+  // ⑤ 「追加推进日志」的项目勾选：可见文本只有中文名，英文 ID 只进 title 属性。
   // 去掉属性（title 与表单 value 都允许携带 ID），只看剩下的可见文本。
   const visibleChoices = mod.logChoices.replace(/ (?:title|value)="[^"]*"/g, '');
   assert.match(visibleChoices, /活满后勤&amp;行政/);
