@@ -47,6 +47,8 @@ KNOWLEDGE_SOURCE_ROOTS = frozenset(
         "huoman-community",
         "huoman-logistics",
         "course-material-production",
+        # 验收样板中的使用者新增项目：AI-Native 承接会议逐字稿审批。
+        "AI-Native",
         # ---- 工作思考（跨项目长文，conventions §1.1）----
         "thinking",
     }

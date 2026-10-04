@@ -71,6 +71,12 @@ def test_project_paths_and_thinking_pass_the_predicate() -> None:
     assert not _is_knowledge_source(Path("README.md"))
 
 
+def test_ai_native_acceptance_project_is_allowed() -> None:
+    """样板验收中用户新增的 AI-Native 项目承接会议逐字稿审批。"""
+    assert "AI-Native" in KNOWLEDGE_SOURCE_ROOTS
+    assert _is_knowledge_source(Path("AI-Native") / "meeting-approval.md")
+
+
 def test_compat_apps_reexport_the_same_whitelist() -> None:
     """legacy_app / restricted_app 的再导出必须仍指向同一份常量（保持导出有效）。"""
     from summit_workbench.webapp.legacy_app import (
