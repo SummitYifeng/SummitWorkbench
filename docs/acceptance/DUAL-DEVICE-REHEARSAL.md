@@ -1,5 +1,7 @@
 # 双机现场复跑（A6 / A7）
 
+> **适用版本：0.4.x legacy vault。** 本 runbook 使用工作库 Git、远端 push、冲突恢复和主副设备角色，不能用于 0.5.0。0.5.0 的工作库没有 Git 同步、冲突或撤销机制；按[0.5.0 Studio—Air—Studio 验收指路](STUDIO-AIR-0.5-ACCEPTANCE.md)准备 Phase 3。
+
 > 本文件是 [`OPEN-VERIFICATION-ITEMS.md`](OPEN-VERIFICATION-ITEMS.md) 中 **A6**（双设备冲突恢复）
 > 与 **A7**（第二台机器的向导接入）的**可执行复跑步骤**。两项都必须由**人在两台真实机器上**执行，
 > 自动化只能覆盖代码路径。

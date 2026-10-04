@@ -1,5 +1,7 @@
 # 从 0 装机核对清单（Studio + Air · `0.4.10`）
 
+> **适用版本：0.4.10 / 0.4.x legacy vault。** 此清单包含工作库 Git 初始化、remote、push 和主副设备流程，不能用于 0.5.0。0.5.0 使用 OneDrive 文件同步且工作库不含 Git；当前阶段入口见 [0.5.0 Studio—Air—Studio 验收指路](STUDIO-AIR-0.5-ACCEPTANCE.md)。以下内容保留为旧版安装记录。
+
 > 用途：拿到交付包后，在两台 Mac 上从零装到「能用 + 双机同步通」的自检清单。
 > 规格与背景见 [`docs/RELEASING.md`](../RELEASING.md)「用户安装与卸载」、
 > [`DUAL-DEVICE-REHEARSAL.md`](DUAL-DEVICE-REHEARSAL.md) §A7（第二台接入）与 §A6（双机闭环）。

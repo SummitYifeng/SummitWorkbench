@@ -15,7 +15,7 @@
 
 - [Phase 1 报告](acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)：W0–W8 隔离实施与验收证据。报告中的包身份是当时记录，不代表当前安装包。
 - [Phase 2 报告](acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)：OneDrive 样板验收的原始过程，以及 2026-10-04 用户确认完成阶段门的后续记录。
-- 0.5.0 Studio → Air → Studio 的新操作指路将在 Phase 3 启动前补入 `acceptance/`；当前阶段边界与先决条件见[四阶段工作台实施计划](implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)。
+- [0.5.0 Studio → Air → Studio 验收指路](acceptance/STUDIO-AIR-0.5-ACCEPTANCE.md)：Phase 3 启动条件、OneDrive 交接流程与通过证据。
 - [旧安装清单](acceptance/FRESH-INSTALL-STUDIO-AIR.md)与[旧双机演练](acceptance/DUAL-DEVICE-REHEARSAL.md)仅供 0.4.x 历史参考，不是 0.5.0 操作指令。
 - [未验证清单](acceptance/OPEN-VERIFICATION-ITEMS.md)：0.4.x 历史清单与当前未验证事项的分界说明。旧清单中的历史状态不代表 0.5.0 阶段状态。
 - 其它 `acceptance/` 报告按文件名和报告内的日期、版本阅读；报告保留各自当时的事实，不覆盖更新的确认记录。
