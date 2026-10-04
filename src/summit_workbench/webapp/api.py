@@ -207,12 +207,6 @@ class InboxSuggestPayload(BaseModel):
     id: str = Field(min_length=1, max_length=200)
 
 
-class UndoRevertPayload(BaseModel):
-    """撤销一次系统自动提交（``wb:`` 前缀的 vault 提交）。"""
-
-    sha: str = Field(max_length=40)
-
-
 class ExternalActionReconcilePayload(BaseModel):
     """外部创建结果核对：recheck | succeeded | not-found | retry。"""
 
@@ -261,35 +255,6 @@ class GitRemoteNormalizationPlanPayload(BaseModel):
 class GitRemoteRollbackPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    confirmed: bool = False
-
-
-class SyncConflictSelectionPayload(BaseModel):
-    """Current revision snapshot plus explicit manual conflict choices; validation only."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    base_revision: str = Field(min_length=40, max_length=64)
-    local_revision: str = Field(min_length=40, max_length=64)
-    remote_revision: str = Field(min_length=40, max_length=64)
-    selections: dict[
-        str,
-        Literal["keep-local", "keep-remote", "preserve-both"],
-    ] = Field(default_factory=dict, max_length=1000)
-
-
-class SyncConflictRecoveryPayload(BaseModel):
-    """Revision-bound recovery request; confirmation is explicit and local-only."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    base_revision: str = Field(min_length=40, max_length=64)
-    local_revision: str = Field(min_length=40, max_length=64)
-    remote_revision: str = Field(min_length=40, max_length=64)
-    selections: dict[
-        str,
-        Literal["keep-local", "keep-remote", "preserve-both"],
-    ] = Field(default_factory=dict, max_length=1000)
     confirmed: bool = False
 
 
@@ -413,11 +378,3 @@ class OnboardingDraftPayload(BaseModel):
     feishu_redirect_uri: str | None = Field(default=None, max_length=2_048)
     provider_status: Literal["pending", "skipped", "ready"] = "pending"
     automation_role: Literal["primary", "secondary"] = "secondary"
-
-
-class AutomationPrimaryPayload(BaseModel):
-    """显式声明/接管 workspace 的 automation-primary。"""
-
-    device_id: str = Field(min_length=1, max_length=200)
-    expected_generation: int | None = Field(default=None, ge=1)
-    takeover: bool = False
