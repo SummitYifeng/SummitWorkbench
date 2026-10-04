@@ -457,6 +457,43 @@ def test_api_sources_read_accepts_work_knowledge_roots(tmp_path: Path) -> None:
     assert client.get("/api/sources/read", params={"source_id": "notes/stray"}).status_code == 400
 
 
+def test_api_sources_read_opens_ai_native_meeting_approval_source(tmp_path: Path) -> None:
+    """审批证据按无 .md 后缀的 source_id#区块 格式从项目来源目录读取。"""
+    client, vault = _client(tmp_path, seed_review=False)
+    source = vault / "AI-Native" / "sources" / "2026-10-04-meeting-transcript.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "---\ntitle: AI-Native 会议逐字稿\ndate: 2026-10-04\n"
+        "type: meeting-transcript\nstatus: archived\n---\n\n"
+        "# AI-Native 会议逐字稿\n\n## 审批依据\n\n逐字稿中的原始证据。\n",
+        encoding="utf-8",
+    )
+
+    source_id = "AI-Native/sources/2026-10-04-meeting-transcript#审批依据"
+    response = client.get("/api/sources/read", params={"source_id": source_id})
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "source_id": source_id,
+        "title": "AI-Native 会议逐字稿",
+        "date": "2026-10-04",
+        "body": "## 审批依据\n\n逐字稿中的原始证据。",
+        "truncated": False,
+        "anchor": source_id,
+        "heading": "审批依据",
+    }
+
+    # vault 内不属于知识来源的目录和 vault 外的穿越路径仍不开放。
+    assert client.get("/api/sources/read", params={"source_id": "notes/stray"}).status_code == 400
+    assert (
+        client.get(
+            "/api/sources/read",
+            params={"source_id": "AI-Native/../../outside/secret"},
+        ).status_code
+        == 400
+    )
+
+
 def test_api_sources_read_marks_truncated_body(tmp_path: Path) -> None:
     from summit_workbench.webapp.legacy_app import SOURCE_BODY_DISPLAY_CHARS
 
