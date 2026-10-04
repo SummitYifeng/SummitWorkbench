@@ -2,7 +2,7 @@
 
 ## 当前状态（2026-10-04）
 
-当前仓库 `main` 与 `origin/main` 同步，HEAD `1ece2cd`。本机 MacBook Air 已安装 `0.5.0 / build 2026100401` arm64 INTERNAL-DEV 包，包内源码提交 `1141155`、前端身份 `v2026.10.04-b12c1720`；尚未发布。
+2026-10-04 交接核对时，仓库 `main` 与 `origin/main` 同为 `1ece2cd`，工作区干净；该提交在 `1141155` 上仅新增交接文档。这是带日期的交接基线，不代表后续整理后的当前 HEAD。本机 MacBook Air 当时已安装 `0.5.0 / build 2026100401` arm64 INTERNAL-DEV 包，包内源码提交 `1141155`、前端身份 `v2026.10.04-b12c1720`；尚未发布。
 
 Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完成，OneDrive 同步及三份虚构测试文件删除均已确认同步。Phase 3 Studio → Air → Studio 尚未开始。当前状态与有效文档入口见 [docs/README.md](docs/README.md)；未取得证据的事项见[未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
 
@@ -16,9 +16,9 @@ Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完�
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
-| 外部系统 | 飞书 OpenAPI、可配置云端模型 API、私有 Git remote |
+| 外部系统 | 飞书 OpenAPI、可配置云端模型 API；旧版 0.4.x legacy vault 使用 Git remote，0.5.0 新工作库不依赖 Git remote |
 | 交互入口 | **原生 macOS 桌面 App**（自包含 bundle + WKWebView，正式入口，见 `docs/DESKTOP_APP.md`）、本地 Web 工作台 `wb web`（SPA：今日/审批/项目/设置；问答与指南页签已于 2026-09-16 下线，语义问答归 SummitKnowledge）、`wb` CLI（自动化与深度操作）、Obsidian 待确认页与每日笔记 |
-| 权威规格 | `docs/product/PRD.md` v1.3 |
+| 当前工作库规格 | `docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md` 与 `docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md`；`PRD.md` v1.3 记录 0.4.x 产品规格与背景 |
 | 检索契约 | `docs/contracts/WORK-KB-RETRIEVAL-CONTRACT.md`（与 SummitKnowledge 共享的引用/状态/权威顺序契约） |
 
 ## Mission
@@ -44,7 +44,7 @@ Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完�
 
 ## 关键产品规则
 
-- PRD 是唯一权威规格；旧思考文档和旧架构图只作历史参考。
+- 0.5.0 工作库行为以工作库契约和当前实施计划为准；PRD v1.3 是 0.4.x 产品规格与背景。旧思考文档和旧架构图只作历史参考。
 - 事实、待确认推断和 AI 建议必须分层保存和展示。
 - 会议知识可自动归档，执行系统写回必须经过用户确认。
 - 新会议自动处理；历史会议只按显式日期范围补导，默认不生成历史行动候选。
@@ -122,4 +122,4 @@ Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完�
 
 设计说明见 `docs/product/WEB_WORKBENCH.md`，使用指南见 `docs/product/WEB_USAGE_GUIDE.md`。
 
-P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口，**v0.4.7 build 34 是当前交付基线**（D9/D10/G1/G2/G3 五项收口）。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿；变更记录见 `CHANGELOG.md`，最新本地验收见 `docs/acceptance/OPEN-VERIFICATION-ITEMS.md`。
+P2-01B 已完成，且仍严格限定于 thread activity；inbox、会议决策和项目正文继续沿用现有路径。P2-02 的实现、自动化质量门与 build 29 双机退出验收均已收口；**本段历史记录截至 v0.4.7 build 34**（D9/D10/G1/G2/G3 五项收口）。M3（带上下文启动与收尾）和 P2-03（组织级云服务）均按产品所有者明确决定不实施。该时期仓库与远端只保留 `main`，并已迁移到组织 `SummitYifeng/SummitWorkbench`；远端 CI 质量门（含 macOS arm64 构建矩阵与 packaged App smoke）全绿。

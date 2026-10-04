@@ -22,7 +22,7 @@
 
 ## 产品说明与交付
 
-- `product/` 中的 `WEB_USAGE_GUIDE.md`、`WEB_WORKBENCH.md`、`ONEDRIVE-SAMPLE-QUICKSTART.md` 服务当前产品；`PRD.md` 主要描述 0.4.x，不能覆盖 0.5.0 工作库契约。
+- `WEB_USAGE_GUIDE.md` 与 `ONEDRIVE-SAMPLE-QUICKSTART.md` 服务当前 0.5.0 产品；`WEB_WORKBENCH.md` 是 v0.4.9 时代的设计说明，供历史背景参考，不作为当前行为说明。`PRD.md` 记录 0.4.x 产品规格与背景；0.5.0 工作库行为以工作库契约和当前实施计划为准。
 - [桌面 App 构建说明](DESKTOP_APP.md) 与 [发布说明](RELEASING.md) 描述源码仓库的构建和发布。
 - [变更记录](../CHANGELOG.md) 记录各版本交付；`AGENTS.md` 中 0.4.x 包身份数据是已发布历史。
 
