@@ -14,39 +14,51 @@ from pathlib import Path
 
 import pytest
 
-from summit_workbench.repositories._atomic import atomic_write_text
+from summit_workbench.repositories._atomic import atomic_write_bytes, atomic_write_text
+
+_WRITE_CASES = [
+    pytest.param(atomic_write_text, "data", id="text"),
+    pytest.param(atomic_write_bytes, b"data", id="bytes"),
+]
 
 
-def test_writes_content(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_writes_content(tmp_path, writer, payload):
     path = tmp_path / "a.txt"
-    atomic_write_text(path, "你好")
-    assert path.read_text(encoding="utf-8") == "你好"
+    value = "你好 🌍" if isinstance(payload, str) else "你好 🌍".encode()
+    writer(path, value)
+    assert path.read_bytes() == "你好 🌍".encode()
 
 
-def test_overwrites_existing(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_overwrites_existing(tmp_path, writer, payload):
     path = tmp_path / "a.txt"
     path.write_text("old", encoding="utf-8")
-    atomic_write_text(path, "new")
-    assert path.read_text(encoding="utf-8") == "new"
+    value = "new" if isinstance(payload, str) else b"new"
+    writer(path, value)
+    assert path.read_bytes() == b"new"
 
 
-def test_no_tmp_left_behind(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_no_tmp_left_behind(tmp_path, writer, payload):
     path = tmp_path / "note.md"
-    atomic_write_text(path, "x")
+    writer(path, payload)
     assert not (tmp_path / "note.md.tmp").exists()
     assert list(tmp_path.iterdir()) == [path]
 
 
-def test_ensure_parents_creates_dirs(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_ensure_parents_creates_dirs(tmp_path, writer, payload):
     path = tmp_path / "deep" / "nested" / "f.json"
-    atomic_write_text(path, "{}", ensure_parents=True)
-    assert path.read_text(encoding="utf-8") == "{}"
+    writer(path, payload, ensure_parents=True)
+    assert path.read_bytes() == (payload if isinstance(payload, bytes) else payload.encode("utf-8"))
 
 
-def test_missing_parent_without_ensure_raises(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_missing_parent_without_ensure_raises(tmp_path, writer, payload):
     path = tmp_path / "missing" / "f.txt"
     try:
-        atomic_write_text(path, "x")
+        writer(path, payload)
     except (FileNotFoundError, OSError):
         return
     raise AssertionError("父目录不存在且未 ensure_parents 时应抛错")
@@ -65,20 +77,26 @@ def test_temp_name_is_unique_and_never_fixed(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["note.md"]
 
 
-def test_concurrent_writers_never_splice_or_truncate(tmp_path):
+@pytest.mark.parametrize(
+    ("writer", "payload_type"),
+    [(atomic_write_text, str), (atomic_write_bytes, bytes)],
+    ids=["text", "bytes"],
+)
+def test_concurrent_writers_never_splice_or_truncate(tmp_path, writer, payload_type):
     """两个并发 atomic writer 不共用临时路径；最终文件是任一完整版本而非拼接/半截。"""
     target = tmp_path / "shared.txt"
     payloads = [f"writer-{i}:" + ("x" * 200_000) for i in range(6)]
+    values = [payload if payload_type is str else payload.encode("utf-8") for payload in payloads]
     errors: list[BaseException] = []
 
-    def writer(payload: str) -> None:
+    def write_many(payload: str | bytes) -> None:
         try:
             for _ in range(20):
-                atomic_write_text(target, payload)
+                writer(target, payload)
         except BaseException as exc:  # noqa: BLE001 - 测试线程内收集后主线程重抛
             errors.append(exc)
 
-    threads = [threading.Thread(target=writer, args=(payload,)) for payload in payloads]
+    threads = [threading.Thread(target=write_many, args=(payload,)) for payload in values]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -86,11 +104,14 @@ def test_concurrent_writers_never_splice_or_truncate(tmp_path):
         assert not thread.is_alive(), "并发写入线程超时未结束"
     if errors:
         raise errors[0]
-    assert target.read_text(encoding="utf-8") in payloads
+    assert target.read_bytes() in [payload.encode("utf-8") for payload in payloads]
     assert [p.name for p in tmp_path.iterdir()] == ["shared.txt"]
 
 
-def test_replace_failure_keeps_original_and_cleans_only_own_temp(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_replace_failure_keeps_original_and_cleans_only_own_temp(
+    tmp_path, monkeypatch, writer, payload
+):
     """os.replace 失败：原文件完整，只清理本次临时文件，不动其他进程的临时文件。"""
     target = tmp_path / "f.txt"
     target.write_text("original", encoding="utf-8")
@@ -102,13 +123,14 @@ def test_replace_failure_keeps_original_and_cleans_only_own_temp(tmp_path, monke
 
     monkeypatch.setattr(os, "replace", boom)
     with pytest.raises(OSError):
-        atomic_write_text(target, "new")
+        writer(target, payload)
     assert target.read_text(encoding="utf-8") == "original"
     # 目录里只剩原文件与“别的进程”的临时文件：本次临时文件已清理
     assert sorted(p.name for p in tmp_path.iterdir()) == [".f.txt.otherprocess.tmp", "f.txt"]
 
 
-def test_fsync_failure_cleans_temp_and_keeps_original(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_fsync_failure_cleans_temp_and_keeps_original(tmp_path, monkeypatch, writer, payload):
     """写入 fsync 抛错：原文件完整，本次临时文件被清理，无残留。"""
     target = tmp_path / "f.txt"
     target.write_text("original", encoding="utf-8")
@@ -118,12 +140,13 @@ def test_fsync_failure_cleans_temp_and_keeps_original(tmp_path, monkeypatch):
 
     monkeypatch.setattr(os, "fsync", boom)
     with pytest.raises(OSError):
-        atomic_write_text(target, "new")
+        writer(target, payload)
     assert target.read_text(encoding="utf-8") == "original"
     assert [p.name for p in tmp_path.iterdir()] == ["f.txt"]
 
 
-def test_mock_fsync_verifies_file_then_dir_durability(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_mock_fsync_verifies_file_then_dir_durability(tmp_path, monkeypatch, writer, payload):
     """mock fsync：写临时文件后先 fsync(file)，os.replace 后 fsync(parent directory)。"""
     target = tmp_path / "a.txt"
     events: list[tuple[str, str]] = []  # (step, path)
@@ -149,7 +172,7 @@ def test_mock_fsync_verifies_file_then_dir_durability(tmp_path, monkeypatch):
     monkeypatch.setattr(os, "fsync", spy_fsync)
     monkeypatch.setattr(os, "replace", spy_replace)
 
-    atomic_write_text(target, "data")
+    writer(target, payload)
 
     fsyncs = [(step, path) for step, path in events if step == "fsync"]
     replaces = [(step, path) for step, path in events if step == "replace"]
@@ -169,26 +192,44 @@ def test_mock_fsync_verifies_file_then_dir_durability(tmp_path, monkeypatch):
     assert target.read_text(encoding="utf-8") == "data"
 
 
-def test_replace_preserves_existing_file_mode(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_replace_preserves_existing_file_mode(tmp_path, writer, payload):
     """替换已有文件时尽量保留原 mode（含可执行位）。"""
     target = tmp_path / "f.sh"
     target.write_text("old", encoding="utf-8")
     os.chmod(target, 0o751)
-    atomic_write_text(target, "new")
-    assert target.read_text(encoding="utf-8") == "new"
+    writer(target, payload)
+    assert target.read_bytes() == (
+        payload if isinstance(payload, bytes) else payload.encode("utf-8")
+    )
     assert stat.S_IMODE(target.stat().st_mode) == 0o751
 
 
-def test_new_file_uses_ordinary_create_mode_not_mkstemp_0600(tmp_path):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_new_file_uses_ordinary_create_mode_not_mkstemp_0600(tmp_path, writer, payload):
     """新建文件沿用普通创建语义（0666 & ~umask），不因唯一临时文件变成 0600。"""
     target = tmp_path / "fresh.txt"
-    atomic_write_text(target, "x")
+    writer(target, payload)
     old_umask = os.umask(0)
     os.umask(old_umask)
     assert stat.S_IMODE(target.stat().st_mode) == (0o666 & ~old_umask)
 
 
-def test_cleanup_removes_own_temp_before_replace_error_knows_path(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_new_mode_applies_only_to_new_file(tmp_path, writer, payload):
+    target = tmp_path / "private.bin"
+    writer(target, payload, new_mode=0o600)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+    os.chmod(target, 0o640)
+    writer(target, payload, new_mode=0o777)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+
+
+@pytest.mark.parametrize(("writer", "payload"), _WRITE_CASES)
+def test_cleanup_removes_own_temp_before_replace_error_knows_path(
+    tmp_path, monkeypatch, writer, payload
+):
     """失败清理的是本次创建的临时文件：用目录前后快照证明本次临时文件消失。"""
     target = tmp_path / "g.txt"
     target.write_text("old", encoding="utf-8")
@@ -198,17 +239,23 @@ def test_cleanup_removes_own_temp_before_replace_error_knows_path(tmp_path, monk
 
     monkeypatch.setattr(os, "replace", boom)
     with pytest.raises(OSError):
-        atomic_write_text(target, "x")
+        writer(target, payload)
     # 原文件仍在且内容未变；无任何隐藏临时残留（_atomic 实现的本次 temp 名以 .g.txt. 开头）
     assert target.read_text(encoding="utf-8") == "old"
     for p in tmp_path.iterdir():
         assert not p.name.startswith(".g.txt."), f"本次临时文件未清理：{p.name}"
 
 
-def test_write_bytes_roundtrip_with_crlf_and_emoji(tmp_path):
-    """UTF-8 文本（含换行/emoji/中文）完整往返，不因临时文件编码损坏。"""
+@pytest.mark.parametrize(
+    ("writer", "payload"),
+    [
+        pytest.param(atomic_write_text, "标题\n- 你好 🌍\nline\r\n末尾", id="text"),
+        pytest.param(atomic_write_bytes, "标题\n- 你好 🌍\nline\r\n末尾".encode(), id="bytes"),
+    ],
+)
+def test_payload_roundtrip_preserves_exact_bytes(tmp_path, writer, payload):
+    """文本与字节路径都原样保存 UTF-8、CRLF、换行与 emoji。"""
     target = tmp_path / "data.md"
-    text = "标题\n- 你好 🌍\nline\r\n末尾"
-    atomic_write_text(target, text)
-    # 逐字节比对：避免 Path.read_text 的通用换行归一化（\r\n → \n）
-    assert target.read_bytes().decode("utf-8") == text
+    writer(target, payload)
+    expected = payload.encode("utf-8") if isinstance(payload, str) else payload
+    assert target.read_bytes() == expected

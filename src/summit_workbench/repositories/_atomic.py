@@ -74,23 +74,17 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
-def atomic_write_text(
+def _atomic_write_payload(
     path: Path,
-    text: str,
+    payload: str | bytes,
     *,
     ensure_parents: bool = False,
     new_mode: int | None = None,
 ) -> None:
-    """把 ``text`` 原子写入 ``path``（UTF-8）：唯一临时文件 + fsync + replace + 目录 fsync。
-
-    :param ensure_parents: 为真时先 ``mkdir(parents=True)`` 建好父目录。默认 False——
-        调用方若已保证父目录存在（如「就地改写既有文件」）则无需重复建。
-    :param new_mode: 仅当目标**不存在**（新建）时生效的权限位（如本机 0600 文件，
-        P0-07）；目标已存在时一律保留原 mode，忽略本参数。
-    """
+    """执行文本与字节写入共用的原子落盘流程。"""
     if ensure_parents:
         path.parent.mkdir(parents=True, exist_ok=True)
-    data = text.encode("utf-8")
+    data = payload.encode("utf-8") if isinstance(payload, str) else payload
     mode = _existing_mode(path)
     fd, temporary = _open_unique_temp(path)
     try:
@@ -114,6 +108,28 @@ def atomic_write_text(
         raise
 
 
+def atomic_write_text(
+    path: Path,
+    text: str,
+    *,
+    ensure_parents: bool = False,
+    new_mode: int | None = None,
+) -> None:
+    """把 ``text`` 原子写入 ``path``（UTF-8）：唯一临时文件 + fsync + replace + 目录 fsync。
+
+    :param ensure_parents: 为真时先 ``mkdir(parents=True)`` 建好父目录。默认 False——
+        调用方若已保证父目录存在（如「就地改写既有文件」）则无需重复建。
+    :param new_mode: 仅当目标**不存在**（新建）时生效的权限位（如本机 0600 文件，
+        P0-07）；目标已存在时一律保留原 mode，忽略本参数。
+    """
+    _atomic_write_payload(
+        path,
+        text,
+        ensure_parents=ensure_parents,
+        new_mode=new_mode,
+    )
+
+
 def atomic_write_bytes(
     path: Path,
     data: bytes,
@@ -122,24 +138,9 @@ def atomic_write_bytes(
     new_mode: int | None = None,
 ) -> None:
     """把二进制内容以同样的唯一临时文件 + fsync + replace 语义落盘。"""
-    if ensure_parents:
-        path.parent.mkdir(parents=True, exist_ok=True)
-    mode = _existing_mode(path)
-    fd, temporary = _open_unique_temp(path)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            if mode is not None:
-                os.fchmod(handle.fileno(), mode)
-            elif new_mode is not None:
-                os.fchmod(handle.fileno(), new_mode)
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        _fsync_directory(path.parent)
-    except BaseException:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
-        raise
+    _atomic_write_payload(
+        path,
+        data,
+        ensure_parents=ensure_parents,
+        new_mode=new_mode,
+    )
