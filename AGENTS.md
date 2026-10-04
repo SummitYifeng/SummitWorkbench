@@ -132,13 +132,20 @@
 - **改 `pyproject.toml` 的 `version` 后必须跑 `uv lock`**：`uv.lock` 里记着项目版本，
   不更新会被 `pre-push` 门禁的 `uv lock --check` 拦下（2026-09-19 发 0.4.10 时踩到）。
 
-## ⚠️ 交付产物基线（2026-09-19）
+## 当前开发与验收状态（2026-10-04）
 
-- **当前本机 INTERNAL-DEV 包（未发布）**：`0.5.0 / build 2026100307`，arm64，源码
+- 当前仓库 `main` / `origin/main`：`1ece2cd`；工作区初始干净。该提交仅在 `1141155` 上新增本交接文档。
+- MacBook Air 已安装 `0.5.0 / build 2026100401`，arm64 INTERNAL-DEV，包内源码提交 `1141155`，前端身份 `v2026.10.04-b12c1720`。该包未发布、没有自动更新 feed。包身份来自本轮交接核对；仓库静态前端产物身份以 `src/summit_workbench/webapp/static/build-meta.json` 为准，两者用途不同。
+- Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完成，OneDrive 同步及三份虚构测试文件删除均已确认同步。Phase 3 Studio → Air → Studio 尚未开始。阶段证据入口见 `docs/README.md` 与 `docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md`。
+- 整理期间不安装新包，不开始 Phase 3；既有真实 `_vault` 及 OneDrive 样板库均不做写入验收。
+
+## ⚠️ 交付产物历史基线（2026-09-19 起，保留当时记录）
+
+- **2026-10-03 本机 INTERNAL-DEV 包（历史，未发布）**：`0.5.0 / build 2026100307`，arm64，源码
   `b077702bee6340393194bf6783af897a576da423`，前端 `v2026.10.03-6a8114bc`；已安装到
   `/Applications/SummitWorkbench.app`。此包用于新版工作库与 OneDrive 样板，未启用自动更新；
   包身份见 `docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md`。
-- **当前人工验收状态**：Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收仍在进行，见
+- **截至当时的人工验收状态**：Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收仍在进行，见
   `docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md`。该样板库不是旧真实 `_vault`。
 
 - **已发布（tag `v0.4.11`，**最新**）**：`yifeng93/SummitWorkbench-Updates` 的 **Latest** 发布，

@@ -1,13 +1,10 @@
 # SummitWorkbench · Project Description
 
-## 当前状态（2026-09-19）
+## 当前状态（2026-10-04）
 
-`0.4.9` 已交付：arm64 内部包 **build `2026091923`**（源码 `0c9ff4f`）已装到本机 `/Applications`
-并通过打包 smoke；此后 `main` 又落了一批**纯代码简化重构**（`64e733b`…`c9b3fc5`，**未打包**）。
-当前 HEAD `c9b3fc5` 的本地门禁为 **1395 passed / 1 skipped、覆盖率 84.54%**（门槛 80%），
-ruff / format / mypy strict / 前端契约与生产构建全过；静态前端身份 `v2026.09.19-d1a8ace7`。
-真实凭据、跨端闸门与双机新鲜度矩阵仍按需在发布前复验，见
-[未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
+当前仓库 `main` 与 `origin/main` 同步，HEAD `1ece2cd`。本机 MacBook Air 已安装 `0.5.0 / build 2026100401` arm64 INTERNAL-DEV 包，包内源码提交 `1141155`、前端身份 `v2026.10.04-b12c1720`；尚未发布。
+
+Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完成，OneDrive 同步及三份虚构测试文件删除均已确认同步。Phase 3 Studio → Air → Studio 尚未开始。当前状态与有效文档入口见 [docs/README.md](docs/README.md)；未取得证据的事项见[未验证清单](docs/acceptance/OPEN-VERIFICATION-ITEMS.md)。
 
 ## 项目元信息
 
@@ -15,7 +12,7 @@ ruff / format / mypy strict / 前端契约与生产构建全过；静态前端�
 |---|---|
 | 项目名称 | SummitWorkbench |
 | 产品定位 | 外置执行管理层 + 第二大脑；作为工作知识库的**唯一写入方**（看板、采集、审批、源数据处理），**高级语义检索归属 SummitKnowledge** |
-| 当前阶段 | `v0.4.9` 已交付（build `2026091923` / 源码 `0c9ff4f`，装机并 smoke 通过）；`main` 已领先一批**未打包**的代码简化重构（`c9b3fc5`）。M3 与 P2-03 均不实施。 |
+| 当前阶段 | `v0.5.0` 新工作库 Phase 1 与 Phase 2 样板验收已完成；Phase 3 双机验收未开始。0.4.x 交付背景见下方历史记录。 |
 | MVP 主机 | Mac Studio |
 | MVP 用户 | 单用户，项目发起人本人 |
 | 主记录载体 | 独立 Obsidian 工作 vault |
@@ -85,14 +82,14 @@ ruff / format / mypy strict / 前端契约与生产构建全过；静态前端�
 
 ## 开发者 / Agent 读取顺序
 
-1. `docs/product/PRD.md`
-2. `docs/archive/plans/DEVELOPMENT_PLAN.md`（历史实施计划，仅用于理解原始顺序）
-3. 本文件
-4. 与当前工作包直接相关的架构决策记录
+1. [当前文档导航](docs/README.md)：按当前契约、活文档、验收报告和历史资料查找入口。
+2. `AGENTS.md` 与 `README.md`：仓库约束和当前状态。
+3. 与当前工作包直接相关的契约、实施计划及验收报告。
+4. `docs/product/PRD.md` 与 `docs/archive/plans/DEVELOPMENT_PLAN.md`：0.4.x 产品背景和历史实施顺序。
 
 不得从 `docs/archive/background/THINKING_DOC.md` 或当前旧版 `docs/archive/architecture/ARCHITECTURE.html` 恢复已被 PRD 推翻的设计。
 
-## 当前交付边界（v0.4.7 build 34）
+## 0.4.x 历史交付边界（截至 v0.4.7 build 34）
 
 已交付可安装的 Python 工程、`wb` CLI、本地 Web 工作台与原生 macOS 桌面 App。M0 / M1 / M2、P1-07D、P2-01B、P2-02、v0.4.4 UI/UX 维护、v0.4.5 交付前清理、v0.4.6 指南版本标记修正与 v0.4.7 分发版（build 34）均完成并经真实数据/真机或本地交互验证；当前只保留 `main` 主线：
 

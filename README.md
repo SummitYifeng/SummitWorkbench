@@ -1,16 +1,16 @@
 # SummitWorkbench
 
-## 0.5.0 工作库架构与阶段进度
+## 当前状态（2026-10-04）
 
-新版工作库使用普通本地目录或 OneDrive 文件夹，由 `.summit-workbench/manifest.json` 标识；写入不依赖工作库 Git，OneDrive 客户端负责文件同步，SummitKnowledge 只读已批准内容。
+当前开发与验收版本为 `0.5.0`。本机 MacBook Air 已安装 arm64 INTERNAL-DEV build `2026100401`，包内源码提交为 `1141155`，前端身份为 `v2026.10.04-b12c1720`。此包未发布，也不接自动更新。发布版本历史见 [CHANGELOG.md](CHANGELOG.md)；本机包身份与验收阶段见 [文档导航](docs/README.md)。
 
-- **Phase 1：已完成。** W0–W8、0.5.0 arm64 包和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。Phase 1 交付包为 build `2026100305`；当前安装的 Phase 2 修复包为 build `2026100307`，前端身份 `v2026.10.03-6a8114bc`。
-- **Phase 2：进行中。** OneDrive 后勤样板、材料路径映射和使用说明见 [Phase 2 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)、[导入清单](docs/acceptance/ONEDRIVE-SAMPLE-IMPORT-MANIFEST.md) 和 [快速使用说明](docs/product/ONEDRIVE-SAMPLE-QUICKSTART.md)。用户已确认六份正式内容版本并确认 OneDrive 同步完成；计划中的四类真实工作台操作尚未全部验收。
-- **Phase 3–4：未开始。** 依次等待前一阶段验收门通过；阶段顺序与风险边界见[四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)。
+- **Phase 1：已完成。** W0–W8 和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。该报告保留 build `2026100305` 等当时的交付身份。
+- **Phase 2：已完成用户确认的样板验收。** OneDrive 样板库、导入材料和此前操作记录见 [Phase 2 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)、[导入清单](docs/acceptance/ONEDRIVE-SAMPLE-IMPORT-MANIFEST.md) 和 [快速使用说明](docs/product/ONEDRIVE-SAMPLE-QUICKSTART.md)。2026-10-04 用户确认阶段验收完成、OneDrive 同步已完成，三份虚构测试文件的删除也已同步。报告会保留原始过程，并补记后续确认证据。
+- **Phase 3：尚未开始。** Studio → Air → Studio 双机验收须使用同一验收包；阶段顺序与工作库边界见 [四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 和 [工作库契约 v1](docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md)。
 
-下文的 0.4.x 交付与使用说明是历史版本背景，不描述 0.5.0 新工作库行为。
+下文 0.4.x 交付与使用说明是历史版本背景，不描述 0.5.0 新工作库行为。
 
-## 2026-09-19 交付状态（本地 `main`）
+## 0.4.x 已发布版本背景（历史记录）
 
 **最近已发布的 0.4.x 版本**：`0.4.11`（tag `v0.4.11`，提交 `6253d31`），由 CI build `25` 构建；
 发布产物哈希与升级说明以 `AGENTS.md` 的交付基线及 `CHANGELOG.md` 为准。这里保留 0.4.x 行为史；
@@ -44,7 +44,7 @@
 
 SummitWorkbench 是 macOS 本地工作台，整理项目状态、会议记录、工作输入及飞书日历／任务。0.5.0 将工作内容放入由用户选择的可移动工作库，并以版本批准控制正式内容；OneDrive 负责跨设备文件同步。
 
-> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100307`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
+> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100401`，包内源码提交 `1141155`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 
@@ -94,6 +94,7 @@ Mac Studio 在后台定时拉取新会议纪要并写入 Obsidian。会议原文
 SummitWorkbench/
 ├── README.md / PROJECTDESC.md / config.example.toml
 ├── docs/
+│   ├── README.md         # 当前契约、活文档、阶段报告与历史资料导航
 │   ├── product/          # 使用指南、产品说明与 0.4.x PRD
 │   ├── archive/          # 已完成阶段的背景、计划、旧验收、设计预览与**已完结的实施/交接记录**
 │   ├── decisions/        # 当前架构决策记录（ADR 0043–0045；历史 ADR 见 archive/decisions/）
