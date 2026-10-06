@@ -135,9 +135,8 @@
 ## 当前开发与验收状态（2026-10-04）
 
 - **2026-10-04 交接基线**：交接核对时 `main` 与 `origin/main` 均为 `1ece2cd`，工作区干净；该提交仅在 `1141155` 上新增本交接文档。此为交接起点记录，不表示后续整理后的当前 HEAD。
-- MacBook Air 已安装 `0.5.0 / build 2026100401`，arm64 INTERNAL-DEV，包内源码提交 `1141155`，前端身份 `v2026.10.04-b12c1720`。该包未发布、没有自动更新 feed。包身份来自本轮交接核对；仓库静态前端产物身份以 `src/summit_workbench/webapp/static/build-meta.json` 为准，两者用途不同。
-- Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完成，OneDrive 同步及三份虚构测试文件删除均已确认同步。Phase 3 Studio → Air → Studio 尚未开始。阶段证据入口见 `docs/README.md` 与 `docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md`。
-- 整理期间不安装新包，不开始 Phase 3；既有真实 `_vault` 及 OneDrive 样板库均不做写入验收。
+- **2026-10-06 进展补记**：Air 上运行 `0.5.0`、前端 `v2026.10.06-9c141154`；本轮构建记录为 build `2026100602`、源码提交 `7b50597`。Studio 截图未核实包身份。Studio → Air → Studio 日志往返已由 Air 界面与用户提供的 Studio 截图确认；Phase 3 整体未通过。用户决定当前不测任何异常，异常场景须记为未测试，不得记为通过。详见 `docs/acceptance/STUDIO-AIR-0.5-ACCEPTANCE.md`。
+- Phase 1 W0–W8 已通过；Phase 2 OneDrive 样板验收已由用户确认完成。阶段证据入口见 `docs/README.md`、Phase 2 报告及上述 Phase 3 现场记录。旧真实 `_vault` 仍不做写入验收。
 
 ## ⚠️ 交付产物历史基线（2026-09-19 起，保留当时记录）
 

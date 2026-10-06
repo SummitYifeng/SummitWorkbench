@@ -5,7 +5,7 @@
 ## 当前契约与计划
 
 - [工作库契约 v1](contracts/SWB-WORKSPACE-CONTRACT-v1.md)：0.5.0 工作库身份、内容资格、写入和同步边界。
-- [四阶段工作台实施计划](implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)：Phase 1–4 的顺序、范围与阶段门。当前 Phase 1、Phase 2 已完成用户确认；Phase 3 尚未开始。
+- [四阶段工作台实施计划](implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md)：Phase 1–4 的顺序、范围与阶段门。当前 Phase 1、Phase 2 已完成用户确认；Phase 3 的最小日志往返已通过，整体阶段未通过，当前异常测试按用户决定暂缓。
 - [W0 接口与写入盘点](implementation/ONEDRIVE-W0-FROZEN-INTERFACE-AND-WRITE-INVENTORY.md)：实施接口与副作用清单。
 - [检索契约](contracts/WORK-KB-RETRIEVAL-CONTRACT.md)：SWB 与 SummitKnowledge 的共享引用、状态和权威顺序约定。
 - [Web 工作台使用指南](product/WEB_USAGE_GUIDE.md)：0.5.0 日常界面入口与操作说明；涉及旧工作库行为的段落会标明适用版本。

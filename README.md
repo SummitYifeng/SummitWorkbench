@@ -1,12 +1,12 @@
 # SummitWorkbench
 
-## 当前状态（2026-10-04）
+## 当前状态（2026-10-06）
 
-当前开发与验收版本为 `0.5.0`。本机 MacBook Air 已安装 arm64 INTERNAL-DEV build `2026100401`，包内源码提交为 `1141155`，前端身份为 `v2026.10.04-b12c1720`。此包未发布，也不接自动更新。发布版本历史见 [CHANGELOG.md](CHANGELOG.md)；本机包身份与验收阶段见 [文档导航](docs/README.md)。
+当前开发与验收版本为 `0.5.0`。Air 本轮使用 arm64 INTERNAL-DEV build `2026100602`，源码提交 `7b50597`，前端身份 `v2026.10.06-9c141154`；该包未发布，也不接自动更新。Studio 包身份尚未核实。发布版本历史见 [CHANGELOG.md](CHANGELOG.md)；包身份与验收阶段见 [文档导航](docs/README.md)。
 
 - **Phase 1：已完成。** W0–W8 和隔离单机验收见 [Phase 1 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE1-REPORT.md)。该报告保留 build `2026100305` 等当时的交付身份。
 - **Phase 2：已完成用户确认的样板验收。** OneDrive 样板库、导入材料和此前操作记录见 [Phase 2 验收报告](docs/acceptance/SWB-WORKBENCH-PHASE2-REPORT.md)、[导入清单](docs/acceptance/ONEDRIVE-SAMPLE-IMPORT-MANIFEST.md) 和 [快速使用说明](docs/product/ONEDRIVE-SAMPLE-QUICKSTART.md)。2026-10-04 用户确认阶段验收完成、OneDrive 同步已完成，三份虚构测试文件的删除也已同步。报告会保留原始过程，并补记后续确认证据。
-- **Phase 3：尚未开始。** Studio → Air → Studio 双机验收须使用同一验收包；阶段顺序与工作库边界见 [四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 和 [工作库契约 v1](docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md)。
+- **Phase 3：最小日志往返已通过，整体未通过。** 2026-10-06 Studio → Air → Studio 日志同步已由用户确认；用户决定当前不测任何异常，异常场景均记为未测试。两端包身份、工作区 ID、批准证明和外部动作连续性尚未核实。详见 [Studio → Air → Studio 现场记录](docs/acceptance/STUDIO-AIR-0.5-ACCEPTANCE.md)、[四阶段计划](docs/implementation/ONEDRIVE-WORKBENCH-IMPLEMENTATION-PLAN.md) 和 [工作库契约 v1](docs/contracts/SWB-WORKSPACE-CONTRACT-v1.md)。
 
 下文 0.4.x 交付与使用说明是历史版本背景，不描述 0.5.0 新工作库行为。
 
@@ -44,7 +44,7 @@
 
 SummitWorkbench 是 macOS 本地工作台，整理项目状态、会议记录、工作输入及飞书日历／任务。0.5.0 将工作内容放入由用户选择的可移动工作库，并以版本批准控制正式内容；OneDrive 负责跨设备文件同步。
 
-> **已发布基线为 `v0.4.11`；当前本机内部验收包为 `0.5.0 / build 2026100401`，包内源码提交 `1141155`。** 0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
+> **已发布基线为 `v0.4.11`；Air 本轮使用的内部验收包为 `0.5.0 / build 2026100602`，源码提交 `7b50597`，前端身份 `v2026.10.06-9c141154`。** Studio 当前包身份尚未从截图核实。0.5.0 尚未发布到更新通道。仓库不含凭据：飞书应用默认凭据只在构建期注入，流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 产品解决的问题
 
