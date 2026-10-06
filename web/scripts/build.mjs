@@ -50,7 +50,7 @@ function walkFiles(directory) {
 
 function sourceEntries() {
   const paths = walkFiles(join(WEB_ROOT, 'src'));
-  for (const name of ['package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig.json']) {
+  for (const name of ['index.html', 'package.json', 'package-lock.json', 'vite.config.ts', 'tsconfig.json']) {
     const path = join(WEB_ROOT, name);
     if (existsSync(path)) paths.push(path);
   }

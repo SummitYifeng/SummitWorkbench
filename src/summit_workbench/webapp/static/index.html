@@ -4,8 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SummitWorkbench 工作台</title>
-  <script type="module" crossorigin src="/static/assets/index-Dlfls2wN.js"></script>
-  <link rel="stylesheet" crossorigin href="/static/assets/index-DclcFLyW.css">
+<script>
+  (() => {
+    let preference = 'system';
+    try {
+      const stored = localStorage.getItem('swb:theme-preference');
+      if (stored === 'light' || stored === 'dark' || stored === 'system') preference = stored;
+    } catch {}
+    const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  })();
+</script>
+  <script type="module" crossorigin src="/static/assets/index-CXzEgh2r.js"></script>
+  <link rel="stylesheet" crossorigin href="/static/assets/index-IIyLK2_y.css">
 </head>
 <body>
 <div id="app"></div>

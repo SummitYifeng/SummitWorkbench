@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SummitWorkbench 工作台</title>
+<script>
+  (() => {
+    let preference = 'system';
+    try {
+      const stored = localStorage.getItem('swb:theme-preference');
+      if (stored === 'light' || stored === 'dark' || stored === 'system') preference = stored;
+    } catch {}
+    const dark = preference === 'dark' || (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  })();
+</script>
 </head>
 <body>
 <div id="app"></div>

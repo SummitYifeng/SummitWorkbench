@@ -1,0 +1,78 @@
+:root {
+  color-scheme: light;
+  --fg: #202522;
+  --muted: #5d6862;
+  --bg: #f6f7f6;
+  --card: #ffffff;
+  --inset: #f0f2f0;
+  --border: #dfe5e1;
+  --control-border: #7c8881;
+  --accent: #166b64;
+  --accent-strong: #0f514c;
+  --accent-soft: #e6f1ee;
+  --on-accent: #ffffff;
+  --hover: #edf1ee;
+  --ok: #237a51;
+  --ok-soft: #e8f3ec;
+  --warn: #875915;
+  --warn-soft: #f8f0df;
+  --bad: #a3443f;
+  --bad-soft: #f8e9e8;
+  --on-bad: #ffffff;
+  --purple: #6e5a99;
+  --purple-soft: #eeeaf7;
+  --radius: 8px;
+  --shadow: 0 1px 2px rgba(31, 57, 45, 0.06);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-list: 14px;
+  --text-section: 16px;
+  --text-page: 22px;
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --fg: #e8edeb;
+  --muted: #b2bdb8;
+  --bg: #181a1b;
+  --card: #222526;
+  --inset: #1c1f20;
+  --border: #414748;
+  --control-border: #778381;
+  --accent: #8fc9bb;
+  --accent-strong: #a8d8cb;
+  --accent-soft: #293b37;
+  --on-accent: #132a23;
+  --hover: #303637;
+  --ok: #8fd0a8;
+  --ok-soft: #293e32;
+  --warn: #e9bf77;
+  --warn-soft: #403726;
+  --bad: #f0a29a;
+  --bad-soft: #442e2e;
+  --on-bad: #301614;
+  --purple: #c2b0e8;
+  --purple-soft: #373142;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+:root:not([data-theme]) { color-scheme: light; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --fg: #e8edeb; --muted: #b2bdb8; --bg: #181a1b; --card: #222526;
+    --inset: #1c1f20; --border: #414748; --control-border: #778381;
+    --accent: #8fc9bb; --accent-strong: #a8d8cb; --accent-soft: #293b37;
+    --on-accent: #132a23; --hover: #303637; --ok: #8fd0a8; --ok-soft: #293e32;
+    --warn: #e9bf77; --warn-soft: #403726; --bad: #f0a29a; --bad-soft: #442e2e;
+    --on-bad: #301614; --purple: #c2b0e8; --purple-soft: #373142;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  }
+}

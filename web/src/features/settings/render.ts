@@ -1,5 +1,6 @@
 /** 设置页渲染与只读数据读取（原 features/settings/index.ts，Step 8c 拆分）。 */
 import { esc } from '../../md';
+import { getThemePreference } from '../../theme';
 import { formatBusinessTime } from '../../core/time';
 
 export interface ProfileSummary {
@@ -175,7 +176,7 @@ export async function renderSettings(view: HTMLElement, actions: SettingsActions
       '<section class="block"><h3 class="section-title">工作台切换</h3><p class="hint">同一时间只打开一个工作台；切换前会先完成安全检查。</p>' + profiles + profilesStatus + removeHint + '</section>' +
       '<section class="block"><h3 class="section-title">健康检查</h3><p class="hint">离线检查不联网；在线检查会真实访问模型与飞书。</p><div class="row"><button class="ghost" data-action="settings-doctor">离线检查</button><button class="ghost" data-action="settings-doctor-online">在线检查</button></div></section>' +
       '<section class="block"><h3 class="section-title">诊断与支持</h3><div class="row"><button class="ghost" data-action="diagnostics-preview">查看诊断包清单</button><button class="ghost" data-action="diagnostics-export">导出诊断包</button><button class="ghost" data-action="diagnostics-open-log">打开日志目录</button></div><div id="diagnostics-preview"></div></section></details>';
-    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid settings-grid-single">' +
+    view.innerHTML = '<div class="settings-head"><h2 class="page-title">设置</h2><div class="theme-control"><label for="theme-preference">外观</label><select id="theme-preference"><option value="system"' + (getThemePreference() === 'system' ? ' selected' : '') + '>跟随系统</option><option value="light"' + (getThemePreference() === 'light' ? ' selected' : '') + '>日间</option><option value="dark"' + (getThemePreference() === 'dark' ? ' selected' : '') + '>夜间</option></select></div><p class="hint">常用连接在这里完成；高级选项默认收起来。</p><button class="ghost" data-action="reopen-onboarding">重新打开连接向导</button></div><section class="settings-grid settings-grid-single">' +
       // 主区三张卡，每张一行（使用者要求：工作区 / AI 模型 / 飞书）。
       '<div class="card settings-card"><div class="card-head"><strong>工作区</strong>' + (response ? '<span class="conn-badge ok">✓ 已连接</span>' : badge('model', 'read-error')) + '</div><p class="settings-card-desc">会议、任务和项目都整理在这个文件夹里。</p>' + workspace + (profilesRead.error ? readFailure('工作区信息', profilesRead.error, profilesRead.readAt) : '') + '</div>' + model + feishu + '</section><section class="block">' + advanced + '</section>';
 
